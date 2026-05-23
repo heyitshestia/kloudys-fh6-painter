@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+__unfinished__/
+.vscode/
+.idea/
+
+preview.png
+*.log
+
+webui-data/
+runtime/
+dist/
+build/
+
+# Large/volatile FH6 diagnostics
+*count-*.json
+*memory-count-*.jsonl
+*candidates.json
+guided-memory-*.jsonl

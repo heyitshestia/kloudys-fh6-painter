@@ -1,0 +1,15 @@
+ayylmao.png - c.ini - i5-12500H+iGPU
+cpu: ~966ms per ellipse
+opencl: ~435ms per ellipse
+
+maozai.jpg - c.ini - i5-12500H+iGPU
+cpu: ~11175ms per ellipse
+opencl: ~1364ms per ellipse
+
+ayylmao.png - c.ini - aimax395+8060S
+cpu: unknown (linux device)
+opencl: ~37ms per ellipse
+
+maozai.jpg - c.ini - aimax395+8060S
+cpu: unknown (linux device)
+opencl: ~340ms per ellipse
