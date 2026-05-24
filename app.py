@@ -1467,6 +1467,7 @@ class App:
         if run_dir.exists():
             candidates.extend(run_dir.glob(f"{image_path.stem}.preview*.png"))
             candidates.extend(run_dir.glob(f"{image_path.stem}.v2.final.*.preview.png"))
+            candidates.extend(run_dir.glob("*.preview*.png"))
         filtered = [path for path in candidates if ".v2.preprocess." not in path.name]
         return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
 

@@ -860,7 +860,11 @@ def v2_preview_path_for_tag(out_dir: Path, stem: str, tag: str) -> Path:
 
 
 def stem_from_image(path: Path) -> str:
-    return path.stem
+    # The Go generator treats dots in the output base as extension separators.
+    # A source like "Untitled_16.01.36.png" otherwise produces
+    # "Untitled_16.01.5.json" instead of "...16.01.36.5.json", and V2 cannot
+    # find its checkpoints. Keep the run stem extension-safe.
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem).strip("_") or "image"
 
 
 def run_generator(image: Path, settings_path: Path, out_dir: Path, out_stem: str, stop_file: Path | None = None) -> bool:
