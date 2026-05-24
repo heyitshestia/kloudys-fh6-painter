@@ -32,6 +32,9 @@ echo Using %PYTHON_CMD%
 %PYTHON_CMD% -m pip install --upgrade pip
 if errorlevel 1 goto Failed
 
+%PYTHON_CMD% -m pip install "psutil>=5.9.0"
+if errorlevel 1 goto Failed
+
 %PYTHON_CMD% -m pip install -r requirements.txt
 if errorlevel 1 goto Failed
 
