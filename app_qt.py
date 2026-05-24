@@ -433,7 +433,8 @@ class MainWindow(QMainWindow):
         if _PSUTIL_ERROR is not None:
             raise _PSUTIL_ERROR
         self.setWindowTitle(f"Kloudy's FH6 Painter - {get_version()}")
-        self.resize(1280, 860)
+        self.resize(1280, 980)
+        self.setMinimumSize(1180, 900)
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
         self.selected_import_json_path: Path | None = None
@@ -489,7 +490,8 @@ class MainWindow(QMainWindow):
         root.addLayout(footer)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setMinimumHeight(145)
+        self.log.setMinimumHeight(110)
+        self.log.setMaximumHeight(150)
         root.addWidget(self.log)
         self.setCentralWidget(central)
 
@@ -530,6 +532,7 @@ class MainWindow(QMainWindow):
         self.vroom.stateChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.vroom)
         self.profile_combo = QComboBox()
+        self.profile_combo.setMaxVisibleItems(18)
         for item in self.settings:
             self.profile_combo.addItem(item["label"], item)
         self.profile_combo.currentIndexChanged.connect(self.update_setting_description)
@@ -633,11 +636,14 @@ class MainWindow(QMainWindow):
         controls.addWidget(add_recommended)
         json_layout.addLayout(controls)
         self.generated_folder_combo = QComboBox()
+        self.generated_folder_combo.setMaxVisibleItems(24)
+        self.generated_folder_combo.setMinimumHeight(34)
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
         json_layout.addWidget(QLabel("Generated run"))
         json_layout.addWidget(QLabel("Click a checkpoint below. The highlighted JSON is the one that will be imported."))
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
+        self.generated_checkpoint_list.setMinimumHeight(420)
         self.generated_checkpoint_list.currentRowChanged.connect(self.select_generated_checkpoint)
         json_layout.addWidget(QLabel("Checkpoints"))
         json_layout.addWidget(self.generated_checkpoint_list, 2)
