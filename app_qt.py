@@ -366,7 +366,7 @@ class UiBus(QObject):
     preview_file = Signal(str)
     refresh_lists = Signal()
     generated_changed = Signal()
-    auto_located = Signal(str, str)
+    auto_located = Signal(str, str, str, str, str)
 
 
 class PreviewView(QGraphicsView):
@@ -445,6 +445,9 @@ class MainWindow(QMainWindow):
         self.active_generation_images: list[Path] = []
         self.active_generation_run_dirs: dict[Path, Path] = {}
         self.latest_generated_run_dir: Path | None = None
+        self.auto_located_context: dict | None = None
+        self.manual_address_dirty = False
+        self.setting_auto_locate_fields = False
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
         self.bus = UiBus()
@@ -654,6 +657,8 @@ class MainWindow(QMainWindow):
         self.manual_table = QLineEdit()
         self.manual_count.setPlaceholderText("Manual count address (advanced, optional)")
         self.manual_table.setPlaceholderText("Manual table address (advanced, optional)")
+        self.manual_count.textEdited.connect(self.mark_manual_address_dirty)
+        self.manual_table.textEdited.connect(self.mark_manual_address_dirty)
         import_layout.addWidget(self.manual_count)
         import_layout.addWidget(self.manual_table)
         import_btn = QPushButton("Import JSON into FH6")
@@ -1380,18 +1385,19 @@ class MainWindow(QMainWindow):
     def start_auto_locate(self):
         pid = self.selected_pid_value()
         layer_count = self.layer_count.text().strip()
+        game = self.game_combo.currentText() or "fh6"
         if not pid or not layer_count:
             self.log_line("PID and template layer count are required.")
             return
         self.set_status("Running")
-        threading.Thread(target=self.auto_locate_worker, args=(pid, layer_count), daemon=True).start()
+        threading.Thread(target=self.auto_locate_worker, args=(pid, layer_count, game), daemon=True).start()
 
-    def auto_locate_worker(self, pid, layer_count):
+    def auto_locate_worker(self, pid, layer_count, game):
         cmd = [
             helper_python(),
             ROOT / "fh6_probe.py",
             "--game",
-            self.game_combo.currentText() or "fh6",
+            game,
             "--pid",
             str(pid),
             "--layer-count",
@@ -1417,13 +1423,44 @@ class MainWindow(QMainWindow):
                 self.bus.auto_located.emit(
                     "0x{:x}".format(int(session["count_address"])),
                     "0x{:x}".format(int(session["table_address"])),
+                    str(layer_count),
+                    str(pid),
+                    game,
                 )
         self.bus.status.emit("Done" if code == 0 else "Failed")
 
-    def apply_auto_locate_result(self, count_address, table_address):
-        self.manual_count.setText(count_address)
-        self.manual_table.setText(table_address)
+    def mark_manual_address_dirty(self, _text=None):
+        if not self.setting_auto_locate_fields:
+            self.manual_address_dirty = True
+            self.auto_located_context = None
+
+    def apply_auto_locate_result(self, count_address, table_address, layer_count, pid, game):
+        self.setting_auto_locate_fields = True
+        try:
+            self.manual_count.setText(count_address)
+            self.manual_table.setText(table_address)
+        finally:
+            self.setting_auto_locate_fields = False
+        self.manual_address_dirty = False
+        self.auto_located_context = {
+            "count_address": count_address,
+            "table_address": table_address,
+            "layer_count": str(layer_count),
+            "pid": str(pid),
+            "game": str(game),
+        }
         self.log_line(f"Auto-located FH6 count/table: count={count_address}, table={table_address}")
+
+    def auto_located_context_matches(self, count_address, table_address, layer_count, pid, game):
+        context = self.auto_located_context
+        return bool(
+            context
+            and context.get("count_address") == count_address
+            and context.get("table_address") == table_address
+            and context.get("layer_count") == str(layer_count)
+            and context.get("pid") == str(pid)
+            and context.get("game") == str(game)
+        )
 
     def start_import(self):
         if not self.json_files:
@@ -1449,10 +1486,15 @@ class MainWindow(QMainWindow):
         count_address = parse_hex_or_empty(self.manual_count.text())
         table_address = parse_hex_or_empty(self.manual_table.text())
         layer_count = self.layer_count.text().strip()
+        if count_address and table_address and game == "fh6" and not self.manual_address_dirty:
+            if not self.auto_located_context_matches(count_address, table_address, layer_count, pid, game):
+                self.bus.log.emit("Stored auto-locate result does not match the current process/layer count. Re-locating FH6 template.")
+                count_address = None
+                table_address = None
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.bus.log.emit("Finding current FH6 template...")
-                self.auto_locate_worker(pid, layer_count)
+                self.auto_locate_worker(pid, layer_count, game)
                 session = load_session_location()
                 if session and str(session.get("layer_count", "")) == str(layer_count) and session_pid_is_live(session, game):
                     count_address = "0x{:x}".format(int(session["count_address"]))
