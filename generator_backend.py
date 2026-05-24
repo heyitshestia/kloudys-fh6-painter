@@ -62,6 +62,10 @@ def parse_settings(path):
     return values
 
 
+def sorted_settings(values):
+    return {key: values[key] for key in sorted(values)}
+
+
 def load_settings():
     profiles = []
     preset_dir = ACTIVE_PRESET_DIR if ACTIVE_PRESET_DIR.exists() else SETTINGS_DIR
@@ -71,7 +75,7 @@ def load_settings():
         name = name.replace(" - ", " / ")
         name = name.replace("-", " ")
         name = re.sub(r"\s+", " ", name).strip()
-        values = parse_settings(path)
+        values = sorted_settings(parse_settings(path))
         profiles.append({
             "path": path,
             "name": name,
@@ -86,11 +90,13 @@ def load_settings():
 
 
 def write_custom_settings(base_setting, custom_values):
-    values = dict(parse_settings(base_setting["path"]))
+    values = sorted_settings(parse_settings(base_setting["path"]))
+    applied_overrides = {}
     for key, value in custom_values.items():
         value = str(value).strip()
         if value:
             values[key] = value
+            applied_overrides[key] = value
     CUSTOM_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     path = CUSTOM_SETTINGS_DIR / "custom.ini"
     lines = ["description = Custom UI settings"]
@@ -108,6 +114,14 @@ def write_custom_settings(base_setting, custom_values):
     setting["label"] = f"{base_setting.get('label', 'Custom')} + overrides"
     setting["description"] = "Custom UI settings"
     setting["values"] = values
+    setting["base_setting"] = {
+        "label": base_setting.get("label"),
+        "name": base_setting.get("name"),
+        "description": base_setting.get("description"),
+        "path": str(base_setting.get("path")),
+        "values": sorted_settings(parse_settings(base_setting["path"])),
+    }
+    setting["ui_overrides"] = sorted_settings(applied_overrides)
     return setting
 
 
@@ -312,6 +326,34 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
     checkpoint_step = "250" if target_count <= 1000 else "500"
     preprocess_mode = values.get("v2PreprocessMode", "none")
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
+    run_metadata_path = output_dir / f"{image_path.stem}.v2.run_metadata.json"
+    run_metadata = {
+        "selected_profile": {
+            "label": setting.get("label"),
+            "name": setting.get("name"),
+            "description": setting.get("description"),
+            "path": str(setting.get("path")),
+            "values": sorted_settings(values),
+        },
+        "base_profile": setting.get("base_setting"),
+        "ui_overrides": sorted_settings(setting.get("ui_overrides", {})),
+        "effective_settings": sorted_settings(values),
+        "toggles": {
+            "luma_bands": str(preprocess_mode).strip().lower() == "luma_bands",
+            "quality_overshoot": bool(enable_overshoot),
+            "targeted_repair": bool(enable_repair or setting_repair),
+        },
+        "generator_command_options": {
+            "target_shapes": target_shapes,
+            "checkpoint_step": checkpoint_step,
+            "preprocess_mode": preprocess_mode,
+            "overshoot_ratio": "1.12" if enable_overshoot else "1.0",
+            "overshoot_max_extra": "400" if enable_overshoot else "0",
+            "repair_enabled": bool(enable_repair or setting_repair),
+        },
+    }
+    run_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    run_metadata_path.write_text(json.dumps(run_metadata, indent=2) + "\n", encoding="utf-8")
     cmd = [
         sys.executable,
         "-u",
@@ -329,6 +371,8 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         str(generator_stop_request_path(image_path, output_dir)),
         "--preprocess-mode",
         preprocess_mode,
+        "--run-metadata",
+        str(run_metadata_path),
     ]
     if enable_overshoot:
         cmd.extend(["--overshoot-ratio", "1.12", "--overshoot-max-extra", "400"])

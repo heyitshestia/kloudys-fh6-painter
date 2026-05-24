@@ -124,6 +124,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Deprecated alias. Keeps repair disabled.",
     )
+    parser.add_argument(
+        "--run-metadata",
+        default="",
+        help="Optional JSON metadata from the UI describing selected presets, overrides, and toggles.",
+    )
     return parser.parse_args()
 
 
@@ -136,6 +141,34 @@ def parse_ini(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip()
     return values
+
+
+def load_run_metadata(path: str) -> dict:
+    if not path:
+        return {}
+    metadata_path = Path(path).expanduser()
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "metadata_path": str(metadata_path),
+            "metadata_load_error": True,
+        }
+    if isinstance(payload, dict):
+        payload.setdefault("metadata_path", str(metadata_path))
+        return payload
+    return {
+        "metadata_path": str(metadata_path),
+        "metadata_load_error": True,
+    }
+
+
+def sorted_mapping(value):
+    if isinstance(value, dict):
+        return {key: sorted_mapping(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [sorted_mapping(item) for item in value]
+    return value
 
 
 def build_save_points(target: int, stop_at: int, checkpoint_step: int) -> str:
@@ -941,6 +974,7 @@ def main() -> int:
                 pass
 
     base_settings = parse_ini(settings_path)
+    run_metadata = load_run_metadata(args.run_metadata)
     target_shapes = args.target_shapes or int(base_settings.get("stopAt", "3000"))
     if target_shapes < 1:
         print("target shape count must be positive", file=sys.stderr)
@@ -1127,10 +1161,69 @@ def main() -> int:
     latest_checkpoint = max(results, key=lambda item: (item["raw_drawables"], item["candidate"]))
 
     report_path = out_dir / f"{stem}.v2.report.json"
+    preset = run_metadata.get("selected_profile") or {
+        "path": str(settings_path),
+        "values": dict(base_settings),
+    }
+    base_preset = run_metadata.get("base_profile")
+    ui_overrides = run_metadata.get("ui_overrides", {})
+    effective_settings = run_metadata.get("effective_settings", dict(base_settings))
+    run_toggles = run_metadata.get("toggles", {
+        "luma_bands": args.preprocess_mode == "luma_bands",
+        "quality_overshoot": overshoot_extra > 0,
+        "targeted_repair": repair_enabled,
+    })
+    generator_command_options = run_metadata.get("generator_command_options", {
+        "target_shapes": str(target_shapes),
+        "checkpoint_step": str(args.checkpoint_step),
+        "preprocess_mode": args.preprocess_mode,
+        "overshoot_ratio": str(args.overshoot_ratio),
+        "overshoot_max_extra": str(args.overshoot_max_extra),
+        "repair_enabled": repair_enabled,
+    })
+
+    def report_candidate(item: dict) -> dict:
+        return {
+            "checkpoint_tag": item["checkpoint_tag"],
+            "candidate": item["candidate"],
+            "raw_drawables": item["raw_drawables"],
+            "final_drawables": item["final_drawables"],
+            "error": item["error"],
+            "base_error": item["base_error"],
+            "repair_applied": item["repair_applied"],
+            "preview_written": item["preview_written"],
+            "v2_json": item["v2_json"],
+            "v2_preview": item["v2_preview"],
+            "refinement": sorted_mapping(item["refinement"]),
+        }
+
+    candidates_by_checkpoint = [
+        report_candidate(item)
+        for item in sorted(results, key=lambda item: (item["raw_drawables"], item["candidate"]))
+    ]
+    candidates_by_accuracy = [
+        report_candidate(item)
+        for item in sorted(results, key=lambda item: (item["error"], item["final_drawables"], item["raw_drawables"]))
+    ]
 
     report = {
         "source_image": str(image_path),
         "source_copy": str(source_copy_path) if source_copy_path is not None else None,
+        "settings": {
+            "preset": sorted_mapping(preset),
+            "base_preset": sorted_mapping(base_preset),
+            "ui_overrides": sorted_mapping(ui_overrides),
+            "effective_settings": sorted_mapping(effective_settings),
+            "toggles": sorted_mapping(run_toggles),
+            "command_options": sorted_mapping(generator_command_options),
+            "settings_path": str(settings_path),
+            "v2_settings_path": str(v2_settings_path),
+            "run_metadata": sorted_mapping(run_metadata),
+        },
+        "preprocess": {
+            "mode": args.preprocess_mode,
+            "output": str(preprocess_output_path) if preprocess_output_path is not None else None,
+        },
         "preprocess_mode": args.preprocess_mode,
         "preprocess_output": str(preprocess_output_path) if preprocess_output_path is not None else None,
         "base_settings": str(settings_path),
@@ -1148,6 +1241,7 @@ def main() -> int:
         "preview_candidate_limit": args.preview_candidate_limit,
         "best_accuracy": {
             "candidate": best_accuracy["candidate"],
+            "checkpoint_tag": best_accuracy["checkpoint_tag"],
             "raw_drawables": best_accuracy["raw_drawables"],
             "final_drawables": best_accuracy["final_drawables"],
             "error": best_accuracy["error"],
@@ -1159,6 +1253,7 @@ def main() -> int:
         },
         "latest_checkpoint_v2": {
             "candidate": latest_checkpoint["candidate"],
+            "checkpoint_tag": latest_checkpoint["checkpoint_tag"],
             "raw_drawables": latest_checkpoint["raw_drawables"],
             "final_drawables": latest_checkpoint["final_drawables"],
             "error": latest_checkpoint["error"],
@@ -1168,22 +1263,8 @@ def main() -> int:
             "v2_preview": latest_checkpoint["v2_preview"],
             "preview_written": latest_checkpoint["preview_written"],
         },
-        "candidates": [
-            {
-                "candidate": item["candidate"],
-                "raw_drawables": item["raw_drawables"],
-                "final_drawables": item["final_drawables"],
-                "error": item["error"],
-                "base_error": item["base_error"],
-                "checkpoint_tag": item["checkpoint_tag"],
-                "v2_json": item["v2_json"],
-                "v2_preview": item["v2_preview"],
-                "preview_written": item["preview_written"],
-                "repair_applied": item["repair_applied"],
-                "refinement": item["refinement"],
-            }
-            for item in sorted(results, key=lambda item: (item["error"], item["final_drawables"]))
-        ],
+        "candidates": candidates_by_checkpoint,
+        "candidates_by_accuracy": candidates_by_accuracy,
     }
     save_json(report_path, report)
 
