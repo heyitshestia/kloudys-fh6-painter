@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import queue
+import random
 import re
 import subprocess
 import sys
@@ -13,8 +15,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QObject, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -80,6 +82,10 @@ SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
 PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
 PUBERT_PRESENCE_ASSET = ROOT / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "pubert.jpg"
+THEMES = {
+    "Pastel Bloom": "pastel",
+    "Sakura Glass": "sakura",
+}
 
 
 def helper_python() -> Path | str:
@@ -103,6 +109,22 @@ FH6 keeps 4 boundary layers. A 2000-layer template has 1996 usable drawable laye
 def ensure_dirs() -> None:
     for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", PROBE_DIR):
         path.mkdir(parents=True, exist_ok=True)
+
+
+def load_app_settings() -> dict:
+    try:
+        data = json.loads(APP_SETTINGS_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_app_settings(settings: dict) -> None:
+    try:
+        APP_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        APP_SETTINGS_PATH.write_text(json.dumps(settings, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def require_pubert_presence() -> None:
@@ -426,6 +448,90 @@ class PreviewView(QGraphicsView):
         super().mouseDoubleClickEvent(event)
 
 
+class AnimatedThemeBackground(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.theme_key = "pastel"
+        self.petals = []
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.advance_petals)
+        rng = random.Random(1337)
+        for _index in range(34):
+            self.petals.append(
+                {
+                    "x": rng.uniform(-0.25, 1.05),
+                    "y": rng.uniform(0.02, 0.96),
+                    "size": rng.uniform(8.0, 18.0),
+                    "speed": rng.uniform(0.0017, 0.0042),
+                    "drift": rng.uniform(0.7, 2.4),
+                    "phase": rng.uniform(0.0, math.tau),
+                    "spin": rng.uniform(-2.8, 2.8),
+                    "angle": rng.uniform(0.0, 360.0),
+                    "alpha": rng.uniform(0.34, 0.68),
+                }
+            )
+
+    def set_theme(self, theme_key: str):
+        self.theme_key = theme_key
+        if theme_key == "sakura":
+            if not self.timer.isActive():
+                self.timer.start(33)
+        else:
+            self.timer.stop()
+        self.update()
+
+    def advance_petals(self):
+        for petal in self.petals:
+            petal["phase"] += 0.045 * petal["drift"]
+            petal["angle"] += petal["spin"]
+            petal["x"] += petal["speed"]
+            petal["y"] += math.sin(petal["phase"]) * 0.0009
+            if petal["x"] > 1.12:
+                petal["x"] = random.uniform(-0.22, -0.04)
+                petal["y"] = random.uniform(0.04, 0.95)
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect()
+        if self.theme_key == "sakura":
+            gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            gradient.setColorAt(0.00, QColor("#fff6f9"))
+            gradient.setColorAt(0.42, QColor("#f8e0eb"))
+            gradient.setColorAt(1.00, QColor("#e9f4ff"))
+            painter.fillRect(rect, gradient)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 82))
+            painter.drawEllipse(QRectF(rect.width() * 0.64, -rect.height() * 0.18, rect.width() * 0.52, rect.height() * 0.52))
+            painter.setBrush(QColor(255, 205, 222, 62))
+            painter.drawEllipse(QRectF(-rect.width() * 0.20, rect.height() * 0.46, rect.width() * 0.58, rect.height() * 0.58))
+            self.paint_petals(painter)
+        else:
+            painter.fillRect(rect, QColor("#f5edff"))
+
+    def paint_petals(self, painter: QPainter):
+        width = max(1, self.width())
+        height = max(1, self.height())
+        for petal in self.petals:
+            x = petal["x"] * width
+            y = petal["y"] * height
+            size = petal["size"]
+            painter.save()
+            painter.translate(x, y)
+            painter.rotate(petal["angle"])
+            color = QColor("#ff9fbd")
+            color.setAlphaF(petal["alpha"])
+            painter.setBrush(QBrush(color))
+            painter.setPen(QPen(QColor(255, 255, 255, 100), 0.8))
+            path = QPainterPath()
+            path.moveTo(0, -size * 0.55)
+            path.cubicTo(size * 0.58, -size * 0.30, size * 0.52, size * 0.36, 0, size * 0.62)
+            path.cubicTo(-size * 0.52, size * 0.36, -size * 0.58, -size * 0.30, 0, -size * 0.55)
+            painter.drawPath(path)
+            painter.restore()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_images: list[str]):
         super().__init__()
@@ -435,6 +541,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Kloudy's FH6 Painter - {get_version()}")
         self.resize(1280, 980)
         self.setMinimumSize(1180, 900)
+        self.app_settings = load_app_settings()
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
         self.selected_import_json_path: Path | None = None
@@ -470,7 +577,9 @@ class MainWindow(QMainWindow):
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
 
     def _build(self):
-        central = QWidget()
+        central = AnimatedThemeBackground()
+        central.setObjectName("appRoot")
+        self.background_widget = central
         root = QVBoxLayout(central)
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
@@ -718,32 +827,63 @@ class MainWindow(QMainWindow):
         theme = QGroupBox("Appearance")
         theme_layout = QVBoxLayout(theme)
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Pastel Bloom"])
+        self.theme_combo.addItems(list(THEMES.keys()))
+        selected_theme = self.app_settings.get("theme", "Pastel Bloom")
+        if selected_theme in THEMES:
+            self.theme_combo.setCurrentText(selected_theme)
         self.theme_combo.currentIndexChanged.connect(self.apply_theme)
         theme_layout.addWidget(QLabel("Theme"))
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addWidget(QLabel("Theme changes apply immediately and are saved for the next launch."))
+        theme_layout.addWidget(QLabel("Sakura Glass uses an opaque control frame with animated cherry blossoms in the background."))
         layout.addWidget(theme)
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
 
-    def apply_theme(self):
-        self.setStyleSheet(
-            """
-            QMainWindow, QWidget { background: #f5edff; color: #3b244d; font-family: "Segoe UI"; font-size: 10pt; }
-            QTabWidget::pane { border: 1px solid #d8c2f0; border-radius: 12px; background: #fff8fb; }
-            QTabBar::tab { background: #eadcff; color: #5a2f83; padding: 10px 18px; border-top-left-radius: 10px; border-top-right-radius: 10px; margin-right: 4px; }
-            QTabBar::tab:selected { background: #fff8fb; color: #3b244d; }
-            QGroupBox { border: 1px solid #d8c2f0; border-radius: 14px; margin-top: 14px; padding: 12px; background: #fff8fb; font-weight: 600; color: #6c3fa0; }
-            QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; }
-            QPushButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-radius: 10px; padding: 8px 12px; }
-            QPushButton:hover { background: #dfc9ff; }
-            QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
-            QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
-            QCheckBox { spacing: 8px; }
-            QLabel { color: #3b244d; }
-            """
-        )
+    def apply_theme(self, *_args):
+        theme_name = self.theme_combo.currentText() if hasattr(self, "theme_combo") else "Pastel Bloom"
+        theme_key = THEMES.get(theme_name, "pastel")
+        if hasattr(self, "background_widget"):
+            self.background_widget.set_theme(theme_key)
+        if hasattr(self, "app_settings"):
+            self.app_settings["theme"] = theme_name
+            save_app_settings(self.app_settings)
+        if theme_key == "sakura":
+            self.setStyleSheet(
+                """
+                QMainWindow { background: #f8dfec; color: #332534; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
+                QWidget#appRoot { background: transparent; }
+                QTabWidget::pane { border: 2px solid #9b5870; border-radius: 14px; background: #fff9fb; }
+                QTabBar::tab { background: #e9c2d0; color: #5d2d41; padding: 10px 18px; border: 1px solid #a7647a; border-bottom: none; border-top-left-radius: 11px; border-top-right-radius: 11px; margin-right: 4px; font-weight: 700; }
+                QTabBar::tab:selected { background: #fff9fb; color: #3b1f2f; }
+                QGroupBox { border: 2px solid #9f6479; border-radius: 16px; margin-top: 14px; padding: 12px; background: #fffafa; font-weight: 700; color: #7f3d58; }
+                QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; background: #fffafa; }
+                QPushButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; border-radius: 10px; padding: 8px 12px; font-weight: 700; }
+                QPushButton:hover { background: #f8d9e4; }
+                QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
+                QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
+                QScrollArea, QAbstractScrollArea { background: transparent; border: none; }
+                QCheckBox { spacing: 8px; color: #332534; }
+                QLabel { color: #332534; background: transparent; }
+                """
+            )
+        else:
+            self.setStyleSheet(
+                """
+                QMainWindow, QWidget { background: #f5edff; color: #3b244d; font-family: "Segoe UI"; font-size: 10pt; }
+                QTabWidget::pane { border: 1px solid #d8c2f0; border-radius: 12px; background: #fff8fb; }
+                QTabBar::tab { background: #eadcff; color: #5a2f83; padding: 10px 18px; border-top-left-radius: 10px; border-top-right-radius: 10px; margin-right: 4px; }
+                QTabBar::tab:selected { background: #fff8fb; color: #3b244d; }
+                QGroupBox { border: 1px solid #d8c2f0; border-radius: 14px; margin-top: 14px; padding: 12px; background: #fff8fb; font-weight: 600; color: #6c3fa0; }
+                QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; }
+                QPushButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-radius: 10px; padding: 8px 12px; }
+                QPushButton:hover { background: #dfc9ff; }
+                QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
+                QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
+                QCheckBox { spacing: 8px; }
+                QLabel { color: #3b244d; }
+                """
+            )
 
     def update_setting_description(self):
         item = self.selected_setting()
