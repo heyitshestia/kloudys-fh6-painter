@@ -21,6 +21,7 @@ from game_profiles import PROFILES
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
 from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, generated_jsons, geometry_shape_count, import_drawable_budget, is_import_safe_geometry_json, is_internal_generator_json, load_settings, next_generator_output_dir, write_custom_settings
 from generator_backend import generator_stop_request_path
+from version_info import get_version, get_version_label
 
 
 ROOT = Path(__file__).resolve().parent
@@ -846,7 +847,7 @@ class App:
     def __init__(self, initial_images):
         ensure_dirs()
         self.root = Tk()
-        self.root.title("forza-painter FH6")
+        self.root.title(f"forza-painter FH6 - {get_version()}")
         screen_w = max(1180, int(self.root.winfo_screenwidth() or 1180))
         screen_h = max(780, int(self.root.winfo_screenheight() or 780))
         window_w = min(1180, screen_w)
@@ -1015,6 +1016,7 @@ class App:
         title_box.pack(side=LEFT, fill=X, expand=True)
         self._label(title_box, "title", font=("Segoe UI", 18, "bold"), anchor="w").pack(fill=X)
         self._label(title_box, "subtitle", anchor="w", fg="#555").pack(fill=X)
+        Label(title_box, text=get_version_label(), anchor="w", fg="#777").pack(fill=X)
         right = Frame(header)
         right.pack(side=RIGHT)
         self._label(right, "language").pack(anchor="e")
