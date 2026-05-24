@@ -80,7 +80,7 @@ TEXT = {
         "appearance": "Appearance",
         "app_theme": "Theme",
         "theme_default": "Default",
-        "theme_vista": "Windows Vista",
+        "theme_horizon": "Horizon Glow",
         "theme_hint": "Theme changes apply immediately and are saved for the next launch.",
         "images": "Images",
         "add_images": "Choose image",
@@ -227,7 +227,7 @@ Notes
         "appearance": "外观",
         "app_theme": "主题",
         "theme_default": "默认",
-        "theme_vista": "Windows Vista",
+        "theme_horizon": "Horizon Glow",
         "theme_hint": "主题会立即生效，并在下次启动时保留。",
         "images": "图片",
         "add_images": "选择图片",
@@ -949,7 +949,7 @@ class App:
         except Exception:
             return "default"
         theme = str(data.get("theme", "default")).strip().lower()
-        return "vista" if theme == "vista" else "default"
+        return "horizon" if theme in ("horizon", "vista") else "default"
 
     def _save_app_settings(self):
         try:
@@ -963,24 +963,28 @@ class App:
 
     def _configure_styles(self):
         style = ttk.Style(self.root)
-        if self.theme_choice.get() == "vista":
+        if self.theme_choice.get() == "horizon":
             try:
                 style.theme_use("clam")
             except Exception:
                 pass
-            bg = "#d7e9f7"
-            panel = "#f7fbff"
-            border = "#7aa7d8"
-            accent = "#2f73b7"
-            active = "#eaf5ff"
+            bg = "#111820"
+            panel = "#182431"
+            field = "#edf6f8"
+            border = "#2d4658"
+            accent = "#19b7c6"
+            active = "#223547"
             style.configure(".", font=("Segoe UI", 10), background=bg, foreground="#1f1f1f")
             style.configure("TFrame", background=bg)
-            style.configure("TLabelframe", background=panel, bordercolor=border, relief="groove")
-            style.configure("TLabelframe.Label", background=panel, foreground="#003b73", font=("Segoe UI", 10, "bold"))
-            style.configure("TButton", background="#edf6ff", foreground="#1f1f1f", bordercolor="#6d9fd0", lightcolor="#ffffff", darkcolor="#9bbddd", padding=(10, 4), relief="raised")
-            style.map("TButton", background=[("active", "#d8ecff"), ("pressed", "#b9daf8")], relief=[("pressed", "sunken")])
-            style.configure("TCombobox", fieldbackground="#ffffff", background="#edf6ff", foreground="#1f1f1f", arrowcolor=accent, bordercolor="#6d9fd0")
-            style.configure("Vertical.TScrollbar", background="#d8ebfb", troughcolor="#eef7ff", bordercolor="#7aa7d8", arrowcolor=accent)
+            style.configure("TLabelframe", background=panel, bordercolor=border, relief="solid")
+            style.configure("TLabelframe.Label", background=panel, foreground="#b8f7ff", font=("Segoe UI Semibold", 10))
+            style.configure("TButton", background="#24384a", foreground="#f5fbff", bordercolor="#3f657d", lightcolor="#31516a", darkcolor="#162331", padding=(12, 6), relief="flat")
+            style.map("TButton", background=[("active", "#2f526b"), ("pressed", "#173242")], foreground=[("active", "#ffffff"), ("pressed", "#ffffff")])
+            style.configure("TCombobox", fieldbackground=field, background="#24384a", foreground="#101820", arrowcolor=accent, bordercolor="#4b7085", padding=(6, 3))
+            style.configure("Vertical.TScrollbar", background="#223547", troughcolor="#111820", bordercolor="#2d4658", arrowcolor=accent)
+            style.configure("Treeview", background="#edf6f8", foreground="#101820", fieldbackground="#edf6f8", bordercolor=border, rowheight=24)
+            style.configure("Treeview.Heading", background="#24384a", foreground="#f5fbff", font=("Segoe UI Semibold", 9), relief="flat")
+            style.map("Treeview", background=[("selected", "#19b7c6")], foreground=[("selected", "#061014")])
             style.configure("Primary.TNotebook", background=bg, borderwidth=0)
         else:
             try:
@@ -992,12 +996,12 @@ class App:
             padding=(18, 8),
             font=("Segoe UI", 10, "bold"),
         )
-        if self.theme_choice.get() == "vista":
-            style.configure("Primary.TNotebook.Tab", background="#c4ddf2", foreground="#183d63", bordercolor="#7aa7d8", lightcolor="#ffffff", darkcolor="#8db7dc")
+        if self.theme_choice.get() == "horizon":
+            style.configure("Primary.TNotebook.Tab", background="#182431", foreground="#d8eef5", bordercolor="#2d4658", lightcolor="#24384a", darkcolor="#111820")
             style.map(
                 "Primary.TNotebook.Tab",
-                background=[("selected", "#f7fbff"), ("active", "#e4f2ff")],
-                foreground=[("selected", "#003b73"), ("active", "#003b73")],
+                background=[("selected", "#19b7c6"), ("active", "#223547")],
+                foreground=[("selected", "#071216"), ("active", "#ffffff")],
             )
         else:
             style.map(
@@ -1007,17 +1011,21 @@ class App:
             )
 
     def _theme_palette(self):
-        if self.theme_choice.get() == "vista":
+        if self.theme_choice.get() == "horizon":
             return {
-                "bg": "#d7e9f7",
-                "panel": "#f7fbff",
-                "text": "#1f1f1f",
-                "muted": "#4f6478",
-                "accent": "#005a9e",
-                "button": "#edf6ff",
-                "button_active": "#d8ecff",
-                "entry": "#ffffff",
-                "select": "#2f73b7",
+                "bg": "#111820",
+                "panel": "#182431",
+                "text": "#f5fbff",
+                "muted": "#93aebc",
+                "accent": "#19b7c6",
+                "warning": "#ffb45a",
+                "button": "#24384a",
+                "button_active": "#2f526b",
+                "entry": "#edf6f8",
+                "entry_text": "#101820",
+                "select": "#19b7c6",
+                "select_text": "#061014",
+                "border": "#2d4658",
             }
         return {
             "bg": self.native_root_bg,
@@ -1025,10 +1033,14 @@ class App:
             "text": "#000000",
             "muted": "#555555",
             "accent": "#005a9e",
+            "warning": "#8a5300",
             "button": None,
             "button_active": None,
             "entry": "#ffffff",
+            "entry_text": "#000000",
             "select": "#0078d7",
+            "select_text": "#ffffff",
+            "border": self.native_root_bg,
         }
 
     def _apply_theme_to_widgets(self, widget=None):
@@ -1042,17 +1054,17 @@ class App:
                     widget.configure(bg=palette["bg"])
             elif isinstance(widget, Button):
                 kwargs = {"bg": palette["button"] or self.root.cget("bg"), "fg": palette["text"], "activebackground": palette["button_active"] or self.root.cget("bg")}
-                if self.theme_choice.get() == "vista":
-                    kwargs.update({"relief": "raised", "bd": 1, "highlightbackground": "#7aa7d8"})
+                if self.theme_choice.get() == "horizon":
+                    kwargs.update({"relief": "flat", "bd": 0, "highlightthickness": 1, "highlightbackground": palette["border"], "activeforeground": "#ffffff"})
                 widget.configure(**kwargs)
             elif isinstance(widget, Checkbutton):
                 widget.configure(bg=palette["bg"], fg=palette["text"], activebackground=palette["bg"], selectcolor=palette["panel"])
             elif isinstance(widget, Entry):
-                widget.configure(bg=palette["entry"], fg=palette["text"], insertbackground=palette["text"], selectbackground=palette["select"])
+                widget.configure(bg=palette["entry"], fg=palette["entry_text"], insertbackground=palette["entry_text"], selectbackground=palette["select"], selectforeground=palette["select_text"])
             elif isinstance(widget, Listbox):
-                widget.configure(bg=palette["entry"], fg=palette["text"], selectbackground=palette["select"], selectforeground="#ffffff", highlightbackground="#7aa7d8" if self.theme_choice.get() == "vista" else self.root.cget("bg"))
+                widget.configure(bg=palette["entry"], fg=palette["entry_text"], selectbackground=palette["select"], selectforeground=palette["select_text"], highlightbackground=palette["border"])
             elif isinstance(widget, Text):
-                widget.configure(bg=palette["entry"], fg=palette["text"], insertbackground=palette["text"], selectbackground=palette["select"])
+                widget.configure(bg=palette["entry"], fg=palette["entry_text"], insertbackground=palette["entry_text"], selectbackground=palette["select"], selectforeground=palette["select_text"])
             elif isinstance(widget, Canvas):
                 widget.configure(bg=palette["panel"], highlightbackground=palette["bg"])
         except Exception:
@@ -1444,7 +1456,7 @@ class App:
         self._label(row, "app_theme").pack(side=LEFT)
         self.theme_combo = ttk.Combobox(
             row,
-            values=[tr(self.lang, "theme_default"), tr(self.lang, "theme_vista")],
+            values=[tr(self.lang, "theme_default"), tr(self.lang, "theme_horizon")],
             state="readonly",
             width=28,
         )
@@ -1505,14 +1517,14 @@ class App:
     def _sync_theme_combo(self):
         if not hasattr(self, "theme_combo"):
             return
-        values = [tr(self.lang, "theme_default"), tr(self.lang, "theme_vista")]
+        values = [tr(self.lang, "theme_default"), tr(self.lang, "theme_horizon")]
         self.theme_combo["values"] = values
-        self.theme_combo.set(values[1] if self.theme_choice.get() == "vista" else values[0])
+        self.theme_combo.set(values[1] if self.theme_choice.get() == "horizon" else values[0])
 
     def _on_theme_selected(self, _event=None):
         selected = self.theme_combo.get().strip().lower()
-        vista_label = tr(self.lang, "theme_vista").lower()
-        self.theme_choice.set("vista" if selected == vista_label or "vista" in selected else "default")
+        horizon_label = tr(self.lang, "theme_horizon").lower()
+        self.theme_choice.set("horizon" if selected == horizon_label or "horizon" in selected else "default")
         self._sync_theme_combo()
         self._apply_theme(save=True)
 
