@@ -28,7 +28,7 @@ FH6_RESERVED_BOUNDARY_LAYERS = 4
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Forza Generator V2: generate with overshoot, evaluate checkpoints, "
+            "Forza Generator V2: generate target checkpoints, "
             "optionally prune low-contribution ellipse layers, and write manual-pick "
             "V2 JSON outputs for each usable checkpoint."
         )
@@ -50,14 +50,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--overshoot-ratio",
         type=float,
-        default=1.12,
-        help="Overshoot ratio before pruning. Default: 1.12",
+        default=1.0,
+        help="Optional overshoot ratio before pruning. Default: 1.0 (disabled)",
     )
     parser.add_argument(
         "--overshoot-max-extra",
         type=int,
-        default=400,
-        help="Maximum extra shapes above target during overshoot generation. Default: 400",
+        default=0,
+        help="Maximum extra shapes above target when overshoot is enabled. Default: 0",
     )
     parser.add_argument(
         "--checkpoint-step",
@@ -120,24 +120,24 @@ def parse_ini(path: Path) -> dict[str, str]:
     return values
 
 
-def build_save_points(target: int, overshoot_stop: int, checkpoint_step: int) -> str:
+def build_save_points(target: int, stop_at: int, checkpoint_step: int) -> str:
     points = set()
     step = max(1, checkpoint_step)
     n = step
-    while n < overshoot_stop:
+    while n < stop_at:
         points.add(n)
         n += step
     points.add(target)
-    points.add(overshoot_stop)
+    points.add(stop_at)
     return ",".join(str(n) for n in sorted(points))
 
 
-def write_v2_settings(base_settings: dict[str, str], out_path: Path, target: int, overshoot_stop: int, checkpoint_step: int) -> None:
+def write_v2_settings(base_settings: dict[str, str], out_path: Path, target: int, stop_at: int, checkpoint_step: int) -> None:
     values = dict(base_settings)
-    values["description"] = f"V2 overshoot settings targeting {target} drawable shapes"
+    values["description"] = f"V2 settings targeting {target} template layers"
     values["shapeMode"] = "mixed_ellipses"
-    values["stopAt"] = str(overshoot_stop)
-    values["saveAt"] = build_save_points(target, overshoot_stop, checkpoint_step)
+    values["stopAt"] = str(stop_at)
+    values["saveAt"] = build_save_points(target, stop_at, checkpoint_step)
     values["saveEvery"] = str(max(1, checkpoint_step))
 
     ordered_keys = [
@@ -862,10 +862,10 @@ def main() -> int:
     overshoot_extra = min(args.overshoot_max_extra, max(0, int(math.ceil(target_shapes * max(0.0, args.overshoot_ratio - 1.0)))))
     if overshoot_extra == 0 and args.overshoot_ratio > 1.0:
         overshoot_extra = min(args.overshoot_max_extra, max(1, int(round(target_shapes * 0.08))))
-    overshoot_stop = target_shapes + overshoot_extra
+    raw_stop = target_shapes + overshoot_extra
 
     v2_settings_path = out_dir / f"{stem}.v2.settings.ini"
-    write_v2_settings(base_settings, v2_settings_path, target_shapes, overshoot_stop, args.checkpoint_step)
+    write_v2_settings(base_settings, v2_settings_path, target_shapes, raw_stop, args.checkpoint_step)
 
     max_resolution = int(base_settings.get("maxResolution", "0") or 0)
     source_rgba = resize_source_for_generation(image_path, max_resolution)
@@ -880,7 +880,10 @@ def main() -> int:
     print(f"Generating raw V2 candidates for {image_path.name}")
     print(f"Target template layers: {target_shapes}")
     print(f"Target drawable shapes: {drawable_target_shapes} ({target_shapes} - {FH6_RESERVED_BOUNDARY_LAYERS} FH bounds layers)")
-    print(f"Overshoot stop:         {overshoot_stop}")
+    if raw_stop > target_shapes:
+        print(f"Raw generator stop:     {raw_stop} ({target_shapes} target + {overshoot_extra} overshoot)")
+    else:
+        print(f"Raw generator stop:     {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Preprocess mode:        {args.preprocess_mode}")
     if preprocess_output_path is not None:
@@ -1003,7 +1006,8 @@ def main() -> int:
         "v2_settings": str(v2_settings_path),
         "target_shapes": target_shapes,
         "drawable_target_shapes": drawable_target_shapes,
-        "overshoot_stop": overshoot_stop,
+        "raw_stop": raw_stop,
+        "overshoot_extra": overshoot_extra,
         "interrupted": interrupted,
         "score_size": args.score_size,
         "efficiency_tolerance": args.efficiency_tolerance,

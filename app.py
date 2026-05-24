@@ -1305,7 +1305,7 @@ class App:
             return text
         if text.startswith("Target drawable shapes:"):
             return text
-        if text.startswith("Overshoot stop:"):
+        if text.startswith("Raw generator stop:"):
             return text
         if text.startswith("Using settings:"):
             return text

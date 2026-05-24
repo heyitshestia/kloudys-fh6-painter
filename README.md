@@ -146,7 +146,7 @@ The app does not call the raw generator directly. It runs it through:
 
 V2 adds:
 
-- overshoot generation
+- target-count generation
 - checkpoint collection
 - optional pruning to the target drawable count
 - optional targeted repair
