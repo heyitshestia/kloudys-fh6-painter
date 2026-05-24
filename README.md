@@ -140,59 +140,52 @@ V2 adds:
 - optional targeted repair
 - FH6 boundary-layer awareness
 
-## Preset Families
+## Bundled Presets
 
-The current preset system is not the old `extremely fast / fast / balanced / slow / super slow` set anymore.
+The active bundled presets are the simpler BVZ-style ladder again:
 
-The main bundled families are:
+- **Extremely fast**
+- **Fast**
+- **Balanced**
+- **Slow**
+- **Super slow**
 
-- **Anime Livery**
-- **Ultra Sharp**
-- **Smart Detail**
-- **Soft Detail**
+These are meant to be easy to understand:
 
-Each family currently has:
+- **Extremely fast**
+  - quick composition checks
+  - low layers, low resolution, rough output
+- **Fast**
+  - quick usable drafts
+- **Balanced**
+  - recommended default
+  - best general tradeoff for most images
+- **Slow**
+  - cleaner final output
+  - higher sample counts to conserve shapes
+- **Super slow**
+  - maximum bundled quality
+  - highest time cost
 
-- `1000`
-- `2000`
-- `3000`
+### Bundled preset values
 
-variants, and many of them also have a:
+| Preset | Output layers | Random samples | Mutated samples | Max resolution |
+| --- | ---: | ---: | ---: | ---: |
+| Extremely fast | 500 | 30000 | 1000 | 600 |
+| Fast | 1000 | 60000 | 2000 | 900 |
+| Balanced | 1800 | 120000 | 5000 | 1400 |
+| Slow | 2500 | 220000 | 8000 | 2000 |
+| Super slow | 3000 | 350000 | 12000 | 2400 |
 
-- **Luma Bands**
-
-variant.
-
-### Preset Intent
-
-- **Anime Livery**
-  - strongest silhouette-first behavior
-  - best fit for flat-color anime, decal, and livery-style cutouts
-- **Ultra Sharp**
-  - most aggressive edge/detail bias
-  - good for harder edges and cleaner line separation
-- **Smart Detail**
-  - middle ground
-  - general-purpose choice when you do not want the extremes
-- **Soft Detail**
-  - smoother and less aggressive
-  - better for gentler transitions, worse for very hard cutouts
-
-### Common bundled 3000-layer presets
-
-| Preset | Random samples | Mutated samples | Max resolution | Shape mode | Preprocess |
-| --- | ---: | ---: | ---: | --- | --- |
-| Anime Livery 3000 | 34000 | 2600 | 1350 | `mixed_edge_bias` | none |
-| Anime Livery 3000 + Luma Bands | 34000 | 2600 | 1350 | `mixed_edge_bias` | `luma_bands` |
-| Ultra Sharp 3000 | 45000 | 3500 | 1400 | `mixed_edge_bias` | none |
-| Smart Detail 3000 | 36000 | 2800 | 1350 | `mixed_smart_detail` | none |
-| Soft Detail 3000 | 30000 | 2400 | 1300 | `mixed_soft_detail` | none |
+If these are not enough, use the **Use custom settings** toggle in the app and override layers, resolution, random samples, mutated samples, or checkpoint saves directly.
 
 Settings live in [settings](settings).
 
-## What Luma Bands Actually Is
+## Luma Bands
 
-`Luma Bands` is a **preprocess pass**, not a different primitive engine.
+`Luma Bands` is now a **toggle**, not a separate preset family.
+
+It is still a **preprocess pass**, not a different primitive engine.
 
 What it does:
 
@@ -209,11 +202,11 @@ than:
 
 - “change the raw shape solver”
 
-This is controlled by:
+The app applies it by overriding:
 
 - `v2PreprocessMode = luma_bands`
 
-in the preset `.ini` files.
+for the current run when the toggle is enabled.
 
 Use it when:
 
@@ -303,7 +296,7 @@ If the import looks blurry:
 If the import looks heavy or muddy:
 
 - the preset is wrong for the source
-- or the source should use a Luma Bands variant
+- or the source should use the Luma Bands toggle
 - or the shape count ran past the image’s useful detail budget
 
 ## Prepare FH6

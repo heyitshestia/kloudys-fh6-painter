@@ -18,7 +18,7 @@ import psutil
 
 from game_profiles import PROFILES
 from geometry_json import RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
-from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, cleanup_generated_outputs, generated_jsons, generated_preview_files, generator_preview_path, geometry_shape_count, load_settings
+from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, cleanup_generated_outputs, generated_jsons, generated_preview_files, generator_preview_path, geometry_shape_count, load_settings, write_custom_settings
 from generator_backend import generator_output_dir, generator_stop_request_path
 
 
@@ -56,6 +56,8 @@ TEXT = {
         "custom_random": "Random samples",
         "custom_mutated": "Mutated samples",
         "custom_save_at": "Save checkpoints",
+        "luma_bands": "Enable Luma Bands preprocess",
+        "luma_bands_hint": "Create a luma-banded intermediate image before generation. Useful for flatter anime-style shading and cleaner separations.",
         "targeted_repair": "Enable targeted repair",
         "targeted_repair_hint": "Extra post-pass for border and hole cleanup. Slower, but useful for strict silhouettes and transparent cutouts.",
         "custom_panel_title": "Custom settings",
@@ -193,6 +195,8 @@ Notes
         "custom_random": "随机样本",
         "custom_mutated": "变异样本",
         "custom_save_at": "保存节点",
+        "luma_bands": "启用 Luma Bands 预处理",
+        "luma_bands_hint": "先生成一张亮度分层的中间图再开始生成。更适合偏平涂的动漫风格和更清晰的明暗分离。",
         "targeted_repair": "启用定向修复",
         "targeted_repair_hint": "额外的边界/孔洞修复后处理。会更慢，但对严格轮廓和透明镂空更有帮助。",
         "custom_panel_title": "自定义参数",
@@ -763,7 +767,14 @@ class App:
         self.photo = None
         self.preview_widget = None
         self.import_preview_widget = None
+        self.use_custom_settings = StringVar(value="0")
+        self.enable_luma_bands = StringVar(value="0")
         self.enable_targeted_repair = StringVar(value="0")
+        self.custom_stop_at = StringVar()
+        self.custom_max_resolution = StringVar()
+        self.custom_random_samples = StringVar()
+        self.custom_mutated_samples = StringVar()
+        self.custom_save_at = StringVar()
         self.translated = []
         self.status = StringVar(value=tr(self.lang, "ready"))
         self.progress_text = StringVar(value="")
@@ -798,7 +809,10 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh_processes()
         if self.settings:
-            default = next((item for item in self.settings if item["path"].name == "f.3000-anime-livery.ini"), self.settings[min(2, len(self.settings) - 1)])
+            default = next(
+                (item for item in self.settings if item["path"].name == "c. balanced - good quality and speed.ini"),
+                self.settings[min(2, len(self.settings) - 1)],
+            )
             self.selected_profile.set(default["label"])
             self._update_setting_description()
         self._render_lists()
@@ -988,6 +1002,53 @@ class App:
         self.setting_description = Label(step2, text="", anchor="w", justify=LEFT, wraplength=500)
         self.setting_description.pack(fill=X, padx=10, pady=(0, 8))
 
+        custom_section = ttk.LabelFrame(left, text=tr(self.lang, "custom_panel_title"))
+        self.translated.append((custom_section, "custom_panel_title", "text"))
+        custom_section.pack(fill=X, pady=(0, 6))
+        self._label(custom_section, "custom_panel_hint", anchor="w", justify=LEFT, wraplength=540, fg="#005a9e").pack(fill=X, padx=10, pady=(6, 2))
+        custom_toggle = Checkbutton(
+            custom_section,
+            text=tr(self.lang, "custom_settings"),
+            variable=self.use_custom_settings,
+            onvalue="1",
+            offvalue="0",
+            command=self._sync_custom_state,
+        )
+        custom_toggle.pack(anchor="w", padx=10, pady=(0, 2))
+        self.translated.append((custom_toggle, "custom_settings", "text"))
+        custom_grid = Frame(custom_section)
+        custom_grid.pack(fill=X, padx=10, pady=(0, 6))
+        self.custom_fields = []
+        custom_specs = [
+            ("custom_layers", self.custom_stop_at),
+            ("custom_resolution", self.custom_max_resolution),
+            ("custom_random", self.custom_random_samples),
+            ("custom_mutated", self.custom_mutated_samples),
+            ("custom_save_at", self.custom_save_at),
+        ]
+        for row_index, (key, variable) in enumerate(custom_specs):
+            label = self._label(custom_grid, key, anchor="w")
+            label.grid(row=row_index, column=0, sticky="w", pady=1, padx=(0, 8))
+            entry = Entry(custom_grid, textvariable=variable, width=18)
+            entry.grid(row=row_index, column=1, sticky="ew", pady=1)
+            self.custom_fields.append(entry)
+        custom_grid.columnconfigure(1, weight=1)
+        self._sync_custom_state()
+
+        luma_section = ttk.LabelFrame(left, text=tr(self.lang, "luma_bands"))
+        self.translated.append((luma_section, "luma_bands", "text"))
+        luma_section.pack(fill=X, pady=(0, 6))
+        self._label(luma_section, "luma_bands_hint", anchor="w", justify=LEFT, wraplength=540, fg="#005a9e").pack(fill=X, padx=10, pady=(6, 2))
+        luma_toggle = Checkbutton(
+            luma_section,
+            text=tr(self.lang, "luma_bands"),
+            variable=self.enable_luma_bands,
+            onvalue="1",
+            offvalue="0",
+        )
+        luma_toggle.pack(anchor="w", padx=10, pady=(0, 8))
+        self.translated.append((luma_toggle, "luma_bands", "text"))
+
         repair_section = ttk.LabelFrame(left, text=tr(self.lang, "targeted_repair"))
         self.translated.append((repair_section, "targeted_repair", "text"))
         repair_section.pack(fill=X, pady=(0, 6))
@@ -1171,9 +1232,37 @@ class App:
     def _update_setting_description(self, _event=None):
         item = self._selected_setting()
         self.setting_description.config(text=item["description"] if item else "No settings profiles found.")
+        if item and self.use_custom_settings.get() != "1":
+            values = item.get("values", {})
+            self.custom_stop_at.set(values.get("stopAt", "3000"))
+            self.custom_max_resolution.set(values.get("maxResolution", "1200"))
+            self.custom_random_samples.set(values.get("randomSamples", "3000"))
+            self.custom_mutated_samples.set(values.get("mutatedSamples", "1000"))
+            self.custom_save_at.set(values.get("saveAt", values.get("stopAt", "3000")))
+
+    def _sync_custom_state(self):
+        state = "normal" if self.use_custom_settings.get() == "1" else "disabled"
+        for entry in getattr(self, "custom_fields", []):
+            entry.config(state=state)
 
     def _effective_setting(self):
-        return self._selected_setting()
+        setting = self._selected_setting()
+        if not setting:
+            return None
+        overrides = {
+            "v2PreprocessMode": "luma_bands" if self.enable_luma_bands.get() == "1" else "none",
+        }
+        if self.use_custom_settings.get() == "1":
+            overrides.update({
+                "stopAt": self.custom_stop_at.get(),
+                "maxResolution": self.custom_max_resolution.get(),
+                "randomSamples": self.custom_random_samples.get(),
+                "mutatedSamples": self.custom_mutated_samples.get(),
+                "saveAt": self.custom_save_at.get(),
+            })
+        if self.use_custom_settings.get() == "1" or overrides["v2PreprocessMode"] != str(setting.get("values", {}).get("v2PreprocessMode", "none")).strip().lower():
+            return write_custom_settings(setting, overrides)
+        return setting
 
     def _repair_enabled(self):
         return self.enable_targeted_repair.get() == "1"
@@ -1814,7 +1903,7 @@ class App:
 
     def _generate_worker(self, setting):
         try:
-            self.queue.put(("log", f"Selected profile: {setting['path'].name}"))
+            self.queue.put(("log", f"Selected profile: {setting.get('label') or setting['path'].name}"))
             self.queue.put(("log", f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}"))
             self.queue.put(("log", f"Targeted repair: {'on' if self._repair_enabled() else 'off'}"))
             for image_path in list(self.images):

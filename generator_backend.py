@@ -8,6 +8,7 @@ from geometry_json import drawable_shape_count
 
 ROOT = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT / "settings"
+ACTIVE_PRESET_DIR = SETTINGS_DIR / "_archive_legacy_2026-05-22"
 GENERATOR_EXE = ROOT / "forza_generator_v2.py"
 RAW_GENERATOR_EXE = ROOT / "forza-painter-geometrize-go.exe"
 PREVIEW_DIR = ROOT / "runtime" / "previews"
@@ -62,7 +63,8 @@ def parse_settings(path):
 
 def load_settings():
     profiles = []
-    paths = [path for path in sorted(SETTINGS_DIR.glob("*.ini")) if not path.name.startswith("_")]
+    preset_dir = ACTIVE_PRESET_DIR if ACTIVE_PRESET_DIR.exists() else SETTINGS_DIR
+    paths = [path for path in sorted(preset_dir.glob("*.ini")) if not path.name.startswith("_")]
     for path in paths:
         name = re.sub(r"^[a-z0-9]+[.)]\s*", "", path.stem, flags=re.IGNORECASE)
         name = name.replace(" - ", " / ")
@@ -75,33 +77,11 @@ def load_settings():
             "description": setting_description(path),
             "values": values,
         })
-    profiles.sort(key=_profile_sort_key)
+    profiles.sort(key=lambda item: item["path"].name.lower())
     for index, item in enumerate(profiles, start=1):
         item["index"] = index
         item["label"] = f"{index}. {item['name']}"
     return profiles
-
-
-def _setting_shape_count(path, values):
-    raw = str(values.get("stopAt", "")).strip()
-    if raw.isdigit():
-        return int(raw)
-    match = re.search(r"\b(\d+)\b", path.stem)
-    if match:
-        return int(match.group(1))
-    return 0
-
-
-def _profile_sort_key(item):
-    values = item.get("values", {})
-    name = item.get("name", "")
-    preprocess = str(values.get("v2PreprocessMode", "none")).strip().lower()
-    is_luma = 0 if preprocess == "luma_bands" or "luma bands" in name.lower() else 1
-    shapes = _setting_shape_count(item["path"], values)
-    normalized = re.sub(r"\b\d+\b", "", name.lower())
-    normalized = normalized.replace("luma bands", "")
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return (is_luma, normalized, -shapes, item["path"].name.lower())
 
 
 def write_custom_settings(base_setting, custom_values):
@@ -124,7 +104,7 @@ def write_custom_settings(base_setting, custom_values):
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     setting = dict(base_setting)
     setting["path"] = path
-    setting["label"] = "Custom"
+    setting["label"] = f"{base_setting.get('label', 'Custom')} + overrides"
     setting["description"] = "Custom UI settings"
     setting["values"] = values
     return setting
