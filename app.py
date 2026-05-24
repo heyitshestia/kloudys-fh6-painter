@@ -77,6 +77,11 @@ TEXT = {
         "progress": "Progress",
         "json_files": "Geometry JSON files",
         "add_json": "Add JSON",
+        "generated_runs": "Generated runs",
+        "generated_folder": "Folder",
+        "generated_checkpoints": "Checkpoints",
+        "generated_refresh": "Refresh generated",
+        "generated_none": "No generated checkpoints found yet.",
         "checkpoint_browser": "Checkpoint browser",
         "checkpoint_browser_hint": "Browse generated checkpoints and finals grouped by folder and source image. The browser scans the imgs folder each time, so older runs appear even after restart.",
         "checkpoint_browser_empty": "No generated JSON checkpoints were found in the imgs folder or current session outputs.",
@@ -209,6 +214,11 @@ Notes
         "progress": "进度",
         "json_files": "Geometry JSON 文件",
         "add_json": "添加 JSON",
+        "generated_runs": "已生成结果",
+        "generated_folder": "文件夹",
+        "generated_checkpoints": "检查点",
+        "generated_refresh": "刷新已生成结果",
+        "generated_none": "还没有扫描到已生成的检查点。",
         "checkpoint_browser": "检查点浏览器",
         "checkpoint_browser_hint": "按文件夹和源图片分组浏览你已经生成过的 checkpoint 和 final。浏览器每次都会扫描 imgs 文件夹，因此重启后也能看到旧结果。",
         "checkpoint_browser_empty": "在 imgs 文件夹或当前会话输出里没有找到可用的生成 JSON。",
@@ -761,6 +771,7 @@ class App:
         self.selected_game = StringVar(value="fh6")
         self.selected_pid = StringVar()
         self.layer_count = StringVar()
+        self.generated_folder = StringVar()
         self.snapshot_count = StringVar()
         self.current_count = StringVar()
         self.count_address = StringVar()
@@ -774,6 +785,8 @@ class App:
         self.browser_tree = None
         self.browser_preview_widget = None
         self.browser_entries = {}
+        self.generated_folder_entries = {}
+        self.generated_checkpoint_entries = []
         self.shape_dump_window = None
         self.shape_dump_tree = None
         self.shape_dump_entries = []
@@ -1039,9 +1052,27 @@ class App:
         row = Frame(step3)
         row.pack(fill=X, padx=10)
         self._label(row, "json_files").pack(side=LEFT)
-        self._button(row, "add_json", self.add_json).pack(side=RIGHT)
+        self._button(row, "add_json", self._manual_add_json).pack(side=RIGHT)
         self._button(row, "use_outputs", self.use_generated_outputs).pack(side=RIGHT, padx=8)
-        self.json_list = Listbox(step3, height=10)
+
+        generated_box = ttk.LabelFrame(step3, text=tr(self.lang, "generated_runs"))
+        self.translated.append((generated_box, "generated_runs", "text"))
+        generated_box.pack(fill=BOTH, expand=True, padx=10, pady=(6, 6))
+        folder_row = Frame(generated_box)
+        folder_row.pack(fill=X, padx=10, pady=(8, 4))
+        self._label(folder_row, "generated_folder").pack(side=LEFT)
+        self.generated_folder_combo = ttk.Combobox(folder_row, textvariable=self.generated_folder, state="readonly", width=44)
+        self.generated_folder_combo.pack(side=LEFT, fill=X, expand=True, padx=8)
+        self.generated_folder_combo.bind("<<ComboboxSelected>>", self._on_generated_folder_selected)
+        self._button(folder_row, "generated_refresh", self._refresh_import_generated_browser).pack(side=RIGHT)
+
+        self._label(generated_box, "generated_checkpoints", anchor="w").pack(fill=X, padx=10, pady=(2, 0))
+        self.generated_checkpoint_list = Listbox(generated_box, height=8)
+        self.generated_checkpoint_list.pack(fill=BOTH, expand=True, padx=10, pady=(2, 8))
+        self.generated_checkpoint_list.bind("<<ListboxSelect>>", self._preview_selected_generated_checkpoint)
+        self.generated_checkpoint_list.bind("<Double-1>", lambda _e: self._add_selected_generated_json())
+
+        self.json_list = Listbox(step3, height=5)
         self.json_list.pack(fill=BOTH, expand=True, padx=10, pady=6)
         self.json_list.bind("<<ListboxSelect>>", self._preview_selected_json)
 
@@ -1169,6 +1200,8 @@ class App:
         self.json_list.delete(0, END)
         for path in self.json_files:
             self.json_list.insert(END, str(path))
+        if hasattr(self, "generated_checkpoint_list"):
+            self._refresh_import_generated_browser()
 
     def log_line(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -1465,6 +1498,93 @@ class App:
             self.show_preview(render_geometry_json(entries[0]["path"]))
         self.log_line(f"Added {added} recommended JSON file(s) to import list.")
 
+    def _generated_folder_label(self, entry):
+        if entry["folder"] in ("", "."):
+            return entry["source"]
+        return f"{entry['folder']} / {entry['source']}"
+
+    def _generated_display_label(self, entry):
+        recommended = " [recommended]" if entry.get("recommended") else ""
+        return f"{entry['checkpoint']} | {entry['type']} | {entry['layers']} layers{recommended}"
+
+    def _refresh_import_generated_browser(self):
+        if not hasattr(self, "generated_folder_combo") or self.generated_folder_combo is None:
+            return
+        entries = self._checkpoint_candidates()
+        groups = {}
+        order = []
+        for entry in entries:
+            label = self._generated_folder_label(entry)
+            if label not in groups:
+                groups[label] = []
+                order.append(label)
+            groups[label].append(entry)
+        self.generated_folder_entries = groups
+        self.generated_folder_combo["values"] = order
+        current = self.generated_folder.get().strip()
+        if order:
+            if current not in groups:
+                current = order[0]
+                self.generated_folder.set(current)
+            self._populate_generated_checkpoint_list(current)
+        else:
+            self.generated_folder.set("")
+            self.generated_checkpoint_entries = []
+            self.generated_checkpoint_list.delete(0, END)
+            self.generated_checkpoint_list.insert(END, tr(self.lang, "generated_none"))
+
+    def _populate_generated_checkpoint_list(self, folder_label):
+        entries = list(self.generated_folder_entries.get(folder_label, []))
+        self.generated_checkpoint_entries = entries
+        self.generated_checkpoint_list.delete(0, END)
+        for entry in entries:
+            self.generated_checkpoint_list.insert(END, self._generated_display_label(entry))
+        if entries:
+            self.generated_checkpoint_list.selection_clear(0, END)
+            self.generated_checkpoint_list.selection_set(0)
+            self._preview_selected_generated_checkpoint()
+
+    def _on_generated_folder_selected(self, _event=None):
+        folder_label = self.generated_folder.get().strip()
+        self._populate_generated_checkpoint_list(folder_label)
+
+    def _selected_generated_entry(self):
+        if not hasattr(self, "generated_checkpoint_list"):
+            return None
+        selection = self.generated_checkpoint_list.curselection()
+        if not selection:
+            return None
+        idx = selection[0]
+        if idx < 0 or idx >= len(self.generated_checkpoint_entries):
+            return None
+        return self.generated_checkpoint_entries[idx]
+
+    def _preview_selected_generated_checkpoint(self, _event=None):
+        entry = self._selected_generated_entry()
+        if not entry:
+            return
+        preview_path = self._preview_path_for_json(entry["path"])
+        if preview_path and preview_path.exists():
+            self.show_preview_file(preview_path)
+        else:
+            self.show_preview(render_geometry_json(entry["path"]))
+
+    def _add_selected_generated_json(self):
+        entry = self._selected_generated_entry()
+        if entry is None:
+            self.log_line(tr(self.lang, "generated_none"))
+            return
+        path = entry["path"]
+        if path not in self.json_files:
+            self.json_files.append(path)
+            self._render_lists()
+            self.log_line(f"Added JSON: {path}")
+        preview_path = self._preview_path_for_json(path)
+        if preview_path and preview_path.exists():
+            self.show_preview_file(preview_path)
+        else:
+            self.show_preview(render_geometry_json(path))
+
     def _refresh_checkpoint_browser(self):
         if self.browser_tree is None:
             return
@@ -1583,14 +1703,20 @@ class App:
         self._refresh_checkpoint_browser()
 
     def add_json(self):
-        self.open_checkpoint_browser()
+        self._manual_add_json()
 
     def use_generated_outputs(self):
+        entry = self._selected_generated_entry()
+        if entry is not None:
+            self._add_selected_generated_json()
+            return
+        added = 0
         for path in self.outputs:
             if path.exists() and path not in self.json_files:
                 self.json_files.append(path)
+                added += 1
         self._render_lists()
-        self.log_line(f"Added {len(self.outputs)} generated JSON file(s) to import list.")
+        self.log_line(f"Added {added} generated JSON file(s) to import list.")
 
     def _preview_selected_image(self, _event=None):
         selection = self.image_list.curselection()
