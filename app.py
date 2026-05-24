@@ -18,7 +18,7 @@ import psutil
 
 from game_profiles import PROFILES
 from geometry_json import RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
-from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, cleanup_generated_outputs, generated_jsons, generated_preview_files, generator_preview_path, geometry_shape_count, load_settings, write_custom_settings
+from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, cleanup_generated_outputs, generated_jsons, generated_preview_files, generator_preview_path, geometry_shape_count, load_settings
 from generator_backend import generator_output_dir, generator_stop_request_path
 
 
@@ -753,13 +753,7 @@ class App:
         self.photo = None
         self.preview_widget = None
         self.import_preview_widget = None
-        self.use_custom_settings = StringVar(value="0")
         self.enable_targeted_repair = StringVar(value="0")
-        self.custom_stop_at = StringVar()
-        self.custom_max_resolution = StringVar()
-        self.custom_random_samples = StringVar()
-        self.custom_mutated_samples = StringVar()
-        self.custom_save_at = StringVar()
         self.translated = []
         self.status = StringVar(value=tr(self.lang, "ready"))
         self.progress_text = StringVar(value="")
@@ -981,39 +975,6 @@ class App:
         self.setting_description = Label(step2, text="", anchor="w", justify=LEFT, wraplength=500)
         self.setting_description.pack(fill=X, padx=10, pady=(0, 8))
 
-        custom_section = ttk.LabelFrame(left, text=tr(self.lang, "custom_panel_title"))
-        self.translated.append((custom_section, "custom_panel_title", "text"))
-        custom_section.pack(fill=X, pady=(0, 6))
-        self._label(custom_section, "custom_panel_hint", anchor="w", justify=LEFT, wraplength=540, fg="#005a9e").pack(fill=X, padx=10, pady=(6, 2))
-        custom_toggle = Checkbutton(
-            custom_section,
-            text=tr(self.lang, "custom_settings"),
-            variable=self.use_custom_settings,
-            onvalue="1",
-            offvalue="0",
-            command=self._sync_custom_state,
-        )
-        custom_toggle.pack(anchor="w", padx=10, pady=(0, 2))
-        self.translated.append((custom_toggle, "custom_settings", "text"))
-        custom_grid = Frame(custom_section)
-        custom_grid.pack(fill=X, padx=10, pady=(0, 6))
-        self.custom_fields = []
-        custom_specs = [
-            ("custom_layers", self.custom_stop_at),
-            ("custom_resolution", self.custom_max_resolution),
-            ("custom_random", self.custom_random_samples),
-            ("custom_mutated", self.custom_mutated_samples),
-            ("custom_save_at", self.custom_save_at),
-        ]
-        for row_index, (key, variable) in enumerate(custom_specs):
-            label = self._label(custom_grid, key, anchor="w")
-            label.grid(row=row_index, column=0, sticky="w", pady=1, padx=(0, 8))
-            entry = Entry(custom_grid, textvariable=variable, width=18)
-            entry.grid(row=row_index, column=1, sticky="ew", pady=1)
-            self.custom_fields.append(entry)
-        custom_grid.columnconfigure(1, weight=1)
-        self._sync_custom_state()
-
         repair_section = ttk.LabelFrame(left, text=tr(self.lang, "targeted_repair"))
         self.translated.append((repair_section, "targeted_repair", "text"))
         repair_section.pack(fill=X, pady=(0, 6))
@@ -1179,35 +1140,9 @@ class App:
     def _update_setting_description(self, _event=None):
         item = self._selected_setting()
         self.setting_description.config(text=item["description"] if item else "No settings profiles found.")
-        if item and self.use_custom_settings.get() != "1":
-            values = item.get("values", {})
-            self.custom_stop_at.set(values.get("stopAt", "3000"))
-            self.custom_max_resolution.set(values.get("maxResolution", "1200"))
-            self.custom_random_samples.set(values.get("randomSamples", "3000"))
-            self.custom_mutated_samples.set(values.get("mutatedSamples", "1000"))
-            self.custom_save_at.set(values.get("saveAt", values.get("stopAt", "3000")))
-
-    def _sync_custom_state(self):
-        state = "normal" if self.use_custom_settings.get() == "1" else "disabled"
-        for entry in getattr(self, "custom_fields", []):
-            entry.config(state=state)
-        if state == "disabled":
-            self._update_setting_description()
 
     def _effective_setting(self):
-        setting = self._selected_setting()
-        if not setting or self.use_custom_settings.get() != "1":
-            return setting
-        custom = {
-            "stopAt": self.custom_stop_at.get(),
-            "maxResolution": self.custom_max_resolution.get(),
-            "randomSamples": self.custom_random_samples.get(),
-            "mutatedSamples": self.custom_mutated_samples.get(),
-            "saveAt": self.custom_save_at.get(),
-        }
-        if not custom["saveAt"] and custom["stopAt"]:
-            custom["saveAt"] = custom["stopAt"]
-        return write_custom_settings(setting, custom)
+        return self._selected_setting()
 
     def _repair_enabled(self):
         return self.enable_targeted_repair.get() == "1"

@@ -239,15 +239,9 @@ So repair is available, but it is **not active unless you turn it on**.
 1. Open the `Generate JSON` tab.
 2. Choose one image.
 3. Select a preset.
-4. Optional: enable `Use custom settings` and override:
-   - output layers
-   - max resolution
-   - random samples
-   - mutated samples
-   - checkpoint save list
-5. Optional: enable `Targeted repair`.
-6. Click `Generate with current settings`.
-7. Watch the preview and logs.
+4. Optional: enable `Targeted repair`.
+5. Click `Generate with current settings`.
+6. Watch the preview and logs.
 
 Generated JSON goes under [imgs/generated](imgs/generated), grouped by source image hash.
 
