@@ -85,6 +85,7 @@ PUBERT_PRESENCE_ASSET = ROOT / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "p
 THEMES = {
     "Pastel Bloom": "pastel",
     "Sakura Glass": "sakura",
+    "Blackout": "blackout",
 }
 
 
@@ -836,6 +837,7 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addWidget(QLabel("Theme changes apply immediately and are saved for the next launch."))
         theme_layout.addWidget(QLabel("Sakura Glass uses an opaque control frame with animated cherry blossoms in the background."))
+        theme_layout.addWidget(QLabel("Blackout is a full dark opaque preset for low-glare use."))
         layout.addWidget(theme)
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
@@ -865,6 +867,34 @@ class MainWindow(QMainWindow):
                 QScrollArea, QAbstractScrollArea { background: transparent; border: none; }
                 QCheckBox { spacing: 8px; color: #332534; }
                 QLabel { color: #332534; background: transparent; }
+                """
+            )
+        elif theme_key == "blackout":
+            self.setStyleSheet(
+                """
+                QMainWindow, QWidget { background: #030303; color: #eeeeee; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
+                QWidget#appRoot { background: #030303; }
+                QTabWidget::pane { border: 2px solid #242424; border-radius: 12px; background: #0a0a0a; }
+                QTabBar::tab { background: #111111; color: #bdbdbd; padding: 10px 18px; border: 1px solid #2a2a2a; border-bottom: none; border-top-left-radius: 10px; border-top-right-radius: 10px; margin-right: 4px; font-weight: 700; }
+                QTabBar::tab:hover { background: #191919; color: #ffffff; }
+                QTabBar::tab:selected { background: #0a0a0a; color: #ffffff; border-color: #4a4a4a; }
+                QGroupBox { border: 2px solid #252525; border-radius: 14px; margin-top: 14px; padding: 12px; background: #080808; font-weight: 700; color: #f0f0f0; }
+                QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; background: #080808; color: #ffffff; }
+                QPushButton { background: #141414; color: #f2f2f2; border: 1px solid #424242; border-radius: 10px; padding: 8px 12px; font-weight: 700; }
+                QPushButton:hover { background: #202020; border-color: #6a6a6a; }
+                QPushButton:pressed { background: #0d0d0d; }
+                QPushButton#primaryButton { background: #f5f5f5; color: #050505; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
+                QPushButton#primaryButton:hover { background: #ffffff; color: #000000; }
+                QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #050505; color: #f2f2f2; border: 1px solid #3b3b3b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
+                QComboBox QAbstractItemView { background: #050505; color: #f2f2f2; border: 1px solid #4a4a4a; selection-background-color: #ffffff; selection-color: #000000; }
+                QScrollArea, QAbstractScrollArea { background: #050505; border: none; }
+                QCheckBox { spacing: 8px; color: #eeeeee; }
+                QLabel { color: #eeeeee; background: transparent; }
+                QHeaderView::section { background: #111111; color: #f2f2f2; border: 1px solid #2a2a2a; padding: 5px; }
+                QScrollBar:vertical, QScrollBar:horizontal { background: #090909; border: none; width: 13px; height: 13px; }
+                QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #444444; border-radius: 6px; min-height: 24px; min-width: 24px; }
+                QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #666666; }
+                QScrollBar::add-line, QScrollBar::sub-line { background: transparent; border: none; width: 0; height: 0; }
                 """
             )
         else:
