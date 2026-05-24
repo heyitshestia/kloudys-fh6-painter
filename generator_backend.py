@@ -136,11 +136,21 @@ def generated_jsons(image_path):
     candidates.extend(image_path.parent.glob(f"{image_path.stem}*.json"))
     filtered = []
     for path in candidates:
-        name = path.name
-        if ".v2.report." in name or ".v2.settings." in name or ".v2.preprocess." in name or ".fh6." in name:
+        if is_internal_generator_json(path):
             continue
         filtered.append(path)
     return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
+
+
+def is_internal_generator_json(path):
+    name = Path(path).name.lower()
+    return (
+        ".v2.report." in name
+        or ".v2.settings." in name
+        or ".v2.preprocess." in name
+        or ".v2.run_metadata." in name
+        or ".fh6." in name
+    )
 
 
 def geometry_shape_count(path):
@@ -201,12 +211,18 @@ def best_geometry_jsons(paths):
     best_by_stem = {}
     for path in paths:
         path = Path(path)
+        if is_internal_generator_json(path):
+            continue
         if not is_import_safe_geometry_json(path):
             continue
         base_name = geometry_group_stem(path)
         key = str(path.with_name(base_name).resolve()).lower()
         is_v2_final = 1 if is_v2_output_json(path) else 0
-        score = (is_v2_final, geometry_shape_count(path), path.stat().st_mtime)
+        try:
+            shape_count = geometry_shape_count(path)
+        except Exception:
+            continue
+        score = (is_v2_final, shape_count, path.stat().st_mtime)
         current = best_by_stem.get(key)
         if current is None or score > current[0]:
             best_by_stem[key] = (score, path)

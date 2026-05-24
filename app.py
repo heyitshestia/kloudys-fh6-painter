@@ -18,7 +18,7 @@ import psutil
 
 from game_profiles import PROFILES
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
-from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, generated_jsons, geometry_shape_count, import_drawable_budget, is_import_safe_geometry_json, load_settings, next_generator_output_dir, write_custom_settings
+from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, generated_jsons, geometry_shape_count, import_drawable_budget, is_import_safe_geometry_json, is_internal_generator_json, load_settings, next_generator_output_dir, write_custom_settings
 from generator_backend import generator_stop_request_path
 
 
@@ -1534,8 +1534,7 @@ class App:
         if not imgs_root.exists():
             return candidates
         for path in imgs_root.rglob("*.json"):
-            name = path.name
-            if ".v2.report." in name or ".v2.settings." in name or ".v2.preprocess." in name or ".fh6." in name:
+            if is_internal_generator_json(path):
                 continue
             candidates.add(path.resolve())
         return candidates
@@ -1552,21 +1551,23 @@ class App:
                 candidates.add(path.resolve())
         for path in seeds:
             path = Path(path)
+            if is_internal_generator_json(path):
+                continue
             if path.suffix.lower() == ".json" and path.exists():
                 candidates.add(path.resolve())
                 base = self._json_group_key(path)
                 for sibling in path.parent.glob(f"{base}*.json"):
-                    if sibling.exists():
+                    if sibling.exists() and not is_internal_generator_json(sibling):
                         candidates.add(sibling.resolve())
             elif path.exists():
                 stem = path.stem
                 for sibling in path.parent.glob(f"{stem}*.json"):
-                    if sibling.exists():
+                    if sibling.exists() and not is_internal_generator_json(sibling):
                         candidates.add(sibling.resolve())
                 folder = path.parent / stem
                 if folder.exists():
                     for sibling in folder.glob("*.json"):
-                        if sibling.exists():
+                        if sibling.exists() and not is_internal_generator_json(sibling):
                             candidates.add(sibling.resolve())
         candidates = sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)
         recommended = {path.resolve() for path in best_geometry_jsons(candidates)} if candidates else set()
