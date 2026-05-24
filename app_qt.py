@@ -366,6 +366,7 @@ class UiBus(QObject):
     preview_file = Signal(str)
     refresh_lists = Signal()
     generated_changed = Signal()
+    auto_located = Signal(str, str)
 
 
 class PreviewView(QGraphicsView):
@@ -454,6 +455,7 @@ class MainWindow(QMainWindow):
         self.bus.preview_file.connect(self.show_preview_file)
         self.bus.refresh_lists.connect(self.render_lists)
         self.bus.generated_changed.connect(self.refresh_generated_browser)
+        self.bus.auto_located.connect(self.apply_auto_locate_result)
         self._build()
         self.apply_theme()
         self.refresh_processes()
@@ -1385,9 +1387,43 @@ class MainWindow(QMainWindow):
         threading.Thread(target=self.auto_locate_worker, args=(pid, layer_count), daemon=True).start()
 
     def auto_locate_worker(self, pid, layer_count):
-        cmd = [helper_python(), ROOT / "fh6_probe.py", "--game", self.game_combo.currentText() or "fh6", "--pid", str(pid), "--layer-count", str(layer_count), "--auto-locate", "--dump-slot-radius", "16", "--max-seconds", "45"]
+        cmd = [
+            helper_python(),
+            ROOT / "fh6_probe.py",
+            "--game",
+            self.game_combo.currentText() or "fh6",
+            "--pid",
+            str(pid),
+            "--layer-count",
+            str(layer_count),
+            "--auto-locate",
+            "--write-session",
+            SESSION_PATH,
+            "--dump-slot-radius",
+            "16",
+            "--limit-mb",
+            str(MEMORY_SNAPSHOT_LIMIT_MB),
+            "--max-matches",
+            "500000",
+            "--inspect-radius",
+            "0x800",
+            "--max-seconds",
+            "45",
+        ]
         code = self.run_subprocess(cmd, timeout=70)
+        if code == 0:
+            session = load_session_location()
+            if session and str(session.get("layer_count", "")) == str(layer_count):
+                self.bus.auto_located.emit(
+                    "0x{:x}".format(int(session["count_address"])),
+                    "0x{:x}".format(int(session["table_address"])),
+                )
         self.bus.status.emit("Done" if code == 0 else "Failed")
+
+    def apply_auto_locate_result(self, count_address, table_address):
+        self.manual_count.setText(count_address)
+        self.manual_table.setText(table_address)
+        self.log_line(f"Auto-located FH6 count/table: count={count_address}, table={table_address}")
 
     def start_import(self):
         if not self.json_files:
