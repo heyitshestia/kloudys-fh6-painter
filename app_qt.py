@@ -364,6 +364,7 @@ class UiBus(QObject):
     progress = Signal(str)
     preview_bytes = Signal(bytes)
     preview_file = Signal(str)
+    json_preview = Signal(int, object)
     refresh_lists = Signal()
     generated_changed = Signal()
     auto_located = Signal(str, str, str, str, str)
@@ -450,12 +451,14 @@ class MainWindow(QMainWindow):
         self.setting_auto_locate_fields = False
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
+        self.preview_request_id = 0
         self.bus = UiBus()
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
         self.bus.progress.connect(self.set_progress)
         self.bus.preview_bytes.connect(self.show_preview_bytes)
         self.bus.preview_file.connect(self.show_preview_file)
+        self.bus.json_preview.connect(self.show_json_preview_result)
         self.bus.refresh_lists.connect(self.render_lists)
         self.bus.generated_changed.connect(self.refresh_generated_browser)
         self.bus.auto_located.connect(self.apply_auto_locate_result)
@@ -860,6 +863,7 @@ class MainWindow(QMainWindow):
 
     def preview_selected_image(self, row: int):
         if 0 <= row < len(self.images):
+            self.preview_request_id += 1
             self.show_preview_bytes(render_source_image(self.images[row]) or b"")
 
     def preview_selected_json(self, row: int):
@@ -867,11 +871,22 @@ class MainWindow(QMainWindow):
             self.preview_json(self.json_files[row])
 
     def preview_json(self, path: Path):
+        self.preview_request_id += 1
+        request_id = self.preview_request_id
         preview = self.preview_path_for_json(path)
         if preview and preview.exists():
             self.show_preview_file(str(preview))
         else:
-            self.show_preview_bytes(render_geometry_json(path) or b"")
+            self.preview.clear("Rendering JSON preview...")
+            self.import_preview.clear("Rendering JSON preview...")
+            threading.Thread(target=self.render_json_preview_worker, args=(Path(path), request_id), daemon=True).start()
+
+    def render_json_preview_worker(self, path: Path, request_id: int):
+        self.bus.json_preview.emit(request_id, render_geometry_json(path))
+
+    def show_json_preview_result(self, request_id: int, data):
+        if request_id == self.preview_request_id:
+            self.show_preview_bytes(data or b"")
 
     def preview_path_for_json(self, path: Path) -> Path | None:
         path = Path(path)
@@ -929,11 +944,14 @@ class MainWindow(QMainWindow):
         if not GENERATOR_EXE.exists():
             self.log_line(f"Missing generator: {GENERATOR_EXE}")
             return
+        images = list(self.images)
+        repair_enabled = self.repair_enabled.isChecked()
         self.shutdown_event.clear()
         self.stop_generation_event.clear()
-        self.active_generation_images = list(self.images)
+        self.preview_request_id += 1
+        self.active_generation_images = images
         self.set_status("Running")
-        threading.Thread(target=self.generate_worker, args=(setting,), daemon=True).start()
+        threading.Thread(target=self.generate_worker, args=(setting, images, repair_enabled), daemon=True).start()
 
     def stop_generate(self):
         if not self.active_generation_images:
@@ -950,12 +968,12 @@ class MainWindow(QMainWindow):
         self.set_status("Stopping")
         self.log_line("Graceful stop requested. V2 will finalize saved checkpoints.")
 
-    def generate_worker(self, setting):
+    def generate_worker(self, setting, images, repair_enabled):
         try:
             self.bus.log.emit(f"Selected profile: {setting.get('label') or setting['path'].name}")
             self.bus.log.emit(f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}")
-            self.bus.log.emit(f"Targeted repair: {'on' if self.repair_enabled.isChecked() else 'off'}")
-            for image_path in list(self.images):
+            self.bus.log.emit(f"Targeted repair: {'on' if repair_enabled else 'off'}")
+            for image_path in images:
                 run_dir = next_generator_output_dir(image_path)
                 before = {path.resolve() for path in self.run_json_files(run_dir)}
                 self.latest_generated_run_dir = run_dir
@@ -965,7 +983,7 @@ class MainWindow(QMainWindow):
                 src = render_source_image(image_path)
                 if src:
                     self.bus.preview_bytes.emit(src)
-                cmd = build_generator_command(image_path, setting, enable_repair=self.repair_enabled.isChecked(), enable_overshoot=False, output_dir=run_dir)
+                cmd = build_generator_command(image_path, setting, enable_repair=repair_enabled, enable_overshoot=False, output_dir=run_dir)
                 self.bus.log.emit(f"Running GPU generator with {setting['path'].name}")
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1, text=True, encoding="utf-8", errors="replace", creationflags=flags)
@@ -1372,10 +1390,18 @@ class MainWindow(QMainWindow):
         lower = raw.lower()
         if any(part in lower for part in ("base:", "candidate score=", "layout candidate", "table[", "ptr=0x", "descriptor @")):
             return None
+        if raw.startswith("<class 'SystemExit'>") or raw.startswith("SystemExit: 0"):
+            return None
         if "fast fh6 layer group candidates:" in lower or "cliverylayer table found" in lower:
             return "FH6 template located and verified."
         if "auto-locating fh6" in lower:
             return "Finding current FH6 template..."
+        if "forza horizon 6 detected" in lower:
+            return raw
+        if raw.startswith("Dumped layer "):
+            return raw
+        if "no safe fh6 layer group" in lower:
+            return raw
         if raw.startswith("Writing layer") or raw == "DONE!" or raw.startswith("The ideal background color"):
             return raw
         if "openprocess" in lower or "error" in lower or "failed" in lower or "traceback" in lower:
@@ -1392,7 +1418,7 @@ class MainWindow(QMainWindow):
         self.set_status("Running")
         threading.Thread(target=self.auto_locate_worker, args=(pid, layer_count, game), daemon=True).start()
 
-    def auto_locate_worker(self, pid, layer_count, game):
+    def auto_locate_worker(self, pid, layer_count, game, update_status=True):
         cmd = [
             helper_python(),
             ROOT / "fh6_probe.py",
@@ -1427,7 +1453,8 @@ class MainWindow(QMainWindow):
                     str(pid),
                     game,
                 )
-        self.bus.status.emit("Done" if code == 0 else "Failed")
+        if update_status:
+            self.bus.status.emit("Done" if code == 0 else "Failed")
 
     def mark_manual_address_dirty(self, _text=None):
         if not self.setting_auto_locate_fields:
@@ -1466,8 +1493,33 @@ class MainWindow(QMainWindow):
         if not self.json_files:
             self.log_line("No JSON files selected.")
             return
+        pid = self.selected_pid_value()
+        game = self.game_combo.currentText() or "fh6"
+        count_address = parse_hex_or_empty(self.manual_count.text())
+        table_address = parse_hex_or_empty(self.manual_table.text())
+        layer_count = self.layer_count.text().strip()
+        if game == "fh6" and table_address and not count_address:
+            self.log_line("Manual FH6 table address requires the matching count address. Clear both fields or use auto-locate.")
+            return
+        if game == "fh6" and not count_address and not table_address:
+            if not pid:
+                self.log_line("Select or refresh the FH6 process before importing.")
+                return
+            if not layer_count:
+                self.log_line("Template layer count is required for FH6 import.")
+                return
+        if count_address and table_address and game == "fh6" and not self.manual_address_dirty:
+            if not self.auto_located_context_matches(count_address, table_address, layer_count, pid, game):
+                self.log_line("Stored auto-locate result does not match the current process/layer count. Re-locating FH6 template.")
+                count_address = None
+                table_address = None
+        json_files = list(self.json_files)
         self.set_status("Running")
-        threading.Thread(target=self.import_worker, args=(self.selected_pid_value(),), daemon=True).start()
+        threading.Thread(
+            target=self.import_worker,
+            args=(pid, game, count_address, table_address, layer_count, json_files),
+            daemon=True,
+        ).start()
 
     def check_json_layer_fit(self, json_path, layer_count):
         try:
@@ -1481,20 +1533,11 @@ class MainWindow(QMainWindow):
         if json_layers and usable_layers and json_layers < usable_layers * 0.75:
             self.bus.log.emit(f"Selected JSON has far fewer drawable layers than usable capacity. JSON={json_layers}, usable={usable_layers}")
 
-    def import_worker(self, pid):
-        game = self.game_combo.currentText() or "fh6"
-        count_address = parse_hex_or_empty(self.manual_count.text())
-        table_address = parse_hex_or_empty(self.manual_table.text())
-        layer_count = self.layer_count.text().strip()
-        if count_address and table_address and game == "fh6" and not self.manual_address_dirty:
-            if not self.auto_located_context_matches(count_address, table_address, layer_count, pid, game):
-                self.bus.log.emit("Stored auto-locate result does not match the current process/layer count. Re-locating FH6 template.")
-                count_address = None
-                table_address = None
+    def import_worker(self, pid, game, count_address, table_address, layer_count, json_files):
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.bus.log.emit("Finding current FH6 template...")
-                self.auto_locate_worker(pid, layer_count, game)
+                self.auto_locate_worker(pid, layer_count, game, update_status=False)
                 session = load_session_location()
                 if session and str(session.get("layer_count", "")) == str(layer_count) and session_pid_is_live(session, game):
                     count_address = "0x{:x}".format(int(session["count_address"]))
@@ -1503,7 +1546,11 @@ class MainWindow(QMainWindow):
                 else:
                     self.bus.status.emit("Failed")
                     return
-        for path in list(self.json_files):
+            else:
+                self.bus.log.emit("FH6 import requires a selected process and template layer count.")
+                self.bus.status.emit("Failed")
+                return
+        for path in json_files:
             if game == "fh6" and layer_count:
                 self.check_json_layer_fit(path, layer_count)
             cmd = [helper_python(), ROOT / "main.py", "--game", game, "--no-preview"]

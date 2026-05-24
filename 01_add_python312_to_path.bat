@@ -35,7 +35,7 @@ call :add_python_to_path
 echo.
 echo Python 3.12 and Scripts folders were added to the user PATH.
 echo Close and reopen terminals before running 02_install_dependencies.bat.
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 0
 
 :Failed
@@ -45,7 +45,7 @@ echo You can install it manually from:
 echo   %PYTHON312_URL%
 echo.
 echo Then run this file again.
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 1
 
 :find_python
@@ -96,5 +96,7 @@ set "PYTHON_DIR=%PYTHON_DIR:~0,-1%"
 set "SCRIPTS_DIR=%PYTHON_DIR%\Scripts"
 echo.
 echo Ensuring Python is on PATH...
-setx PATH "%PATH%;%PYTHON_DIR%;%SCRIPTS_DIR%" >nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $add=@('%PYTHON_DIR%','%SCRIPTS_DIR%'); $user=[Environment]::GetEnvironmentVariable('Path','User'); $parts=@(); if($user){ $parts=$user -split ';' | Where-Object { $_ } }; foreach($item in $add){ if($parts -notcontains $item){ $parts += $item } }; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')"
+if errorlevel 1 exit /b 1
+set "PATH=%PYTHON_DIR%;%SCRIPTS_DIR%;%PATH%"
 exit /b 0

@@ -25,7 +25,7 @@ if errorlevel 1 (
     echo Preview is unavailable. This does not block JSON generation or FH6 import.
 )
 
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 0
 
 :find_python

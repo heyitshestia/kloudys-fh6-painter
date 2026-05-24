@@ -50,7 +50,7 @@ if errorlevel 1 (
 echo.
 echo Dependencies installed.
 echo You can now run 04_start_app.bat
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 0
 
 :Failed
@@ -59,7 +59,7 @@ echo Dependency installation failed.
 echo This project expects 64-bit Python 3.12:
 echo   %PYTHON312_URL%
 echo If Python is installed but still not found, run 01_add_python312_to_path.bat first.
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 1
 
 :find_python

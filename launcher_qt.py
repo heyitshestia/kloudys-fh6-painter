@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal, QTimer
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 
@@ -34,8 +34,11 @@ class Bus(QObject):
     busy = Signal(bool)
 
 
-def run_command(cmd, cwd=ROOT):
+def run_command(cmd, cwd=ROOT, env_extra=None):
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    env = os.environ.copy()
+    if env_extra:
+        env.update(env_extra)
     proc = subprocess.Popen(
         [str(part) for part in cmd],
         cwd=cwd,
@@ -45,6 +48,7 @@ def run_command(cmd, cwd=ROOT):
         encoding="utf-8",
         errors="replace",
         creationflags=flags,
+        env=env,
     )
     lines = []
     for line in proc.stdout:
@@ -266,7 +270,7 @@ class Launcher(QMainWindow):
         self.bus.log.emit(f"Starting {label}...")
         try:
             if os.name == "nt":
-                code, lines = run_command(["cmd", "/c", str(path)])
+                code, lines = run_command(["cmd", "/c", str(path)], env_extra={"FORZA_PAINTER_NO_PAUSE": "1"})
             else:
                 code, lines = run_command(["bash", "-lc", f"echo Windows batch file: {path.name}"])
             for line in lines:
@@ -338,6 +342,7 @@ class Launcher(QMainWindow):
             flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
             subprocess.Popen(python_cmd + [str(APP_ENTRY)], cwd=ROOT, creationflags=flags)
             self.log("Launched app.")
+            QTimer.singleShot(500, self.close)
         except Exception as exc:
             QMessageBox.critical(self, "Launch failed", str(exc))
 

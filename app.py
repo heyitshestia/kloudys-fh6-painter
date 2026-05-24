@@ -2552,7 +2552,7 @@ class App:
         self.status.set(tr(self.lang, "running"))
         threading.Thread(target=self._auto_locate_worker, args=(pid, layer_count), daemon=True).start()
 
-    def _auto_locate_worker(self, pid, layer_count):
+    def _auto_locate_worker(self, pid, layer_count, update_status=True):
         cmd = [
             sys.executable,
             ROOT / "fh6_probe.py",
@@ -2579,13 +2579,28 @@ class App:
             session = load_session_location()
             if session:
                 self.queue.put(("log", tr(self.lang, "located")))
-        self.queue.put(("status", tr(self.lang, "done") if code == 0 else tr(self.lang, "failed")))
+        if update_status:
+            self.queue.put(("status", tr(self.lang, "done") if code == 0 else tr(self.lang, "failed")))
 
     def start_import(self):
         if not self.json_files:
             self.log_line("No JSON files selected.")
             return
         pid = self.selected_pid_value()
+        game = self.selected_game.get() or "fh6"
+        count_address = parse_hex_or_empty(self.count_address.get())
+        table_address = parse_hex_or_empty(self.table_address.get())
+        layer_count = self.layer_count.get().strip()
+        if game == "fh6" and table_address and not count_address:
+            self.log_line("Manual FH6 table address requires the matching count address. Clear both fields or use auto-locate.")
+            return
+        if game == "fh6" and not count_address and not table_address:
+            if not pid:
+                self.log_line("Select or refresh the FH6 process before importing.")
+                return
+            if not layer_count:
+                self.log_line("Template layer count is required for FH6 import.")
+                return
         self.status.set(tr(self.lang, "running"))
         threading.Thread(target=self._import_worker, args=(pid,), daemon=True).start()
 
@@ -2597,7 +2612,7 @@ class App:
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.queue.put(("log", tr(self.lang, "locating")))
-                self._auto_locate_worker(pid, layer_count)
+                self._auto_locate_worker(pid, layer_count, update_status=False)
                 session = load_session_location()
                 if session and str(session.get("layer_count", "")) == str(layer_count) and session_pid_is_live(session, game):
                     count_address = "0x{:x}".format(int(session["count_address"]))
@@ -2606,6 +2621,10 @@ class App:
                 else:
                     self.queue.put(("status", tr(self.lang, "failed")))
                     return
+            else:
+                self.queue.put(("log", "FH6 import requires a selected process and template layer count."))
+                self.queue.put(("status", tr(self.lang, "failed")))
+                return
         for path in list(self.json_files):
             if game == "fh6" and layer_count:
                 self._check_json_layer_fit(path, layer_count)
