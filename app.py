@@ -19,7 +19,7 @@ import psutil
 
 from game_profiles import PROFILES
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
-from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, generated_jsons, geometry_shape_count, import_drawable_budget, is_import_safe_geometry_json, is_internal_generator_json, load_settings, next_generator_output_dir, write_custom_settings
+from generator_backend import GENERATED_ROOT, GENERATOR_EXE, best_geometry_jsons, build_generator_command, geometry_shape_count, import_drawable_budget, is_import_safe_geometry_json, is_internal_generator_json, load_settings, next_generator_output_dir, write_custom_settings
 from generator_backend import generator_stop_request_path
 from version_info import get_version, get_version_label
 
@@ -1635,6 +1635,20 @@ class App:
         filtered = [path for path in candidates if ".v2.preprocess." not in path.name]
         return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
 
+    def _run_json_files(self, run_dir):
+        run_dir = Path(run_dir)
+        if not run_dir.exists():
+            return []
+        return sorted(
+            {
+                path
+                for path in run_dir.rglob("*.json")
+                if not is_internal_generator_json(path)
+            },
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+
     def toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
         if self.advanced_visible:
@@ -1839,10 +1853,9 @@ class App:
 
     def _all_generated_checkpoint_jsons(self):
         candidates = set()
-        imgs_root = ROOT / "imgs"
-        if not imgs_root.exists():
+        if not GENERATED_ROOT.exists():
             return candidates
-        for path in imgs_root.rglob("*.json"):
+        for path in GENERATED_ROOT.rglob("*.json"):
             if is_internal_generator_json(path):
                 continue
             candidates.add(path.resolve())
@@ -1854,30 +1867,6 @@ class App:
 
     def _checkpoint_candidates(self):
         candidates = set(self._all_generated_checkpoint_jsons())
-        seeds = list(self.images) + list(self.outputs) + list(self.json_files)
-        for image_path in self.images:
-            for path in generated_jsons(image_path):
-                candidates.add(path.resolve())
-        for path in seeds:
-            path = Path(path)
-            if is_internal_generator_json(path):
-                continue
-            if path.suffix.lower() == ".json" and path.exists():
-                candidates.add(path.resolve())
-                base = self._json_group_key(path)
-                for sibling in path.parent.glob(f"{base}*.json"):
-                    if sibling.exists() and not is_internal_generator_json(sibling):
-                        candidates.add(sibling.resolve())
-            elif path.exists():
-                stem = path.stem
-                for sibling in path.parent.glob(f"{stem}*.json"):
-                    if sibling.exists() and not is_internal_generator_json(sibling):
-                        candidates.add(sibling.resolve())
-                folder = path.parent / stem
-                if folder.exists():
-                    for sibling in folder.glob("*.json"):
-                        if sibling.exists() and not is_internal_generator_json(sibling):
-                            candidates.add(sibling.resolve())
         candidates = sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)
         recommended = {path.resolve() for path in best_geometry_jsons(candidates)} if candidates else set()
         entries = []
@@ -2318,8 +2307,8 @@ class App:
                     self.active_generation_images = []
                     self.active_generation_run_dirs = {}
                     return
-                before = {path.resolve() for path in generated_jsons(image_path)}
                 run_dir = next_generator_output_dir(image_path)
+                before = {path.resolve() for path in self._run_json_files(run_dir)}
                 self.active_generation_run_dirs[image_path] = run_dir
                 self.queue.put(("log", f"Generating: {image_path}"))
                 self.queue.put(("log", f"Output folder: {run_dir}"))
@@ -2346,7 +2335,6 @@ class App:
                 )
                 self._register_process(proc)
 
-                last_preview = None
                 last_preview_mtime = None
                 last_generator_message = None
                 output_queue = queue.Queue()
@@ -2387,10 +2375,6 @@ class App:
                             if preview_mtime != last_preview_mtime:
                                 last_preview_mtime = preview_mtime
                                 self.queue.put(("preview_file", newest_preview))
-                        newest = generated_jsons(image_path)
-                        if newest and newest[0] != last_preview:
-                            last_preview = newest[0]
-                            self._queue_live_generation_json_preview(newest[0])
                         time.sleep(0.1)
                     if self.shutdown_event.is_set():
                         return
@@ -2403,7 +2387,7 @@ class App:
                     self.queue.put(("status", tr(self.lang, "failed")))
                     self.active_generation_images = []
                     return
-                after = generated_jsons(image_path)
+                after = self._run_json_files(run_dir)
                 diff_outputs = [path for path in after if path.resolve() not in before]
                 v2_outputs = [path for path in diff_outputs if self._is_v2_output_json(path)]
                 new_outputs = v2_outputs or diff_outputs
@@ -2420,11 +2404,12 @@ class App:
                     if output not in self.json_files:
                         self.json_files.append(output)
                     self.queue.put(("log", f"Generated: {output}"))
-                    preview_files = self._run_preview_files(image_path, run_dir)
-                    if preview_files:
-                        self.queue.put(("preview_file", preview_files[0]))
-                    else:
-                        self.queue.put(("preview", render_geometry_json(output)))
+                preview_files = self._run_preview_files(image_path, run_dir)
+                if preview_files:
+                    newest_preview = preview_files[0]
+                    preview_mtime = newest_preview.stat().st_mtime
+                    if preview_mtime != last_preview_mtime:
+                        self.queue.put(("preview_file", newest_preview))
                 if self.stop_generation_event.is_set():
                     self.queue.put(("log", f"Stopped after finalizing {image_path.name}."))
                     break

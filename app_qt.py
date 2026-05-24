@@ -56,9 +56,9 @@ else:
 from game_profiles import PROFILES
 from generator_backend import (
     GENERATOR_EXE,
+    GENERATED_ROOT,
     best_geometry_jsons,
     build_generator_command,
-    generated_jsons,
     generator_stop_request_path,
     geometry_shape_count,
     import_drawable_budget,
@@ -618,11 +618,14 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
         add_json = QPushButton("Manual JSON...")
         add_json.clicked.connect(self.manual_add_json)
+        refresh_jsons = QPushButton("Refresh")
+        refresh_jsons.clicked.connect(self.refresh_generated_browser)
         add_recommended = QPushButton("Use recommended")
         add_recommended.clicked.connect(self.add_recommended_generated_json)
         add_selected = QPushButton("Use selected")
         add_selected.clicked.connect(self.add_selected_generated_json)
         controls.addWidget(add_json)
+        controls.addWidget(refresh_jsons)
         controls.addWidget(add_recommended)
         controls.addWidget(add_selected)
         json_layout.addLayout(controls)
@@ -946,8 +949,8 @@ class MainWindow(QMainWindow):
             self.bus.log.emit(f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}")
             self.bus.log.emit(f"Targeted repair: {'on' if self.repair_enabled.isChecked() else 'off'}")
             for image_path in list(self.images):
-                before = {path.resolve() for path in generated_jsons(image_path)}
                 run_dir = next_generator_output_dir(image_path)
+                before = {path.resolve() for path in self.run_json_files(run_dir)}
                 self.latest_generated_run_dir = run_dir
                 self.active_generation_run_dirs[image_path] = run_dir
                 self.bus.log.emit(f"Generating: {image_path}")
@@ -971,7 +974,6 @@ class MainWindow(QMainWindow):
 
                 threading.Thread(target=reader, daemon=True).start()
                 last_preview_mtime = None
-                last_json = None
                 last_message = None
                 while proc.poll() is None:
                     last_message = self.drain_generator_output(output_queue, last_message)
@@ -982,9 +984,6 @@ class MainWindow(QMainWindow):
                         if mtime != last_preview_mtime:
                             last_preview_mtime = mtime
                             self.bus.preview_file.emit(str(newest))
-                    newest_jsons = generated_jsons(image_path)
-                    if newest_jsons and newest_jsons[0] != last_json:
-                        last_json = newest_jsons[0]
                     time.sleep(0.1)
                 self.unregister_process(proc)
                 last_message = self.drain_generator_output(output_queue, last_message)
@@ -992,7 +991,7 @@ class MainWindow(QMainWindow):
                     self.bus.log.emit(f"Generator exited with code {proc.returncode}.")
                     self.bus.status.emit("Failed")
                     return
-                after = generated_jsons(image_path)
+                after = self.run_json_files(run_dir)
                 diff_outputs = [path for path in after if path.resolve() not in before]
                 new_outputs = [path for path in diff_outputs if self.is_v2_output_json(path)] or diff_outputs
                 if not new_outputs and after:
@@ -1003,13 +1002,12 @@ class MainWindow(QMainWindow):
                     if output not in self.json_files:
                         self.json_files.append(output)
                     self.bus.log.emit(f"Generated: {output}")
-                    preview_files = self.run_preview_files(image_path, run_dir)
-                    if preview_files:
-                        self.bus.preview_file.emit(str(preview_files[0]))
-                    else:
-                        data = render_geometry_json(output)
-                        if data:
-                            self.bus.preview_bytes.emit(data)
+                preview_files = self.run_preview_files(image_path, run_dir)
+                if preview_files:
+                    newest = preview_files[0]
+                    mtime = newest.stat().st_mtime
+                    if mtime != last_preview_mtime:
+                        self.bus.preview_file.emit(str(newest))
                 if self.stop_generation_event.is_set():
                     self.bus.log.emit(f"Stopped after finalizing {image_path.name}.")
                     break
@@ -1074,6 +1072,20 @@ class MainWindow(QMainWindow):
             candidates.extend(run_dir.glob("*.preview*.png"))
         filtered = [path for path in candidates if ".v2.preprocess." not in path.name]
         return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
+
+    def run_json_files(self, run_dir):
+        run_dir = Path(run_dir)
+        if not run_dir.exists():
+            return []
+        return sorted(
+            {
+                path
+                for path in run_dir.rglob("*.json")
+                if not is_internal_generator_json(path)
+            },
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
 
     def register_process(self, proc):
         with self.process_lock:
@@ -1148,9 +1160,8 @@ class MainWindow(QMainWindow):
 
     def all_generated_checkpoint_jsons(self):
         candidates = set()
-        imgs_root = ROOT / "imgs"
-        if imgs_root.exists():
-            for path in imgs_root.rglob("*.json"):
+        if GENERATED_ROOT.exists():
+            for path in GENERATED_ROOT.rglob("*.json"):
                 if not is_internal_generator_json(path):
                     candidates.add(path.resolve())
         return candidates
@@ -1161,26 +1172,6 @@ class MainWindow(QMainWindow):
 
     def checkpoint_candidates(self):
         candidates = set(self.all_generated_checkpoint_jsons())
-        for image_path in self.images:
-            for path in generated_jsons(image_path):
-                candidates.add(path.resolve())
-        for path in list(self.images) + list(self.outputs) + list(self.json_files):
-            path = Path(path)
-            if path.suffix.lower() == ".json" and path.exists() and not is_internal_generator_json(path):
-                candidates.add(path.resolve())
-                base = self.json_group_key(path)
-                for sibling in path.parent.glob(f"{base}*.json"):
-                    if not is_internal_generator_json(sibling):
-                        candidates.add(sibling.resolve())
-            elif path.exists():
-                for sibling in path.parent.glob(f"{path.stem}*.json"):
-                    if not is_internal_generator_json(sibling):
-                        candidates.add(sibling.resolve())
-                folder = path.parent / path.stem
-                if folder.exists():
-                    for sibling in folder.glob("*.json"):
-                        if not is_internal_generator_json(sibling):
-                            candidates.add(sibling.resolve())
         candidates = sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)
         recommended = {path.resolve() for path in best_geometry_jsons(candidates)} if candidates else set()
         entries = []
