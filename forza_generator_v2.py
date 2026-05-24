@@ -328,7 +328,14 @@ def collect_candidate_jsons(out_dir: Path, stem: str, max_checkpoint: int | None
                 flush=True,
             )
         paths.append(path)
-    return sorted(set(paths))
+    return sorted(set(paths), key=lambda path: candidate_json_sort_key(path, stem))
+
+
+def candidate_json_sort_key(path: Path, stem: str) -> tuple[int, int, str]:
+    checkpoint = raw_checkpoint_number(path, stem)
+    if checkpoint is None:
+        return (1, 0, path.name.lower())
+    return (0, checkpoint, path.name.lower())
 
 
 def scale_shape(shape: dict, sx: float, sy: float) -> dict:

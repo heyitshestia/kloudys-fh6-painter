@@ -2276,7 +2276,7 @@ class App:
             return
         self.shutdown_event.clear()
         self.stop_generation_event.clear()
-        self.active_generation_images = list(self.images)
+        self.active_generation_images = list(reversed(self.images))
         self.progress_text.set("")
         self.status.set(tr(self.lang, "running"))
         threading.Thread(target=self._generate_worker, args=(setting,), daemon=True).start()
@@ -2301,7 +2301,7 @@ class App:
             self.queue.put(("log", f"Selected profile: {setting.get('label') or setting['path'].name}"))
             self.queue.put(("log", f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}"))
             self.queue.put(("log", f"Targeted repair: {'on' if self._repair_enabled() else 'off'}"))
-            for image_path in list(self.images):
+            for image_path in list(reversed(self.images)):
                 if self.shutdown_event.is_set():
                     self.queue.put(("status", tr(self.lang, "failed")))
                     self.active_generation_images = []

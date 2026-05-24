@@ -924,7 +924,7 @@ class MainWindow(QMainWindow):
         if not GENERATOR_EXE.exists():
             self.log_line(f"Missing generator: {GENERATOR_EXE}")
             return
-        images = list(self.images)
+        images = list(reversed(self.images))
         repair_enabled = self.repair_enabled.isChecked()
         self.shutdown_event.clear()
         self.stop_generation_event.clear()
