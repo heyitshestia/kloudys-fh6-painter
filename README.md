@@ -15,16 +15,22 @@ Before doing anything else:
 2. Run:
 
 ```text
+add_python312_to_path.bat
+```
+
+3. Run:
+
+```text
 install_dependencies.bat
 ```
 
-3. Only after that, run:
+4. Only after that, run:
 
 ```text
 start_app.bat
 ```
 
-`install_dependencies.bat` now also adds the detected Python 3.12 and Scripts folders to your user `PATH`.
+`add_python312_to_path.bat` adds the detected Python 3.12 and Scripts folders to your user `PATH`.
 
 ## Repo Summary
 
@@ -77,18 +83,24 @@ Compared with the older public `forza-painter` package flow, this repo is center
 3. **Before doing anything else**, run:
 
 ```text
-install_dependencies.bat
+add_python312_to_path.bat
 ```
 
 4. Then run:
 
 ```text
+install_dependencies.bat
+```
+
+5. Then run:
+
+```text
 start_app.bat
 ```
 
-5. In FH6, open `Vinyl Group Editor`, load a simple sphere template, then `Ungroup` it.
-6. Generate JSON in the app.
-7. Open `Import`, enter the exact template layer count, then import the selected JSON.
+6. In FH6, open `Vinyl Group Editor`, load a simple sphere template, then `Ungroup` it.
+7. Generate JSON in the app.
+8. Open `Import`, enter the exact template layer count, then import the selected JSON.
 
 If the app does not start, run:
 

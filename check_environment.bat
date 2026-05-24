@@ -6,7 +6,7 @@ set "PYTHONDONTWRITEBYTECODE=1"
 call :find_python
 if errorlevel 1 (
     echo No usable Python 3.12 installation was found.
-    echo Install 64-bit Python 3.12 first, then run install_dependencies.bat.
+    echo Install 64-bit Python 3.12 first, then run add_python312_to_path.bat, then install_dependencies.bat.
     pause
     exit /b 1
 )
@@ -15,7 +15,7 @@ echo Using %PYTHON_CMD%
 %PYTHON_CMD% -c "import sys, psutil, win32api; print('Core OK:', sys.version.split()[0])"
 if errorlevel 1 (
     echo Core dependencies are missing.
-    echo Run install_dependencies.bat before doing anything else.
+    echo Run add_python312_to_path.bat first if Python is not on PATH, then run install_dependencies.bat.
     pause
     exit /b 1
 )

@@ -10,8 +10,9 @@ echo Kloudy's FH6 Painter setup
 echo.
 echo BEFORE doing anything else:
 echo   1. Install 64-bit Python 3.12
-echo   2. Run install_dependencies.bat
-echo   3. Only then run start_app.bat
+echo   2. Run add_python312_to_path.bat
+echo   3. Run install_dependencies.bat
+echo   4. Only then run start_app.bat
 echo ============================================================
 echo.
 
@@ -22,14 +23,12 @@ if errorlevel 1 (
     echo Download 64-bit Python 3.12 from:
     echo   %PYTHON312_URL%
     echo.
-    echo During install, enable "Add python.exe to PATH" if offered.
-    echo Then run install_dependencies.bat again.
+    echo Then run add_python312_to_path.bat, then install_dependencies.bat.
     pause
     exit /b 1
 )
 
 echo Using %PYTHON_CMD%
-call :add_python_to_path
 %PYTHON_CMD% -m pip install --upgrade pip
 if errorlevel 1 goto Failed
 
@@ -47,7 +46,6 @@ if errorlevel 1 (
 
 echo.
 echo Dependencies installed.
-echo Python and Scripts folders were also added to the user PATH if needed.
 echo You can now run start_app.bat
 pause
 exit /b 0
@@ -57,6 +55,7 @@ echo.
 echo Dependency installation failed.
 echo This project expects 64-bit Python 3.12:
 echo   %PYTHON312_URL%
+echo If Python is installed but still not found, run add_python312_to_path.bat first.
 pause
 exit /b 1
 
@@ -72,16 +71,3 @@ if not errorlevel 1 (
     exit /b 0
 )
 exit /b 1
-
-:add_python_to_path
-set "PYTHON_EXE="
-for /f "usebackq delims=" %%I in (`%PYTHON_CMD% -c "import sys; print(sys.executable)"`) do set "PYTHON_EXE=%%I"
-if not defined PYTHON_EXE exit /b 0
-for %%I in ("%PYTHON_EXE%") do set "PYTHON_DIR=%%~dpI"
-if not defined PYTHON_DIR exit /b 0
-set "PYTHON_DIR=%PYTHON_DIR:~0,-1%"
-set "SCRIPTS_DIR=%PYTHON_DIR%\Scripts"
-echo.
-echo Ensuring Python is on PATH...
-setx PATH "%PATH%;%PYTHON_DIR%;%SCRIPTS_DIR%" >nul
-exit /b 0
