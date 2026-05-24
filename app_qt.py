@@ -274,7 +274,7 @@ def compensated_ellipse_size(w, h):
     return max(1.0, w * uniform_scale), max(1.0, h * uniform_scale * major_axis_scale)
 
 
-def render_geometry_json(path: Path) -> bytes | None:
+def render_geometry_json(path: Path, max_size: int = PREVIEW_MAX) -> bytes | None:
     loaded = load_cv2()
     if not loaded:
         return None
@@ -283,10 +283,13 @@ def render_geometry_json(path: Path) -> bytes | None:
         data = load_normalized_geometry(path)
         shapes = data["shapes"]
         image_w, image_h = [int(v) for v in shapes[0]["data"][2:]]
+        scale = min(1.0, float(max_size) / float(max(1, image_w, image_h)))
+        render_w = max(1, int(round(image_w * scale)))
+        render_h = max(1, int(round(image_h * scale)))
         bg_r, bg_g, bg_b, bg_a = [int(v) for v in shapes[0]["color"]]
-        checker = np.zeros((image_h, image_w, 3), np.float32)
-        premul = np.zeros((image_h, image_w, 3), np.float32)
-        alpha_canvas = np.zeros((image_h, image_w), np.float32)
+        checker = np.zeros((render_h, render_w, 3), np.float32)
+        premul = np.zeros((render_h, render_w, 3), np.float32)
+        alpha_canvas = np.zeros((render_h, render_w), np.float32)
         if bg_a > 0:
             base_alpha = max(0.0, min(1.0, float(bg_a) / 255.0))
             premul[:, :] = np.array((bg_b, bg_g, bg_r), dtype=np.float32) * base_alpha
@@ -310,22 +313,28 @@ def render_geometry_json(path: Path) -> bytes | None:
             if alpha <= 0:
                 continue
             shape_type = int(shape.get("type", 0))
-            mask = np.zeros((image_h, image_w), np.uint8)
+            mask = np.zeros((render_h, render_w), np.uint8)
             if shape_type in (ELLIPSE, ROTATED_ELLIPSE):
                 x, y, w, h, rot_deg = shape["data"]
                 if shape_type == ELLIPSE:
                     rot_deg = 0
                 adj_w, adj_h = compensated_ellipse_size(w, h)
-                axes = (max(1, int(round(adj_h))), max(1, int(round(adj_w))))
-                cv2.ellipse(mask, (int(round(x)), int(round(y))), axes, -90 + float(rot_deg), 0.0, 360.0, 255, thickness=-1)
+                axes = (max(1, int(round(adj_h * scale))), max(1, int(round(adj_w * scale))))
+                cv2.ellipse(mask, (int(round(x * scale)), int(round(y * scale))), axes, -90 + float(rot_deg), 0.0, 360.0, 255, thickness=-1)
             elif shape_type in (RECTANGLE, ROTATED_RECTANGLE):
                 if shape_type == ROTATED_RECTANGLE:
                     x, y, w, h, rot_deg = shape["data"]
-                    rect = ((float(x), float(y)), (max(1.0, float(w)), max(1.0, float(h))), float(rot_deg))
+                    rect = ((float(x) * scale, float(y) * scale), (max(1.0, float(w) * scale), max(1.0, float(h) * scale)), float(rot_deg))
                     cv2.fillConvexPoly(mask, cv2.boxPoints(rect).astype(np.int32), 255)
                 else:
                     x, y, w, h = shape["data"]
-                    cv2.rectangle(mask, (int(round(x - w / 2)), int(round(y - h / 2))), (int(round(x + w / 2)), int(round(y + h / 2))), 255, thickness=-1)
+                    cv2.rectangle(
+                        mask,
+                        (int(round((x - w / 2) * scale)), int(round((y - h / 2) * scale))),
+                        (int(round((x + w / 2) * scale)), int(round((y + h / 2) * scale))),
+                        255,
+                        thickness=-1,
+                    )
             else:
                 continue
             shape_mask = mask > 0
@@ -334,7 +343,12 @@ def render_geometry_json(path: Path) -> bytes | None:
             premul[shape_mask] = src * alpha + premul[shape_mask] * (1.0 - alpha)
             alpha_canvas[shape_mask] = alpha + old_alpha * (1.0 - alpha)
         preview = premul + checker * (1.0 - alpha_canvas[..., None])
-        return image_to_png_bytes(np.clip(preview, 0, 255).astype(np.uint8))
+        loaded = load_cv2()
+        if not loaded:
+            return None
+        cv2, _np = loaded
+        ok, encoded = cv2.imencode(".png", np.clip(preview, 0, 255).astype(np.uint8))
+        return encoded.tobytes() if ok else None
     except Exception:
         return None
 
@@ -1032,7 +1046,21 @@ class MainWindow(QMainWindow):
             threading.Thread(target=self.render_json_preview_worker, args=(Path(path), request_id), daemon=True).start()
 
     def render_json_preview_worker(self, path: Path, request_id: int):
-        self.bus.json_preview.emit(request_id, render_geometry_json(path))
+        cache_path = self.rendered_preview_cache_path(path)
+        try:
+            if cache_path.exists() and cache_path.stat().st_mtime >= path.stat().st_mtime:
+                self.bus.json_preview.emit(request_id, cache_path.read_bytes())
+                return
+        except OSError:
+            pass
+        data = render_geometry_json(path)
+        if data:
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_bytes(data)
+            except OSError:
+                pass
+        self.bus.json_preview.emit(request_id, data)
 
     def show_json_preview_result(self, request_id: int, data):
         if request_id == self.preview_request_id:
@@ -1050,6 +1078,16 @@ class MainWindow(QMainWindow):
             candidate = path.with_name(f"{path.stem}.preview.png")
             return candidate if candidate.exists() else None
         if ".v2.final." in name:
+            match = re.match(r"^(.*)\.v2\.final\.(\d+)\.json$", name)
+            if match:
+                base, count = match.groups()
+                candidates = [
+                    path.with_name(f"{base}.v2.final.{count}.preview.png"),
+                    path.with_name(f"{base}.preview.{count}v2.png"),
+                ]
+                for candidate in candidates:
+                    if candidate.exists():
+                        return candidate
             candidate = path.with_name(f"{path.stem}.preview.png")
             return candidate if candidate.exists() else None
         match = re.match(r"^(.*)\.(\d+)\.json$", name)
@@ -1059,6 +1097,10 @@ class MainWindow(QMainWindow):
             return candidate if candidate.exists() else None
         candidate = path.with_name(f"{path.stem}.preview.png")
         return candidate if candidate.exists() else None
+
+    def rendered_preview_cache_path(self, path: Path) -> Path:
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(Path(path).resolve()))
+        return ROOT / "runtime" / "previews" / f"{safe_name}.png"
 
     def refresh_processes(self):
         self.processes = game_processes()
