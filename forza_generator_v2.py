@@ -304,12 +304,29 @@ def canvas_size_from_payload(payload: dict) -> tuple[int, int]:
     raise ValueError("background shape is missing canvas size")
 
 
-def collect_candidate_jsons(out_dir: Path, stem: str) -> list[Path]:
+def raw_checkpoint_number(path: Path, stem: str) -> int | None:
+    core = path.stem
+    if not core.startswith(f"{stem}."):
+        return None
+    tag = core[len(stem) + 1 :]
+    if not tag.isdigit():
+        return None
+    return int(tag)
+
+
+def collect_candidate_jsons(out_dir: Path, stem: str, max_checkpoint: int | None = None) -> list[Path]:
     paths = []
     for path in out_dir.glob(f"{stem}*.json"):
         name = path.name
         if ".v2." in name or ".fh6." in name or ".report." in name or re.search(r"\.\d+v2\.json$", name) or name.endswith(".v2.json"):
             continue
+        checkpoint = raw_checkpoint_number(path, stem)
+        if max_checkpoint is not None and checkpoint is not None and checkpoint > max_checkpoint:
+            print(
+                f"Found overflow-named checkpoint {name}: checkpoint {checkpoint} > requested raw stop {max_checkpoint}; "
+                "V2 will validate and cap it before writing import outputs.",
+                flush=True,
+            )
         paths.append(path)
     return sorted(set(paths))
 
@@ -825,13 +842,19 @@ def checkpoint_tag_for_candidate(candidate_path: Path, stem: str) -> str:
 
 
 def v2_json_path_for_candidate(out_dir: Path, stem: str, candidate_path: Path) -> Path:
-    tag = checkpoint_tag_for_candidate(candidate_path, stem)
+    return v2_json_path_for_tag(out_dir, stem, checkpoint_tag_for_candidate(candidate_path, stem))
+
+
+def v2_json_path_for_tag(out_dir: Path, stem: str, tag: str) -> Path:
     tag = re.sub(r"[^A-Za-z0-9_-]+", "", tag).strip() or "final"
     return out_dir / f"{stem}.{tag}v2.json"
 
 
 def v2_preview_path_for_candidate(out_dir: Path, stem: str, candidate_path: Path) -> Path:
-    tag = checkpoint_tag_for_candidate(candidate_path, stem)
+    return v2_preview_path_for_tag(out_dir, stem, checkpoint_tag_for_candidate(candidate_path, stem))
+
+
+def v2_preview_path_for_tag(out_dir: Path, stem: str, tag: str) -> Path:
     tag = re.sub(r"[^A-Za-z0-9_-]+", "", tag).strip() or "final"
     return out_dir / f"{stem}.preview.{tag}v2.png"
 
@@ -1012,7 +1035,7 @@ def main() -> int:
         print(f"Preprocessed image:     {preprocess_output_path}")
     interrupted = run_generator(generation_image_path, v2_settings_path, out_dir, stem, stop_file=stop_file)
 
-    raw_candidates = collect_candidate_jsons(out_dir, stem)
+    raw_candidates = collect_candidate_jsons(out_dir, stem, max_checkpoint=raw_stop)
     if not raw_candidates:
         print("No generator JSON outputs found after V2 run.", file=sys.stderr)
         return 1
@@ -1024,35 +1047,66 @@ def main() -> int:
     candidate_records = []
     repair_enabled = bool(args.enable_repair and not args.disable_refine)
     for index, candidate_path in enumerate(raw_candidates):
-        payload = normalize_payload(candidate_path)
-        background = background_shape(payload)
-        drawables = drawable_shapes(payload)
-        raw_count = len(drawables)
+        try:
+            payload = normalize_payload(candidate_path)
+            background = background_shape(payload)
+            drawables = drawable_shapes(payload)
+            raw_count = len(drawables)
+            checkpoint_number = raw_checkpoint_number(candidate_path, stem)
+            checkpoint_tag = checkpoint_tag_for_candidate(candidate_path, stem)
+            if checkpoint_number is not None and checkpoint_number > raw_stop:
+                if checkpoint_number == raw_stop + 1 and raw_count <= raw_stop:
+                    checkpoint_tag = str(raw_stop)
+                    print(
+                        f"Normalizing checkpoint name {candidate_path.name} to {checkpoint_tag} "
+                        f"because it contains {raw_count} drawable layers.",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"Checkpoint {candidate_path.name} is above requested raw stop {raw_stop}; "
+                        "V2 will cap the import output.",
+                        flush=True,
+                    )
 
-        full_w, full_h = canvas_size_from_payload(payload)
-        score_h, score_w = score_rgba.shape[:2]
-        sx = score_w / float(max(1, full_w))
-        sy = score_h / float(max(1, full_h))
+            full_w, full_h = canvas_size_from_payload(payload)
+            score_h, score_w = score_rgba.shape[:2]
+            sx = score_w / float(max(1, full_w))
+            sy = score_h / float(max(1, full_h))
 
-        scaled_bg = dict(background)
-        bg_color = list(background.get("color", [0, 0, 0, 0]))
-        scaled_bg["color"] = bg_color
+            scaled_bg = dict(background)
+            bg_color = list(background.get("color", [0, 0, 0, 0]))
+            scaled_bg["color"] = bg_color
 
-        scaled_drawables = [scale_shape(shape, sx, sy) for shape in drawables]
-        should_prune = args.enable_prune or raw_count > drawable_target_shapes
-        if should_prune:
-            kept_scaled, error = prune_to_target(scaled_bg, scaled_drawables, score_rgba, drawable_target_shapes)
-            kept_indices = []
-            scaled_map = {id(shape): idx for idx, shape in enumerate(scaled_drawables)}
-            for kept_shape in kept_scaled:
-                kept_indices.append(scaled_map[id(kept_shape)])
-            kept_original = [drawables[idx] for idx in kept_indices]
-            final_count = len(kept_original)
-        else:
-            _, _, _, _, _, total_error, scored_pixels = render_and_score(scaled_bg, scaled_drawables, score_rgba)
-            error = normalized_error(total_error, scored_pixels)
-            kept_original = list(drawables)
-            final_count = len(kept_original)
+            if raw_count > raw_stop:
+                print(
+                    f"Checkpoint {candidate_path.name} has {raw_count} drawable layers, above raw stop {raw_stop}; "
+                    "V2 will cap it before import output.",
+                    flush=True,
+                )
+
+            scaled_drawables = [scale_shape(shape, sx, sy) for shape in drawables]
+            should_prune = args.enable_prune or raw_count > drawable_target_shapes
+            if should_prune:
+                kept_scaled, error = prune_to_target(scaled_bg, scaled_drawables, score_rgba, drawable_target_shapes)
+                kept_indices = []
+                scaled_map = {id(shape): idx for idx, shape in enumerate(scaled_drawables)}
+                for kept_shape in kept_scaled:
+                    kept_indices.append(scaled_map[id(kept_shape)])
+                kept_original = [drawables[idx] for idx in kept_indices]
+                final_count = len(kept_original)
+            else:
+                _, _, _, _, _, total_error, scored_pixels = render_and_score(scaled_bg, scaled_drawables, score_rgba)
+                error = normalized_error(total_error, scored_pixels)
+                kept_original = list(drawables)
+                final_count = len(kept_original)
+        except Exception as exc:
+            print(
+                f"Skipping candidate {candidate_path.name}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            continue
         candidate_records.append(
             {
                 "index": index,
@@ -1066,8 +1120,12 @@ def main() -> int:
                 "base_error": error,
                 "canvas_size": [full_w, full_h],
                 "scale": [sx, sy],
+                "checkpoint_tag": checkpoint_tag,
             }
         )
+    if not candidate_records:
+        print("No usable generator JSON checkpoints remained after V2 validation.", file=sys.stderr)
+        return 1
 
     repair_indices = select_top_checkpoint_indices(candidate_records, args.repair_candidate_limit) if repair_enabled else set()
     preview_indices = select_top_checkpoint_indices(candidate_records, args.preview_candidate_limit)
@@ -1107,23 +1165,44 @@ def main() -> int:
         final_error = record["base_error"]
         repair_applied = repair_enabled and int(record["index"]) in repair_indices
         if repair_applied:
-            scaled_bg = dict(background)
-            scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
-            scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
-            refined_scaled, refined_error, refinement = repair_shapes(scaled_bg, scaled_selected, score_rgba)
-            final_shapes = [unscale_shape(shape, sx, sy) for shape in refined_scaled]
-            final_error = refined_error
+            try:
+                scaled_bg = dict(background)
+                scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
+                scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
+                refined_scaled, refined_error, refinement = repair_shapes(scaled_bg, scaled_selected, score_rgba)
+                final_shapes = [unscale_shape(shape, sx, sy) for shape in refined_scaled]
+                final_error = refined_error
+            except Exception as exc:
+                refinement = dict(refinement)
+                refinement.update({
+                    "enabled": True,
+                    "failed": True,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                print(
+                    f"Targeted repair failed for {candidate_path.name}: {type(exc).__name__}: {exc}. "
+                    "Using the pruned base candidate.",
+                    file=sys.stderr,
+                    flush=True,
+                )
         if len(final_shapes) > drawable_target_shapes:
-            scaled_bg = dict(background)
-            scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
-            scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
-            capped_scaled, capped_error = prune_to_target(scaled_bg, scaled_selected, score_rgba, drawable_target_shapes)
-            final_shapes = [unscale_shape(shape, sx, sy) for shape in capped_scaled]
-            final_error = capped_error
+            try:
+                scaled_bg = dict(background)
+                scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
+                scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
+                capped_scaled, capped_error = prune_to_target(scaled_bg, scaled_selected, score_rgba, drawable_target_shapes)
+                final_shapes = [unscale_shape(shape, sx, sy) for shape in capped_scaled]
+                final_error = capped_error
+            except Exception as exc:
+                final_shapes = final_shapes[:drawable_target_shapes]
+                final_error = record["base_error"]
+                refinement = dict(refinement)
+                refinement["hard_cap_failed"] = f"{type(exc).__name__}: {exc}"
             refinement = dict(refinement)
             refinement["after_hard_cap"] = final_error
-        final_json_path = v2_json_path_for_candidate(out_dir, stem, candidate_path)
-        final_preview_path = v2_preview_path_for_candidate(out_dir, stem, candidate_path)
+        checkpoint_tag = record["checkpoint_tag"]
+        final_json_path = v2_json_path_for_tag(out_dir, stem, checkpoint_tag)
+        final_preview_path = v2_preview_path_for_tag(out_dir, stem, checkpoint_tag)
         final_payload = {"shapes": [background] + final_shapes}
         save_json(final_json_path, final_payload)
         preview_written = int(record["index"]) in preview_indices
@@ -1147,7 +1226,7 @@ def main() -> int:
                 "v2_json": str(final_json_path),
                 "v2_preview": str(final_preview_path),
                 "preview_written": preview_written,
-                "checkpoint_tag": checkpoint_tag_for_candidate(candidate_path, stem),
+                "checkpoint_tag": checkpoint_tag,
             }
         )
         repair_label = "repaired" if repair_applied else ("repair skipped" if repair_enabled else "repair off")
