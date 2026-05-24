@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DistRoot = Join-Path $Root "dist"
-$PackageDir = Join-Path $DistRoot "forza-painter-fh6"
-$ZipPath = Join-Path $DistRoot "forza-painter-fh6.zip"
+$PackageDir = Join-Path $DistRoot "kloudys-fh6-painter"
+$ZipPath = Join-Path $DistRoot "kloudys-fh6-painter.zip"
 
 $include = @(
     "README.md",

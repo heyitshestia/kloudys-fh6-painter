@@ -1,20 +1,31 @@
-# forza-painter FH6
+# Kloudy's FH6 Painter
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-Generate Forza Horizon 6 Vinyl Group layers from images. The desktop app handles generation, preview, and import in one place. Normal users do not need to type memory addresses.
+FH6-focused image-to-vinyl workflow for **Forza Horizon 6**.
 
-> **If the result looks blurry:** raise `Random samples` first. Values above **200000** usually make a major quality difference; higher values are clearer but take much longer to generate.
+This fork combines:
 
-> Import walkthrough video: https://www.bilibili.com/video/BV1hG5Z6nENZ  
-> GPU generator reference: https://github.com/zjl88858/forza-painter-geometrize-gpu
+- a desktop app for generation, preview, import, and FH6 tools
+- a bundled GPU/OpenCL ellipse generator
+- FH6-safe import logic
+- V2 checkpoint selection, pruning, and optional targeted repair
 
-This tool has two jobs:
+This is a derivative of the original `forza-painter` workflow and keeps the original license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
 
-- Generate geometry JSON with the bundled GPU/OpenCL generator.
-- Import JSON into the currently open FH6 Vinyl Group Editor.
+## What This Fork Changes
 
-Normal use does not require manual memory addresses. For FH6 import, select the game process, enter the template layer count, then import.
+Compared with the older public `forza-painter` package flow, this repo is centered around:
+
+- **FH6 import** instead of FH4/FH5
+- a **desktop Python app** instead of mainly drag-and-drop helpers
+- the bundled **GPU/OpenCL generator** `forza-painter-geometrize-go.exe`
+- **V2 generation orchestration** in [forza_generator_v2.py](forza_generator_v2.py)
+- FH6-specific tooling such as:
+  - layer table auto-locate
+  - diagnostics
+  - shape dumping
+  - importer experiments
 
 ## Preview
 
@@ -36,21 +47,18 @@ Normal use does not require manual memory addresses. For FH6 import, select the 
 
 ## Quick Start
 
-1. Download this repository as a ZIP and extract it.
-2. Install 64-bit Python. Python 3.12 is recommended.
-3. Double-click `install_dependencies.bat`.
-4. Double-click `start_app.bat`.
-5. In FH6, open Vinyl Group Editor, load a sphere template, then Ungroup it.
-6. Generate JSON in the app, open the Import page, enter the template layer count, then import.
-
-## Setup
-
-Most users only need to run:
+1. Download or clone this repository.
+2. Install 64-bit Python. Python `3.12` is recommended.
+3. Run:
 
 ```text
 install_dependencies.bat
 start_app.bat
 ```
+
+4. In FH6, open `Vinyl Group Editor`, load a simple sphere template, then `Ungroup` it.
+5. Generate JSON in the app.
+6. Open `Import`, enter the exact template layer count, then import the selected JSON.
 
 If the app does not start, run:
 
@@ -58,113 +66,280 @@ If the app does not start, run:
 check_environment.bat
 ```
 
-The core Python app only needs `psutil` and `pywin32`. Image/JSON preview uses optional NumPy/OpenCV dependencies; the installer may skip them on Python versions where preview packages are likely to conflict.
+## What The App Does
+
+This project has two main jobs:
+
+1. Generate geometry JSON from an image.
+2. Import that JSON into the currently open FH6 vinyl group.
+
+The normal workflow does **not** require typing memory addresses manually.
+
+## Generator Stack
+
+Generation in this repo is split into two layers:
+
+### 1. Raw generator
+
+The bundled raw generator is:
+
+```text
+forza-painter-geometrize-go.exe
+```
+
+It is the OpenCL/GPU generator from [vendor/forza-painter-geometrize-gpu-patched](vendor/forza-painter-geometrize-gpu-patched), not the older CPU-first path.
+
+Important raw-generator traits:
+
+- GPU/OpenCL evaluation
+- ellipse-only primitive search
+- transparent PNG awareness
+- local delta-error updates instead of full-image recompute
+
+### 2. V2 wrapper
+
+The app does not call the raw generator directly. It runs it through:
+
+- [forza_generator_v2.py](forza_generator_v2.py)
+
+V2 adds:
+
+- overshoot generation
+- checkpoint collection
+- optional pruning to the target drawable count
+- optional targeted repair
+- FH6 boundary-layer awareness
+
+## Preset Families
+
+The current preset system is not the old `extremely fast / fast / balanced / slow / super slow` set anymore.
+
+The main bundled families are:
+
+- **Anime Livery**
+- **Ultra Sharp**
+- **Smart Detail**
+- **Soft Detail**
+
+Each family currently has:
+
+- `1000`
+- `2000`
+- `3000`
+
+variants, and many of them also have a:
+
+- **Luma Bands**
+
+variant.
+
+### Preset Intent
+
+- **Anime Livery**
+  - strongest silhouette-first behavior
+  - best fit for flat-color anime, decal, and livery-style cutouts
+- **Ultra Sharp**
+  - most aggressive edge/detail bias
+  - good for harder edges and cleaner line separation
+- **Smart Detail**
+  - middle ground
+  - general-purpose choice when you do not want the extremes
+- **Soft Detail**
+  - smoother and less aggressive
+  - better for gentler transitions, worse for very hard cutouts
+
+### Common bundled 3000-layer presets
+
+| Preset | Random samples | Mutated samples | Max resolution | Shape mode | Preprocess |
+| --- | ---: | ---: | ---: | --- | --- |
+| Anime Livery 3000 | 34000 | 2600 | 1350 | `mixed_edge_bias` | none |
+| Anime Livery 3000 + Luma Bands | 34000 | 2600 | 1350 | `mixed_edge_bias` | `luma_bands` |
+| Ultra Sharp 3000 | 45000 | 3500 | 1400 | `mixed_edge_bias` | none |
+| Smart Detail 3000 | 36000 | 2800 | 1350 | `mixed_smart_detail` | none |
+| Soft Detail 3000 | 30000 | 2400 | 1300 | `mixed_soft_detail` | none |
+
+Settings live in [settings](settings).
+
+## What Luma Bands Actually Is
+
+`Luma Bands` is a **preprocess pass**, not a different primitive engine.
+
+What it does:
+
+1. takes the source image
+2. quantizes/bands the luminance channel
+3. keeps the original alpha
+4. sends that preprocessed image into the normal generator pipeline
+
+In other words, it is closer to:
+
+- “generate from a luma-banded intermediate PNG”
+
+than:
+
+- “change the raw shape solver”
+
+This is controlled by:
+
+- `v2PreprocessMode = luma_bands`
+
+in the preset `.ini` files.
+
+Use it when:
+
+- flat-value separation matters more than soft shading
+- you want cleaner region separation
+- the source has noisy or mushy midtones
+
+Avoid it when:
+
+- the image depends on subtle soft gradients
+- the banding itself makes the source look worse
+
+## What Targeted Repair Does
+
+`Targeted repair` is an **optional V2 post-pass**.
+
+It does **not** change the raw generator during the initial search.
+
+It runs after a candidate has already been selected and pruned, then:
+
+- finds locally bad shapes
+- focuses on edge spill, transparent-hole problems, and poor local fit
+- tries small edits like:
+  - move
+  - shrink
+  - small rotation changes
+  - alpha reduction
+- keeps only improvements
+
+What it is good for:
+
+- transparent cutouts
+- awkward halos
+- border cleanup
+- reducing obviously over-fat blobs near holes or edges
+
+What it is **not**:
+
+- a replacement for good presets
+- a replacement for enough random samples
+- a new primitive type
+
+Current default state:
+
+- all bundled presets ship with:
+  - `v2EnableRepair = false`
+- the app checkbox is off by default
+
+So repair is available, but it is **not active unless you turn it on**.
 
 ## Generate JSON
 
-1. Open the `Generate JSON` page.
-2. Click `Add images` and choose PNG/JPG/BMP images.
-3. Select a quality preset.
-4. Optional: enable `Use custom settings` to change output layers, resolution, random samples, and mutated samples in the app.
-5. Click the fixed bottom `Start generating` button.
-6. Wait for the preview and logs to update.
+1. Open the `Generate JSON` tab.
+2. Choose one image.
+3. Select a preset.
+4. Optional: enable `Use custom settings` and override:
+   - output layers
+   - max resolution
+   - random samples
+   - mutated samples
+   - checkpoint save list
+5. Optional: enable `Targeted repair`.
+6. Click `Generate with current settings`.
+7. Watch the preview and logs.
 
-Generated files are saved beside the source image, for example:
+Generated JSON goes under [imgs/generated](imgs/generated), grouped by source image hash.
 
-```text
-image.500.json
-image.1000.json
-image.3000.json
-```
+The import page and checkpoint browser can then pick up:
 
-One image can generate multiple checkpoint JSON files. Prefer the highest-layer JSON that matches your template; for example, use `image.3000.json` or the final `image.json` with a 3000-layer template. Importing a 500-layer JSON into a 3000-layer template will look blurry.
+- raw checkpoints
+- V2 outputs
+- final previews
 
-Current preset differences:
+## How To Pick A Good Output
 
-| Preset | Output layers | Random samples | Use case |
-| --- | ---: | ---: | --- |
-| extremely fast | 500 | 30000 | Quick composition checks |
-| fast | 1000 | 60000 | Quick usable drafts |
-| balanced | 1800 | 120000 | Recommended default |
-| slow | 2500 | 220000 | Final quality; starts using the 200k+ quality range |
-| super slow | 3000 | 350000 | Best clarity, very slow |
+This repo is intentionally built around checkpoint choice.
 
-## Quality And Custom Settings
+General rule:
 
-Later presets are usually slower and cleaner.
+- use the **highest layer count that still looks clean**
+- do not assume “more shapes is always better”
 
-- `extremely fast`: quick composition tests.
-- `fast`: quick usable output.
-- `balanced`: recommended default.
-- `slow`: higher quality and 200k+ random samples.
-- `super slow`: slowest bundled preset for final output.
+Often:
 
-Custom settings only affect the current run. Common fields:
+- a mid checkpoint may look cleaner than the very last raw checkpoint
+- V2 may prefer a smaller cleaned checkpoint over a later noisier one
 
-- `Output layers`: maximum layer count.
-- `Max resolution`: maximum processing resolution.
-- `Random samples`: more candidates, slower generation.
-- `Mutated samples`: more optimization, slower generation.
-- `Save checkpoints`: JSON checkpoints to save, for example `500,1000,1500,3000`.
+If the import looks blurry:
+
+- you probably used too few shapes
+- or imported a small checkpoint into a large template
+
+If the import looks heavy or muddy:
+
+- the preset is wrong for the source
+- or the source should use a Luma Bands variant
+- or the shape count ran past the image’s useful detail budget
 
 ## Prepare FH6
 
 1. Start Forza Horizon 6.
 2. Open `Create Vinyl Group` / `Vinyl Group Editor`.
-3. Load a template made from many simple sphere layers.
-4. `Ungroup` the template.
-5. Remember the exact layer count shown in game.
-6. Keep this editor open while importing.
+3. Load a template built from many simple sphere layers.
+4. `Ungroup` it.
+5. Keep the editor open while importing.
+6. Remember the exact layer count shown in-game.
 
-Recommended template size: 500 to 3000 layers.
+Recommended template range:
+
+- `500` to `3000` layers
+
+Important FH6 rule:
+
+- FH needs **4 reserved boundary layers** for correct cover/apply behavior
+
+So:
+
+- a `2000` template gives about `1996` drawable layers
+- a `3000` template gives about `2996` drawable layers
 
 ## Import JSON
 
-1. Open the `Import` page.
+1. Open the `Import` tab.
 2. Click `Refresh` and select the running `forzahorizon6.exe`.
 3. Enter the current in-game template layer count.
-4. Add the generated `.json`, or click `Use generated JSON`.
-5. Leave advanced address fields empty.
+4. Add a JSON file, or use one of the generated V2 outputs.
+5. Leave advanced addresses empty unless you know exactly what you are doing.
 6. Click `Import JSON`.
 
-The app locates and verifies the current FH6 layer table before writing. If the target cannot be verified safely, it stops before writing.
+The app attempts to locate and verify the current FH6 layer table before writing.
 
-> FH needs 4 extra boundary layers to save the cover and apply bounds correctly.  
-> Example: a 1000-layer JSON should use at least a 1004-layer template; a 3000-layer template can import about 2996 drawable shapes.
+If the target cannot be verified safely, it stops before writing.
 
-## Rules
+## FH6 Rules
 
 - The template must be ungrouped.
 - The layer count in the app must exactly match the game.
-- Do not switch game menus while importing.
+- Do not switch menus while importing.
 - After restarting the game, reloading the template, or changing layer count, import again with the new correct count.
 - If JSON has fewer layers than the template, unused template layers are hidden.
 - If JSON has more layers than the template, extra shapes are trimmed.
-- If the imported image looks blurry, you probably imported a low-layer checkpoint or generated too few output layers.
 - Transparent PNG backgrounds are not imported as visible backgrounds.
-
-## Changelog
-
-### 2026-05-19
-
-- The GPU/OpenCL generator was updated to the upstream canary build to improve transparent PNG edges and large overhang artifacts.
-- Import and preview now normalize geometry JSON first, improving compatibility with common legacy forza-painter JSON field formats.
-
-### 2026-05-18
-
-- JSON generation now uses the bundled GPU/OpenCL generator to reduce artifacts from the old generator.
-- The app now uses a standalone desktop window with generation, import, preview, and tutorial pages in one place.
-- The Generate page has quality presets plus in-app custom settings, so users no longer need to edit config files manually.
-- The Import page is simplified for normal users: select the game process, enter the template layer count, choose JSON, then import.
-- Fixed an FH6 issue where the design was visible in the editor but saved with a blank cover, pasted blank onto the car, or appeared blank after copying to another vinyl.
-- FH import now reserves 4 boundary layers so FH can calculate the saved cover and apply bounds correctly.
-- Added environment checks and troubleshooting notes for Python, OpenCL, permissions, and optional preview dependencies.
 
 ## Troubleshooting
 
 ### GPU Generator Or OpenCL Error
 
-Update the NVIDIA/AMD/Intel graphics driver. The bundled generator is `forza-painter-geometrize-go.exe` and uses OpenCL.
+Update the NVIDIA/AMD/Intel graphics driver.
+
+The bundled generator is:
+
+```text
+forza-painter-geometrize-go.exe
+```
+
+and it uses OpenCL.
 
 ### Python Or Dependency Error
 
@@ -174,17 +349,22 @@ Run:
 install_dependencies.bat
 ```
 
-Then run:
+Then:
 
 ```powershell
 check_environment.bat
 ```
 
-`Core OK` means the Python dependencies are installed.
-
 ### `_ARRAY_API not found`, NumPy, Or OpenCV Error
 
-This is an optional preview dependency issue. It does not block JSON generation or FH6 import. Reinstall core dependencies first:
+That is an optional preview dependency problem.
+
+It does **not** block:
+
+- JSON generation
+- FH6 import
+
+Reinstall core requirements first:
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -192,35 +372,48 @@ python -m pip install -r requirements.txt
 
 ### `OpenProcess` Or Permission Error
 
-Close the app and run `start_app.bat` as administrator.
+Run `start_app.bat` as administrator.
 
-JSON generation does not need administrator permission. FH6 import usually does.
-
-### Game Process Not Found
-
-Start FH6 first, then click `Refresh`. If it still does not appear, restart the app.
+Generation usually does not need admin rights. Import usually does.
 
 ### No Safe Template Found
 
 Check:
 
-- You are in Vinyl Group Editor.
-- The template is ungrouped.
-- The layer count is exact.
-- You did not switch menus after entering the count.
+- FH6 is still open
+- you are still inside Vinyl Group Editor
+- the template is ungrouped
+- the layer count is exact
 
 ### Import Looks Cut Off
 
-The template has too few layers. Use a larger template or generate fewer JSON layers.
+The template does not have enough layers.
 
-## Files
+Use a larger template, or generate fewer drawable layers.
+
+## Included Files
 
 Most users only need:
 
-- `install_dependencies.bat`: install Python dependencies.
-- `start_app.bat`: start the app.
-- `check_environment.bat`: check the environment.
-- `clean_runtime_data.bat`: remove runtime caches before publishing or re-zipping.
-- `1. drag_image_file_here.bat`: optional shortcut for dragging an image into the app.
+- `install_dependencies.bat`
+- `start_app.bat`
+- `check_environment.bat`
+- `clean_runtime_data.bat`
+- `1. drag_image_file_here.bat`
 
-Do not publish runtime cache folders such as `webui-data`, `runtime`, `__pycache__`, or `dist`.
+Main source files:
+
+- [app.py](app.py)
+- [main.py](main.py)
+- [forza_generator_v2.py](forza_generator_v2.py)
+- [generator_backend.py](generator_backend.py)
+- [fh6_probe.py](fh6_probe.py)
+
+## Credits
+
+This repo is a modified derivative of:
+
+- original `forza-painter`
+- the bundled geometrize/OpenCL generator project credited in [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu)
+
+Original and upstream work should still be credited when redistributing this project.
