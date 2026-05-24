@@ -1046,18 +1046,27 @@ def main() -> int:
         print(f"Preprocessed image:     {preprocess_output_path}")
     interrupted = run_generator(generation_image_path, v2_settings_path, out_dir, stem, stop_file=stop_file)
 
+    print("RAW GENERATION COMPLETE. V2 finalization is starting now; do not close the app yet.", flush=True)
+    print("V2 outputs are the import-ready final JSONs. Raw checkpoints are not final.", flush=True)
+
     raw_candidates = collect_candidate_jsons(out_dir, stem, max_checkpoint=raw_stop)
     if not raw_candidates:
         print("No generator JSON outputs found after V2 run.", file=sys.stderr)
         return 1
     if interrupted:
         print("Continuing V2 finalization from interrupted checkpoints.")
+    print(
+        f"V2 finalization: found {len(raw_candidates)} raw checkpoint JSON(s). "
+        "Scoring and preparing final import files...",
+        flush=True,
+    )
 
     score_rgba = downscale_rgba(processed_rgba, args.score_size)
 
     candidate_records = []
     repair_enabled = bool(args.enable_repair and not args.disable_refine)
     for index, candidate_path in enumerate(raw_candidates):
+        print(f"V2 scoring {index + 1}/{len(raw_candidates)}: {candidate_path.name}", flush=True)
         try:
             payload = normalize_payload(candidate_path)
             background = background_shape(payload)
@@ -1159,8 +1168,13 @@ def main() -> int:
         )
 
     results = []
-    for record in candidate_records:
+    print(
+        f"V2 finalization: writing final import JSONs for {len(candidate_records)} candidate(s)...",
+        flush=True,
+    )
+    for result_index, record in enumerate(candidate_records, start=1):
         candidate_path = record["candidate_path"]
+        print(f"V2 finalizing {result_index}/{len(candidate_records)}: {candidate_path.name}", flush=True)
         background = record["background"]
         raw_count = record["raw_drawables"]
         full_w, full_h = record["canvas_size"]
@@ -1369,6 +1383,7 @@ def main() -> int:
         print("Stopped early by request. Every usable checkpoint was finalized, including the latest saved checkpoint.")
     else:
         print("V2 outputs written for every usable checkpoint. Pick the one you want in the JSON browser.")
+    print("V2 FINALIZATION COMPLETE. Import-ready JSONs are now available in the JSON browser.", flush=True)
 
     if not args.keep_temp_settings:
         try:

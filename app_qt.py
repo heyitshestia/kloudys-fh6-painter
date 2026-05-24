@@ -1246,7 +1246,14 @@ class MainWindow(QMainWindow):
                 continue
             friendly = self.friendly_generator_line(raw)
             if friendly and friendly != last_message:
-                if friendly.startswith(("Generated layer ", "Step ", "Retry ")):
+                if friendly.startswith((
+                    "Generated layer ",
+                    "Step ",
+                    "Retry ",
+                    "Raw generator finished",
+                    "V2 ",
+                    "RAW GENERATION COMPLETE",
+                )):
                     self.bus.progress.emit(friendly)
                 self.bus.log.emit(friendly)
                 last_message = friendly
@@ -1272,7 +1279,35 @@ class MainWindow(QMainWindow):
             if retrying:
                 return f"Retry {retrying.group(1)}/{retrying.group(2)} at layer {current}/{total}"
             return None
-        important = ("Generating raw V2", "Target drawable", "Using settings:", "Preprocess mode:", "Preprocessed image:", "Candidate ", "Best accuracy:", "Selected final:", "Final JSON:", "Final preview:", "Report:", "Loaded image:", "Settings:", "FINISHED")
+        if text == "FINISHED":
+            return "Raw generator finished. V2 finalization is still running; final import JSONs are not ready yet."
+        important = (
+            "Generating raw V2",
+            "Target template",
+            "Target drawable",
+            "Raw generator stop:",
+            "Using settings:",
+            "Preprocess mode:",
+            "Preprocessed image:",
+            "RAW GENERATION COMPLETE",
+            "V2 outputs are",
+            "V2 finalization:",
+            "V2 scoring ",
+            "V2 finalizing ",
+            "V2 FINALIZATION COMPLETE",
+            "Continuing V2 finalization",
+            "Candidate ",
+            "Best accuracy:",
+            "Latest checkpoint V2:",
+            "V2 JSON:",
+            "V2 preview:",
+            "Selected final:",
+            "Final JSON:",
+            "Final preview:",
+            "Report:",
+            "Loaded image:",
+            "Settings:",
+        )
         if text.startswith(important) or any(word in text.lower() for word in ("error", "failed", "traceback", "panic")):
             return text
         return None
