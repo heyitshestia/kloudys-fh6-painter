@@ -2,7 +2,31 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-FH6-focused image-to-vinyl workflow for **Forza Horizon 6**.
+Image-to-vinyl generator and importer for **Forza Horizon 6**.
+
+## Install First
+
+**Do not run the app first. Do not run checks first. Do not open FH6 first.**
+
+Before doing anything else:
+
+1. Install **64-bit Python 3.12**
+   - Download: https://www.python.org/downloads/release/python-31210/
+2. Run:
+
+```text
+install_dependencies.bat
+```
+
+3. Only after that, run:
+
+```text
+start_app.bat
+```
+
+`install_dependencies.bat` now also adds the detected Python 3.12 and Scripts folders to your user `PATH`.
+
+## Repo Summary
 
 This fork combines:
 
@@ -48,17 +72,23 @@ Compared with the older public `forza-painter` package flow, this repo is center
 ## Quick Start
 
 1. Download or clone this repository.
-2. Install 64-bit Python. Python `3.12` is recommended.
-3. Run:
+2. Install **64-bit Python 3.12**:
+   - https://www.python.org/downloads/release/python-31210/
+3. **Before doing anything else**, run:
 
 ```text
 install_dependencies.bat
+```
+
+4. Then run:
+
+```text
 start_app.bat
 ```
 
-4. In FH6, open `Vinyl Group Editor`, load a simple sphere template, then `Ungroup` it.
-5. Generate JSON in the app.
-6. Open `Import`, enter the exact template layer count, then import the selected JSON.
+5. In FH6, open `Vinyl Group Editor`, load a simple sphere template, then `Ungroup` it.
+6. Generate JSON in the app.
+7. Open `Import`, enter the exact template layer count, then import the selected JSON.
 
 If the app does not start, run:
 

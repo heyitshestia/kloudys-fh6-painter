@@ -5,7 +5,8 @@ set "PYTHONDONTWRITEBYTECODE=1"
 
 call :find_python
 if errorlevel 1 (
-    echo No usable Python was found. Install 64-bit Python 3.10 or newer.
+    echo No usable Python 3.12 installation was found.
+    echo Install 64-bit Python 3.12 first, then run install_dependencies.bat.
     pause
     exit /b 1
 )
@@ -13,7 +14,8 @@ if errorlevel 1 (
 echo Using %PYTHON_CMD%
 %PYTHON_CMD% -c "import sys, psutil, win32api; print('Core OK:', sys.version.split()[0])"
 if errorlevel 1 (
-    echo Core dependencies are missing. Run install_dependencies.bat.
+    echo Core dependencies are missing.
+    echo Run install_dependencies.bat before doing anything else.
     pause
     exit /b 1
 )
@@ -27,14 +29,12 @@ pause
 exit /b 0
 
 :find_python
-for %%V in (3.12 3.11 3.10 3.13) do (
-    py -%%V -c "import sys; raise SystemExit(0 if sys.maxsize > 2**32 else 1)" >nul 2>nul
-    if not errorlevel 1 (
-        set "PYTHON_CMD=py -%%V"
-        exit /b 0
-    )
+py -3.12 -c "import sys; raise SystemExit(0 if sys.maxsize > 2**32 else 1)" >nul 2>nul
+if not errorlevel 1 (
+    set "PYTHON_CMD=py -3.12"
+    exit /b 0
 )
-python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) and sys.maxsize > 2**32 else 1)" >nul 2>nul
+python -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32 else 1)" >nul 2>nul
 if not errorlevel 1 (
     set "PYTHON_CMD=python"
     exit /b 0
