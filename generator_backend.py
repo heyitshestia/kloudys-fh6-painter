@@ -216,6 +216,11 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
     image_path = Path(image_path)
     values = setting.get("values", {})
     target_shapes = str(values.get("stopAt", "3000"))
+    try:
+        target_count = int(target_shapes)
+    except (TypeError, ValueError):
+        target_count = 3000
+    checkpoint_step = "250" if target_count <= 1000 else "500"
     preprocess_mode = values.get("v2PreprocessMode", "none")
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
     cmd = [
@@ -229,6 +234,8 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         str(generator_output_dir(image_path)),
         "--target-shapes",
         target_shapes,
+        "--checkpoint-step",
+        checkpoint_step,
         "--stop-file",
         str(generator_stop_request_path(image_path)),
         "--preprocess-mode",

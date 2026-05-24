@@ -102,6 +102,24 @@ def parse_args() -> argparse.Namespace:
         help="Enable the targeted local repair pass on the selected final candidate.",
     )
     parser.add_argument(
+        "--repair-candidate-limit",
+        type=int,
+        default=4,
+        help=(
+            "Only run targeted repair on the best N scored checkpoints plus the latest checkpoint. "
+            "Use 0 to repair every checkpoint. Default: 4"
+        ),
+    )
+    parser.add_argument(
+        "--preview-candidate-limit",
+        type=int,
+        default=4,
+        help=(
+            "Only render full V2 preview PNGs for the best N scored checkpoints plus the latest checkpoint. "
+            "Use 0 to render every preview. JSON browser can still preview unrendered files on demand. Default: 4"
+        ),
+    )
+    parser.add_argument(
         "--disable-refine",
         action="store_true",
         help="Deprecated alias. Keeps repair disabled.",
@@ -139,6 +157,7 @@ def write_v2_settings(base_settings: dict[str, str], out_path: Path, target: int
     values["stopAt"] = str(stop_at)
     values["saveAt"] = build_save_points(target, stop_at, checkpoint_step)
     values["saveEvery"] = str(max(1, checkpoint_step))
+    values["previewEvery"] = str(max(1, checkpoint_step))
 
     ordered_keys = [
         "description",
@@ -809,6 +828,18 @@ def select_candidate(results: list[dict], tolerance: float) -> tuple[dict, dict]
     return best_accuracy, selected
 
 
+def select_top_checkpoint_indices(records: list[dict], limit: int) -> set[int]:
+    if limit <= 0 or len(records) <= limit:
+        return set(range(len(records)))
+    selected = {
+        int(item["index"])
+        for item in sorted(records, key=lambda item: (item["base_error"], item["raw_drawables"]))[:limit]
+    }
+    latest = max(records, key=lambda item: (item["raw_drawables"], item["candidate"]))
+    selected.add(int(latest["index"]))
+    return selected
+
+
 def save_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -897,22 +928,11 @@ def main() -> int:
     if interrupted:
         print("Continuing V2 finalization from interrupted checkpoints.")
 
-    for candidate_path in raw_candidates:
-        try:
-            payload = normalize_payload(candidate_path)
-            background = background_shape(payload)
-            drawables = drawable_shapes(payload)
-            full_w, full_h = canvas_size_from_payload(payload)
-            preview = render_import_preview(background, drawables, full_w, full_h)
-            preview.save(preview_path_for_candidate(candidate_path, stem))
-        except Exception as exc:
-            print(f"Warning: failed to regenerate import-style preview for {candidate_path.name}: {exc}")
-
     score_rgba = downscale_rgba(processed_rgba, args.score_size)
 
-    results = []
+    candidate_records = []
     repair_enabled = bool(args.enable_repair and not args.disable_refine)
-    for candidate_path in raw_candidates:
+    for index, candidate_path in enumerate(raw_candidates):
         payload = normalize_payload(candidate_path)
         background = background_shape(payload)
         drawables = drawable_shapes(payload)
@@ -942,16 +962,60 @@ def main() -> int:
             error = normalized_error(total_error, scored_pixels)
             kept_original = list(drawables)
             final_count = len(kept_original)
+        candidate_records.append(
+            {
+                "index": index,
+                "candidate_path": candidate_path,
+                "candidate": candidate_path.name,
+                "background": background,
+                "drawables": drawables,
+                "raw_drawables": raw_count,
+                "base_drawables": final_count,
+                "base_shapes": kept_original,
+                "base_error": error,
+                "canvas_size": [full_w, full_h],
+                "scale": [sx, sy],
+            }
+        )
+
+    repair_indices = select_top_checkpoint_indices(candidate_records, args.repair_candidate_limit) if repair_enabled else set()
+    preview_indices = select_top_checkpoint_indices(candidate_records, args.preview_candidate_limit)
+    if repair_enabled:
+        skipped = len(candidate_records) - len(repair_indices)
+        if skipped > 0:
+            print(
+                f"Smart repair: repairing {len(repair_indices)}/{len(candidate_records)} checkpoints "
+                f"(best scored + latest), skipping {skipped} lower-ranked checkpoints.",
+                flush=True,
+            )
+        else:
+            print(f"Smart repair: repairing all {len(candidate_records)} checkpoints.", flush=True)
+    skipped_previews = len(candidate_records) - len(preview_indices)
+    if skipped_previews > 0:
+        print(
+            f"Smart previews: rendering {len(preview_indices)}/{len(candidate_records)} preview PNGs; "
+            "other JSONs preview on demand in the browser.",
+            flush=True,
+        )
+
+    results = []
+    for record in candidate_records:
+        candidate_path = record["candidate_path"]
+        background = record["background"]
+        raw_count = record["raw_drawables"]
+        full_w, full_h = record["canvas_size"]
+        sx, sy = record["scale"]
         refinement = {
             "enabled": False,
             "touched": 0,
             "improvements": 0,
-            "before": error,
-            "after": error,
+            "before": record["base_error"],
+            "after": record["base_error"],
         }
-        final_shapes = list(kept_original)
-        final_error = error
-        if repair_enabled:
+        final_shapes = list(record["base_shapes"])
+        final_error = record["base_error"]
+        repair_applied = repair_enabled and int(record["index"]) in repair_indices
+        if repair_applied:
             scaled_bg = dict(background)
             scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
             scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
@@ -971,8 +1035,10 @@ def main() -> int:
         final_preview_path = v2_preview_path_for_candidate(out_dir, stem, candidate_path)
         final_payload = {"shapes": [background] + final_shapes}
         save_json(final_json_path, final_payload)
-        preview = render_import_preview(background, final_shapes, full_w, full_h)
-        preview.save(final_preview_path)
+        preview_written = int(record["index"]) in preview_indices
+        if preview_written:
+            preview = render_import_preview(background, final_shapes, full_w, full_h)
+            preview.save(final_preview_path)
         results.append(
             {
                 "candidate": candidate_path.name,
@@ -980,17 +1046,25 @@ def main() -> int:
                 "raw_drawables": raw_count,
                 "final_drawables": len(final_shapes),
                 "error": final_error,
+                "base_error": record["base_error"],
                 "background": background,
                 "kept_shapes": final_shapes,
                 "canvas_size": [full_w, full_h],
                 "scale": [sx, sy],
                 "refinement": refinement,
+                "repair_applied": repair_applied,
                 "v2_json": str(final_json_path),
                 "v2_preview": str(final_preview_path),
+                "preview_written": preview_written,
                 "checkpoint_tag": checkpoint_tag_for_candidate(candidate_path, stem),
             }
         )
-        print(f"Candidate {candidate_path.name}: raw={raw_count} final={len(final_shapes)} error={final_error:.6f}")
+        repair_label = "repaired" if repair_applied else ("repair skipped" if repair_enabled else "repair off")
+        preview_label = "preview" if preview_written else "on-demand preview"
+        print(
+            f"Candidate {candidate_path.name}: raw={raw_count} final={len(final_shapes)} "
+            f"error={final_error:.6f} ({repair_label}, {preview_label})"
+        )
 
     best_accuracy = min(results, key=lambda item: item["error"])
     latest_checkpoint = max(results, key=lambda item: (item["raw_drawables"], item["candidate"]))
@@ -1013,21 +1087,29 @@ def main() -> int:
         "efficiency_tolerance": args.efficiency_tolerance,
         "prune_enabled": args.enable_prune,
         "refine_enabled": repair_enabled,
+        "repair_candidate_limit": args.repair_candidate_limit,
+        "preview_candidate_limit": args.preview_candidate_limit,
         "best_accuracy": {
             "candidate": best_accuracy["candidate"],
             "raw_drawables": best_accuracy["raw_drawables"],
             "final_drawables": best_accuracy["final_drawables"],
             "error": best_accuracy["error"],
+            "base_error": best_accuracy["base_error"],
+            "repair_applied": best_accuracy["repair_applied"],
             "v2_json": best_accuracy["v2_json"],
             "v2_preview": best_accuracy["v2_preview"],
+            "preview_written": best_accuracy["preview_written"],
         },
         "latest_checkpoint_v2": {
             "candidate": latest_checkpoint["candidate"],
             "raw_drawables": latest_checkpoint["raw_drawables"],
             "final_drawables": latest_checkpoint["final_drawables"],
             "error": latest_checkpoint["error"],
+            "base_error": latest_checkpoint["base_error"],
+            "repair_applied": latest_checkpoint["repair_applied"],
             "v2_json": latest_checkpoint["v2_json"],
             "v2_preview": latest_checkpoint["v2_preview"],
+            "preview_written": latest_checkpoint["preview_written"],
         },
         "candidates": [
             {
@@ -1035,9 +1117,12 @@ def main() -> int:
                 "raw_drawables": item["raw_drawables"],
                 "final_drawables": item["final_drawables"],
                 "error": item["error"],
+                "base_error": item["base_error"],
                 "checkpoint_tag": item["checkpoint_tag"],
                 "v2_json": item["v2_json"],
                 "v2_preview": item["v2_preview"],
+                "preview_written": item["preview_written"],
+                "repair_applied": item["repair_applied"],
                 "refinement": item["refinement"],
             }
             for item in sorted(results, key=lambda item: (item["error"], item["final_drawables"]))

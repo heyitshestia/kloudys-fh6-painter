@@ -1335,6 +1335,8 @@ class App:
             return text
         if text.startswith("Preprocessed image:"):
             return text
+        if text.startswith("Smart repair:") or text.startswith("Smart previews:"):
+            return text
         if text.startswith("Candidate "):
             return text
         if text.startswith("Best accuracy:"):

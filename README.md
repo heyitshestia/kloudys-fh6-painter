@@ -147,7 +147,8 @@ The app does not call the raw generator directly. It runs it through:
 V2 adds:
 
 - target-count generation
-- checkpoint collection
+- checkpoint collection with larger default spacing on 2000/3000-layer runs
+- smart checkpoint finalization for faster high-sample runs
 - optional quality overshoot for hard images
 - optional pruning to the target drawable count
 - default-on targeted repair
@@ -279,7 +280,10 @@ Current default state:
 
 - bundled presets do not force repair on
 - the app checkbox starts on by default
+- V2 scores every checkpoint, then repairs the best few checkpoints plus the latest one
 - you can turn it off for faster test runs
+
+This keeps the cleanup advantage without spending repair time on every lower-ranked checkpoint.
 
 ## Generate JSON
 
