@@ -818,6 +818,7 @@ class App:
         self.generated_checkpoint_entries = []
         self.generated_preview_token = 0
         self.browser_preview_token = 0
+        self.live_generation_preview_token = 0
         self.shape_dump_window = None
         self.shape_dump_tree = None
         self.shape_dump_entries = []
@@ -1304,6 +1305,16 @@ class App:
 
     def _quality_overshoot_enabled(self):
         return self.enable_quality_overshoot.get() == "1"
+
+    def _queue_live_generation_json_preview(self, path):
+        self.live_generation_preview_token += 1
+        token = self.live_generation_preview_token
+
+        def _render_preview(json_path, preview_token):
+            data = render_geometry_json(json_path)
+            self.queue.put(("live_generation_preview", (preview_token, data)))
+
+        threading.Thread(target=_render_preview, args=(Path(path), token), daemon=True).start()
 
     def _run_preview_files(self, image_path, run_dir):
         image_path = Path(image_path)
@@ -2070,6 +2081,7 @@ class App:
                         newest = generated_jsons(image_path)
                         if newest and newest[0] != last_preview:
                             last_preview = newest[0]
+                            self._queue_live_generation_json_preview(newest[0])
                         time.sleep(0.1)
                     if self.shutdown_event.is_set():
                         return
@@ -2707,6 +2719,10 @@ class App:
                         self.browser_preview_widget.set_data(data)
                     else:
                         self.browser_preview_widget.clear(tr(self.lang, "preview_unavailable"))
+            elif kind == "live_generation_preview":
+                token, data = payload
+                if token == self.live_generation_preview_token:
+                    self.show_preview(data)
             elif kind == "render_lists":
                 self._render_lists()
         if not self.closed:

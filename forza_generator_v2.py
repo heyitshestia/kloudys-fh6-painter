@@ -441,7 +441,11 @@ def prune_to_target(background: dict, shapes: list[dict], target_rgba: np.ndarra
         if zeroish > 0:
             remove_count = min(excess, zeroish)
         else:
-            remove_count = min(excess, max(1, min(48, excess // 6 if excess > 6 else 1)))
+            # Overshoot checkpoints can be hundreds of shapes over the FH-safe
+            # budget. Remove low-contribution shapes in larger batches so V2
+            # does not spend most of its time re-rendering nearly identical
+            # oversized candidates.
+            remove_count = min(excess, max(1, min(160, excess // 3 if excess > 6 else 1)))
         remove_idx = set(int(i) for i in order[:remove_count])
         working = [shape for idx, shape in enumerate(working) if idx not in remove_idx]
 
