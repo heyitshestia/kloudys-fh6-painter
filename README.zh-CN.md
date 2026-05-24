@@ -20,19 +20,18 @@
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | BVZRays 上游历史中的韩语本地化贡献者。 |
 | heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | 当前 fork：Luma Bands、V2 checkpoint/finalize 调整、Targeted repair 默认开启、checkpoint 浏览器、更新脚本、预设/UI 调整、主题支持和 FH6 导入安全处理。 |
 
-## 先安装
+## 安装顺序
 
-必须先装 **64 位 Python 3.12**：
+先按顺序运行这些文件，不要先打开软件：
 
-https://www.python.org/downloads/release/python-31210/
-
-然后按顺序双击：
-
-```text
-01_add_python312_to_path.bat
-02_install_dependencies.bat
-04_start_app.bat
-```
+| 顺序 | 文件 | 作用 |
+| ---: | --- | --- |
+| 1 | `01_add_python312_to_path.bat` | 查找 Python 3.12；如果没有，会从 python.org 下载并安装官方 64 位 Python 3.12，然后加入 PATH。 |
+| 2 | `02_install_dependencies.bat` | 安装软件需要的 Python 依赖。打开软件前必须先运行。 |
+| 3 | `04_start_app.bat` | 启动 Kloudy's FH6 Painter。 |
+| 可选 | `05_check_environment.bat` | 检查 Python 和依赖是否正确安装。 |
+| 可选 | `03_update_from_github.bat` | 从 GitHub 更新软件文件。运行前先关闭软件。 |
+| 可选 | `99_clean_runtime_data.bat` | 删除运行缓存/生成缓存，用于排错或打包。 |
 
 不要先打开软件。不要先打开游戏。先把 Python 3.12 和依赖装好。
 
@@ -41,6 +40,9 @@ https://www.python.org/downloads/release/python-31210/
 ```text
 05_check_environment.bat
 ```
+
+如果自动安装失败，可以手动下载 Python：
+https://www.python.org/downloads/release/python-31210/
 
 ## 更新
 

@@ -20,35 +20,27 @@ This project exists because several people and upstream projects did the hard fo
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in the BVZRays upstream history. |
 | heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: Luma Bands workflow, V2 checkpoint/finalization changes, targeted repair defaults, checkpoint browser, updater batch, preset/UI changes, theme support, and FH6 import safety adjustments. |
 
-## Read This First
+## Setup Instructions
 
-Run the setup files in this order before doing anything else:
+Run these files in this exact order before doing anything else:
 
-1. Install **64-bit Python 3.12** from the official Python website:
-   https://www.python.org/downloads/release/python-31210/
-2. Double-click:
-
-```text
-01_add_python312_to_path.bat
-```
-
-3. Double-click:
-
-```text
-02_install_dependencies.bat
-```
-
-4. Start the app:
-
-```text
-04_start_app.bat
-```
+| Order | File | What it does |
+| ---: | --- | --- |
+| 1 | `01_add_python312_to_path.bat` | Finds Python 3.12, or downloads and installs official 64-bit Python 3.12 if it is missing. Then adds Python and Scripts to PATH. |
+| 2 | `02_install_dependencies.bat` | Installs all required Python packages. Run this before opening the app. |
+| 3 | `04_start_app.bat` | Starts Kloudy's FH6 Painter. |
+| Optional | `05_check_environment.bat` | Checks whether Python and dependencies are installed correctly. |
+| Optional | `03_update_from_github.bat` | Updates app files from GitHub. Close the app before running it. |
+| Optional | `99_clean_runtime_data.bat` | Deletes runtime/generated cache data for troubleshooting or packaging. |
 
 Do not open the app before installing Python 3.12 and dependencies. If something fails, run:
 
 ```text
 05_check_environment.bat
 ```
+
+Manual Python download if automatic setup fails:
+https://www.python.org/downloads/release/python-31210/
 
 ## Updating
 
