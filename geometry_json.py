@@ -3,6 +3,8 @@ from pathlib import Path
 
 
 RECTANGLE = 1
+ROTATED_RECTANGLE = 2
+ELLIPSE = 8
 ROTATED_ELLIPSE = 16
 
 
@@ -11,6 +13,11 @@ TYPE_ALIASES = {
     "rect": RECTANGLE,
     "rectangle": RECTANGLE,
     "box": RECTANGLE,
+    "2": ROTATED_RECTANGLE,
+    "rotatedrect": ROTATED_RECTANGLE,
+    "rotated_rect": ROTATED_RECTANGLE,
+    "rotated rectangle": ROTATED_RECTANGLE,
+    "8": ELLIPSE,
     "16": ROTATED_ELLIPSE,
     "ellipse": ROTATED_ELLIPSE,
     "ellipsis": ROTATED_ELLIPSE,
@@ -69,7 +76,7 @@ def drawable_shape_count(path):
         color = shape.get("color", [])
         if len(color) == 4 and int(color[3]) <= 0:
             continue
-        if int(shape.get("type", 0)) in (RECTANGLE, ROTATED_ELLIPSE):
+        if int(shape.get("type", 0)) in (RECTANGLE, ROTATED_RECTANGLE, ELLIPSE, ROTATED_ELLIPSE):
             count += 1
     return count
 
@@ -96,7 +103,7 @@ def _normalize_shape(shape):
     if not isinstance(shape, dict):
         return None
     type_id = _normalize_type(_pick(shape, "type", "Type", "shapeType", "ShapeType", "primitive", "Primitive"))
-    if type_id not in (RECTANGLE, ROTATED_ELLIPSE):
+    if type_id not in (RECTANGLE, ROTATED_RECTANGLE, ELLIPSE, ROTATED_ELLIPSE):
         return None
     data = _normalize_data(shape, type_id)
     color = _normalize_color(_pick(shape, "color", "Color", "colour", "Colour", "rgba", "RGBA"))

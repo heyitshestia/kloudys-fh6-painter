@@ -17,7 +17,7 @@ from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Button, Canvas, Checkbutton, E
 import psutil
 
 from game_profiles import PROFILES
-from geometry_json import RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
+from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
 from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, cleanup_generated_outputs, generated_jsons, generated_preview_files, generator_preview_path, geometry_shape_count, load_settings, write_custom_settings
 from generator_backend import generator_output_dir, generator_stop_request_path
 
@@ -705,8 +705,10 @@ def render_geometry_json(path):
                 continue
             r, g, b, a = color
             shape_type = int(shape.get("type", 0))
-            if shape_type == ROTATED_ELLIPSE:
+            if shape_type in (ELLIPSE, ROTATED_ELLIPSE):
                 x, y, w, h, rot_deg = shape["data"]
+                if shape_type == ELLIPSE:
+                    rot_deg = 0
                 center = (int(round(x)), int(round(y)))
                 adj_w, adj_h = compensated_ellipse_size(w, h)
                 axes = (max(1, int(round(adj_h))), max(1, int(round(adj_w))))
@@ -719,16 +721,25 @@ def render_geometry_json(path):
                     old_alpha = alpha_canvas[shape_mask]
                     premul[shape_mask] = src * alpha + premul[shape_mask] * (1.0 - alpha)
                     alpha_canvas[shape_mask] = alpha + old_alpha * (1.0 - alpha)
-            elif shape_type == RECTANGLE:
-                x, y, w, h = shape["data"]
-                x0 = int(round(x - w / 2))
-                y0 = int(round(y - h / 2))
-                x1 = int(round(x + w / 2))
-                y1 = int(round(y + h / 2))
+            elif shape_type in (RECTANGLE, ROTATED_RECTANGLE):
+                if shape_type == ROTATED_RECTANGLE:
+                    x, y, w, h, rot_deg = shape["data"]
+                else:
+                    x, y, w, h = shape["data"]
+                    rot_deg = 0
                 alpha = max(0.0, min(1.0, float(a) / 255.0))
                 if alpha > 0.0:
                     mask = np.zeros((image_h, image_w), np.uint8)
-                    cv2.rectangle(mask, (x0, y0), (x1, y1), 255, thickness=-1)
+                    if shape_type == ROTATED_RECTANGLE:
+                        rect = ((float(x), float(y)), (max(1.0, float(w)), max(1.0, float(h))), float(rot_deg))
+                        box = cv2.boxPoints(rect).astype(np.int32)
+                        cv2.fillConvexPoly(mask, box, 255)
+                    else:
+                        x0 = int(round(x - w / 2))
+                        y0 = int(round(y - h / 2))
+                        x1 = int(round(x + w / 2))
+                        y1 = int(round(y + h / 2))
+                        cv2.rectangle(mask, (x0, y0), (x1, y1), 255, thickness=-1)
                     shape_mask = mask > 0
                     src = np.array((b, g, r), dtype=np.float32)
                     old_alpha = alpha_canvas[shape_mask]
