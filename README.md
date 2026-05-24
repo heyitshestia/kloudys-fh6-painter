@@ -6,6 +6,18 @@ Image-to-vinyl generator and FH6 importer for **Forza Horizon 6**.
 
 This project turns an image into Forza vinyl geometry JSON, then imports that JSON into an open FH6 Vinyl Group Editor template.
 
+## New Launcher And App
+
+Start from the launcher. It checks setup state, checks GitHub for updates, runs first-time setup, and launches the painter app from one place.
+
+| Launcher | Painter app |
+| --- | --- |
+| <img src="docs/screenshots/launcher-overview.png" width="460" alt="Kloudy's FH6 Painter launcher"> | <img src="docs/screenshots/app-generate-workflow.png" width="460" alt="Kloudy's FH6 Painter generate tab"> |
+
+The import tab now has a generated-run browser. Duplicate generations are preserved as previous runs, the newest run is selected automatically, and the recommended safe JSON is listed first.
+
+<img src="docs/screenshots/app-import-json-browser.png" width="920" alt="Generated run JSON browser in the import tab">
+
 ## Thank You / Credits
 
 This project exists because several people and upstream projects did the hard foundational work first. License notices are kept in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
@@ -22,13 +34,26 @@ This project exists because several people and upstream projects did the hard fo
 
 ## Setup Instructions
 
-Run these files in this exact order before doing anything else:
+Recommended start:
+
+```text
+00_launcher.bat
+```
+
+For a fresh install, use the launcher buttons in order:
+
+1. `Setup Python`
+2. `Install Dependencies`
+3. `Launch App`
+
+Manual setup files are still available if you prefer batch files directly:
 
 | Order | File | What it does |
 | ---: | --- | --- |
+| 0 | `00_launcher.bat` | Opens the setup/update launcher. Use this first if you are unsure. |
 | 1 | `01_add_python312_to_path.bat` | Finds Python 3.12, or downloads and installs official 64-bit Python 3.12 if it is missing. Then adds Python and Scripts to PATH. |
 | 2 | `02_install_dependencies.bat` | Installs all required Python packages. Run this before opening the app. |
-| 3 | `04_start_app.bat` | Starts Kloudy's FH6 Painter. |
+| 3 | `04_start_app.bat` | Starts the launcher/app flow. |
 | Optional | `05_check_environment.bat` | Checks whether Python and dependencies are installed correctly. |
 | Optional | `03_update_from_github.bat` | Updates app files from GitHub. Close the app before running it. |
 | Optional | `99_clean_runtime_data.bat` | Deletes runtime/generated cache data for troubleshooting or packaging. |
@@ -44,13 +69,13 @@ https://www.python.org/downloads/release/python-31210/
 
 ## Updating
 
-Use only this file to update:
+Use the launcher update button, or use only this file:
 
 ```text
 03_update_from_github.bat
 ```
 
-Close the app first. Do not update by dragging random files over the folder. The updater pulls the latest GitHub files and preserves generated/runtime output. If Git is missing, the updater installs PortableGit for the current Windows user automatically.
+Close the app first. Do not update by dragging random files over the folder. The updater syncs the latest GitHub files and preserves generated/runtime output. If Git is missing, the updater installs PortableGit for the current Windows user automatically.
 
 ## What It Does
 
@@ -59,11 +84,13 @@ Close the app first. Do not update by dragging random files over the folder. The
 - Adds V2 post-processing for checkpoint handling, pruning, reports, targeted repair, and previews.
 - Imports generated JSON into the currently open FH6 vinyl group.
 - Scans old generated folders on startup so previous checkpoints can be imported later.
+- Provides a launcher with setup, dependency checks, update status, and one-click GitHub sync.
+- Shows generated runs as latest/previous runs and puts the recommended safe JSON first.
 
 ## Quick Workflow
 
 1. Install Python 3.12 and dependencies with the batch files above.
-2. Open the app with `04_start_app.bat`.
+2. Open the launcher with `00_launcher.bat`.
 3. In `Generate JSON`, choose one image.
 4. Pick a quality preset or enable custom settings.
 5. Leave `Luma Bands` and `Targeted repair` on unless the source looks better without them.
@@ -116,6 +143,8 @@ Custom settings can override the preset for one run without editing `.ini` files
 - **Targeted repair**: default-on V2 cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges after raw generation.
 - **vroom vroom scrrrrt zoooom!**: optional switch. Doubles effort-style numeric settings such as samples while keeping output layers and resolution unchanged.
 - **Checkpoint browser**: shows generated folders and checkpoints from `imgs`, including older runs after restart.
+- **Generated-run picker**: keeps duplicate generations separate, selects the newest run automatically, and lists the recommended import-safe JSON first.
+- **Launcher/update frontend**: checks Python/dependencies, shows whether GitHub has a newer build, and runs setup/update actions without hunting for batch files.
 - **Run reports**: every V2 run writes a `*.v2.report.json` with preset, custom settings, effective settings, toggles, candidates, and selected outputs.
 
 ## Examples
@@ -137,7 +166,7 @@ Source/result examples are included in [docs/examples/test-finest](docs/examples
 
 ## Common Problems
 
-- **The app will not start**: install Python 3.12, run `01_add_python312_to_path.bat`, then run `02_install_dependencies.bat`.
+- **The app will not start**: open `00_launcher.bat`, run `Setup Python`, then run `Install Dependencies`.
 - **Preview unavailable**: run `02_install_dependencies.bat`; generation/import can still work without preview dependencies.
 - **OpenProcess or permission error**: run `04_start_app.bat` as administrator.
 - **Game process not found**: start FH6 first, then click refresh in the import tab.

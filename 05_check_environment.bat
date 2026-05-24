@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 echo Using %PYTHON_CMD%
-%PYTHON_CMD% -c "import sys, psutil, win32api; print('Core OK:', sys.version.split()[0])"
+%PYTHON_CMD% -c "import sys, psutil, win32api, PySide6; print('Core OK:', sys.version.split()[0], 'PySide6', PySide6.__version__)"
 if errorlevel 1 (
     echo Core dependencies are missing.
     echo Run 01_add_python312_to_path.bat first if Python is not on PATH, then run 02_install_dependencies.bat.

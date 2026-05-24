@@ -6,22 +6,33 @@ This manual explains the normal user workflow for Kloudy's FH6 Painter.
 
 Use **64-bit Python 3.12**. Other Python versions may work for parts of the app, but Python 3.12 is the expected version.
 
-1. Download Python 3.12:
-   https://www.python.org/downloads/release/python-31210/
-2. Install it.
-3. In this project folder, run:
+Recommended:
+
+```text
+00_launcher.bat
+```
+
+The launcher shows setup status, GitHub update status, and the main launch button. For a fresh install, click:
+
+1. `Setup Python`
+2. `Install Dependencies`
+3. `Launch App`
+
+Manual setup is also available:
+
+1. In this project folder, run:
 
 ```text
 01_add_python312_to_path.bat
 ```
 
-4. Then run:
+2. Then run:
 
 ```text
 02_install_dependencies.bat
 ```
 
-5. Start the app:
+3. Start the launcher/app flow:
 
 ```text
 04_start_app.bat
@@ -136,16 +147,24 @@ Common files:
 
 The checkpoint browser scans the `imgs` folder on startup, so older generated runs are still available after restarting the app.
 
+The import tab groups generated JSON by run:
+
+- `Latest run` is selected automatically after a new generation.
+- `Previous run` entries are older duplicate generations of the same image.
+- The recommended import-safe JSON is shown first.
+- Raw overshoot files that exceed the import budget are marked and skipped by the `Use selected` button.
+
 ## 10. Utility Files And App Areas
 
 Common files users may run:
 
 | File | Purpose |
 | --- | --- |
+| `00_launcher.bat` | Opens the setup/update launcher. Recommended entry point. |
 | `01_add_python312_to_path.bat` | Adds Python 3.12 and Scripts paths to the user PATH. |
 | `02_install_dependencies.bat` | Installs required Python packages. Run this before using the app. |
 | `03_update_from_github.bat` | Updates app files from GitHub while preserving generated/runtime data. |
-| `04_start_app.bat` | Starts the desktop app. |
+| `04_start_app.bat` | Starts the launcher/app flow. |
 | `05_check_environment.bat` | Checks Python and dependency status. |
 | `99_clean_runtime_data.bat` | Removes generated cache/runtime data before packaging or troubleshooting. |
 
@@ -155,7 +174,7 @@ Main app areas:
 | --- | --- |
 | `Generate JSON` | Generates checkpoints, V2 JSON, previews, and reports from one source image. |
 | `Import` | Imports a generated JSON into an open FH6 vinyl group. |
-| `Checkpoint browser` | Browses generated folders and sorted checkpoints from `imgs`. |
+| `Generated-run browser` | Browses generated runs and sorted checkpoints from `imgs`, with recommended JSON first. |
 | `Shape dumps` | Experimental helper for dumping single-layer shape memory while researching handmade shape compatibility. |
 | `Tutorial` | In-app quick guidance for the normal generate/import workflow. |
 

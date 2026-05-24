@@ -4,17 +4,16 @@ cd /d "%~dp0"
 set "PYTHONDONTWRITEBYTECODE=1"
 call :find_python
 if errorlevel 1 (
-    echo No usable Python 3.12 was found. Install 64-bit Python 3.12 first.
-    echo Then run 01_add_python312_to_path.bat and 02_install_dependencies.bat.
+    echo No usable Python 3.12 was found.
+    echo Run 01_add_python312_to_path.bat first.
     pause
     exit /b 1
 )
 %PYTHON_CMD% -c "import PySide6" >nul 2>nul
 if errorlevel 1 (
-    echo PySide6 or another GUI dependency is missing.
-    echo Run 02_install_dependencies.bat, then start the launcher again.
-    pause
-    exit /b 1
+    echo PySide6 is missing. Running dependency setup first...
+    call "%~dp002_install_dependencies.bat"
+    if errorlevel 1 exit /b 1
 )
 %PYTHON_CMD% launcher_qt.py
 pause

@@ -1,2 +1,3 @@
 psutil>=5.9.0
 pywin32>=306
+PySide6>=6.7.0,<7
