@@ -129,7 +129,7 @@ The bundled raw generator is:
 forza-painter-geometrize-go.exe
 ```
 
-It is the OpenCL/GPU generator from [vendor/forza-painter-geometrize-gpu-patched](vendor/forza-painter-geometrize-gpu-patched), not the older CPU-first path.
+It is the bundled patched OpenCL/GPU generator, not the older CPU-first path.
 
 Important raw-generator traits:
 
