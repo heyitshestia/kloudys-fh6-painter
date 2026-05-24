@@ -1,5 +1,6 @@
 import argparse
 import csv
+import contextlib
 import io
 import json
 import os
@@ -33,6 +34,25 @@ PREVIEW_MAX = 520
 _CV2_CACHE = None
 _CV2_ERROR = None
 ELLIPSE_IMPORT_BASE_DIVISOR = 63.0
+
+
+@contextlib.contextmanager
+def suppress_native_stderr():
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        stderr_fd = os.dup(2)
+        os.dup2(devnull, 2)
+    except OSError:
+        yield
+        return
+    try:
+        yield
+    finally:
+        try:
+            os.dup2(stderr_fd, 2)
+        finally:
+            os.close(stderr_fd)
+            os.close(devnull)
 
 
 TEXT = {
@@ -471,6 +491,46 @@ def image_to_photo(image):
     return encoded.tobytes()
 
 
+def decode_image_bytes(data, flags=None):
+    loaded = load_cv2()
+    if not loaded or not data:
+        return None
+    cv2, np = loaded
+    arr = np.frombuffer(data, dtype=np.uint8)
+    if flags is None:
+        flags = cv2.IMREAD_COLOR
+    with suppress_native_stderr():
+        return cv2.imdecode(arr, flags)
+
+
+def read_stable_file_bytes(path, checks=2, delay=0.035):
+    path = Path(path)
+    previous_size = None
+    for attempt in range(max(1, checks)):
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return None
+        if size <= 0:
+            return None
+        if previous_size == size or attempt == checks - 1:
+            try:
+                data = path.read_bytes()
+            except OSError:
+                return None
+            return data if len(data) == size else None
+        previous_size = size
+        time.sleep(delay)
+    return None
+
+
+def decode_image_file(path):
+    data = read_stable_file_bytes(path)
+    if not data:
+        return None
+    return decode_image_bytes(data)
+
+
 class ZoomPreview:
     def __init__(self, parent, empty_text, width=60, height=24, bg="#202020"):
         self.empty_text = empty_text
@@ -498,26 +558,10 @@ class ZoomPreview:
         self.canvas.pack(*args, **kwargs)
 
     def _decode_bytes(self, data):
-        loaded = load_cv2()
-        if not loaded or not data:
-            return None
-        cv2, np = loaded
-        arr = np.frombuffer(data, dtype=np.uint8)
-        image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        return image
+        return decode_image_bytes(data)
 
     def _load_file(self, path):
-        loaded = load_cv2()
-        if not loaded:
-            return None
-        cv2, np = loaded
-        try:
-            arr = np.fromfile(str(path), dtype=np.uint8)
-        except Exception:
-            return None
-        if arr.size == 0:
-            return None
-        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        return decode_image_file(path)
 
     def clear(self, text=None):
         self._array = None
@@ -669,8 +713,7 @@ def render_source_image(path):
     loaded = load_cv2()
     if not loaded:
         return None
-    cv2, _np = loaded
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    image = decode_image_file(path)
     if image is None:
         return None
     return image_to_photo(image)
