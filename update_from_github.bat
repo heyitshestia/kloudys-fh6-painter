@@ -16,15 +16,14 @@ call :ensure_git
 if errorlevel 1 goto :fail
 
 if exist ".git\" (
-    echo Git checkout detected. Pulling latest %BRANCH%...
+    echo Git checkout detected. Syncing tracked app files to latest %BRANCH%...
     git fetch origin %BRANCH%
     if errorlevel 1 goto :fail
-    git pull --ff-only origin %BRANCH%
+    git reset --hard origin/%BRANCH%
     if errorlevel 1 (
         echo.
-        echo Update failed because Git could not fast-forward this folder.
-        echo If you edited app files manually, move your edits elsewhere and try again.
-        echo Generated outputs are stored separately and are not the problem.
+        echo Update failed because Git could not reset this folder to the latest version.
+        echo Generated outputs are stored separately and are not intentionally removed.
         goto :fail
     )
     goto :done
