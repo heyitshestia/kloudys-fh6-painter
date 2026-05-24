@@ -29,9 +29,9 @@ https://www.python.org/downloads/release/python-31210/
 然后按顺序双击：
 
 ```text
-add_python312_to_path.bat
-install_dependencies.bat
-start_app.bat
+01_add_python312_to_path.bat
+02_install_dependencies.bat
+04_start_app.bat
 ```
 
 不要先打开软件。不要先打开游戏。先把 Python 3.12 和依赖装好。
@@ -39,7 +39,7 @@ start_app.bat
 如果软件打不开，运行：
 
 ```text
-check_environment.bat
+05_check_environment.bat
 ```
 
 ## 更新
@@ -47,7 +47,7 @@ check_environment.bat
 只用这个文件更新：
 
 ```text
-update_from_github.bat
+03_update_from_github.bat
 ```
 
 更新前先关闭软件。不要手动拖文件覆盖更新。更新脚本会从 GitHub 拉取最新文件，并保留生成结果和运行数据。
@@ -56,7 +56,7 @@ update_from_github.bat
 
 ## 基本流程
 
-1. 打开 `start_app.bat`。
+1. 打开 `04_start_app.bat`。
 2. 在 `Generate JSON` 页面选择一张图片。
 3. 选择品质预设，或者开启自定义设置。
 4. 默认建议保持 `Luma Bands` 和 `Targeted repair` 开启。
@@ -107,10 +107,10 @@ FH6 需要额外 **4 个边界层**，所以可用图形层数是：
 
 ## 常见问题
 
-- 软件打不开：重新运行 `add_python312_to_path.bat` 和 `install_dependencies.bat`。
+- 软件打不开：重新运行 `01_add_python312_to_path.bat` 和 `02_install_dependencies.bat`。
 - 预览不可用：通常是预览依赖问题，不一定影响生成和导入。
 - 找不到游戏：先启动 FH6，再刷新 Import 页面。
-- 权限错误：用管理员身份运行 `start_app.bat`。
+- 权限错误：用管理员身份运行 `04_start_app.bat`。
 - 提示没 Ungroup：检查是否真的在 Vinyl Group Editor、层数是否完全正确、有没有切换菜单。
 - 导入后被截断：模板层数不够。
 - 导入后太糊：生成层数或采样太低，或者导入了低层数 checkpoint。

@@ -12,25 +12,25 @@ Use **64-bit Python 3.12**. Other Python versions may work for parts of the app,
 3. In this project folder, run:
 
 ```text
-add_python312_to_path.bat
+01_add_python312_to_path.bat
 ```
 
 4. Then run:
 
 ```text
-install_dependencies.bat
+02_install_dependencies.bat
 ```
 
 5. Start the app:
 
 ```text
-start_app.bat
+04_start_app.bat
 ```
 
 If setup looks broken, run:
 
 ```text
-check_environment.bat
+05_check_environment.bat
 ```
 
 ## 2. Generate JSON
@@ -142,12 +142,12 @@ Common files users may run:
 
 | File | Purpose |
 | --- | --- |
-| `add_python312_to_path.bat` | Adds Python 3.12 and Scripts paths to the user PATH. |
-| `install_dependencies.bat` | Installs required Python packages. Run this before using the app. |
-| `check_environment.bat` | Checks Python and dependency status. |
-| `start_app.bat` | Starts the desktop app. |
-| `clean_runtime_data.bat` | Removes generated cache/runtime data before packaging or troubleshooting. |
-| `1. drag_image_file_here.bat` | Optional launcher for opening the app with a dragged image. |
+| `01_add_python312_to_path.bat` | Adds Python 3.12 and Scripts paths to the user PATH. |
+| `02_install_dependencies.bat` | Installs required Python packages. Run this before using the app. |
+| `03_update_from_github.bat` | Updates app files from GitHub while preserving generated/runtime data. |
+| `04_start_app.bat` | Starts the desktop app. |
+| `05_check_environment.bat` | Checks Python and dependency status. |
+| `99_clean_runtime_data.bat` | Removes generated cache/runtime data before packaging or troubleshooting. |
 
 Main app areas:
 
@@ -212,14 +212,14 @@ If a 2000-layer template is used, the app can write 1996 drawable shapes plus 4 
 Run these in order:
 
 ```text
-add_python312_to_path.bat
-install_dependencies.bat
-check_environment.bat
+01_add_python312_to_path.bat
+02_install_dependencies.bat
+05_check_environment.bat
 ```
 
 ### Dependencies keep asking to install
 
-Python is probably not on PATH, or a different Python version is being used. Run `add_python312_to_path.bat`, close the command window, then run `install_dependencies.bat` again.
+Python is probably not on PATH, or a different Python version is being used. Run `01_add_python312_to_path.bat`, close the command window, then run `02_install_dependencies.bat` again.
 
 ### Preview unavailable
 
@@ -241,7 +241,7 @@ Check:
 
 ### Import permission error
 
-Close the app and run `start_app.bat` as administrator.
+Close the app and run `04_start_app.bat` as administrator.
 
 ### Output is too blurry
 

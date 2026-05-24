@@ -10,9 +10,9 @@ echo Kloudy's FH6 Painter setup
 echo.
 echo BEFORE doing anything else:
 echo   1. Install 64-bit Python 3.12
-echo   2. Run add_python312_to_path.bat
-echo   3. Run install_dependencies.bat
-echo   4. Only then run start_app.bat
+echo   2. Run 01_add_python312_to_path.bat
+echo   3. Run 02_install_dependencies.bat
+echo   4. Only then run 04_start_app.bat
 echo ============================================================
 echo.
 
@@ -23,7 +23,7 @@ if errorlevel 1 (
     echo Download 64-bit Python 3.12 from:
     echo   %PYTHON312_URL%
     echo.
-    echo Then run add_python312_to_path.bat, then install_dependencies.bat.
+    echo Then run 01_add_python312_to_path.bat, then 02_install_dependencies.bat.
     pause
     exit /b 1
 )
@@ -49,7 +49,7 @@ if errorlevel 1 (
 
 echo.
 echo Dependencies installed.
-echo You can now run start_app.bat
+echo You can now run 04_start_app.bat
 pause
 exit /b 0
 
@@ -58,7 +58,7 @@ echo.
 echo Dependency installation failed.
 echo This project expects 64-bit Python 3.12:
 echo   %PYTHON312_URL%
-echo If Python is installed but still not found, run add_python312_to_path.bat first.
+echo If Python is installed but still not found, run 01_add_python312_to_path.bat first.
 pause
 exit /b 1
 

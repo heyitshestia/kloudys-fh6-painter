@@ -80,7 +80,7 @@ TEXT = {
         "appearance": "Appearance",
         "app_theme": "Theme",
         "theme_default": "Default",
-        "theme_horizon": "Horizon Glow",
+        "theme_pastel": "Pastel Bloom",
         "theme_hint": "Theme changes apply immediately and are saved for the next launch.",
         "images": "Images",
         "add_images": "Choose image",
@@ -189,7 +189,7 @@ TEXT = {
         "safe_stop": "Stopped before writing because no safe FH6 template was found.",
         "tutorial": """Beginner workflow
 
-1. Install 64-bit Python 3.12 if possible, then run install_dependencies.bat.
+1. Install 64-bit Python 3.12 if possible, then run 02_install_dependencies.bat.
    NumPy/OpenCV preview is optional; generation and import do not require it.
    JSON generation uses the bundled GPU/OpenCL generator, so keep the graphics driver updated.
 
@@ -227,7 +227,7 @@ Notes
         "appearance": "外观",
         "app_theme": "主题",
         "theme_default": "默认",
-        "theme_horizon": "Horizon Glow",
+        "theme_pastel": "Pastel Bloom",
         "theme_hint": "主题会立即生效，并在下次启动时保留。",
         "images": "图片",
         "add_images": "选择图片",
@@ -336,7 +336,7 @@ Notes
         "safe_stop": "未找到安全 FH6 模板，已在写入前停止。",
         "tutorial": """小白流程
 
-1. 尽量安装 64 位 Python 3.12，然后运行 install_dependencies.bat。
+1. 尽量安装 64 位 Python 3.12，然后运行 02_install_dependencies.bat。
    NumPy/OpenCV 预览是可选功能；生成和导入不依赖它。
    JSON 生成使用自带的 GPU/OpenCL 生成器，请保持显卡驱动正常。
 
@@ -949,7 +949,7 @@ class App:
         except Exception:
             return "default"
         theme = str(data.get("theme", "default")).strip().lower()
-        return "horizon" if theme in ("horizon", "vista") else "default"
+        return "pastel" if theme in ("pastel", "horizon", "vista") else "default"
 
     def _save_app_settings(self):
         try:
@@ -963,28 +963,27 @@ class App:
 
     def _configure_styles(self):
         style = ttk.Style(self.root)
-        if self.theme_choice.get() == "horizon":
+        if self.theme_choice.get() == "pastel":
             try:
                 style.theme_use("clam")
             except Exception:
                 pass
-            bg = "#111820"
-            panel = "#182431"
-            field = "#edf6f8"
-            border = "#2d4658"
-            accent = "#19b7c6"
-            active = "#223547"
-            style.configure(".", font=("Segoe UI", 10), background=bg, foreground="#1f1f1f")
+            bg = "#f5edff"
+            panel = "#fff8fb"
+            field = "#fffdf8"
+            border = "#d8c2f0"
+            accent = "#9f6ad8"
+            style.configure(".", font=("Segoe UI", 10), background=bg, foreground="#3b244d")
             style.configure("TFrame", background=bg)
             style.configure("TLabelframe", background=panel, bordercolor=border, relief="solid")
-            style.configure("TLabelframe.Label", background=panel, foreground="#b8f7ff", font=("Segoe UI Semibold", 10))
-            style.configure("TButton", background="#24384a", foreground="#f5fbff", bordercolor="#3f657d", lightcolor="#31516a", darkcolor="#162331", padding=(12, 6), relief="flat")
-            style.map("TButton", background=[("active", "#2f526b"), ("pressed", "#173242")], foreground=[("active", "#ffffff"), ("pressed", "#ffffff")])
-            style.configure("TCombobox", fieldbackground=field, background="#24384a", foreground="#101820", arrowcolor=accent, bordercolor="#4b7085", padding=(6, 3))
-            style.configure("Vertical.TScrollbar", background="#223547", troughcolor="#111820", bordercolor="#2d4658", arrowcolor=accent)
-            style.configure("Treeview", background="#edf6f8", foreground="#101820", fieldbackground="#edf6f8", bordercolor=border, rowheight=24)
-            style.configure("Treeview.Heading", background="#24384a", foreground="#f5fbff", font=("Segoe UI Semibold", 9), relief="flat")
-            style.map("Treeview", background=[("selected", "#19b7c6")], foreground=[("selected", "#061014")])
+            style.configure("TLabelframe.Label", background=panel, foreground="#6c3fa0", font=("Segoe UI Semibold", 10))
+            style.configure("TButton", background="#eadcff", foreground="#3b244d", bordercolor="#c7a8ea", lightcolor="#fff8fb", darkcolor="#cdb3ec", padding=(12, 6), relief="flat")
+            style.map("TButton", background=[("active", "#dfc9ff"), ("pressed", "#c9a6f0")], foreground=[("active", "#2f1742"), ("pressed", "#2f1742")])
+            style.configure("TCombobox", fieldbackground=field, background="#eadcff", foreground="#3b244d", arrowcolor=accent, bordercolor="#c7a8ea", padding=(6, 3))
+            style.configure("Vertical.TScrollbar", background="#eadcff", troughcolor="#fff8fb", bordercolor="#d8c2f0", arrowcolor=accent)
+            style.configure("Treeview", background=field, foreground="#3b244d", fieldbackground=field, bordercolor=border, rowheight=24)
+            style.configure("Treeview.Heading", background="#eadcff", foreground="#5a2f83", font=("Segoe UI Semibold", 9), relief="flat")
+            style.map("Treeview", background=[("selected", "#cfa8ff")], foreground=[("selected", "#2f1742")])
             style.configure("Primary.TNotebook", background=bg, borderwidth=0)
         else:
             try:
@@ -996,12 +995,12 @@ class App:
             padding=(18, 8),
             font=("Segoe UI", 10, "bold"),
         )
-        if self.theme_choice.get() == "horizon":
-            style.configure("Primary.TNotebook.Tab", background="#182431", foreground="#d8eef5", bordercolor="#2d4658", lightcolor="#24384a", darkcolor="#111820")
+        if self.theme_choice.get() == "pastel":
+            style.configure("Primary.TNotebook.Tab", background="#eadcff", foreground="#5a2f83", bordercolor="#d8c2f0", lightcolor="#fff8fb", darkcolor="#d8c2f0")
             style.map(
                 "Primary.TNotebook.Tab",
-                background=[("selected", "#19b7c6"), ("active", "#223547")],
-                foreground=[("selected", "#071216"), ("active", "#ffffff")],
+                background=[("selected", "#fff8fb"), ("active", "#f0e4ff")],
+                foreground=[("selected", "#5a2f83"), ("active", "#4a286c")],
             )
         else:
             style.map(
@@ -1011,21 +1010,21 @@ class App:
             )
 
     def _theme_palette(self):
-        if self.theme_choice.get() == "horizon":
+        if self.theme_choice.get() == "pastel":
             return {
-                "bg": "#111820",
-                "panel": "#182431",
-                "text": "#f5fbff",
-                "muted": "#93aebc",
-                "accent": "#19b7c6",
-                "warning": "#ffb45a",
-                "button": "#24384a",
-                "button_active": "#2f526b",
-                "entry": "#edf6f8",
-                "entry_text": "#101820",
-                "select": "#19b7c6",
-                "select_text": "#061014",
-                "border": "#2d4658",
+                "bg": "#f5edff",
+                "panel": "#fff8fb",
+                "text": "#3b244d",
+                "muted": "#806693",
+                "accent": "#9f6ad8",
+                "warning": "#a45b2a",
+                "button": "#eadcff",
+                "button_active": "#dfc9ff",
+                "entry": "#fffdf8",
+                "entry_text": "#3b244d",
+                "select": "#cfa8ff",
+                "select_text": "#2f1742",
+                "border": "#d8c2f0",
             }
         return {
             "bg": self.native_root_bg,
@@ -1054,8 +1053,8 @@ class App:
                     widget.configure(bg=palette["bg"])
             elif isinstance(widget, Button):
                 kwargs = {"bg": palette["button"] or self.root.cget("bg"), "fg": palette["text"], "activebackground": palette["button_active"] or self.root.cget("bg")}
-                if self.theme_choice.get() == "horizon":
-                    kwargs.update({"relief": "flat", "bd": 0, "highlightthickness": 1, "highlightbackground": palette["border"], "activeforeground": "#ffffff"})
+                if self.theme_choice.get() == "pastel":
+                    kwargs.update({"relief": "flat", "bd": 0, "highlightthickness": 1, "highlightbackground": palette["border"], "activeforeground": palette["text"]})
                 widget.configure(**kwargs)
             elif isinstance(widget, Checkbutton):
                 widget.configure(bg=palette["bg"], fg=palette["text"], activebackground=palette["bg"], selectcolor=palette["panel"])
@@ -1456,7 +1455,7 @@ class App:
         self._label(row, "app_theme").pack(side=LEFT)
         self.theme_combo = ttk.Combobox(
             row,
-            values=[tr(self.lang, "theme_default"), tr(self.lang, "theme_horizon")],
+            values=[tr(self.lang, "theme_default"), tr(self.lang, "theme_pastel")],
             state="readonly",
             width=28,
         )
@@ -1517,14 +1516,14 @@ class App:
     def _sync_theme_combo(self):
         if not hasattr(self, "theme_combo"):
             return
-        values = [tr(self.lang, "theme_default"), tr(self.lang, "theme_horizon")]
+        values = [tr(self.lang, "theme_default"), tr(self.lang, "theme_pastel")]
         self.theme_combo["values"] = values
-        self.theme_combo.set(values[1] if self.theme_choice.get() == "horizon" else values[0])
+        self.theme_combo.set(values[1] if self.theme_choice.get() == "pastel" else values[0])
 
     def _on_theme_selected(self, _event=None):
         selected = self.theme_combo.get().strip().lower()
-        horizon_label = tr(self.lang, "theme_horizon").lower()
-        self.theme_choice.set("horizon" if selected == horizon_label or "horizon" in selected else "default")
+        pastel_label = tr(self.lang, "theme_pastel").lower()
+        self.theme_choice.set("pastel" if selected == pastel_label or "pastel" in selected else "default")
         self._sync_theme_combo()
         self._apply_theme(save=True)
 

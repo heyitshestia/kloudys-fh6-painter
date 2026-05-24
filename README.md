@@ -29,25 +29,25 @@ Run the setup files in this order before doing anything else:
 2. Double-click:
 
 ```text
-add_python312_to_path.bat
+01_add_python312_to_path.bat
 ```
 
 3. Double-click:
 
 ```text
-install_dependencies.bat
+02_install_dependencies.bat
 ```
 
 4. Start the app:
 
 ```text
-start_app.bat
+04_start_app.bat
 ```
 
 Do not open the app before installing Python 3.12 and dependencies. If something fails, run:
 
 ```text
-check_environment.bat
+05_check_environment.bat
 ```
 
 ## Updating
@@ -55,7 +55,7 @@ check_environment.bat
 Use only this file to update:
 
 ```text
-update_from_github.bat
+03_update_from_github.bat
 ```
 
 Close the app first. Do not update by dragging random files over the folder. The updater pulls the latest GitHub files and preserves generated/runtime output. If Git is missing, the updater installs PortableGit for the current Windows user automatically.
@@ -71,7 +71,7 @@ Close the app first. Do not update by dragging random files over the folder. The
 ## Quick Workflow
 
 1. Install Python 3.12 and dependencies with the batch files above.
-2. Open the app with `start_app.bat`.
+2. Open the app with `04_start_app.bat`.
 3. In `Generate JSON`, choose one image.
 4. Pick a quality preset or enable custom settings.
 5. Leave `Luma Bands` and `Targeted repair` on unless the source looks better without them.
@@ -145,9 +145,9 @@ Source/result examples are included in [docs/examples/test-finest](docs/examples
 
 ## Common Problems
 
-- **The app will not start**: install Python 3.12, run `add_python312_to_path.bat`, then run `install_dependencies.bat`.
-- **Preview unavailable**: run `install_dependencies.bat`; generation/import can still work without preview dependencies.
-- **OpenProcess or permission error**: run `start_app.bat` as administrator.
+- **The app will not start**: install Python 3.12, run `01_add_python312_to_path.bat`, then run `02_install_dependencies.bat`.
+- **Preview unavailable**: run `02_install_dependencies.bat`; generation/import can still work without preview dependencies.
+- **OpenProcess or permission error**: run `04_start_app.bat` as administrator.
 - **Game process not found**: start FH6 first, then click refresh in the import tab.
 - **Ungroup error even though it is ungrouped**: make sure you are inside Vinyl Group Editor, the layer count is exact, and the active group is the template being edited.
 - **Output is blurry**: use more output layers, higher random samples, a higher-resolution preset, or a larger template.

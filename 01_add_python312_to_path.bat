@@ -10,7 +10,7 @@ echo Kloudy's FH6 Painter - Python PATH setup
 echo ============================================================
 echo.
 echo This script only adds Python 3.12 to your user PATH.
-echo Run install_dependencies.bat after this.
+echo Run 02_install_dependencies.bat after this.
 echo.
 
 call :find_python
@@ -29,7 +29,7 @@ call :add_python_to_path
 
 echo.
 echo Python 3.12 and Scripts folders were added to the user PATH.
-echo Close and reopen terminals before running install_dependencies.bat.
+echo Close and reopen terminals before running 02_install_dependencies.bat.
 pause
 exit /b 0
 

@@ -59,7 +59,7 @@ rmdir /s /q "%TMP_PARENT%" >nul 2>nul
 :done
 echo.
 echo Update complete.
-echo Run start_app.bat when you are ready.
+echo Run 04_start_app.bat when you are ready.
 pause
 exit /b 0
 
