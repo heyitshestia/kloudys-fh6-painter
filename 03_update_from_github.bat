@@ -42,9 +42,9 @@ mkdir "%TMP_PARENT%" >nul 2>nul
 git clone --depth 1 --branch %BRANCH% "%REPO_URL%" "%TMP_REPO%"
 if errorlevel 1 goto :fail
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $src=$env:TMP_REPO; $dst=(Get-Location).Path; $exclude=@('runtime','webui-data','dist','build','__pycache__'); Get-ChildItem -LiteralPath $src -Force | Where-Object { $exclude -notcontains $_.Name } | ForEach-Object { $target=Join-Path $dst $_.Name; if ($_.PSIsContainer) { New-Item -ItemType Directory -Path $target -Force | Out-Null; Get-ChildItem -LiteralPath $_.FullName -Force | Copy-Item -Destination $target -Recurse -Force } else { Copy-Item -LiteralPath $_.FullName -Destination $target -Force } }"
-if errorlevel 1 (
-    echo File copy failed during PowerShell update copy.
+robocopy "%TMP_REPO%" "%CD%" /E /R:2 /W:1 /XD runtime webui-data dist build __pycache__ >nul
+if errorlevel 8 (
+    echo File copy failed during robocopy update copy. Robocopy exit code: %ERRORLEVEL%
     goto :fail
 )
 
