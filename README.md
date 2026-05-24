@@ -39,7 +39,7 @@ This fork combines:
 - a desktop app for generation, preview, import, and FH6 tools
 - a bundled GPU/OpenCL ellipse generator
 - FH6-safe import logic
-- V2 checkpoint selection, pruning, and optional targeted repair
+- V2 checkpoint selection, pruning, and default-on targeted repair
 
 This is a derivative of the original `forza-painter` workflow and keeps the original license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
 
@@ -150,7 +150,7 @@ V2 adds:
 - checkpoint collection
 - optional quality overshoot for hard images
 - optional pruning to the target drawable count
-- optional targeted repair
+- default-on targeted repair
 - FH6 boundary-layer awareness
 
 ## Bundled Presets
@@ -254,20 +254,13 @@ Leave it off when:
 
 ## What Targeted Repair Does
 
-`Targeted repair` is an **optional V2 post-pass**.
+`Targeted repair` is a V2 cleanup pass. The app enables it by default.
 
 It does **not** change the raw generator during the initial search.
 
-It runs after a candidate has already been selected and pruned, then:
+It runs after a candidate has already been selected and pruned.
 
-- finds locally bad shapes
-- focuses on edge spill, transparent-hole problems, and poor local fit
-- tries small edits like:
-  - move
-  - shrink
-  - small rotation changes
-  - alpha reduction
-- keeps only improvements
+In simple terms, it looks for shapes that make borders or transparent holes messy, then tries small fixes such as moving, shrinking, rotating, or fading those shapes. It only keeps a fix when the image score improves.
 
 What it is good for:
 
@@ -284,18 +277,16 @@ What it is **not**:
 
 Current default state:
 
-- all bundled presets ship with:
-  - `v2EnableRepair = false`
-- the app checkbox is off by default
-
-So repair is available, but it is **not active unless you turn it on**.
+- bundled presets do not force repair on
+- the app checkbox starts on by default
+- you can turn it off for faster test runs
 
 ## Generate JSON
 
 1. Open the `Generate JSON` tab.
 2. Choose one image.
 3. Select a preset.
-4. Optional: enable `Luma Bands`, `Quality overshoot`, or `Targeted repair`.
+4. Optional: enable `Luma Bands` or `Quality overshoot`, or turn off `Targeted repair` for faster tests.
 5. Click `Generate with current settings`.
 6. Watch the preview and logs.
 

@@ -60,8 +60,8 @@ TEXT = {
         "luma_bands_hint": "Create a luma-banded intermediate image before generation. Useful for flatter anime-style shading and cleaner separations.",
         "quality_overshoot": "Enable quality overshoot",
         "quality_overshoot_hint": "Generate about 12% extra raw layers, then let V2 prune/cap back to the FH6-safe target. Slower, but can improve difficult edges, holes, and small details.",
-        "targeted_repair": "Enable targeted repair",
-        "targeted_repair_hint": "Extra post-pass for border and hole cleanup. Slower, but useful for strict silhouettes and transparent cutouts.",
+        "targeted_repair": "Use targeted repair (recommended)",
+        "targeted_repair_hint": "After generation, tries to clean messy borders and transparent holes. Slower, but usually gives cleaner edges.",
         "custom_panel_title": "Custom settings",
         "custom_panel_hint": "The selected preset fills these values. Enable custom settings if you want to edit them before generating.",
         "generate_step_image": "Step 1 - Choose images",
@@ -201,8 +201,8 @@ Notes
         "luma_bands_hint": "先生成一张亮度分层的中间图再开始生成。更适合偏平涂的动漫风格和更清晰的明暗分离。",
         "quality_overshoot": "启用品质超量生成",
         "quality_overshoot_hint": "先多生成约 12% 原始图层，再由 V2 修剪/限制回 FH6 安全目标。会更慢，但可能改善复杂边缘、孔洞和小细节。",
-        "targeted_repair": "启用定向修复",
-        "targeted_repair_hint": "额外的边界/孔洞修复后处理。会更慢，但对严格轮廓和透明镂空更有帮助。",
+        "targeted_repair": "使用定向修复（推荐）",
+        "targeted_repair_hint": "生成后尝试清理杂乱边缘和透明孔洞。会更慢，但边缘通常更干净。",
         "custom_panel_title": "自定义参数",
         "custom_panel_hint": "上方预设会自动填入这些参数；勾选使用自定义参数后可直接修改。",
         "generate_step_image": "第 1 步 - 选择图片",
@@ -774,7 +774,7 @@ class App:
         self.use_custom_settings = StringVar(value="0")
         self.enable_luma_bands = StringVar(value="0")
         self.enable_quality_overshoot = StringVar(value="0")
-        self.enable_targeted_repair = StringVar(value="0")
+        self.enable_targeted_repair = StringVar(value="1")
         self.custom_stop_at = StringVar()
         self.custom_max_resolution = StringVar()
         self.custom_random_samples = StringVar()
