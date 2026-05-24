@@ -148,6 +148,7 @@ V2 adds:
 
 - target-count generation
 - checkpoint collection
+- optional quality overshoot for hard images
 - optional pruning to the target drawable count
 - optional targeted repair
 - FH6 boundary-layer awareness
@@ -231,6 +232,26 @@ Avoid it when:
 - the image depends on subtle soft gradients
 - the banding itself makes the source look worse
 
+## Quality Overshoot
+
+`Quality overshoot` is optional and off by default.
+
+When disabled, raw generation stops at the selected target count.
+
+When enabled, V2 asks the raw generator for about 12% extra raw layers, up to 400 extra layers, then prunes and caps the result back to the FH6-safe target.
+
+Use it when:
+
+- fine cleanup matters more than speed
+- hair, fingers, holes, and sharp cutouts need extra chances
+- a final export can take longer
+
+Leave it off when:
+
+- you want predictable target-count generation
+- you are testing presets
+- generation time matters more than tiny cleanup gains
+
 ## What Targeted Repair Does
 
 `Targeted repair` is an **optional V2 post-pass**.
@@ -274,7 +295,7 @@ So repair is available, but it is **not active unless you turn it on**.
 1. Open the `Generate JSON` tab.
 2. Choose one image.
 3. Select a preset.
-4. Optional: enable `Targeted repair`.
+4. Optional: enable `Luma Bands`, `Quality overshoot`, or `Targeted repair`.
 5. Click `Generate with current settings`.
 6. Watch the preview and logs.
 

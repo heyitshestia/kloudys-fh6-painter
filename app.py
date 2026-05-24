@@ -58,6 +58,8 @@ TEXT = {
         "custom_save_at": "Save checkpoints",
         "luma_bands": "Enable Luma Bands preprocess",
         "luma_bands_hint": "Create a luma-banded intermediate image before generation. Useful for flatter anime-style shading and cleaner separations.",
+        "quality_overshoot": "Enable quality overshoot",
+        "quality_overshoot_hint": "Generate about 12% extra raw layers, then let V2 prune/cap back to the FH6-safe target. Slower, but can improve difficult edges, holes, and small details.",
         "targeted_repair": "Enable targeted repair",
         "targeted_repair_hint": "Extra post-pass for border and hole cleanup. Slower, but useful for strict silhouettes and transparent cutouts.",
         "custom_panel_title": "Custom settings",
@@ -197,6 +199,8 @@ Notes
         "custom_save_at": "保存节点",
         "luma_bands": "启用 Luma Bands 预处理",
         "luma_bands_hint": "先生成一张亮度分层的中间图再开始生成。更适合偏平涂的动漫风格和更清晰的明暗分离。",
+        "quality_overshoot": "启用品质超量生成",
+        "quality_overshoot_hint": "先多生成约 12% 原始图层，再由 V2 修剪/限制回 FH6 安全目标。会更慢，但可能改善复杂边缘、孔洞和小细节。",
         "targeted_repair": "启用定向修复",
         "targeted_repair_hint": "额外的边界/孔洞修复后处理。会更慢，但对严格轮廓和透明镂空更有帮助。",
         "custom_panel_title": "自定义参数",
@@ -769,6 +773,7 @@ class App:
         self.import_preview_widget = None
         self.use_custom_settings = StringVar(value="0")
         self.enable_luma_bands = StringVar(value="0")
+        self.enable_quality_overshoot = StringVar(value="0")
         self.enable_targeted_repair = StringVar(value="0")
         self.custom_stop_at = StringVar()
         self.custom_max_resolution = StringVar()
@@ -1049,6 +1054,20 @@ class App:
         luma_toggle.pack(anchor="w", padx=10, pady=(0, 8))
         self.translated.append((luma_toggle, "luma_bands", "text"))
 
+        overshoot_section = ttk.LabelFrame(left, text=tr(self.lang, "quality_overshoot"))
+        self.translated.append((overshoot_section, "quality_overshoot", "text"))
+        overshoot_section.pack(fill=X, pady=(0, 6))
+        self._label(overshoot_section, "quality_overshoot_hint", anchor="w", justify=LEFT, wraplength=540, fg="#8a5300").pack(fill=X, padx=10, pady=(6, 2))
+        overshoot_toggle = Checkbutton(
+            overshoot_section,
+            text=tr(self.lang, "quality_overshoot"),
+            variable=self.enable_quality_overshoot,
+            onvalue="1",
+            offvalue="0",
+        )
+        overshoot_toggle.pack(anchor="w", padx=10, pady=(0, 8))
+        self.translated.append((overshoot_toggle, "quality_overshoot", "text"))
+
         repair_section = ttk.LabelFrame(left, text=tr(self.lang, "targeted_repair"))
         self.translated.append((repair_section, "targeted_repair", "text"))
         repair_section.pack(fill=X, pady=(0, 6))
@@ -1266,6 +1285,9 @@ class App:
 
     def _repair_enabled(self):
         return self.enable_targeted_repair.get() == "1"
+
+    def _quality_overshoot_enabled(self):
+        return self.enable_quality_overshoot.get() == "1"
 
     def toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
@@ -1905,6 +1927,7 @@ class App:
         try:
             self.queue.put(("log", f"Selected profile: {setting.get('label') or setting['path'].name}"))
             self.queue.put(("log", f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}"))
+            self.queue.put(("log", f"Quality overshoot: {'on' if self._quality_overshoot_enabled() else 'off'}"))
             self.queue.put(("log", f"Targeted repair: {'on' if self._repair_enabled() else 'off'}"))
             for image_path in list(self.images):
                 if self.shutdown_event.is_set():
@@ -1922,7 +1945,12 @@ class App:
                 self.queue.put(("log", f"Generating: {image_path}"))
                 self.queue.put(("preview", render_source_image(image_path)))
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                cmd = build_generator_command(image_path, setting, enable_repair=self._repair_enabled())
+                cmd = build_generator_command(
+                    image_path,
+                    setting,
+                    enable_repair=self._repair_enabled(),
+                    enable_overshoot=self._quality_overshoot_enabled(),
+                )
                 self.queue.put(("log", f"Running GPU generator with {setting['path'].name}"))
                 proc = subprocess.Popen(
                     cmd,

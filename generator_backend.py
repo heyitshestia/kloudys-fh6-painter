@@ -212,7 +212,7 @@ def cleanup_generated_outputs(image_path):
             pass
 
 
-def build_generator_command(image_path, setting, enable_repair=False):
+def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False):
     image_path = Path(image_path)
     values = setting.get("values", {})
     target_shapes = str(values.get("stopAt", "3000"))
@@ -234,6 +234,8 @@ def build_generator_command(image_path, setting, enable_repair=False):
         "--preprocess-mode",
         preprocess_mode,
     ]
+    if enable_overshoot:
+        cmd.extend(["--overshoot-ratio", "1.12", "--overshoot-max-extra", "400"])
     if enable_repair or setting_repair:
         cmd.append("--enable-repair")
     else:
