@@ -39,4 +39,11 @@ if not errorlevel 1 (
     set "PYTHON_CMD=python"
     exit /b 0
 )
+if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+    "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32 else 1)" >nul 2>nul
+    if not errorlevel 1 (
+        set "PYTHON_CMD="%LOCALAPPDATA%\Programs\Python\Python312\python.exe""
+        exit /b 0
+    )
+)
 exit /b 1
