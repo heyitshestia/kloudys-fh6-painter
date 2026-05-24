@@ -427,6 +427,50 @@ def render_and_score(background: dict, shapes: list[dict], target_rgba: np.ndarr
     return top_rgb, top_alpha, top_idx, diff_top, contributions, total_error, scored_pixels
 
 
+def bbox_intersects(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    ax0, ax1, ay0, ay1 = a
+    bx0, bx1, by0, by1 = b
+    return ax0 <= bx1 and ax1 >= bx0 and ay0 <= by1 and ay1 >= by0
+
+
+def render_and_score_region(
+    background: dict,
+    shapes: list[dict],
+    target_rgba: np.ndarray,
+    bbox: tuple[int, int, int, int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
+    x0, x1, y0, y1 = bbox
+    if x1 < x0 or y1 < y0:
+        return render_and_score(background, [], target_rgba[:1, :1])
+
+    height, width = target_rgba.shape[:2]
+    x0 = max(0, min(width - 1, int(x0)))
+    x1 = max(0, min(width - 1, int(x1)))
+    y0 = max(0, min(height - 1, int(y0)))
+    y1 = max(0, min(height - 1, int(y1)))
+    if x1 < x0 or y1 < y0:
+        return render_and_score(background, [], target_rgba[:1, :1])
+
+    crop_bbox = (x0, x1, y0, y1)
+    crop_w = x1 - x0 + 1
+    crop_h = y1 - y0 + 1
+    crop_shapes = []
+    for shape in shapes:
+        sx, sy, rx, ry, rot = [float(v) for v in shape["data"][:5]]
+        shape_bbox = ellipse_bbox(sx, sy, *compensated_ellipse_size(rx, ry), rot, width, height)
+        if not bbox_intersects(shape_bbox, crop_bbox):
+            continue
+        shifted = copy_shape(shape)
+        shifted["data"] = list(shifted["data"])
+        shifted["data"][0] = float(shifted["data"][0]) - x0
+        shifted["data"][1] = float(shifted["data"][1]) - y0
+        crop_shapes.append(shifted)
+
+    crop_bg = dict(background)
+    crop_bg["data"] = [0, 0, crop_w, crop_h]
+    return render_and_score(crop_bg, crop_shapes, target_rgba[y0 : y1 + 1, x0 : x1 + 1])
+
+
 def prune_to_target(background: dict, shapes: list[dict], target_rgba: np.ndarray, target_count: int) -> tuple[list[dict], float]:
     working = list(shapes)
     if len(working) <= target_count:
@@ -650,10 +694,8 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
             ]
 
             local_best = copy_shape(shape)
-            local_best_error = best_error
-            local_best_render = render_rgb
-            local_best_alpha = top_alpha
-            local_best_diff = diff_top
+            original_local_score = local_best_score
+            local_best_deleted = False
             for proposal in proposals:
                 if len(proposal) == 6:
                     delete_shape, dx, dy, drx, dry, drot = proposal
@@ -680,27 +722,38 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
                     del working[idx]
                 else:
                     working[idx] = trial
-                trial_render_rgb, trial_alpha, _, trial_diff, _, trial_total_error, trial_scored_pixels = render_and_score(background, working, target_rgba)
-                trial_error = normalized_error(trial_total_error, trial_scored_pixels)
-                trial_local_score = local_error_value(trial_diff, local_bbox)
-                if (trial_local_score + 1e-9 < local_best_score and trial_error <= local_best_error + 1e-6) or trial_error + 1e-9 < local_best_error:
-                    local_best_error = trial_error
+                _, _, _, trial_diff, _, _, _ = render_and_score_region(background, working, target_rgba, local_bbox)
+                trial_local_score = float(trial_diff.mean()) if trial_diff.size else local_best_score
+                if trial_local_score + 1e-9 < local_best_score:
                     local_best_score = trial_local_score
                     local_best = None if trial is None else copy_shape(trial)
-                    local_best_render = trial_render_rgb
-                    local_best_alpha = trial_alpha
-                    local_best_diff = trial_diff
+                    local_best_deleted = trial is None
                 if trial is None:
                     working.insert(idx, prev)
                 else:
                     working[idx] = prev
 
-            if local_best_error + 1e-9 < best_error:
-                working[idx] = local_best
-                best_error = local_best_error
-                render_rgb, top_alpha, top_idx, diff_top, _, _, _ = render_and_score(background, working, target_rgba)
-                improvements += 1
-                changed = True
+            if local_best_score + 1e-9 < original_local_score:
+                prev = working[idx]
+                if local_best_deleted:
+                    del working[idx]
+                else:
+                    working[idx] = local_best
+                trial_render_rgb, trial_alpha, trial_top_idx, trial_diff, _, trial_total_error, trial_scored_pixels = render_and_score(background, working, target_rgba)
+                trial_error = normalized_error(trial_total_error, trial_scored_pixels)
+                if trial_error <= best_error + 1e-6 or trial_error + 1e-9 < best_error:
+                    best_error = trial_error
+                    render_rgb = trial_render_rgb
+                    top_alpha = trial_alpha
+                    top_idx = trial_top_idx
+                    diff_top = trial_diff
+                    improvements += 1
+                    changed = True
+                else:
+                    if local_best_deleted:
+                        working.insert(idx, prev)
+                    else:
+                        working[idx] = prev
 
         if not changed:
             break
