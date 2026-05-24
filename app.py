@@ -18,8 +18,8 @@ import psutil
 
 from game_profiles import PROFILES
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
-from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, cleanup_generated_outputs, generated_jsons, generated_preview_files, generator_preview_path, geometry_shape_count, load_settings, write_custom_settings
-from generator_backend import generator_output_dir, generator_stop_request_path
+from generator_backend import GENERATOR_EXE, best_geometry_jsons, build_generator_command, generated_jsons, geometry_shape_count, import_drawable_budget, is_import_safe_geometry_json, load_settings, next_generator_output_dir, write_custom_settings
+from generator_backend import generator_stop_request_path
 
 
 ROOT = Path(__file__).resolve().parent
@@ -94,6 +94,7 @@ TEXT = {
         "checkpoint_layers": "Layers",
         "checkpoint_file": "File",
         "checkpoint_recommended": "Recommended",
+        "checkpoint_unsafe": "raw overshoot",
         "checkpoint_add_selected": "Add selected",
         "checkpoint_add_best": "Add recommended",
         "checkpoint_manual": "Manual file picker",
@@ -235,6 +236,7 @@ Notes
         "checkpoint_layers": "层数",
         "checkpoint_file": "文件",
         "checkpoint_recommended": "推荐",
+        "checkpoint_unsafe": "原始超量",
         "checkpoint_add_selected": "添加所选",
         "checkpoint_add_best": "添加推荐",
         "checkpoint_manual": "手动选文件",
@@ -814,6 +816,8 @@ class App:
         self.browser_entries = {}
         self.generated_folder_entries = {}
         self.generated_checkpoint_entries = []
+        self.generated_preview_token = 0
+        self.browser_preview_token = 0
         self.shape_dump_window = None
         self.shape_dump_tree = None
         self.shape_dump_entries = []
@@ -821,6 +825,7 @@ class App:
         self.shape_dump_entry_map = {}
         self.shape_dump_selected = None
         self.active_generation_images = []
+        self.active_generation_run_dirs = {}
         self._build()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh_processes()
@@ -1300,6 +1305,16 @@ class App:
     def _quality_overshoot_enabled(self):
         return self.enable_quality_overshoot.get() == "1"
 
+    def _run_preview_files(self, image_path, run_dir):
+        image_path = Path(image_path)
+        run_dir = Path(run_dir)
+        candidates = []
+        if run_dir.exists():
+            candidates.extend(run_dir.glob(f"{image_path.stem}.preview*.png"))
+            candidates.extend(run_dir.glob(f"{image_path.stem}.v2.final.*.preview.png"))
+        filtered = [path for path in candidates if ".v2.preprocess." not in path.name]
+        return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
+
     def toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
         if self.advanced_visible:
@@ -1550,6 +1565,8 @@ class App:
                 count = geometry_shape_count(path)
             except Exception:
                 count = 0
+            import_safe = is_import_safe_geometry_json(path)
+            import_budget = import_drawable_budget(path)
             group = self._json_group_key(path)
             step_number, step_variant, checkpoint_label = self._checkpoint_step_info(path)
             folder_label = self._checkpoint_folder_label(path)
@@ -1562,7 +1579,9 @@ class App:
                 "step_number": step_number,
                 "step_variant": step_variant,
                 "layers": count,
-                "recommended": path.resolve() in recommended,
+                "import_safe": import_safe,
+                "import_budget": import_budget,
+                "recommended": import_safe and path.resolve() in recommended,
                 "mtime": path.stat().st_mtime,
             })
         entries.sort(
@@ -1588,19 +1607,29 @@ class App:
         entry = self._browser_selected_entry()
         if not entry or self.browser_preview_widget is None:
             return
+        self.browser_preview_token += 1
+        token = self.browser_preview_token
         preview_path = self._preview_path_for_json(entry["path"])
-        if preview_path and preview_path.exists():
-            self.browser_preview_widget.set_file(preview_path)
-            return
-        data = render_geometry_json(entry["path"])
-        if not data:
-            self.browser_preview_widget.clear(tr(self.lang, "preview_unavailable"))
-            return
-        self.browser_preview_widget.set_data(data)
+        self.browser_preview_widget.clear("Rendering preview...")
+
+        def _render_preview(json_path, preview_file, preview_token):
+            if preview_file and preview_file.exists():
+                data = render_source_image(preview_file)
+            else:
+                data = render_geometry_json(json_path)
+            self.queue.put(("browser_preview", (preview_token, data)))
+
+        threading.Thread(target=_render_preview, args=(entry["path"], preview_path, token), daemon=True).start()
 
     def _browser_add_selected(self):
         entry = self._browser_selected_entry()
         if not entry:
+            return
+        if not entry.get("import_safe", True):
+            self.log_line(
+                f"Skipped raw overshoot JSON: {entry['path']} "
+                f"({entry['layers']} layers > {entry.get('import_budget') or 'target budget'})"
+            )
             return
         path = entry["path"]
         if path not in self.json_files:
@@ -1629,7 +1658,14 @@ class App:
 
     def _generated_display_label(self, entry):
         recommended = " [recommended]" if entry.get("recommended") else ""
-        return f"{entry['checkpoint']} | {entry['type']} | {entry['layers']} layers{recommended}"
+        unsafe = ""
+        if not entry.get("import_safe", True):
+            budget = entry.get("import_budget")
+            unsafe = f" [{tr(self.lang, 'checkpoint_unsafe')}"
+            if budget:
+                unsafe += f" > {budget}"
+            unsafe += "]"
+        return f"{entry['checkpoint']} | {entry['type']} | {entry['layers']} layers{recommended}{unsafe}"
 
     def _refresh_import_generated_browser(self):
         if not hasattr(self, "generated_folder_combo") or self.generated_folder_combo is None:
@@ -1687,16 +1723,30 @@ class App:
         entry = self._selected_generated_entry()
         if not entry:
             return
+        self.generated_preview_token += 1
+        token = self.generated_preview_token
         preview_path = self._preview_path_for_json(entry["path"])
-        if preview_path and preview_path.exists():
-            self.show_preview_file(preview_path)
-        else:
-            self.show_preview(render_geometry_json(entry["path"]))
+        self.show_preview(None)
+
+        def _render_preview(json_path, preview_file, preview_token):
+            if preview_file and preview_file.exists():
+                data = render_source_image(preview_file)
+            else:
+                data = render_geometry_json(json_path)
+            self.queue.put(("generated_preview", (preview_token, data)))
+
+        threading.Thread(target=_render_preview, args=(entry["path"], preview_path, token), daemon=True).start()
 
     def _add_selected_generated_json(self):
         entry = self._selected_generated_entry()
         if entry is None:
             self.log_line(tr(self.lang, "generated_none"))
+            return
+        if not entry.get("import_safe", True):
+            self.log_line(
+                f"Skipped raw overshoot JSON: {entry['path']} "
+                f"({entry['layers']} layers > {entry.get('import_budget') or 'target budget'})"
+            )
             return
         path = entry["path"]
         if path not in self.json_files:
@@ -1734,7 +1784,7 @@ class App:
             values = (
                 "yes" if entry["recommended"] else "",
                 entry["checkpoint"],
-                entry["type"],
+                entry["type"] if entry.get("import_safe", True) else f"{entry['type']} ({tr(self.lang, 'checkpoint_unsafe')})",
                 entry["layers"],
                 entry["path"].name,
             )
@@ -1928,7 +1978,7 @@ class App:
         self.stop_generation_event.set()
         for image_path in list(self.active_generation_images):
             try:
-                stop_path = generator_stop_request_path(image_path)
+                stop_path = generator_stop_request_path(image_path, self.active_generation_run_dirs.get(image_path))
                 stop_path.parent.mkdir(parents=True, exist_ok=True)
                 stop_path.write_text("stop\n", encoding="utf-8")
             except Exception as exc:
@@ -1946,16 +1996,13 @@ class App:
                 if self.shutdown_event.is_set():
                     self.queue.put(("status", tr(self.lang, "failed")))
                     self.active_generation_images = []
+                    self.active_generation_run_dirs = {}
                     return
                 before = {path.resolve() for path in generated_jsons(image_path)}
-                preview_path = generator_preview_path(image_path)
-                if preview_path.exists():
-                    try:
-                        preview_path.unlink()
-                    except OSError:
-                        pass
-                cleanup_generated_outputs(image_path)
+                run_dir = next_generator_output_dir(image_path)
+                self.active_generation_run_dirs[image_path] = run_dir
                 self.queue.put(("log", f"Generating: {image_path}"))
+                self.queue.put(("log", f"Output folder: {run_dir}"))
                 self.queue.put(("preview", render_source_image(image_path)))
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 cmd = build_generator_command(
@@ -1963,6 +2010,7 @@ class App:
                     setting,
                     enable_repair=self._repair_enabled(),
                     enable_overshoot=self._quality_overshoot_enabled(),
+                    output_dir=run_dir,
                 )
                 self.queue.put(("log", f"Running GPU generator with {setting['path'].name}"))
                 proc = subprocess.Popen(
@@ -2012,7 +2060,7 @@ class App:
                             self.queue.put(("status", tr(self.lang, "failed")))
                             return
                         _drain_generator_output()
-                        preview_files = generated_preview_files(image_path)
+                        preview_files = self._run_preview_files(image_path, run_dir)
                         if preview_files:
                             newest_preview = preview_files[0]
                             preview_mtime = newest_preview.stat().st_mtime
@@ -2051,7 +2099,7 @@ class App:
                     if output not in self.json_files:
                         self.json_files.append(output)
                     self.queue.put(("log", f"Generated: {output}"))
-                    preview_files = generated_preview_files(image_path)
+                    preview_files = self._run_preview_files(image_path, run_dir)
                     if preview_files:
                         self.queue.put(("preview_file", preview_files[0]))
                     else:
@@ -2066,6 +2114,7 @@ class App:
             self.queue.put(("status", tr(self.lang, "failed")))
         finally:
             self.active_generation_images = []
+            self.active_generation_run_dirs = {}
 
     def open_output_folder(self):
         folder = None
@@ -2647,6 +2696,17 @@ class App:
                 self.show_preview(payload)
             elif kind == "preview_file":
                 self.show_preview_file(payload)
+            elif kind == "generated_preview":
+                token, data = payload
+                if token == self.generated_preview_token:
+                    self.show_preview(data)
+            elif kind == "browser_preview":
+                token, data = payload
+                if token == self.browser_preview_token and self.browser_preview_widget is not None:
+                    if data:
+                        self.browser_preview_widget.set_data(data)
+                    else:
+                        self.browser_preview_widget.clear(tr(self.lang, "preview_unavailable"))
             elif kind == "render_lists":
                 self._render_lists()
         if not self.closed:

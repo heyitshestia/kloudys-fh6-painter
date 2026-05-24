@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -113,8 +114,7 @@ def write_custom_settings(base_setting, custom_values):
 def generated_jsons(image_path):
     image_path = Path(image_path)
     candidates = []
-    folder = generator_output_dir(image_path)
-    if folder.exists():
+    for folder in generator_output_dirs(image_path):
         candidates.extend(folder.rglob("*.json"))
     legacy_folder = image_path.parent / image_path.stem
     if legacy_folder.exists():
@@ -133,17 +133,65 @@ def geometry_shape_count(path):
     return drawable_shape_count(path)
 
 
+def geometry_group_stem(path):
+    path = Path(path)
+    base_name = re.sub(r"\.v2\.final\.\d+$", "", path.stem)
+    base_name = re.sub(r"\.\d+v2$", "", base_name)
+    base_name = re.sub(r"\.v2$", "", base_name)
+    base_name = re.sub(r"\.\d+$", "", base_name)
+    return base_name
+
+
+def generation_report_path(path):
+    path = Path(path)
+    return path.with_name(f"{geometry_group_stem(path)}.v2.report.json")
+
+
+def import_drawable_budget(path):
+    report_path = generation_report_path(path)
+    if not report_path.exists():
+        return None
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    for key in ("drawable_target_shapes", "target_drawable_shapes"):
+        try:
+            value = int(report.get(key))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    try:
+        target_shapes = int(report.get("target_shapes"))
+    except (TypeError, ValueError):
+        return None
+    if target_shapes > 4:
+        return target_shapes - 4
+    return target_shapes if target_shapes > 0 else None
+
+
+def is_v2_output_json(path):
+    lower_name = Path(path).name.lower()
+    return bool(".v2.final." in lower_name or re.search(r"\.\d+v2\.json$", lower_name) or lower_name.endswith(".v2.json"))
+
+
+def is_import_safe_geometry_json(path):
+    budget = import_drawable_budget(path)
+    if budget is None:
+        return True
+    return geometry_shape_count(path) <= budget
+
+
 def best_geometry_jsons(paths):
     best_by_stem = {}
     for path in paths:
         path = Path(path)
-        base_name = re.sub(r"\.v2\.final\.\d+$", "", path.stem)
-        base_name = re.sub(r"\.\d+v2$", "", base_name)
-        base_name = re.sub(r"\.v2$", "", base_name)
-        base_name = re.sub(r"\.\d+$", "", base_name)
+        if not is_import_safe_geometry_json(path):
+            continue
+        base_name = geometry_group_stem(path)
         key = str(path.with_name(base_name).resolve()).lower()
-        lower_name = path.name.lower()
-        is_v2_final = 1 if ".v2.final." in lower_name or re.search(r"\.\d+v2\.json$", lower_name) or lower_name.endswith(".v2.json") else 0
+        is_v2_final = 1 if is_v2_output_json(path) else 0
         score = (is_v2_final, geometry_shape_count(path), path.stat().st_mtime)
         current = best_by_stem.get(key)
         if current is None or score > current[0]:
@@ -159,8 +207,7 @@ def generator_preview_path(image_path):
 def generated_preview_files(image_path):
     image_path = Path(image_path)
     candidates = []
-    folder = generator_output_dir(image_path)
-    if folder.exists():
+    for folder in generator_output_dirs(image_path):
         candidates.extend(folder.glob(f"{image_path.stem}.preview*.png"))
         candidates.extend(folder.glob(f"{image_path.stem}.v2.final.*.preview.png"))
     legacy_folder = image_path.parent / image_path.stem
@@ -177,15 +224,56 @@ def generator_output_base(image_path):
     return image_path.with_suffix("")
 
 
-def generator_output_dir(image_path):
+def generator_safe_stem(image_path):
+    image_path = Path(image_path)
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", image_path.stem).strip("._") or "image"
+
+
+def legacy_generator_output_dir(image_path):
     image_path = Path(image_path)
     digest = hashlib.sha1(str(image_path.resolve()).encode("utf-8", errors="replace")).hexdigest()[:8]
-    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", image_path.stem).strip("._") or "image"
-    return GENERATED_ROOT / f"{safe_stem}-{digest}"
+    return GENERATED_ROOT / f"{generator_safe_stem(image_path)}-{digest}"
 
 
-def generator_stop_request_path(image_path):
-    return generator_output_dir(image_path) / ".v2-stop"
+def generator_output_dir(image_path):
+    return GENERATED_ROOT / generator_safe_stem(image_path)
+
+
+def generator_output_dirs(image_path):
+    safe_stem = generator_safe_stem(image_path)
+    candidates = []
+    if GENERATED_ROOT.exists():
+        for path in GENERATED_ROOT.iterdir():
+            if not path.is_dir():
+                continue
+            name = path.name
+            if name == safe_stem or re.fullmatch(re.escape(safe_stem) + r"v\d+", name):
+                candidates.append(path)
+            elif re.fullmatch(re.escape(safe_stem) + r"-[0-9a-f]{8}", name, flags=re.IGNORECASE):
+                candidates.append(path)
+    legacy = legacy_generator_output_dir(image_path)
+    if legacy.exists():
+        candidates.append(legacy)
+    return sorted(set(candidates), key=lambda path: path.stat().st_mtime, reverse=True)
+
+
+def next_generator_output_dir(image_path):
+    GENERATED_ROOT.mkdir(parents=True, exist_ok=True)
+    base = generator_output_dir(image_path)
+    if not base.exists():
+        return base
+    safe_stem = generator_safe_stem(image_path)
+    index = 2
+    while True:
+        candidate = GENERATED_ROOT / f"{safe_stem}v{index}"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def generator_stop_request_path(image_path, output_dir=None):
+    folder = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
+    return folder / ".v2-stop"
 
 
 def cleanup_generated_outputs(image_path):
@@ -212,8 +300,9 @@ def cleanup_generated_outputs(image_path):
             pass
 
 
-def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False):
+def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False, output_dir=None):
     image_path = Path(image_path)
+    output_dir = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
     values = setting.get("values", {})
     target_shapes = str(values.get("stopAt", "3000"))
     try:
@@ -231,13 +320,13 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         "--settings",
         str(setting["path"]),
         "--out-dir",
-        str(generator_output_dir(image_path)),
+        str(output_dir),
         "--target-shapes",
         target_shapes,
         "--checkpoint-step",
         checkpoint_step,
         "--stop-file",
-        str(generator_stop_request_path(image_path)),
+        str(generator_stop_request_path(image_path, output_dir)),
         "--preprocess-mode",
         preprocess_mode,
     ]
