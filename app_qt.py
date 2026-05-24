@@ -436,7 +436,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 860)
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
-        self.json_files: list[Path] = []
+        self.selected_import_json_path: Path | None = None
         self.outputs: list[Path] = []
         self.processes = []
         self.active_processes = set()
@@ -447,8 +447,6 @@ class MainWindow(QMainWindow):
         self.active_generation_run_dirs: dict[Path, Path] = {}
         self.latest_generated_run_dir: Path | None = None
         self.auto_located_context: dict | None = None
-        self.manual_address_dirty = False
-        self.setting_auto_locate_fields = False
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
         self.preview_request_id = 0
@@ -624,46 +622,33 @@ class MainWindow(QMainWindow):
         json_group = QGroupBox("Step 3 - JSON")
         json_layout = QVBoxLayout(json_group)
         controls = QHBoxLayout()
-        add_json = QPushButton("Manual JSON...")
+        add_json = QPushButton("Choose JSON...")
         add_json.clicked.connect(self.manual_add_json)
         refresh_jsons = QPushButton("Refresh")
         refresh_jsons.clicked.connect(self.refresh_generated_browser)
         add_recommended = QPushButton("Use recommended")
-        add_recommended.clicked.connect(self.add_recommended_generated_json)
-        add_selected = QPushButton("Use selected")
-        add_selected.clicked.connect(self.add_selected_generated_json)
+        add_recommended.clicked.connect(self.select_recommended_generated_json)
         controls.addWidget(add_json)
         controls.addWidget(refresh_jsons)
         controls.addWidget(add_recommended)
-        controls.addWidget(add_selected)
         json_layout.addLayout(controls)
         self.generated_folder_combo = QComboBox()
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
         json_layout.addWidget(QLabel("Generated run"))
-        json_layout.addWidget(QLabel("Latest run is selected automatically. Duplicate generations are kept as previous runs instead of replacing old output."))
+        json_layout.addWidget(QLabel("Click a checkpoint below. The highlighted JSON is the one that will be imported."))
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
-        self.generated_checkpoint_list.currentRowChanged.connect(self.preview_selected_generated_checkpoint)
-        self.generated_checkpoint_list.itemDoubleClicked.connect(lambda _item: self.add_selected_generated_json())
+        self.generated_checkpoint_list.currentRowChanged.connect(self.select_generated_checkpoint)
         json_layout.addWidget(QLabel("Checkpoints"))
         json_layout.addWidget(self.generated_checkpoint_list, 2)
-        self.json_list = QListWidget()
-        self.json_list.currentRowChanged.connect(self.preview_selected_json)
-        json_layout.addWidget(QLabel("Import queue"))
-        json_layout.addWidget(self.json_list, 1)
+        self.selected_json_label = QLabel("Selected import JSON: none")
+        self.selected_json_label.setWordWrap(True)
+        json_layout.addWidget(self.selected_json_label)
         left_layout.addWidget(json_group, 1)
 
         import_group = QGroupBox("Step 4 - Import")
         import_layout = QVBoxLayout(import_group)
         import_layout.addWidget(QLabel("Keep FH6 in Vinyl Group Editor and do not switch menus during import."))
-        self.manual_count = QLineEdit()
-        self.manual_table = QLineEdit()
-        self.manual_count.setPlaceholderText("Manual count address (advanced, optional)")
-        self.manual_table.setPlaceholderText("Manual table address (advanced, optional)")
-        self.manual_count.textEdited.connect(self.mark_manual_address_dirty)
-        self.manual_table.textEdited.connect(self.mark_manual_address_dirty)
-        import_layout.addWidget(self.manual_count)
-        import_layout.addWidget(self.manual_table)
         import_btn = QPushButton("Import JSON into FH6")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
@@ -822,26 +807,19 @@ class MainWindow(QMainWindow):
         self.show_preview_bytes(render_source_image(path) or b"")
 
     def manual_add_json(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Choose geometry JSON", "", "Geometry JSON (*.json);;All files (*.*)")
-        added = 0
-        for item in files:
-            path = Path(item)
-            if path.exists() and path not in self.json_files:
-                self.json_files.append(path)
-                added += 1
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose geometry JSON", "", "Geometry JSON (*.json);;All files (*.*)")
+        if not file_name:
+            return
+        path = Path(file_name)
+        if path.exists():
+            self.select_import_json(path, "manual JSON")
         self.render_lists()
-        if files:
-            self.preview_json(Path(files[0]))
-        if added:
-            self.log_line(f"Added {added} JSON file(s) to import list.")
 
     def render_lists(self):
         self.image_list.clear()
         for path in self.images:
             self.image_list.addItem(str(path))
-        self.json_list.clear()
-        for path in self.json_files:
-            self.json_list.addItem(str(path))
+        self.update_selected_json_label()
 
     def log_line(self, message: str):
         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -865,10 +843,6 @@ class MainWindow(QMainWindow):
         if 0 <= row < len(self.images):
             self.preview_request_id += 1
             self.show_preview_bytes(render_source_image(self.images[row]) or b"")
-
-    def preview_selected_json(self, row: int):
-        if 0 <= row < len(self.json_files):
-            self.preview_json(self.json_files[row])
 
     def preview_json(self, path: Path):
         self.preview_request_id += 1
@@ -1024,8 +998,6 @@ class MainWindow(QMainWindow):
                 for output in sorted(new_outputs, key=lambda path: path.stat().st_mtime, reverse=True):
                     if output not in self.outputs:
                         self.outputs.append(output)
-                    if output not in self.json_files:
-                        self.json_files.append(output)
                     self.bus.log.emit(f"Generated: {output}")
                 preview_files = self.run_preview_files(image_path, run_dir)
                 if preview_files:
@@ -1314,36 +1286,48 @@ class MainWindow(QMainWindow):
             return None
         return sorted(entries, key=lambda entry: (entry["run_mtime"], entry["path"].stat().st_mtime), reverse=True)[0]
 
-    def preview_selected_generated_checkpoint(self, _row: int):
+    def select_generated_checkpoint(self, _row: int):
         entry = self.selected_generated_entry()
         if entry:
-            self.preview_json(entry["path"])
+            self.select_generated_entry_for_import(entry)
 
-    def add_selected_generated_json(self):
-        entry = self.selected_generated_entry()
+    def select_generated_entry_for_import(self, entry):
         if not entry:
             return
         if not entry.get("import_safe", True):
-            self.log_line(f"Skipped raw overshoot JSON: {entry['path']} ({entry['layers']} layers > {entry.get('import_budget') or 'target budget'})")
+            self.selected_import_json_path = None
+            self.update_selected_json_label("Selected import JSON: none - highlighted checkpoint is raw overshoot and cannot be imported.")
+            self.preview_json(entry["path"])
+            self.log_line(f"Cannot import raw overshoot JSON: {entry['path']} ({entry['layers']} layers > {entry.get('import_budget') or 'target budget'})")
             return
-        path = entry["path"]
-        if path not in self.json_files:
-            self.json_files.append(path)
-            self.render_lists()
-            self.log_line(f"Added JSON: {path}")
-        self.preview_json(path)
+        self.select_import_json(entry["path"], "highlighted checkpoint")
 
-    def add_recommended_generated_json(self):
+    def select_recommended_generated_json(self):
         entry = self.recommended_generated_entry()
         if not entry:
             self.log_line("No recommended generated JSON found yet.")
             return
-        path = entry["path"]
-        if path not in self.json_files:
-            self.json_files.append(path)
-            self.render_lists()
-            self.log_line(f"Added recommended JSON: {path}")
-        self.preview_json(path)
+        for row, candidate in enumerate(self.generated_checkpoint_entries):
+            if candidate["path"] == entry["path"]:
+                self.generated_checkpoint_list.setCurrentRow(row)
+                break
+        self.select_import_json(entry["path"], "recommended checkpoint")
+
+    def select_import_json(self, path: Path, source: str):
+        self.selected_import_json_path = Path(path)
+        self.update_selected_json_label()
+        self.preview_json(self.selected_import_json_path)
+        self.log_line(f"Selected {source}: {self.selected_import_json_path}")
+
+    def update_selected_json_label(self, text: str | None = None):
+        if not hasattr(self, "selected_json_label"):
+            return
+        if text is not None:
+            self.selected_json_label.setText(text)
+        elif self.selected_import_json_path:
+            self.selected_json_label.setText(f"Selected import JSON: {self.selected_import_json_path}")
+        else:
+            self.selected_json_label.setText("Selected import JSON: none")
 
     def run_subprocess(self, cmd, timeout=None):
         self.bus.log.emit(self.friendly_command_name(cmd))
@@ -1456,19 +1440,7 @@ class MainWindow(QMainWindow):
         if update_status:
             self.bus.status.emit("Done" if code == 0 else "Failed")
 
-    def mark_manual_address_dirty(self, _text=None):
-        if not self.setting_auto_locate_fields:
-            self.manual_address_dirty = True
-            self.auto_located_context = None
-
     def apply_auto_locate_result(self, count_address, table_address, layer_count, pid, game):
-        self.setting_auto_locate_fields = True
-        try:
-            self.manual_count.setText(count_address)
-            self.manual_table.setText(table_address)
-        finally:
-            self.setting_auto_locate_fields = False
-        self.manual_address_dirty = False
         self.auto_located_context = {
             "count_address": count_address,
             "table_address": table_address,
@@ -1490,34 +1462,30 @@ class MainWindow(QMainWindow):
         )
 
     def start_import(self):
-        if not self.json_files:
+        if not self.selected_import_json_path:
             self.log_line("No JSON files selected.")
             return
         pid = self.selected_pid_value()
         game = self.game_combo.currentText() or "fh6"
-        count_address = parse_hex_or_empty(self.manual_count.text())
-        table_address = parse_hex_or_empty(self.manual_table.text())
         layer_count = self.layer_count.text().strip()
-        if game == "fh6" and table_address and not count_address:
-            self.log_line("Manual FH6 table address requires the matching count address. Clear both fields or use auto-locate.")
-            return
-        if game == "fh6" and not count_address and not table_address:
+        count_address = None
+        table_address = None
+        if game == "fh6":
             if not pid:
                 self.log_line("Select or refresh the FH6 process before importing.")
                 return
             if not layer_count:
                 self.log_line("Template layer count is required for FH6 import.")
                 return
-        if count_address and table_address and game == "fh6" and not self.manual_address_dirty:
-            if not self.auto_located_context_matches(count_address, table_address, layer_count, pid, game):
-                self.log_line("Stored auto-locate result does not match the current process/layer count. Re-locating FH6 template.")
-                count_address = None
-                table_address = None
-        json_files = list(self.json_files)
+            context = self.auto_located_context or {}
+            if self.auto_located_context_matches(context.get("count_address"), context.get("table_address"), layer_count, pid, game):
+                count_address = context.get("count_address")
+                table_address = context.get("table_address")
+        json_path = self.selected_import_json_path
         self.set_status("Running")
         threading.Thread(
             target=self.import_worker,
-            args=(pid, game, count_address, table_address, layer_count, json_files),
+            args=(pid, game, count_address, table_address, layer_count, json_path),
             daemon=True,
         ).start()
 
@@ -1533,7 +1501,7 @@ class MainWindow(QMainWindow):
         if json_layers and usable_layers and json_layers < usable_layers * 0.75:
             self.bus.log.emit(f"Selected JSON has far fewer drawable layers than usable capacity. JSON={json_layers}, usable={usable_layers}")
 
-    def import_worker(self, pid, game, count_address, table_address, layer_count, json_files):
+    def import_worker(self, pid, game, count_address, table_address, layer_count, json_path):
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.bus.log.emit("Finding current FH6 template...")
@@ -1550,23 +1518,23 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit("FH6 import requires a selected process and template layer count.")
                 self.bus.status.emit("Failed")
                 return
-        for path in json_files:
-            if game == "fh6" and layer_count:
-                self.check_json_layer_fit(path, layer_count)
-            cmd = [helper_python(), ROOT / "main.py", "--game", game, "--no-preview"]
-            if pid:
-                cmd.extend(["--pid", str(pid)])
-            if count_address:
-                cmd.extend(["--layer-count-address", count_address])
-            if table_address:
-                cmd.extend(["--layer-table-address", table_address])
-            if game == "fh6" and layer_count:
-                cmd.extend(["--layer-count-value", str(layer_count)])
-            cmd.append(path)
-            code = self.run_subprocess(cmd)
-            if code != 0:
-                self.bus.status.emit("Failed")
-                return
+        path = Path(json_path)
+        if game == "fh6" and layer_count:
+            self.check_json_layer_fit(path, layer_count)
+        cmd = [helper_python(), ROOT / "main.py", "--game", game, "--no-preview"]
+        if pid:
+            cmd.extend(["--pid", str(pid)])
+        if count_address:
+            cmd.extend(["--layer-count-address", count_address])
+        if table_address:
+            cmd.extend(["--layer-table-address", table_address])
+        if game == "fh6" and layer_count:
+            cmd.extend(["--layer-count-value", str(layer_count)])
+        cmd.append(path)
+        code = self.run_subprocess(cmd)
+        if code != 0:
+            self.bus.status.emit("Failed")
+            return
         self.bus.status.emit("Done")
 
     def start_diagnose(self):
