@@ -785,7 +785,7 @@ class App:
         self.preview_widget = None
         self.import_preview_widget = None
         self.use_custom_settings = StringVar(value="0")
-        self.enable_luma_bands = StringVar(value="0")
+        self.enable_luma_bands = StringVar(value="1")
         self.enable_quality_overshoot = StringVar(value="0")
         self.enable_targeted_repair = StringVar(value="1")
         self.custom_stop_at = StringVar()
