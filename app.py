@@ -34,6 +34,13 @@ PREVIEW_MAX = 520
 _CV2_CACHE = None
 _CV2_ERROR = None
 ELLIPSE_IMPORT_BASE_DIVISOR = 63.0
+PUBERT_PRESENCE_ASSET = ROOT / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "pubert.jpg"
+
+
+def require_pubert_presence():
+    # Remove this function call and constant to disable the launch presence check.
+    if not PUBERT_PRESENCE_ASSET.is_file():
+        raise RuntimeError("pubert not present")
 
 
 @contextlib.contextmanager
@@ -70,6 +77,7 @@ TEXT = {
         "images": "Images",
         "add_images": "Choose image",
         "quality": "Quality profile",
+        "vroom_switch": "vroom vroom scrrrrt zoooom!",
         "custom_settings": "Use custom settings",
         "custom_layers": "Output layers",
         "custom_resolution": "Max resolution",
@@ -212,6 +220,7 @@ Notes
         "images": "图片",
         "add_images": "选择图片",
         "quality": "品质配置",
+        "vroom_switch": "vroom vroom scrrrrt zoooom!",
         "custom_settings": "使用自定义参数",
         "custom_layers": "输出层数",
         "custom_resolution": "最大分辨率",
@@ -678,6 +687,43 @@ class ZoomPreview:
         self._render()
 
 
+class ToggleSwitch:
+    def __init__(self, parent, variable, text, command=None):
+        self.variable = variable
+        self.command = command
+        self.frame = Frame(parent)
+        self.canvas = Canvas(self.frame, width=48, height=24, highlightthickness=0, bg=self.frame.cget("bg"))
+        self.canvas.pack(side=LEFT)
+        self.label = Label(self.frame, text=text, anchor="w")
+        self.label.pack(side=LEFT, padx=(8, 0))
+        self.canvas.bind("<Button-1>", self.toggle)
+        self.label.bind("<Button-1>", self.toggle)
+        self.frame.bind("<Button-1>", self.toggle)
+        self.draw()
+
+    def pack(self, *args, **kwargs):
+        self.frame.pack(*args, **kwargs)
+
+    def toggle(self, _event=None):
+        self.variable.set("0" if self.variable.get() == "1" else "1")
+        self.draw()
+        if self.command:
+            self.command()
+
+    def draw(self):
+        enabled = self.variable.get() == "1"
+        self.canvas.delete("all")
+        track = "#00a86b" if enabled else "#b8b8b8"
+        x0 = 25 if enabled else 3
+        self.canvas.create_oval(2, 2, 24, 22, fill=track, outline=track)
+        self.canvas.create_oval(24, 2, 46, 22, fill=track, outline=track)
+        self.canvas.create_rectangle(13, 2, 35, 22, fill=track, outline=track)
+        self.canvas.create_oval(x0, 3, x0 + 18, 21, fill="#ffffff", outline="#888888")
+
+    def set_text(self, text):
+        self.label.config(text=text)
+
+
 def compensated_ellipse_size(w, h):
     w = float(w)
     h = float(h)
@@ -828,6 +874,7 @@ class App:
         self.preview_widget = None
         self.import_preview_widget = None
         self.use_custom_settings = StringVar(value="0")
+        self.enable_vroom_boost = StringVar(value="0")
         self.enable_luma_bands = StringVar(value="1")
         self.enable_quality_overshoot = StringVar(value="0")
         self.enable_targeted_repair = StringVar(value="1")
@@ -1052,8 +1099,15 @@ class App:
         step2 = ttk.LabelFrame(left, text=tr(self.lang, "generate_step_quality"))
         self.translated.append((step2, "generate_step_quality", "text"))
         step2.pack(fill=X, pady=(0, 6))
+        self.vroom_switch = ToggleSwitch(
+            step2,
+            self.enable_vroom_boost,
+            tr(self.lang, "vroom_switch"),
+            command=self._update_setting_description,
+        )
+        self.vroom_switch.pack(anchor="w", padx=10, pady=(8, 2))
         profile_row = Frame(step2)
-        profile_row.pack(fill=X, padx=10, pady=(8, 4))
+        profile_row.pack(fill=X, padx=10, pady=(4, 4))
         self._label(profile_row, "quality").pack(side=LEFT)
         self.profile_combo = ttk.Combobox(
             profile_row,
@@ -1299,6 +1353,8 @@ class App:
                 self.browser_preview_widget.clear()
         if hasattr(self, "advanced_button"):
             self.advanced_button.config(text=tr(self.lang, "hide_advanced" if self.advanced_visible else "show_advanced"))
+        if hasattr(self, "vroom_switch"):
+            self.vroom_switch.set_text(tr(self.lang, "vroom_switch"))
         self._update_tutorial()
         self.status.set(tr(self.lang, "ready"))
 
@@ -1310,7 +1366,10 @@ class App:
 
     def _update_setting_description(self, _event=None):
         item = self._selected_setting()
-        self.setting_description.config(text=item["description"] if item else "No settings profiles found.")
+        description = item["description"] if item else "No settings profiles found."
+        if item and self.enable_vroom_boost.get() == "1":
+            description = f"{description}\n{tr(self.lang, 'vroom_switch')} doubles numeric effort settings; output layers and resolution stay unchanged."
+        self.setting_description.config(text=description)
         if item and self.use_custom_settings.get() != "1":
             values = item.get("values", {})
             self.custom_stop_at.set(values.get("stopAt", "3000"))
@@ -1323,6 +1382,34 @@ class App:
         state = "normal" if self.use_custom_settings.get() == "1" else "disabled"
         for entry in getattr(self, "custom_fields", []):
             entry.config(state=state)
+
+    def _vroom_boost_overrides(self, values):
+        if self.enable_vroom_boost.get() != "1":
+            return {}
+        excluded = {
+            "description",
+            "forceOpaqueShapes",
+            "maxPreviewSize",
+            "maxResolution",
+            "saveAt",
+            "shapeMode",
+            "stopAt",
+            "useWorkGroupEval",
+            "v2EnableRepair",
+            "v2PreprocessMode",
+        }
+        overrides = {}
+        for key, value in values.items():
+            if key in excluded:
+                continue
+            text = str(value).strip()
+            if not re.fullmatch(r"-?\d+", text):
+                continue
+            number = int(text)
+            if number <= 0:
+                continue
+            overrides[key] = str(number * 2)
+        return overrides
 
     def _effective_setting(self):
         setting = self._selected_setting()
@@ -1339,8 +1426,20 @@ class App:
                 "mutatedSamples": self.custom_mutated_samples.get(),
                 "saveAt": self.custom_save_at.get(),
             })
+        base_values = dict(setting.get("values", {}))
+        base_values.update({key: value for key, value in overrides.items() if str(value).strip()})
+        overrides.update(self._vroom_boost_overrides(base_values))
         if self.use_custom_settings.get() == "1" or overrides["v2PreprocessMode"] != str(setting.get("values", {}).get("v2PreprocessMode", "none")).strip().lower():
-            return write_custom_settings(setting, overrides)
+            boosted = write_custom_settings(setting, overrides)
+            boosted["vroom_boost"] = self.enable_vroom_boost.get() == "1"
+            if boosted["vroom_boost"]:
+                boosted["label"] = setting.get("label", boosted.get("label"))
+            return boosted
+        if self.enable_vroom_boost.get() == "1":
+            boosted = write_custom_settings(setting, overrides)
+            boosted["vroom_boost"] = True
+            boosted["label"] = setting.get("label", boosted.get("label"))
+            return boosted
         return setting
 
     def _repair_enabled(self):
@@ -2777,6 +2876,7 @@ class App:
 
 
 def main():
+    require_pubert_presence()
     parser = argparse.ArgumentParser(description="Standalone forza-painter FH6 desktop app.")
     parser.add_argument("images", nargs="*", help="Optional image files to preload.")
     args = parser.parse_args()

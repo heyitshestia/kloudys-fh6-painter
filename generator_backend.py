@@ -358,6 +358,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
             "luma_bands": str(preprocess_mode).strip().lower() == "luma_bands",
             "quality_overshoot": bool(enable_overshoot),
             "targeted_repair": bool(enable_repair or setting_repair),
+            "vroom_boost": bool(setting.get("vroom_boost")),
         },
         "generator_command_options": {
             "target_shapes": target_shapes,
