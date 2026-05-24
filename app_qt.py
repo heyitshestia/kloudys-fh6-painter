@@ -87,6 +87,7 @@ THEMES = {
     "Sakura Glass": "sakura",
     "Blackout": "blackout",
 }
+DEFAULT_THEME = "Blackout"
 
 
 def helper_python() -> Path | str:
@@ -466,7 +467,7 @@ class PreviewView(QGraphicsView):
 class AnimatedThemeBackground(QWidget):
     def __init__(self):
         super().__init__()
-        self.theme_key = "pastel"
+        self.theme_key = THEMES[DEFAULT_THEME]
         self.petals = []
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.advance_petals)
@@ -843,7 +844,7 @@ class MainWindow(QMainWindow):
         theme_layout = QVBoxLayout(theme)
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(list(THEMES.keys()))
-        selected_theme = self.app_settings.get("theme", "Pastel Bloom")
+        selected_theme = self.app_settings.get("theme", DEFAULT_THEME)
         if selected_theme in THEMES:
             self.theme_combo.setCurrentText(selected_theme)
         self.theme_combo.currentIndexChanged.connect(self.apply_theme)
@@ -857,8 +858,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(tab, "Settings")
 
     def apply_theme(self, *_args):
-        theme_name = self.theme_combo.currentText() if hasattr(self, "theme_combo") else "Pastel Bloom"
-        theme_key = THEMES.get(theme_name, "pastel")
+        theme_name = self.theme_combo.currentText() if hasattr(self, "theme_combo") else DEFAULT_THEME
+        theme_key = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
         if hasattr(self, "background_widget"):
             self.background_widget.set_theme(theme_key)
         if hasattr(self, "app_settings"):
