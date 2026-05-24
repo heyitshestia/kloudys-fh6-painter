@@ -6,6 +6,20 @@
 
 完整英文说明见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。下面是中文简版。
 
+## 鸣谢 / Credits
+
+本项目建立在多个上游项目和贡献者的工作之上。许可证和原始声明保留在 [LICENSE](LICENSE) 和 [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu)。
+
+| 人 / 项目 | 链接 | 贡献 |
+| --- | --- | --- |
+| AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | 原始 Forza Painter、MIT 许可的 FH 导入流程、内存写入/导入基础、图像转 Vinyl 的核心思路。 |
+| BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | 本项目主要上游 FH6 桌面版本，包括 FH6 UI 流程、导入/定位、发布打包、文档和应用行为。 |
+| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize 生成器来源，当前打包的 `forza-painter-geometrize-go.exe` 基于这一类工作流。 |
+| Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` 作者，项目许可证中保留原始署名。 |
+| Michael Fogleman | https://github.com/fogleman/primitive | `primitive` 作者，项目许可证中保留原始署名。 |
+| Sanguk Ko / ree9622 | https://github.com/ree9622 | BVZRays 上游历史中的韩语本地化贡献者。 |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | 当前 fork：Luma Bands、V2 checkpoint/finalize 调整、Targeted repair 默认开启、checkpoint 浏览器、更新脚本、预设/UI 调整、主题支持和 FH6 导入安全处理。 |
+
 ## 先安装
 
 必须先装 **64 位 Python 3.12**：
@@ -88,7 +102,6 @@ FH6 需要额外 **4 个边界层**，所以可用图形层数是：
 
 - `Luma Bands`：预处理输入图，按亮度分段，适合动漫、平涂、边界明显的图片。不适合非常柔和的渐变照片。
 - `Targeted repair`：生成后修复边界、透明洞、手指缝、头发缝等容易出错的位置。默认开启。
-- `Quality overshoot`：先生成更多图形，再裁剪回目标层数。更慢，但有时边缘更好。
 - `vroom vroom scrrrrt zoooom!`：增加采样等努力参数，但不改变输出层数和分辨率。
 - `Checkpoint browser`：按生成文件夹浏览旧 checkpoint，重启软件后也会扫描 `imgs` 文件夹。
 

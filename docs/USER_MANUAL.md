@@ -39,7 +39,7 @@ check_environment.bat
 2. Choose one image.
 3. Pick a quality preset.
 4. Optional: enable `Use custom settings` and override the preset.
-5. Optional: enable or disable `Luma Bands`, `Quality overshoot`, `Targeted repair`, and `vroom vroom scrrrrt zoooom!`.
+5. Optional: enable or disable `Luma Bands`, `Targeted repair`, and `vroom vroom scrrrrt zoooom!`.
 6. Click `Start generating`.
 7. Wait for checkpoints, previews, and final V2 JSON files.
 
@@ -108,15 +108,7 @@ It tries to improve difficult areas without changing the whole generation strate
 
 It is enabled by default because it usually improves FH6 vinyl edges.
 
-## 7. Quality Overshoot
-
-`Quality overshoot` asks the raw generator to create extra shapes, then V2 prunes the result back to the selected target.
-
-Use it when difficult cutouts need extra cleanup and you can wait longer.
-
-Leave it off when you want predictable layer counts and faster testing.
-
-## 8. vroom vroom scrrrrt zoooom!
+## 7. vroom vroom scrrrrt zoooom!
 
 This switch doubles effort-style numeric settings for the selected preset.
 
@@ -128,7 +120,7 @@ It does not double:
 
 It is useful when you want more search effort without changing the template size.
 
-## 9. Checkpoints And Reports
+## 8. Checkpoints And Reports
 
 V2 writes checkpoints and reports for each run.
 
@@ -257,7 +249,7 @@ Use a higher preset, more output layers, more random samples, and a template wit
 
 ### Output has edge halos
 
-Keep `Targeted repair` on. Try `Luma Bands` on for flat art, or off for soft sources. For final outputs, try `Quality overshoot`.
+Keep `Targeted repair` on. Try `Luma Bands` on for flat art, or off for soft sources.
 
 ### Import clips the image
 

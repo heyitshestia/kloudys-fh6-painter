@@ -6,6 +6,20 @@ Image-to-vinyl generator and FH6 importer for **Forza Horizon 6**.
 
 This project turns an image into Forza vinyl geometry JSON, then imports that JSON into an open FH6 Vinyl Group Editor template.
 
+## Thank You / Credits
+
+This project exists because several people and upstream projects did the hard foundational work first. License notices are kept in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
+
+| Person / project | Link | Contribution |
+| --- | --- | --- |
+| AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project, MIT-licensed FH import workflow, memory-writing/import foundation, and core geometry-to-vinyl approach. |
+| BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused desktop fork used as the main upstream for this project, including FH6 UI workflow, importer/locator work, release packaging, documentation updates, and bundled app behavior. |
+| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled `forza-painter-geometrize-go.exe`. |
+| Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by the project license. |
+| Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by the project license. |
+| Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in the BVZRays upstream history. |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: Luma Bands workflow, V2 checkpoint/finalization changes, targeted repair defaults, checkpoint browser, updater batch, preset/UI changes, theme support, and FH6 import safety adjustments. |
+
 ## Read This First
 
 Run the setup files in this order before doing anything else:
@@ -108,7 +122,6 @@ Custom settings can override the preset for one run without editing `.ini` files
 
 - **Luma Bands**: default-on preprocess pass. It creates a luma-banded intermediate image before generation. Good for anime, flat colors, and sharper value separation. Turn it off for soft gradients.
 - **Targeted repair**: default-on V2 cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges after raw generation.
-- **Quality overshoot**: optional. Generates extra raw shapes, then prunes back to the target. Useful for difficult edges, slower than normal.
 - **vroom vroom scrrrrt zoooom!**: optional switch. Doubles effort-style numeric settings such as samples while keeping output layers and resolution unchanged.
 - **Checkpoint browser**: shows generated folders and checkpoints from `imgs`, including older runs after restart.
 - **Run reports**: every V2 run writes a `*.v2.report.json` with preset, custom settings, effective settings, toggles, candidates, and selected outputs.
@@ -140,8 +153,6 @@ Source/result examples are included in [docs/examples/test-finest](docs/examples
 - **Output is blurry**: use more output layers, higher random samples, a higher-resolution preset, or a larger template.
 - **Output is clipped**: the template does not have enough usable layers.
 
-## Credits
+## License
 
-This project is a derivative of the Forza Painter workflow and keeps the original license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
-
-Bundled generation uses the GPU/OpenCL geometrize path through `forza-painter-geometrize-go.exe`.
+This project is a derivative of the Forza Painter workflow and keeps the original MIT license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).

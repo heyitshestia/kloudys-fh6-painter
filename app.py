@@ -27,6 +27,7 @@ from version_info import get_version, get_version_label
 ROOT = Path(__file__).resolve().parent
 PROBE_DIR = ROOT / "webui-data" / "probes"
 SHAPE_DUMP_DIR = ROOT / "webui-data" / "shape-dumps"
+APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
 SHAPE_GUIDE_CACHE = PROBE_DIR / "shapes-guide.csv"
 SHAPE_GUIDE_URL = "https://docs.google.com/spreadsheets/d/1zmdme-c1ZqxTw8dd-ooYhJV8aOSYc1LkZlmIfELRbqo/export?format=csv&gid=0"
 SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
@@ -75,6 +76,12 @@ TEXT = {
         "import_tab": "Import",
         "tools_tab": "FH6 Tools",
         "tutorial_tab": "Tutorial",
+        "settings_tab": "Settings",
+        "appearance": "Appearance",
+        "app_theme": "Theme",
+        "theme_default": "Default",
+        "theme_vista": "Windows Vista",
+        "theme_hint": "Theme changes apply immediately and are saved for the next launch.",
         "images": "Images",
         "add_images": "Choose image",
         "quality": "Quality profile",
@@ -87,8 +94,6 @@ TEXT = {
         "custom_save_at": "Save checkpoints",
         "luma_bands": "Enable Luma Bands preprocess",
         "luma_bands_hint": "Create a luma-banded intermediate image before generation. Useful for flatter anime-style shading and cleaner separations.",
-        "quality_overshoot": "Enable quality overshoot",
-        "quality_overshoot_hint": "Generate about 12% extra raw layers, then let V2 prune/cap back to the FH6-safe target. Slower, but can improve difficult edges, holes, and small details.",
         "targeted_repair": "Use targeted repair (recommended)",
         "targeted_repair_hint": "After generation, tries to clean messy borders and transparent holes. Slower, but usually gives cleaner edges.",
         "custom_panel_title": "Custom settings",
@@ -218,6 +223,12 @@ Notes
         "import_tab": "导入",
         "tools_tab": "FH6 工具",
         "tutorial_tab": "教程",
+        "settings_tab": "设置",
+        "appearance": "外观",
+        "app_theme": "主题",
+        "theme_default": "默认",
+        "theme_vista": "Windows Vista",
+        "theme_hint": "主题会立即生效，并在下次启动时保留。",
         "images": "图片",
         "add_images": "选择图片",
         "quality": "品质配置",
@@ -230,8 +241,6 @@ Notes
         "custom_save_at": "保存节点",
         "luma_bands": "启用 Luma Bands 预处理",
         "luma_bands_hint": "先生成一张亮度分层的中间图再开始生成。更适合偏平涂的动漫风格和更清晰的明暗分离。",
-        "quality_overshoot": "启用品质超量生成",
-        "quality_overshoot_hint": "先多生成约 12% 原始图层，再由 V2 修剪/限制回 FH6 安全目标。会更慢，但可能改善复杂边缘、孔洞和小细节。",
         "targeted_repair": "使用定向修复（推荐）",
         "targeted_repair_hint": "生成后尝试清理杂乱边缘和透明孔洞。会更慢，但边缘通常更干净。",
         "custom_panel_title": "自定义参数",
@@ -356,6 +365,7 @@ Notes
 def ensure_dirs():
     PROBE_DIR.mkdir(parents=True, exist_ok=True)
     SHAPE_DUMP_DIR.mkdir(parents=True, exist_ok=True)
+    APP_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def tr(lang, key):
@@ -847,6 +857,8 @@ class App:
     def __init__(self, initial_images):
         ensure_dirs()
         self.root = Tk()
+        self.native_ttk_theme = ttk.Style(self.root).theme_use()
+        self.native_root_bg = self.root.cget("bg")
         self.root.title(f"forza-painter FH6 - {get_version()}")
         screen_w = max(1180, int(self.root.winfo_screenwidth() or 1180))
         screen_h = max(780, int(self.root.winfo_screenheight() or 780))
@@ -877,8 +889,8 @@ class App:
         self.use_custom_settings = StringVar(value="0")
         self.enable_vroom_boost = StringVar(value="0")
         self.enable_luma_bands = StringVar(value="1")
-        self.enable_quality_overshoot = StringVar(value="0")
         self.enable_targeted_repair = StringVar(value="1")
+        self.theme_choice = StringVar(value=self._load_app_theme())
         self.custom_stop_at = StringVar()
         self.custom_max_resolution = StringVar()
         self.custom_random_samples = StringVar()
@@ -931,18 +943,133 @@ class App:
         self._render_lists()
         self._poll_queue()
 
+    def _load_app_theme(self):
+        try:
+            data = json.loads(APP_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return "default"
+        theme = str(data.get("theme", "default")).strip().lower()
+        return "vista" if theme == "vista" else "default"
+
+    def _save_app_settings(self):
+        try:
+            APP_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            APP_SETTINGS_PATH.write_text(
+                json.dumps({"theme": self.theme_choice.get()}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
     def _configure_styles(self):
         style = ttk.Style(self.root)
+        if self.theme_choice.get() == "vista":
+            try:
+                style.theme_use("clam")
+            except Exception:
+                pass
+            bg = "#d7e9f7"
+            panel = "#f7fbff"
+            border = "#7aa7d8"
+            accent = "#2f73b7"
+            active = "#eaf5ff"
+            style.configure(".", font=("Segoe UI", 10), background=bg, foreground="#1f1f1f")
+            style.configure("TFrame", background=bg)
+            style.configure("TLabelframe", background=panel, bordercolor=border, relief="groove")
+            style.configure("TLabelframe.Label", background=panel, foreground="#003b73", font=("Segoe UI", 10, "bold"))
+            style.configure("TButton", background="#edf6ff", foreground="#1f1f1f", bordercolor="#6d9fd0", lightcolor="#ffffff", darkcolor="#9bbddd", padding=(10, 4), relief="raised")
+            style.map("TButton", background=[("active", "#d8ecff"), ("pressed", "#b9daf8")], relief=[("pressed", "sunken")])
+            style.configure("TCombobox", fieldbackground="#ffffff", background="#edf6ff", foreground="#1f1f1f", arrowcolor=accent, bordercolor="#6d9fd0")
+            style.configure("Vertical.TScrollbar", background="#d8ebfb", troughcolor="#eef7ff", bordercolor="#7aa7d8", arrowcolor=accent)
+            style.configure("Primary.TNotebook", background=bg, borderwidth=0)
+        else:
+            try:
+                style.theme_use(self.native_ttk_theme)
+            except Exception:
+                pass
         style.configure(
             "Primary.TNotebook.Tab",
             padding=(18, 8),
             font=("Segoe UI", 10, "bold"),
         )
-        style.map(
-            "Primary.TNotebook.Tab",
-            background=[("selected", "#d8e8ff"), ("active", "#eef5ff")],
-            foreground=[("selected", "#003b73"), ("active", "#003b73")],
-        )
+        if self.theme_choice.get() == "vista":
+            style.configure("Primary.TNotebook.Tab", background="#c4ddf2", foreground="#183d63", bordercolor="#7aa7d8", lightcolor="#ffffff", darkcolor="#8db7dc")
+            style.map(
+                "Primary.TNotebook.Tab",
+                background=[("selected", "#f7fbff"), ("active", "#e4f2ff")],
+                foreground=[("selected", "#003b73"), ("active", "#003b73")],
+            )
+        else:
+            style.map(
+                "Primary.TNotebook.Tab",
+                background=[("selected", "#d8e8ff"), ("active", "#eef5ff")],
+                foreground=[("selected", "#003b73"), ("active", "#003b73")],
+            )
+
+    def _theme_palette(self):
+        if self.theme_choice.get() == "vista":
+            return {
+                "bg": "#d7e9f7",
+                "panel": "#f7fbff",
+                "text": "#1f1f1f",
+                "muted": "#4f6478",
+                "accent": "#005a9e",
+                "button": "#edf6ff",
+                "button_active": "#d8ecff",
+                "entry": "#ffffff",
+                "select": "#2f73b7",
+            }
+        return {
+            "bg": self.native_root_bg,
+            "panel": self.native_root_bg,
+            "text": "#000000",
+            "muted": "#555555",
+            "accent": "#005a9e",
+            "button": None,
+            "button_active": None,
+            "entry": "#ffffff",
+            "select": "#0078d7",
+        }
+
+    def _apply_theme_to_widgets(self, widget=None):
+        widget = widget or self.root
+        palette = self._theme_palette()
+        try:
+            if isinstance(widget, (Frame, Label)):
+                if isinstance(widget, Label):
+                    widget.configure(bg=palette["bg"], fg=palette["text"])
+                else:
+                    widget.configure(bg=palette["bg"])
+            elif isinstance(widget, Button):
+                kwargs = {"bg": palette["button"] or self.root.cget("bg"), "fg": palette["text"], "activebackground": palette["button_active"] or self.root.cget("bg")}
+                if self.theme_choice.get() == "vista":
+                    kwargs.update({"relief": "raised", "bd": 1, "highlightbackground": "#7aa7d8"})
+                widget.configure(**kwargs)
+            elif isinstance(widget, Checkbutton):
+                widget.configure(bg=palette["bg"], fg=palette["text"], activebackground=palette["bg"], selectcolor=palette["panel"])
+            elif isinstance(widget, Entry):
+                widget.configure(bg=palette["entry"], fg=palette["text"], insertbackground=palette["text"], selectbackground=palette["select"])
+            elif isinstance(widget, Listbox):
+                widget.configure(bg=palette["entry"], fg=palette["text"], selectbackground=palette["select"], selectforeground="#ffffff", highlightbackground="#7aa7d8" if self.theme_choice.get() == "vista" else self.root.cget("bg"))
+            elif isinstance(widget, Text):
+                widget.configure(bg=palette["entry"], fg=palette["text"], insertbackground=palette["text"], selectbackground=palette["select"])
+            elif isinstance(widget, Canvas):
+                widget.configure(bg=palette["panel"], highlightbackground=palette["bg"])
+        except Exception:
+            pass
+        for child in widget.winfo_children():
+            self._apply_theme_to_widgets(child)
+
+    def _apply_theme(self, save=False):
+        self._configure_styles()
+        palette = self._theme_palette()
+        try:
+            self.root.configure(bg=palette["bg"])
+        except Exception:
+            pass
+        self._apply_theme_to_widgets()
+        if save:
+            self._save_app_settings()
 
     def _register_process(self, proc):
         with self.process_lock:
@@ -1040,15 +1167,19 @@ class App:
         self.import_tab = Frame(self.tabs)
         self.tools_tab = Frame(self.tabs)
         self.tutorial_tab = Frame(self.tabs)
+        self.settings_tab = Frame(self.tabs)
         self.tabs.add(self.generate_tab, text=tr(self.lang, "generate_tab"))
         self.tabs.add(self.import_tab, text=tr(self.lang, "import_tab"))
         self.tabs.add(self.tutorial_tab, text=tr(self.lang, "tutorial_tab"))
+        self.tabs.add(self.settings_tab, text=tr(self.lang, "settings_tab"))
 
         self._build_generate_tab()
         self._build_import_tab()
         self._build_tools_tab()
         self._build_tutorial_tab()
+        self._build_settings_tab()
         self._build_log()
+        self._apply_theme()
 
     def _build_generate_tab(self):
         left_outer = Frame(self.generate_tab)
@@ -1169,20 +1300,6 @@ class App:
         )
         luma_toggle.pack(anchor="w", padx=10, pady=(0, 8))
         self.translated.append((luma_toggle, "luma_bands", "text"))
-
-        overshoot_section = ttk.LabelFrame(left, text=tr(self.lang, "quality_overshoot"))
-        self.translated.append((overshoot_section, "quality_overshoot", "text"))
-        overshoot_section.pack(fill=X, pady=(0, 6))
-        self._label(overshoot_section, "quality_overshoot_hint", anchor="w", justify=LEFT, wraplength=540, fg="#8a5300").pack(fill=X, padx=10, pady=(6, 2))
-        overshoot_toggle = Checkbutton(
-            overshoot_section,
-            text=tr(self.lang, "quality_overshoot"),
-            variable=self.enable_quality_overshoot,
-            onvalue="1",
-            offvalue="0",
-        )
-        overshoot_toggle.pack(anchor="w", padx=10, pady=(0, 8))
-        self.translated.append((overshoot_toggle, "quality_overshoot", "text"))
 
         repair_section = ttk.LabelFrame(left, text=tr(self.lang, "targeted_repair"))
         self.translated.append((repair_section, "targeted_repair", "text"))
@@ -1314,6 +1431,29 @@ class App:
         self.tutorial_text.pack(fill=BOTH, expand=True, padx=10, pady=10)
         self._update_tutorial()
 
+    def _build_settings_tab(self):
+        outer = Frame(self.settings_tab)
+        outer.pack(fill=BOTH, expand=True, padx=14, pady=14)
+
+        appearance = ttk.LabelFrame(outer, text=tr(self.lang, "appearance"))
+        self.translated.append((appearance, "appearance", "text"))
+        appearance.pack(fill=X, pady=(0, 10))
+
+        row = Frame(appearance)
+        row.pack(fill=X, padx=10, pady=(10, 4))
+        self._label(row, "app_theme").pack(side=LEFT)
+        self.theme_combo = ttk.Combobox(
+            row,
+            values=[tr(self.lang, "theme_default"), tr(self.lang, "theme_vista")],
+            state="readonly",
+            width=28,
+        )
+        self.theme_combo.pack(side=LEFT, padx=8)
+        self.theme_combo.bind("<<ComboboxSelected>>", self._on_theme_selected)
+        self._sync_theme_combo()
+
+        self._label(appearance, "theme_hint", anchor="w", justify=LEFT, wraplength=720, fg="#555").pack(fill=X, padx=10, pady=(0, 10))
+
     def _build_log(self):
         row = Frame(self.root)
         row.pack(fill=X, padx=14)
@@ -1343,6 +1483,8 @@ class App:
         self.tabs.tab(self.generate_tab, text=tr(self.lang, "generate_tab"))
         self.tabs.tab(self.import_tab, text=tr(self.lang, "import_tab"))
         self.tabs.tab(self.tutorial_tab, text=tr(self.lang, "tutorial_tab"))
+        self.tabs.tab(self.settings_tab, text=tr(self.lang, "settings_tab"))
+        self._sync_theme_combo()
         if self.photo is None:
             if self.preview_widget is not None:
                 self.preview_widget.empty_text = tr(self.lang, "preview_hint")
@@ -1359,6 +1501,20 @@ class App:
             self.vroom_switch.set_text(tr(self.lang, "vroom_switch"))
         self._update_tutorial()
         self.status.set(tr(self.lang, "ready"))
+
+    def _sync_theme_combo(self):
+        if not hasattr(self, "theme_combo"):
+            return
+        values = [tr(self.lang, "theme_default"), tr(self.lang, "theme_vista")]
+        self.theme_combo["values"] = values
+        self.theme_combo.set(values[1] if self.theme_choice.get() == "vista" else values[0])
+
+    def _on_theme_selected(self, _event=None):
+        selected = self.theme_combo.get().strip().lower()
+        vista_label = tr(self.lang, "theme_vista").lower()
+        self.theme_choice.set("vista" if selected == vista_label or "vista" in selected else "default")
+        self._sync_theme_combo()
+        self._apply_theme(save=True)
 
     def _update_tutorial(self):
         self.tutorial_text.config(state="normal")
@@ -1446,9 +1602,6 @@ class App:
 
     def _repair_enabled(self):
         return self.enable_targeted_repair.get() == "1"
-
-    def _quality_overshoot_enabled(self):
-        return self.enable_quality_overshoot.get() == "1"
 
     def _queue_live_generation_json_preview(self, path):
         self.live_generation_preview_token += 1
@@ -2147,7 +2300,6 @@ class App:
         try:
             self.queue.put(("log", f"Selected profile: {setting.get('label') or setting['path'].name}"))
             self.queue.put(("log", f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}"))
-            self.queue.put(("log", f"Quality overshoot: {'on' if self._quality_overshoot_enabled() else 'off'}"))
             self.queue.put(("log", f"Targeted repair: {'on' if self._repair_enabled() else 'off'}"))
             for image_path in list(self.images):
                 if self.shutdown_event.is_set():
@@ -2166,7 +2318,7 @@ class App:
                     image_path,
                     setting,
                     enable_repair=self._repair_enabled(),
-                    enable_overshoot=self._quality_overshoot_enabled(),
+                    enable_overshoot=False,
                     output_dir=run_dir,
                 )
                 self.queue.put(("log", f"Running GPU generator with {setting['path'].name}"))
