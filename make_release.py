@@ -14,6 +14,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip() if (ROOT / "VER
 SAFE_VERSION = re.sub(r"[^A-Za-z0-9._-]+", "-", VERSION)
 STAGE = DIST_ROOT / f"release-{SAFE_VERSION}"
 APP_DIR = STAGE / "KloudysFH6Painter"
+IMAGES_DIR = STAGE / "Images"
 ZIP_PATH = DIST_ROOT / f"Kloudys-FH6-Painter-{SAFE_VERSION}.zip"
 
 PROJECT_ITEMS = [
@@ -100,6 +101,7 @@ def relative_parts(path: Path) -> tuple[str, ...]:
 def verify_stage() -> None:
     required = [
         STAGE / "Kloudys Painter Launcher.exe",
+        IMAGES_DIR / "PUT_SOURCE_IMAGES_HERE.txt",
         APP_DIR / "00_launcher.bat",
         APP_DIR / "03_update_from_github.bat",
         APP_DIR / "app_qt.py",
@@ -133,6 +135,7 @@ def zip_stage() -> None:
         names = set(archive.namelist())
         required = {
             "Kloudys Painter Launcher.exe",
+            "Images/PUT_SOURCE_IMAGES_HERE.txt",
             "KloudysFH6Painter/00_launcher.bat",
             "KloudysFH6Painter/03_update_from_github.bat",
             "KloudysFH6Painter/app_qt.py",
@@ -155,6 +158,11 @@ def main() -> int:
     if STAGE.exists():
         shutil.rmtree(STAGE)
     APP_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    (IMAGES_DIR / "PUT_SOURCE_IMAGES_HERE.txt").write_text(
+        "Drop source images here. The app's Choose source image button opens this folder first.\n",
+        encoding="utf-8",
+    )
     launcher = ROOT / "Kloudys Painter Launcher.exe"
     if not launcher.exists():
         raise RuntimeError(f"missing launcher executable: {launcher}")

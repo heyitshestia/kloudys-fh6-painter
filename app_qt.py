@@ -95,6 +95,8 @@ PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
 PUBERT_PRESENCE_ASSET = ROOT / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "pubert.jpg"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
+STANDALONE_APP_FOLDER_NAME = "KloudysFH6Painter"
+USER_IMAGES_ROOT = ROOT.parent / "Images" if ROOT.name.lower() == STANDALONE_APP_FOLDER_NAME.lower() else ROOT / "Images"
 THEMES = {
     "Pastel Bloom": "pastel",
     "Sakura Glass": "sakura",
@@ -264,7 +266,7 @@ If generation looks bad, try Pretty Good or Slow & Beautiful, increase random sa
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, USER_IMAGES_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -1448,7 +1450,8 @@ class MainWindow(QMainWindow):
         return setting
 
     def add_image(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Choose source image", "", "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
+        USER_IMAGES_ROOT.mkdir(parents=True, exist_ok=True)
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose source image", str(USER_IMAGES_ROOT), "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
         if not file_name:
             return
         path = Path(file_name)
