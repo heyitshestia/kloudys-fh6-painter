@@ -14,6 +14,7 @@ GENERATOR_EXE = ROOT / "forza_generator_v2.py"
 RAW_GENERATOR_EXE = ROOT / "forza-painter-geometrize-go.exe"
 PREVIEW_DIR = ROOT / "runtime" / "previews"
 CUSTOM_SETTINGS_DIR = ROOT / "runtime" / "custom-settings"
+USER_PRESET_DIR = ROOT / "runtime" / "user-presets"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 FINALS_DIR_NAME = "finals"
 CHECKPOINTS_DIR_NAME = "checkpoints"
@@ -92,6 +93,18 @@ def load_settings():
             "description": setting_description(path),
             "values": values,
         })
+    for path in sorted(USER_PRESET_DIR.glob("*.ini")) if USER_PRESET_DIR.exists() else []:
+        values = sorted_settings(parse_settings(path))
+        if not values.get("stopAt") or not values.get("randomSamples"):
+            continue
+        name = preset_display_name(path, values)
+        profiles.append({
+            "path": path,
+            "name": name,
+            "description": setting_description(path) or f"Saved custom preset: {name}",
+            "values": values,
+            "is_user_preset": True,
+        })
     profiles.sort(key=preset_sort_key)
     for index, item in enumerate(profiles, start=1):
         item["index"] = index
@@ -101,6 +114,10 @@ def load_settings():
 
 def preset_display_name(path, values):
     stem = Path(path).stem.lower()
+    if Path(path).parent == USER_PRESET_DIR:
+        family = values.get("presetName") or Path(path).stem
+        family = re.sub(r"[-_]+", " ", family).strip().title()
+        return f"Custom: {family}"
     if "fast-ugly" in stem:
         family = "Fast & Ugly"
     elif "okay-draft" in stem:
@@ -128,10 +145,19 @@ def preset_sort_key(item):
         if key in stem:
             preset_rank = rank
             break
+    if item.get("is_user_preset"):
+        preset_rank = 50
     return (preset_rank, item["path"].name.lower())
 
 
-def write_custom_settings(base_setting, custom_values):
+def safe_preset_slug(name):
+    slug = re.sub(r"[^A-Za-z0-9._ -]+", "", str(name)).strip()
+    slug = re.sub(r"\s+", "-", slug)
+    slug = slug.strip(".-_")
+    return slug[:80] or "custom-preset"
+
+
+def merged_setting_values(base_setting, custom_values):
     values = sorted_settings(parse_settings(base_setting["path"]))
     applied_overrides = {}
     for key, value in custom_values.items():
@@ -139,10 +165,15 @@ def write_custom_settings(base_setting, custom_values):
         if value:
             values[key] = value
             applied_overrides[key] = value
-    CUSTOM_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-    path = CUSTOM_SETTINGS_DIR / "custom.ini"
-    lines = ["description = Custom UI settings"]
+    return values, sorted_settings(applied_overrides)
+
+
+def write_settings_file(path, values, description, preset_name=None):
+    lines = [f"description = {description}"]
     written = {"description"}
+    if preset_name:
+        lines.append(f"presetName = {preset_name}")
+        written.add("presetName")
     for key in SETTING_KEYS:
         if key in values and key not in written:
             lines.append(f"{key} = {values[key]}")
@@ -151,6 +182,13 @@ def write_custom_settings(base_setting, custom_values):
         if key not in written:
             lines.append(f"{key} = {value}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_custom_settings(base_setting, custom_values):
+    values, applied_overrides = merged_setting_values(base_setting, custom_values)
+    CUSTOM_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    path = CUSTOM_SETTINGS_DIR / "custom.ini"
+    write_settings_file(path, values, "Custom UI settings")
     setting = dict(base_setting)
     setting["path"] = path
     setting["label"] = f"{base_setting.get('label', 'Custom')} + overrides"
@@ -165,6 +203,39 @@ def write_custom_settings(base_setting, custom_values):
     }
     setting["ui_overrides"] = sorted_settings(applied_overrides)
     return setting
+
+
+def save_user_preset(name, base_setting, custom_values):
+    preset_name = str(name).strip()
+    if not preset_name:
+        raise ValueError("Preset name is required.")
+    USER_PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    path = USER_PRESET_DIR / f"{safe_preset_slug(preset_name)}.ini"
+    values, applied_overrides = merged_setting_values(base_setting, custom_values)
+    values["presetName"] = preset_name
+    write_settings_file(path, values, f"Saved custom preset: {preset_name}", preset_name=preset_name)
+    setting = dict(base_setting)
+    setting["path"] = path
+    setting["label"] = f"Custom: {preset_name}"
+    setting["name"] = f"Custom: {preset_name}"
+    setting["description"] = f"Saved custom preset: {preset_name}"
+    setting["values"] = sorted_settings(parse_settings(path))
+    setting["ui_overrides"] = sorted_settings(applied_overrides)
+    setting["is_user_preset"] = True
+    return setting
+
+
+def delete_user_preset(setting):
+    if not setting or not setting.get("is_user_preset"):
+        return False
+    path = Path(setting.get("path", ""))
+    try:
+        if path.exists() and path.resolve().is_relative_to(USER_PRESET_DIR.resolve()):
+            path.unlink()
+            return True
+    except OSError:
+        return False
+    return False
 
 
 def generated_jsons(image_path):

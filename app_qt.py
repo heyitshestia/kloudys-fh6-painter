@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -65,6 +66,7 @@ from generator_backend import (
     GENERATED_ROOT,
     best_geometry_jsons,
     build_generator_command,
+    delete_user_preset,
     generation_report_path,
     generator_stop_request_path,
     geometry_shape_count,
@@ -73,6 +75,7 @@ from generator_backend import (
     is_internal_generator_json,
     load_settings,
     next_generator_output_dir,
+    save_user_preset,
     write_custom_settings,
 )
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
@@ -261,7 +264,7 @@ If generation looks bad, try Pretty Good or Slow & Beautiful, increase random sa
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", PROBE_DIR, LUMA_BANDS_ROOT):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -920,16 +923,12 @@ class MainWindow(QMainWindow):
         self.vroom = QCheckBox("vroom vroom scrrrrt zoooom!")
         self.vroom.stateChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.vroom)
-        self.profile_list = QListWidget()
-        self.profile_list.setMinimumHeight(128)
-        self.profile_list.setMaximumHeight(170)
-        for item in self.settings:
-            preset_item = QListWidgetItem(item["label"])
-            preset_item.setData(Qt.ItemDataRole.UserRole, item)
-            preset_item.setSizeHint(QSize(0, 32))
-            self.profile_list.addItem(preset_item)
-        self.profile_list.currentRowChanged.connect(self.update_setting_description)
-        quality_layout.addWidget(self.profile_list)
+        self.profile_combo = QComboBox()
+        self.profile_combo.setEditable(False)
+        self.profile_combo.setMinimumHeight(38)
+        self.profile_combo.setMaxVisibleItems(18)
+        self.profile_combo.currentIndexChanged.connect(self.update_setting_description)
+        quality_layout.addWidget(self.profile_combo)
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
         quality_layout.addWidget(self.setting_description)
@@ -953,6 +952,14 @@ class MainWindow(QMainWindow):
             form.addWidget(QLabel(label), row, 0)
             form.addWidget(widget, row, 1)
         quality_layout.addLayout(form)
+        preset_actions = QHBoxLayout()
+        save_preset = QPushButton("Save custom preset")
+        save_preset.clicked.connect(self.save_current_custom_preset)
+        delete_preset = QPushButton("Delete selected custom")
+        delete_preset.clicked.connect(self.delete_selected_custom_preset)
+        preset_actions.addWidget(save_preset)
+        preset_actions.addWidget(delete_preset)
+        quality_layout.addLayout(preset_actions)
         self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
         self.luma_enabled.setChecked(False)
         quality_layout.addWidget(self.luma_enabled)
@@ -977,8 +984,7 @@ class MainWindow(QMainWindow):
         self.preview = PreviewView("Choose source art or a finalized vinyl to preview it here.")
         right_layout.addWidget(self.preview, 1)
         self.tabs.addTab(tab, "Generate Final Vinyl")
-        if self.profile_list.count() > 0:
-            self.profile_list.setCurrentRow(0)
+        self.populate_profile_list()
         self.update_setting_description()
         self.sync_custom_state()
 
@@ -1288,6 +1294,89 @@ class MainWindow(QMainWindow):
             style = "color: #808080;"
         self.update_alarm.setStyleSheet(base_style.replace("}", f" {style} }}"))
 
+    def populate_profile_list(self, select_path: Path | None = None):
+        if not hasattr(self, "profile_combo"):
+            return
+        current_path = select_path
+        if current_path is None:
+            current = self.selected_setting()
+            if current:
+                current_path = Path(current.get("path", ""))
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        selected_index = 0
+        for row, item in enumerate(self.settings):
+            label = item["label"]
+            if item.get("is_user_preset"):
+                label = f"{label}  [saved]"
+            self.profile_combo.addItem(label, item)
+            if current_path and Path(item.get("path", "")) == current_path:
+                selected_index = row
+        self.profile_combo.blockSignals(False)
+        if self.profile_combo.count() > 0:
+            self.profile_combo.setCurrentIndex(selected_index)
+
+    def current_custom_values(self):
+        return {
+            "stopAt": self.custom_layers.text(),
+            "maxResolution": self.custom_resolution.text(),
+            "randomSamples": self.custom_random.text(),
+            "mutatedSamples": self.custom_mutated.text(),
+            "saveAt": self.custom_save_at.text(),
+            "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
+            "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+        }
+
+    def save_current_custom_preset(self):
+        setting = self.selected_setting()
+        if not setting:
+            self.log_line("No preset selected to save from.")
+            return
+        default_name = re.sub(r"^Custom:\s*", "", str(setting.get("name") or ""), flags=re.I).strip()
+        if not default_name or not setting.get("is_user_preset"):
+            default_name = "My Custom Preset"
+        name, ok = QInputDialog.getText(self, "Save custom preset", "Preset name:", text=default_name)
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            self.log_line("Custom preset was not saved: no name entered.")
+            return
+        try:
+            saved = save_user_preset(name, setting, self.current_custom_values())
+        except Exception as exc:
+            self.log_line(f"Custom preset save failed: {exc}")
+            QMessageBox.warning(self, "Save custom preset", f"Could not save preset:\n{exc}")
+            return
+        self.settings = load_settings()
+        self.populate_profile_list(Path(saved["path"]))
+        self.custom_enabled.setChecked(False)
+        self.update_setting_description()
+        self.log_line(f"Saved custom preset: {name}")
+
+    def delete_selected_custom_preset(self):
+        setting = self.selected_setting()
+        if not setting or not setting.get("is_user_preset"):
+            QMessageBox.information(self, "Delete custom preset", "Select a saved custom preset first.")
+            return
+        name = setting.get("name") or setting.get("label") or Path(setting.get("path", "")).stem
+        answer = QMessageBox.question(
+            self,
+            "Delete custom preset",
+            f"Delete saved preset '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if not delete_user_preset(setting):
+            self.log_line(f"Could not delete custom preset: {name}")
+            return
+        self.settings = load_settings()
+        self.populate_profile_list()
+        self.update_setting_description()
+        self.log_line(f"Deleted custom preset: {name}")
+
     def update_setting_description(self):
         if not hasattr(self, "setting_description"):
             return
@@ -1307,6 +1396,8 @@ class MainWindow(QMainWindow):
         )
         if self.vroom.isChecked():
             description += "\nVroom doubles random samples and mutated samples; output layers and resolution stay unchanged."
+        if item.get("is_user_preset"):
+            description += "\nThis is a saved custom preset stored in runtime/user-presets."
         self.setting_description.setText(description)
         if not self.custom_enabled.isChecked():
             self.custom_layers.setText(values.get("stopAt", "3000"))
@@ -1314,6 +1405,8 @@ class MainWindow(QMainWindow):
             self.custom_random.setText(values.get("randomSamples", "3000"))
             self.custom_mutated.setText(values.get("mutatedSamples", "1000"))
             self.custom_save_at.setText(values.get("saveAt", values.get("stopAt", "3000")))
+            self.luma_enabled.setChecked(str(values.get("v2PreprocessMode", "none")).strip().lower() == "luma_bands")
+            self.repair_enabled.setChecked(str(values.get("v2EnableRepair", "true")).strip().lower() in ("1", "true", "yes", "on"))
 
     def sync_custom_state(self):
         enabled = self.custom_enabled.isChecked()
@@ -1321,10 +1414,10 @@ class MainWindow(QMainWindow):
             widget.setEnabled(enabled)
 
     def selected_setting(self):
-        if hasattr(self, "profile_list"):
-            item = self.profile_list.currentItem()
+        if hasattr(self, "profile_combo"):
+            item = self.profile_combo.currentData()
             if item:
-                return item.data(Qt.ItemDataRole.UserRole)
+                return item
         return self.settings[0] if self.settings else None
 
     def vroom_boost_overrides(self, values):
@@ -1344,13 +1437,7 @@ class MainWindow(QMainWindow):
             return None
         overrides = {"v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none"}
         if self.custom_enabled.isChecked():
-            overrides.update({
-                "stopAt": self.custom_layers.text(),
-                "maxResolution": self.custom_resolution.text(),
-                "randomSamples": self.custom_random.text(),
-                "mutatedSamples": self.custom_mutated.text(),
-                "saveAt": self.custom_save_at.text(),
-            })
+            overrides.update(self.current_custom_values())
         base_values = dict(setting.get("values", {}))
         base_values.update({key: value for key, value in overrides.items() if str(value).strip()})
         overrides.update(self.vroom_boost_overrides(base_values))
