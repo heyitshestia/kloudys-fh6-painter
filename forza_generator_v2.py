@@ -18,9 +18,7 @@ import cv2
 
 
 ROOT = Path(__file__).resolve().parent
-PROJECT_WINDOWS_GENERATOR = ROOT / "kloudys-fh6-generator.exe"
-LEGACY_WINDOWS_GENERATOR = ROOT / "forza-painter-geometrize-go.exe"
-BUNDLED_WINDOWS_GENERATOR = PROJECT_WINDOWS_GENERATOR if PROJECT_WINDOWS_GENERATOR.is_file() else LEGACY_WINDOWS_GENERATOR
+BUNDLED_WINDOWS_GENERATOR = ROOT / "KloudysGeneratorV4.exe"
 LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize-gpu/forza-painter-geometrize-go-linux-arm64")
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")
@@ -257,15 +255,19 @@ def apply_preprocess(rgba: np.ndarray, mode: str) -> np.ndarray:
     if mode == "luma_bands":
         lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
         l = lab[..., 0].astype(np.float32)
-        levels = 24.0
+        levels = 64.0
         step = 256.0 / levels
         lq = np.floor(l / step) * step + step * 0.5
-        # Keep the band separation, but blend some original luminance back in
-        # so the result stays closer to the source and avoids overly harsh steps.
-        l_out = lq * 0.82 + l * 0.18
-        # Restore a touch of local contrast so the pass doesn't feel slightly washed.
-        l_mid = 128.0
-        l_out = (l_out - l_mid) * 1.06 + l_mid
+        blur = cv2.GaussianBlur(l, (0, 0), 1.1)
+        gx = cv2.Sobel(blur, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(blur, cv2.CV_32F, 0, 1, ksize=3)
+        edge = np.sqrt(gx * gx + gy * gy)
+        edge = np.clip((edge - 3.0) / 18.0, 0.0, 1.0)
+        band_weight = 0.16 + edge * 0.34
+        # Keep enough band structure for the shape generator, but retain more
+        # source luminance in smooth gradients so luma prep does not posterize.
+        l_out = lq * band_weight + l * (1.0 - band_weight)
+        l_out = (l_out - 128.0) * 1.005 + 128.0
         lab[..., 0] = np.clip(l_out, 0, 255).astype(np.uint8)
         rgb_out = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
     else:
@@ -273,6 +275,72 @@ def apply_preprocess(rgba: np.ndarray, mode: str) -> np.ndarray:
 
     out = np.dstack([rgb_out, alpha]).astype(np.float32)
     return out
+
+
+def source_art_profile(rgba: np.ndarray) -> dict:
+    rgb = np.clip(rgba[..., :3], 0, 255).astype(np.float32)
+    alpha = np.clip(rgba[..., 3], 0, 255).astype(np.float32)
+    visible = alpha > 16.0
+    visible_count = int(np.count_nonzero(visible))
+    total_pixels = int(alpha.size)
+    alpha_coverage = visible_count / float(max(1, total_pixels))
+    if visible_count == 0:
+        return {
+            "alpha_coverage": 0.0,
+            "edge_density": 0.0,
+            "luma_std": 0.0,
+            "white_fraction": 0.0,
+            "category": "empty_alpha",
+            "recommended_shape_mode": "mixed_character_art",
+            "recommended_luma_prep": "none",
+            "recommendation": "No visible pixels were detected.",
+        }
+
+    luma = rgb[..., 0] * 0.2126 + rgb[..., 1] * 0.7152 + rgb[..., 2] * 0.0722
+    luma_visible = luma[visible]
+    alpha_visible = alpha[visible]
+    alpha_norm = (alpha / 255.0).astype(np.float32)
+    luma_masked = (luma * alpha_norm).astype(np.float32)
+    gx = cv2.Sobel(luma_masked, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(luma_masked, cv2.CV_32F, 0, 1, ksize=3)
+    agx = cv2.Sobel(alpha_norm, cv2.CV_32F, 1, 0, ksize=3)
+    agy = cv2.Sobel(alpha_norm, cv2.CV_32F, 0, 1, ksize=3)
+    edge = np.sqrt(gx * gx + gy * gy) + np.sqrt(agx * agx + agy * agy) * 255.0
+    edge_density = float(np.count_nonzero(edge[visible] > 35.0) / float(max(1, visible_count)))
+    luma_std = float(np.std(luma_visible))
+    white_fraction = float(np.count_nonzero((luma_visible > 232.0) & (alpha_visible > 128.0)) / float(max(1, visible_count)))
+
+    if alpha_coverage < 0.18 and white_fraction > 0.45:
+        category = "sparse_white_line_art"
+        recommended_shape_mode = "mixed_edge_bias"
+        recommended_luma = "none"
+        recommendation = "Sparse white transparent line art: use edge-biased shapes, enough layers, and usually leave Luma Prep off."
+    elif edge_density >= 0.34 and luma_std >= 55.0:
+        category = "flat_crisp_livery"
+        recommended_shape_mode = "mixed_edge_bias"
+        recommended_luma = "luma_bands"
+        recommendation = "Flat crisp livery art: edge-biased shapes and Luma Prep usually preserve borders and broad color regions best."
+    elif alpha_coverage < 0.70 and edge_density < 0.30 and luma_std < 65.0:
+        category = "soft_gradient_character"
+        recommended_shape_mode = "mixed_character_art"
+        recommended_luma = "none"
+        recommendation = "Soft transparent character art: character-art shape weighting without Luma Prep usually avoids posterized gradients, hard rectangle blocks, and over-smoothed hair."
+    else:
+        category = "general_art"
+        recommended_shape_mode = "mixed_character_art"
+        recommended_luma = "none"
+        recommendation = "General art: character-art shape weighting without Luma Prep is the safer default; enable Luma Prep manually for flat logo/livery sources."
+
+    return {
+        "alpha_coverage": round(alpha_coverage, 4),
+        "edge_density": round(edge_density, 4),
+        "luma_std": round(luma_std, 4),
+        "white_fraction": round(white_fraction, 4),
+        "category": category,
+        "recommended_shape_mode": recommended_shape_mode,
+        "recommended_luma_prep": recommended_luma,
+        "recommendation": recommendation,
+    }
 
 
 def downscale_rgba(arr: np.ndarray, max_dim: int) -> np.ndarray:
@@ -343,7 +411,16 @@ def collect_candidate_jsons(out_dir: Path, stem: str, max_checkpoint: int | None
                 flush=True,
             )
         paths.append(path)
-    return sorted(set(paths), key=lambda path: candidate_json_sort_key(path, stem))
+    paths = sorted(set(paths), key=lambda path: candidate_json_sort_key(path, stem))
+    final_path = out_dir / f"{stem}.json"
+    if final_path in paths and max_checkpoint is not None and (out_dir / f"{stem}.{max_checkpoint}.json") in paths:
+        print(
+            f"Skipping duplicate final raw checkpoint {final_path.name}; "
+            f"using {stem}.{max_checkpoint}.json for the same target instead.",
+            flush=True,
+        )
+        paths = [path for path in paths if path != final_path]
+    return paths
 
 
 def candidate_json_sort_key(path: Path, stem: str) -> tuple[int, int, str]:
@@ -1227,6 +1304,7 @@ def main() -> int:
 
     max_resolution = int(base_settings.get("maxResolution", "0") or 0)
     source_rgba = resize_source_for_generation(image_path, max_resolution)
+    art_profile = source_art_profile(source_rgba)
     processed_rgba = apply_preprocess(source_rgba, args.preprocess_mode)
     generation_image_path = image_path
     preprocess_output_path = None
@@ -1244,6 +1322,8 @@ def main() -> int:
         print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Luma Prep mode:         {args.preprocess_mode}")
+    print(f"Source profile:         {art_profile['category']}")
+    print(f"Source recommendation:  {art_profile['recommendation']}")
     if preprocess_output_path is not None:
         print(f"Preprocessed image:     {preprocess_output_path}")
     if args.finalize_only:
@@ -1536,6 +1616,7 @@ def main() -> int:
             "mode": args.preprocess_mode,
             "output": str(preprocess_output_path) if preprocess_output_path is not None else None,
         },
+        "source_art_profile": sorted_mapping(art_profile),
         "preprocess_mode": args.preprocess_mode,
         "preprocess_output": str(preprocess_output_path) if preprocess_output_path is not None else None,
         "base_settings": str(settings_path),

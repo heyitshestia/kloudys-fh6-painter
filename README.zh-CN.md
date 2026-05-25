@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | 原始 Forza Painter、MIT 许可的 FH 导入流程、内存写入/导入基础、图像转 Vinyl 的核心思路。 |
 | BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | 本项目主要上游 FH6 桌面版本，包括 FH6 UI 流程、导入/定位、发布打包、文档和应用行为。 |
-| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize 生成器来源，当前打包的 `forza-painter-geometrize-go.exe` 基于这一类工作流。 |
+| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize 生成器来源，当前打包的 `KloudysGeneratorV4.exe` 基于这一类工作流。 |
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` 作者，项目许可证中保留原始署名。 |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` 作者，项目许可证中保留原始署名。 |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | BVZRays 上游历史中的韩语本地化贡献者。 |

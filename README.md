@@ -26,7 +26,7 @@ This project exists because several people and upstream projects did the hard fo
 | --- | --- | --- |
 | AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project, MIT-licensed FH import workflow, memory-writing/import foundation, and core geometry-to-vinyl approach. |
 | BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused desktop fork used as the main upstream for this project, including FH6 UI workflow, importer/locator work, release packaging, documentation updates, and bundled app behavior. |
-| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled `forza-painter-geometrize-go.exe`. |
+| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled `KloudysGeneratorV4.exe`. |
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by the project license. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by the project license. |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in the BVZRays upstream history. |
@@ -97,7 +97,7 @@ Generated images and runtime output are not intentionally removed by updates.
 ## What It Does
 
 - Builds finalized Forza-compatible vinyl JSON from PNG, JPG, BMP, and similar image files.
-- Uses the bundled patched GPU/OpenCL builder: `forza-painter-geometrize-go.exe`.
+- Uses the bundled patched GPU/OpenCL builder: `KloudysGeneratorV4.exe`.
 - Runs Finalize Checkpoints for scoring, capping, reports, Edge Repair, and previews.
 - Imports final JSON into the currently open FH6 vinyl group.
 - Stores new runs as `imgs/generated/<job>/finals`, `checkpoints`, `previews`, and `reports`.

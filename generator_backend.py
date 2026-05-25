@@ -11,9 +11,7 @@ ROOT = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT / "settings"
 ACTIVE_PRESET_DIR = SETTINGS_DIR
 GENERATOR_EXE = ROOT / "forza_generator_v2.py"
-PROJECT_RAW_GENERATOR_EXE = ROOT / "kloudys-fh6-generator.exe"
-LEGACY_RAW_GENERATOR_EXE = ROOT / "forza-painter-geometrize-go.exe"
-RAW_GENERATOR_EXE = PROJECT_RAW_GENERATOR_EXE if PROJECT_RAW_GENERATOR_EXE.exists() else LEGACY_RAW_GENERATOR_EXE
+RAW_GENERATOR_EXE = ROOT / "KloudysGeneratorV4.exe"
 PREVIEW_DIR = ROOT / "runtime" / "previews"
 CUSTOM_SETTINGS_DIR = ROOT / "runtime" / "custom-settings"
 USER_PRESET_DIR = ROOT / "runtime" / "user-presets"
@@ -23,10 +21,9 @@ CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
 ACTIVE_PRESET_FILES = (
-    "a.fast-ugly.ini",
-    "b.okay-draft.ini",
-    "c.pretty-good.ini",
-    "d.slow-beautiful.ini",
+    "a.flat-colors.ini",
+    "b.shaded-art.ini",
+    "c.gradients.ini",
 )
 
 
@@ -120,14 +117,12 @@ def preset_display_name(path, values):
         family = values.get("presetName") or Path(path).stem
         family = re.sub(r"[-_]+", " ", family).strip().title()
         return f"Custom: {family}"
-    if "fast-ugly" in stem:
-        family = "Fast & Ugly"
-    elif "okay-draft" in stem:
-        family = "Okay Draft"
-    elif "pretty-good" in stem:
-        family = "Pretty Good"
-    elif "slow-beautiful" in stem:
-        family = "Slow & Beautiful"
+    if "flat-colors" in stem:
+        family = "Flat Colors / Logos"
+    elif "shaded-art" in stem:
+        family = "Shaded Character Art"
+    elif "gradients" in stem:
+        family = "Smooth Gradients"
     else:
         family = re.sub(r"^[a-z0-9]+[.)]\s*", "", Path(path).stem, flags=re.IGNORECASE)
         family = re.sub(r"[-_]+", " ", family).strip().title()
@@ -137,10 +132,9 @@ def preset_display_name(path, values):
 def preset_sort_key(item):
     stem = item["path"].stem.lower()
     ladder_order = {
-        "fast-ugly": 0,
-        "okay-draft": 1,
-        "pretty-good": 2,
-        "slow-beautiful": 3,
+        "flat-colors": 0,
+        "shaded-art": 1,
+        "gradients": 2,
     }
     preset_rank = 99
     for key, rank in ladder_order.items():

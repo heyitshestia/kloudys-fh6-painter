@@ -475,11 +475,20 @@ def apply_luma_bands_image(image):
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
     l = lab[..., 0].astype(np.float32)
-    levels = 24.0
+    levels = 64.0
     step = 256.0 / levels
     lq = np.floor(l / step) * step + step * 0.5
-    l_out = lq * 0.82 + l * 0.18
-    l_out = (l_out - 128.0) * 1.06 + 128.0
+
+    # Adaptive banding keeps flat anime regions easy for the generator while
+    # preserving soft gradients and avoiding chunky halos around detailed edges.
+    blur = cv2.GaussianBlur(l, (0, 0), 1.1)
+    gx = cv2.Sobel(blur, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(blur, cv2.CV_32F, 0, 1, ksize=3)
+    edge = np.sqrt(gx * gx + gy * gy)
+    edge = np.clip((edge - 3.0) / 18.0, 0.0, 1.0)
+    band_weight = 0.16 + edge * 0.34
+    l_out = lq * band_weight + l * (1.0 - band_weight)
+    l_out = (l_out - 128.0) * 1.005 + 128.0
     lab[..., 0] = np.clip(l_out, 0, 255).astype(np.uint8)
     rgb_out = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
     bgr_out = cv2.cvtColor(rgb_out, cv2.COLOR_RGB2BGR)
@@ -985,9 +994,11 @@ class MainWindow(QMainWindow):
         preset_actions.addWidget(delete_preset)
         quality_layout.addLayout(preset_actions)
         self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
+        self.luma_enabled.setToolTip("Best for flat logos/liveries and hard color bands. Leave off for most anime, hair, skin, and smooth gradients.")
         self.luma_enabled.setChecked(False)
         quality_layout.addWidget(self.luma_enabled)
         self.repair_enabled = QCheckBox("Edge Repair - clean borders and transparent holes")
+        self.repair_enabled.setToolTip("Final pass that tightens borders and transparent holes on the finalized checkpoints.")
         self.repair_enabled.setChecked(True)
         quality_layout.addWidget(self.repair_enabled)
         left_layout.addWidget(quality_group)
@@ -2523,7 +2534,7 @@ class MainWindow(QMainWindow):
             "--max-seconds",
             "90",
         ]
-        code = self.run_subprocess(cmd, timeout=140)
+        code = self.run_subprocess(cmd, timeout=220)
         if code == 0:
             session = load_session_location()
             if session and str(session.get("layer_count", "")) == str(layer_count):

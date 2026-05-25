@@ -40,8 +40,7 @@ PROJECT_ITEMS = [
     "launcher_qt.py",
     "generator_backend.py",
     "forza_generator_v2.py",
-    "kloudys-fh6-generator.exe",
-    "forza-painter-geometrize-go.exe",
+    "KloudysGeneratorV4.exe",
     "geometry_json.py",
     "game_profiles.py",
     "internal_classes.py",
@@ -117,10 +116,10 @@ def verify_stage() -> None:
         APP_DIR / "03_update_from_github.bat",
         APP_DIR / "app_qt.py",
         APP_DIR / "forza_generator_v2.py",
-        APP_DIR / "kloudys-fh6-generator.exe",
+        APP_DIR / "KloudysGeneratorV4.exe",
         APP_DIR / "fh6_probe.py",
         APP_DIR / "assets" / "app" / "project-integrity.marker",
-        APP_DIR / "settings" / "a.fast-ugly.ini",
+        APP_DIR / "settings" / "a.flat-colors.ini",
     ]
     for path in required:
         if not path.exists():
@@ -165,10 +164,10 @@ def zip_stage() -> None:
             "KloudysFH6Painter/03_update_from_github.bat",
             "KloudysFH6Painter/app_qt.py",
             "KloudysFH6Painter/forza_generator_v2.py",
-            "KloudysFH6Painter/kloudys-fh6-generator.exe",
+            "KloudysFH6Painter/KloudysGeneratorV4.exe",
             "KloudysFH6Painter/fh6_probe.py",
             "KloudysFH6Painter/assets/app/project-integrity.marker",
-            "KloudysFH6Painter/settings/a.fast-ugly.ini",
+            "KloudysFH6Painter/settings/a.flat-colors.ini",
         }
         missing = sorted(required - names)
         if missing:

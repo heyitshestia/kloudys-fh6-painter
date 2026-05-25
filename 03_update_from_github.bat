@@ -211,6 +211,15 @@ for %%F in (
     "settings\gb.1000-smart-detail + Luma Bands.ini"
     "settings\h.1000-anime-livery.ini"
     "settings\hb.1000-anime-livery + Luma Bands.ini"
+    "settings\a.fast-ugly.ini"
+    "settings\b.okay-draft.ini"
+    "settings\c.pretty-good.ini"
+    "settings\d.slow-beautiful.ini"
+    "KloudysGeneratorV2.exe"
+    "KloudysGeneratorV2Fast.exe"
+    "KloudysGeneratorV2Speed.exe"
+    "kloudys-fh6-generator.exe"
+    "forza-painter-geometrize-go.exe"
 ) do (
     if exist %%~F del /f /q %%~F >nul 2>nul
 )
