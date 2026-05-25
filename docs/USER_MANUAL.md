@@ -30,7 +30,7 @@ Manual batch files are still available, but the launcher is the intended entry p
 2. Choose one source image.
 3. Pick a Kloudy preset.
 4. Optional: enable `Tune this run` to override layers, resolution, samples, or finalize points.
-5. Keep `Luma Prep` and `Edge Repair` enabled unless the source looks better without them.
+5. Keep `Edge Repair` enabled. Enable `Luma Prep` only when flat/anime art looks better with value banding.
 6. Click `Generate Final Vinyl`.
 7. Wait for `FINALIZE CHECKPOINTS COMPLETE`.
 
@@ -97,7 +97,7 @@ Custom run fields override the selected preset only for that run.
 
 | Setting | Meaning |
 | --- | --- |
-| `Template layers` | Target template size. FH6 still reserves 4 boundary layers during import. |
+| `Template layers` | Target template size. FH6 uses mask layers during import; legacy mode reserves 4. |
 | `Max resolution` | Largest image side used by generation. Higher can preserve detail but costs time. |
 | `Random samples` | Main search effort. Higher usually improves accuracy. |
 | `Mutated samples` | Local refinement effort around promising shapes. |
@@ -107,9 +107,9 @@ If an image is inaccurate, increase random samples first.
 
 ## 6. Luma Prep
 
-`Luma Prep` creates a luminance-banded intermediate image before the internal build. It keeps transparency and usually helps flat/anime-style images separate clean regions.
+`Luma Prep` creates a luminance-banded intermediate image before the internal build. It keeps transparency and can help flat/anime-style images separate clean regions.
 
-Turn it off for soft gradients or photos where banding makes the result worse.
+It starts off because the sharpest detail path is the original source. Turn it on only when banding improves flat-color regions.
 
 ## 7. Edge Repair
 
@@ -232,7 +232,7 @@ Close the app and run `04_start_app.bat` as administrator.
 
 ### Output is too blurry
 
-Use more layers, more random samples, `Pretty Good` or `Slow & Beautiful`, or a larger template.
+Use more layers, more random samples, `Pretty Good` or `Slow & Beautiful`, or a larger template. Keep `Luma Prep` off for maximum tiny detail unless the source specifically benefits from banding.
 
 ### Output has edge halos
 

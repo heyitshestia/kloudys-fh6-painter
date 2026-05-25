@@ -110,7 +110,7 @@ Generated images and runtime output are not intentionally removed by updates.
 2. Open the launcher with `00_launcher.bat`.
 3. In `Generate Final Vinyl`, choose one image.
 4. Pick a Kloudy preset or tune the run.
-5. Leave `Luma Prep` and `Edge Repair` on unless the source looks better without them.
+5. Leave `Edge Repair` on. Enable `Luma Prep` only if flat/anime art benefits from value banding.
 6. Click `Generate Final Vinyl` and wait for Finalize Checkpoints to complete.
 7. Open FH6 and go to `Create Vinyl Group` / `Vinyl Group Editor`.
 8. Load a template with enough simple layers and ungroup it.
@@ -122,7 +122,7 @@ Current planned improvements are tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Important Import Rule
 
-FH6 needs **4 boundary layers** for correct cover/apply behavior.
+FH6 normally needs **4 boundary mask layers** for correct cover/apply behavior.
 
 That means the usable drawable count is:
 
@@ -139,7 +139,7 @@ Examples:
 | 2000 | 1996 |
 | 3000 | 2996 |
 
-If your JSON has more shapes than the usable count, the app trims it during import.
+If your JSON has more shapes than the usable count, the app trims it during import. The import tab also includes experimental adaptive/off mask modes, but `Full legacy masks` is the default because it is safest.
 
 ## Active Presets
 
@@ -147,17 +147,18 @@ The app uses a simple speed-to-quality ladder tuned for the patched faster gener
 
 | Preset | Target layers | Random samples | Mutated samples | Max resolution | Best for |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Fast & Ugly | 1000 | 45,000 | 2,200 | 900 | Quick composition checks and rough drafts. |
-| Okay Draft | 1500 | 100,000 | 5,000 | 1200 | Useful test imports without a long wait. |
-| Pretty Good | 2000 | 180,000 | 8,500 | 1500 | Recommended everyday balance. |
-| Slow & Beautiful | 3000 | 320,000 | 14,000 | 1750 | Final-quality runs when time matters less. |
+| Fast & Ugly | 1000 | 90,000 | 5,000 | 1800 | Quick composition checks and rough drafts. |
+| Okay Draft | 1500 | 180,000 | 9,000 | 2400 | Useful test imports without a long wait. |
+| Pretty Good | 2000 | 360,000 | 17,000 | 3000 | Recommended everyday balance. |
+| Slow & Beautiful | 3000 | 640,000 | 28,000 | 3500 | Final-quality runs when time matters less. |
 
 Luma Prep is a toggle, so separate Luma preset duplicates were removed. Custom run fields can override layer count, resolution, samples, and finalize points without needing separate preset files.
 
 ## Main Features
 
-- **Luma Prep**: default-on preprocess pass. It creates a luma-banded intermediate image before the internal build. Good for anime, flat colors, and sharper value separation. Turn it off for soft gradients.
+- **Luma Prep**: optional preprocess pass. It creates a luma-banded intermediate image before the internal build. Good for some anime/flat-color art, but it can soften tiny detail, so it starts off.
 - **Edge Repair**: default-on finalization cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges before writing final JSONs.
+- **FH mask mode**: import safety setting. `Full legacy masks` is default; adaptive/off are test modes for saving layers.
 - **vroom vroom scrrrrt zoooom!**: optional switch. Doubles random samples and mutated samples while keeping output layers and resolution unchanged.
 - **Finalized-run browser**: shows generated run folders and finalized checkpoints from `imgs/generated`, including older runs after restart.
 - **Generated-run picker**: keeps duplicate generations separate, selects the newest run automatically, and lists the best safe final JSON first.

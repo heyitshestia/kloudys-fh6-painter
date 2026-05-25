@@ -150,10 +150,10 @@ It does not double output layers or resolution.
 
 Open Generate Final Vinyl, choose one image, pick a preset, then click Generate Final Vinyl.
 
-Luma Prep is normally on:
+Luma Prep is optional and starts off:
 - It makes a luma-banded prep image before building.
-- It usually helps anime, logos, stickers, and flat color art.
-- Turn it off for photos or soft gradients if banding looks worse.
+- It can help anime, logos, stickers, and flat color art.
+- Leave it off when you want maximum tiny detail, clean curves, or soft gradients.
 
 Edge Repair is normally on:
 - It runs during finalization.
@@ -216,10 +216,10 @@ In Forza Horizon 6:
 5. Do not switch menus after preparing the template.
 6. Remember the exact template layer count shown by FH6.
 
-FH6 keeps 4 boundary layers for correct cover/apply behavior.
+FH6 uses mask layers for correct cover/apply behavior.
 That means usable art layers are:
 
-template layers - 4
+template layers - selected mask layer count
 
 Examples:
 
