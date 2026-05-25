@@ -990,8 +990,8 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
         return payload
 
     if profile.key == "fh6":
-        print("No safe FH6 layer group found by the fast layout locator. Import should stop before writing.")
-        return None
+        print("No safe FH6 layer group found by the fast layout locator. Trying slower count/table fallback before giving up.")
+        started = time.monotonic()
 
     best = []
     quick = []

@@ -2521,9 +2521,9 @@ class MainWindow(QMainWindow):
             "--inspect-radius",
             "0x800",
             "--max-seconds",
-            "45",
+            "90",
         ]
-        code = self.run_subprocess(cmd, timeout=70)
+        code = self.run_subprocess(cmd, timeout=140)
         if code == 0:
             session = load_session_location()
             if session and str(session.get("layer_count", "")) == str(layer_count):
