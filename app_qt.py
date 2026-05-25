@@ -15,12 +15,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGraphicsPixmapItem,
@@ -61,6 +62,7 @@ from generator_backend import (
     GENERATED_ROOT,
     best_geometry_jsons,
     build_generator_command,
+    generation_report_path,
     generator_stop_request_path,
     geometry_shape_count,
     import_drawable_budget,
@@ -542,6 +544,7 @@ class UiBus(QObject):
     log = Signal(str)
     status = Signal(str)
     progress = Signal(str)
+    phase = Signal(str, str)
     preview_bytes = Signal(bytes)
     preview_file = Signal(str)
     json_preview = Signal(int, object)
@@ -720,6 +723,7 @@ class MainWindow(QMainWindow):
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
         self.bus.progress.connect(self.set_progress)
+        self.bus.phase.connect(self.set_phase)
         self.bus.preview_bytes.connect(self.show_preview_bytes)
         self.bus.preview_file.connect(self.show_preview_file)
         self.bus.json_preview.connect(self.show_json_preview_result)
@@ -728,6 +732,7 @@ class MainWindow(QMainWindow):
         self.bus.auto_located.connect(self.apply_auto_locate_result)
         self._build()
         self.apply_theme()
+        self.set_phase("ready", "Choose a source image or select a finalized JSON to import.")
         self.refresh_processes()
         self.refresh_generated_browser()
         self.render_lists()
@@ -739,6 +744,11 @@ class MainWindow(QMainWindow):
         central.setObjectName("appRoot")
         self.background_widget = central
         root = QVBoxLayout(central)
+        self.phase_label = QLabel("Ready to generate or import.")
+        self.phase_label.setObjectName("phaseBanner")
+        self.phase_label.setWordWrap(True)
+        self.phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(self.phase_label)
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
         self._build_generate_tab()
@@ -777,6 +787,13 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right)
         splitter.addWidget(right)
         splitter.setSizes([520, 760])
+
+        guide_group = QGroupBox("Quick Start Checklist")
+        guide_layout = QVBoxLayout(guide_group)
+        self.guide_label = QLabel("")
+        self.guide_label.setWordWrap(True)
+        guide_layout.addWidget(self.guide_label)
+        left_layout.addWidget(guide_group)
 
         image_group = QGroupBox("Step 1 - Source Art")
         image_layout = QVBoxLayout(image_group)
@@ -885,6 +902,7 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Vinyl Template")
         template_layout = QGridLayout(template)
         self.layer_count = QLineEdit()
+        self.layer_count.textChanged.connect(lambda _text: self.update_guide())
         template_layout.addWidget(QLabel("Exact template layer count"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
         left_layout.addWidget(template)
@@ -898,9 +916,15 @@ class MainWindow(QMainWindow):
         refresh_jsons.clicked.connect(self.refresh_generated_browser)
         add_recommended = QPushButton("Use best safe final")
         add_recommended.clicked.connect(self.select_recommended_generated_json)
+        compare_btn = QPushButton("Compare selected with best")
+        compare_btn.clicked.connect(self.compare_selected_checkpoint)
+        resume_btn = QPushButton("Resume unfinished finalize")
+        resume_btn.clicked.connect(self.start_resume_finalization)
         controls.addWidget(add_json)
         controls.addWidget(refresh_jsons)
         controls.addWidget(add_recommended)
+        controls.addWidget(compare_btn)
+        controls.addWidget(resume_btn)
         json_layout.addLayout(controls)
         self.generated_folder_combo = QComboBox()
         self.generated_folder_combo.setMaxVisibleItems(24)
@@ -1078,11 +1102,19 @@ class MainWindow(QMainWindow):
             self.setting_description.setText("No Kloudy presets found.")
             return
         description = item.get("description") or ""
+        values = item.get("values", {})
+        description += (
+            "\n\nPreset details:"
+            f"\n- Target layers: {values.get('stopAt', 'n/a')}"
+            f"\n- Random samples: {values.get('randomSamples', 'n/a')}"
+            f"\n- Mutated samples: {values.get('mutatedSamples', 'n/a')}"
+            f"\n- Max resolution: {values.get('maxResolution', 'n/a')}"
+            f"\n- Finalize at: {values.get('saveAt', values.get('stopAt', 'n/a'))}"
+        )
         if self.vroom.isChecked():
             description += "\nVroom doubles random samples and mutated samples; output layers and resolution stay unchanged."
         self.setting_description.setText(description)
         if not self.custom_enabled.isChecked():
-            values = item.get("values", {})
             self.custom_layers.setText(values.get("stopAt", "3000"))
             self.custom_resolution.setText(values.get("maxResolution", "1200"))
             self.custom_random.setText(values.get("randomSamples", "3000"))
@@ -1153,16 +1185,106 @@ class MainWindow(QMainWindow):
         for path in self.images:
             self.image_list.addItem(str(path))
         self.update_selected_json_label()
+        self.update_guide()
 
     def log_line(self, message: str):
         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         self.log.append(f"[{timestamp}] {message}")
+        hint = self.actionable_hint(message)
+        if hint:
+            self.log.append(f"    -> {hint}")
+
+    def actionable_hint(self, message: str) -> str | None:
+        lower = (message or "").lower()
+        if "no usable python" in lower or "python 3.12 was not found" in lower:
+            return "Open the launcher and click Setup Python, then Install Dependencies."
+        if "dependency" in lower and ("missing" in lower or "not found" in lower):
+            return "Run 02_install_dependencies.bat or use Install Dependencies in the launcher."
+        if "openprocess" in lower or "permission" in lower or "access is denied" in lower:
+            return "Close the app and start it as administrator, then keep FH6 open."
+        if "ungroup" in lower:
+            return "Stay inside Vinyl Group Editor, ungroup the template, and verify the exact layer count."
+        if "does not point to a valid first slot" in lower or "failed validation" in lower:
+            return "Refresh/auto-locate after opening the correct ungrouped FH6 template in Vinyl Group Editor."
+        if "over-budget" in lower or "over layer budget" in lower:
+            return "Pick a lower finalized checkpoint or use a larger FH6 template."
+        if "png input buffer is incomplete" in lower:
+            return "The preview image is incomplete or still being written. Wait for Finalize Checkpoints to finish, then refresh."
+        if "generator exited with code 1" in lower:
+            return "Check the lines above this error. The real cause is usually printed before the exit code."
+        if "game process not found" in lower or "no supported game process" in lower:
+            return "Start FH6 first, enter Vinyl Group Editor, then click Refresh."
+        return None
 
     def set_status(self, text: str):
         self.status_label.setText(text)
+        if text == "Done":
+            self.set_phase("done", "Ready to import a finalized JSON.")
+        elif text == "Failed":
+            self.set_phase("failed", "Something failed. Check the log below for the exact error.")
+        elif text == "Stopping":
+            self.set_phase("finalizing", "Stop requested. Waiting for the latest checkpoint to finalize.")
+        elif text == "Importing":
+            self.set_phase("importing", "Writing the selected final JSON into FH6. Do not switch menus.")
+        self.update_guide()
+
+    def update_guide(self):
+        if not hasattr(self, "guide_label"):
+            return
+        has_image = bool(self.images)
+        has_final = bool(self.outputs or self.generated_folder_entries)
+        has_json = bool(self.selected_import_json_path)
+        has_layer_count = hasattr(self, "layer_count") and bool(self.layer_count.text().strip())
+        has_process = hasattr(self, "processes") and bool(self.processes)
+        lines = [
+            "[x] App opened with Python/dependencies" if True else "[ ] App opened with Python/dependencies",
+            ("[x]" if has_image else "[ ]") + " Choose one source image",
+            ("[x]" if has_final else "[ ]") + " Generate and wait for FINALIZE CHECKPOINTS COMPLETE",
+            ("[x]" if has_process else "[ ]") + " Open FH6 Vinyl Group Editor and refresh process",
+            ("[x]" if has_layer_count else "[ ]") + " Enter exact FH6 template layer count",
+            ("[x]" if has_json else "[ ]") + " Highlight a finalized JSON under Import Final JSON",
+            "[ ] Click Import Final JSON into FH6",
+        ]
+        self.guide_label.setText("\n".join(lines))
 
     def set_progress(self, text: str):
         self.progress_label.setText(text)
+        phase = self.phase_from_progress(text)
+        if phase:
+            self.set_phase(*phase)
+
+    def phase_from_progress(self, text: str) -> tuple[str, str] | None:
+        if text.startswith(("Building layer ", "Step ", "Retry ", "Saved internal checkpoint", "Updated preview")):
+            return ("building", "Internal build is running. Final import JSONs are not ready yet.")
+        if text.startswith(("Internal build finished", "INTERNAL BUILD COMPLETE", "Finalize ", "Finalizing ", "Edge Repair:", "Candidate ", "Best accuracy:", "Final JSON:", "Final preview:", "Report:")):
+            return ("finalizing", "Finalize Checkpoints is running. Do not close yet.")
+        if text.startswith("FINALIZE CHECKPOINTS COMPLETE"):
+            return ("done", "Finalized JSONs are ready. Go to Import Final JSON.")
+        return None
+
+    def set_phase(self, phase: str, detail: str):
+        labels = {
+            "ready": "READY",
+            "building": "BUILDING RAW GEOMETRY",
+            "finalizing": "FINALIZING CHECKPOINTS - DO NOT CLOSE",
+            "done": "READY TO IMPORT",
+            "failed": "FAILED",
+            "importing": "IMPORTING INTO FH6",
+        }
+        colors = {
+            "ready": ("#202020", "#e8e8e8", "#a0a0a0"),
+            "building": ("#102a43", "#d8ecff", "#67a9e8"),
+            "finalizing": ("#3a2400", "#fff1c4", "#f4b000"),
+            "done": ("#063514", "#d9f8df", "#38a853"),
+            "failed": ("#4a0000", "#ffd7d7", "#e02020"),
+            "importing": ("#2d155f", "#eadfff", "#8b5cf6"),
+        }
+        fg, bg, border = colors.get(phase, colors["ready"])
+        self.phase_label.setText(f"{labels.get(phase, phase.upper())}\n{detail}")
+        self.phase_label.setStyleSheet(
+            f"QLabel#phaseBanner {{ color: {fg}; background: {bg}; border: 2px solid {border}; "
+            "border-radius: 12px; padding: 10px; font-weight: 900; font-size: 12pt; }}"
+        )
 
     def show_preview_bytes(self, data: bytes):
         self.preview.set_bytes(data)
@@ -1267,6 +1389,7 @@ class MainWindow(QMainWindow):
             self.game_combo.setCurrentText(self.processes[0]["profile"])
         else:
             self.pid_combo.addItem("No supported game process detected", None)
+        self.update_guide()
 
     def selected_pid_value(self) -> int | None:
         data = self.pid_combo.currentData()
@@ -1299,6 +1422,7 @@ class MainWindow(QMainWindow):
         self.preview_request_id += 1
         self.active_generation_images = images
         self.set_status("Running")
+        self.set_phase("building", "Starting internal build. Final import JSONs are not ready yet.")
         threading.Thread(target=self.generate_worker, args=(setting, images, repair_enabled), daemon=True).start()
 
     def stop_generate(self):
@@ -1407,6 +1531,7 @@ class MainWindow(QMainWindow):
                     "Step ",
                     "Retry ",
                     "Internal build finished",
+                    "INTERNAL BUILD COMPLETE",
                     "Finalize ",
                     "Finalizing ",
                     "FINALIZE CHECKPOINTS COMPLETE",
@@ -1608,6 +1733,17 @@ class MainWindow(QMainWindow):
                 run_mtime = run_folder.stat().st_mtime
             except Exception:
                 run_mtime = path.stat().st_mtime
+            report = self.final_json_report_info(path)
+            tags = []
+            if safe and path.resolve() in recommended:
+                tags.append("Best safe")
+            if report.get("best_score"):
+                tags.append("Best score")
+            if report.get("latest_checkpoint"):
+                tags.append("Latest")
+            if report.get("repair_applied"):
+                tags.append("Edge Repair")
+            tags.append("Fits budget" if safe else "Over budget")
             entries.append({
                 "path": path,
                 "source": self.json_group_key(path),
@@ -1623,9 +1759,55 @@ class MainWindow(QMainWindow):
                 "import_safe": safe,
                 "import_budget": import_drawable_budget(path),
                 "recommended": safe and path.resolve() in recommended,
+                "tags": tags,
+                "error": report.get("error"),
+                "preset": report.get("preset"),
+                "source_image": report.get("source_image"),
             })
+        safe_layers = [entry["layers"] for entry in entries if entry.get("import_safe") and entry.get("layers")]
+        if safe_layers:
+            lowest = min(safe_layers)
+            for entry in entries:
+                if entry.get("import_safe") and entry.get("layers") == lowest:
+                    entry["tags"].append("Lowest layers")
         entries.sort(key=lambda item: (-item["run_mtime"], item["source"].lower(), item["step_number"], item["step_variant"], item["path"].name.lower()))
         return entries
+
+    def final_json_report_info(self, path: Path) -> dict:
+        info = {}
+        report_path = generation_report_path(path)
+        if not report_path.exists():
+            return info
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return info
+        resolved = str(Path(path).resolve())
+        info["source_image"] = Path(str(report.get("source_image") or "")).name or None
+        preset = (((report.get("settings") or {}).get("preset") or {}).get("label")
+                  or ((report.get("settings") or {}).get("preset") or {}).get("name"))
+        info["preset"] = preset
+
+        def matches(item):
+            try:
+                return str(Path(str(item.get("v2_json"))).resolve()) == resolved
+            except Exception:
+                return False
+
+        for candidate in report.get("candidates", []):
+            if matches(candidate):
+                info.update({
+                    "error": candidate.get("error"),
+                    "repair_applied": candidate.get("repair_applied"),
+                })
+                break
+        for key, tag in (("best_accuracy", "best_score"), ("latest_checkpoint_v2", "latest_checkpoint")):
+            item = report.get(key) or {}
+            if matches(item):
+                info[tag] = True
+                info.setdefault("error", item.get("error"))
+                info.setdefault("repair_applied", item.get("repair_applied"))
+        return info
 
     def json_display_type(self, path):
         name = Path(path).name
@@ -1643,7 +1825,7 @@ class MainWindow(QMainWindow):
         return self.checkpoint_run_label(entry["run_folder"])
 
     def generated_display_label(self, entry):
-        recommended = "[best safe] " if entry.get("recommended") else ""
+        tags = " ".join(f"[{tag}]" for tag in entry.get("tags", []))
         unsafe = ""
         if not entry.get("import_safe", True):
             budget = entry.get("import_budget")
@@ -1651,7 +1833,16 @@ class MainWindow(QMainWindow):
             if budget:
                 unsafe += f" > {budget}"
             unsafe += "]"
-        return f"{recommended}{entry['type']} | {entry['layers']} layers | {entry['path'].name}{unsafe}"
+        error = entry.get("error")
+        error_text = f"{float(error):.3f}" if isinstance(error, (int, float)) else "n/a"
+        preset = entry.get("preset") or "unknown preset"
+        source = entry.get("source_image") or entry.get("source") or "unknown source"
+        return (
+            f"{tags}\n"
+            f"{entry['type']} | {entry['layers']} layers | error {error_text}{unsafe}\n"
+            f"Preset: {preset} | Source: {source}\n"
+            f"{entry['path'].name}"
+        )
 
     def sort_generated_entries_for_picker(self, entries):
         def rank(entry):
@@ -1687,6 +1878,7 @@ class MainWindow(QMainWindow):
         self.generated_folder_combo.addItems(order)
         self.generated_folder_combo.blockSignals(False)
         self.populate_generated_checkpoint_list(self.generated_folder_combo.currentText())
+        self.update_guide()
 
     def populate_generated_checkpoint_list(self, folder_label: str):
         self.generated_checkpoint_entries = list(self.generated_folder_entries.get(folder_label, []))
@@ -1696,6 +1888,7 @@ class MainWindow(QMainWindow):
             return
         for entry in self.generated_checkpoint_entries:
             item = QListWidgetItem(self.generated_display_label(entry))
+            item.setSizeHint(QSize(0, 92))
             item.setData(Qt.ItemDataRole.UserRole, entry)
             self.generated_checkpoint_list.addItem(item)
         self.generated_checkpoint_list.setCurrentRow(0)
@@ -1737,6 +1930,153 @@ class MainWindow(QMainWindow):
                 break
         self.select_import_json(entry["path"], "best safe final")
 
+    def compare_selected_checkpoint(self):
+        selected = self.selected_generated_entry()
+        recommended = self.recommended_generated_entry()
+        if not selected:
+            QMessageBox.information(self, "Compare checkpoints", "Select a finalized checkpoint first.")
+            return
+        if not recommended:
+            QMessageBox.information(self, "Compare checkpoints", "No best safe final JSON is available for comparison yet.")
+            return
+        if selected["path"] == recommended["path"]:
+            alternatives = [entry for entry in self.generated_checkpoint_entries if entry["path"] != selected["path"]]
+            if not alternatives:
+                QMessageBox.information(self, "Compare checkpoints", "This run only has one finalized checkpoint.")
+                return
+            recommended = alternatives[0]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Compare Finalized Checkpoints")
+        dialog.resize(1180, 720)
+        layout = QGridLayout(dialog)
+        for column, (title, entry) in enumerate((("Selected", selected), ("Compare", recommended))):
+            label = QLabel(f"{title}\n{self.generated_display_label(entry)}")
+            label.setWordWrap(True)
+            preview = PreviewView("Preview unavailable.")
+            preview_path = self.preview_path_for_json(entry["path"])
+            if preview_path:
+                preview.set_file(str(preview_path))
+            else:
+                data = render_geometry_preview(entry["path"])
+                if data:
+                    preview.set_bytes(data)
+            layout.addWidget(label, 0, column)
+            layout.addWidget(preview, 1, column)
+        dialog.exec()
+
+    def unfinished_generation_runs(self) -> list[Path]:
+        if not GENERATED_ROOT.exists():
+            return []
+        runs = []
+        for run_dir in GENERATED_ROOT.iterdir():
+            if not run_dir.is_dir():
+                continue
+            checkpoints = list((run_dir / "checkpoints").glob("*.json"))
+            finals = list((run_dir / "finals").glob("*.json"))
+            if checkpoints and len(finals) < len(checkpoints):
+                runs.append(run_dir)
+        return sorted(runs, key=lambda path: path.stat().st_mtime, reverse=True)
+
+    def start_resume_finalization(self):
+        runs = self.unfinished_generation_runs()
+        if not runs:
+            QMessageBox.information(self, "Resume Finalize Checkpoints", "No unfinished checkpoint runs were found.")
+            return
+        run_dir = runs[0]
+        self.set_status("Running")
+        self.set_phase("finalizing", f"Resuming Finalize Checkpoints for {run_dir.name}. Do not close yet.")
+        threading.Thread(target=self.resume_finalization_worker, args=(run_dir,), daemon=True).start()
+
+    def resume_finalization_worker(self, run_dir: Path):
+        try:
+            cmd = self.build_resume_finalization_command(run_dir)
+            if not cmd:
+                self.bus.status.emit("Failed")
+                return
+            self.bus.log.emit(f"Resuming Finalize Checkpoints for: {run_dir}")
+            flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", creationflags=flags)
+            self.register_process(proc)
+            try:
+                for raw_line in proc.stdout:
+                    friendly = self.friendly_generator_line(raw_line) or raw_line.strip()
+                    if friendly:
+                        if friendly.startswith(("Finalize ", "Finalizing ", "Edge Repair:", "Candidate ", "Best accuracy:", "Final JSON:", "FINALIZE CHECKPOINTS COMPLETE")):
+                            self.bus.progress.emit(friendly)
+                        self.bus.log.emit(friendly)
+                code = proc.wait()
+            finally:
+                self.unregister_process(proc)
+            if code == 0:
+                self.bus.generated_changed.emit()
+                self.bus.refresh_lists.emit()
+                self.bus.status.emit("Done")
+            else:
+                self.bus.log.emit(f"Resume Finalize Checkpoints exited with code {code}.")
+                self.bus.status.emit("Failed")
+        except Exception as exc:
+            self.bus.log.emit(f"Resume Finalize Checkpoints failed: {exc}")
+            self.bus.status.emit("Failed")
+
+    def build_resume_finalization_command(self, run_dir: Path) -> list | None:
+        source = self.resume_source_image(run_dir)
+        if source is None:
+            self.bus.log.emit(f"Cannot resume {run_dir.name}: no copied source image found in the run folder.")
+            return None
+        metadata_path = next((run_dir / "reports").glob("*.v2.run_metadata.json"), None)
+        metadata = {}
+        if metadata_path:
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                metadata = {}
+        options = metadata.get("generator_command_options") or {}
+        selected_profile = metadata.get("selected_profile") or {}
+        values = metadata.get("effective_settings") or selected_profile.get("values") or {}
+        settings_path = Path(str(selected_profile.get("path") or ""))
+        if not settings_path.exists():
+            settings_path = next((run_dir / "reports").glob("*.v2.settings.ini"), None)
+        if not settings_path or not Path(settings_path).exists():
+            self.bus.log.emit(f"Cannot resume {run_dir.name}: no settings file found.")
+            return None
+        target_shapes = str(options.get("target_shapes") or values.get("stopAt") or "3000")
+        checkpoint_step = str(options.get("checkpoint_step") or "250")
+        preprocess = str(options.get("preprocess_mode") or values.get("v2PreprocessMode") or "none")
+        cmd = [
+            helper_python(),
+            ROOT / "forza_generator_v2.py",
+            source,
+            "--settings",
+            settings_path,
+            "--out-dir",
+            run_dir,
+            "--target-shapes",
+            target_shapes,
+            "--checkpoint-step",
+            checkpoint_step,
+            "--overshoot-ratio",
+            str(options.get("overshoot_ratio") or "1.0"),
+            "--overshoot-max-extra",
+            str(options.get("overshoot_max_extra") or "0"),
+            "--preprocess-mode",
+            preprocess,
+            "--finalize-only",
+        ]
+        if options.get("repair_enabled") or values.get("v2EnableRepair") in ("true", "1", True):
+            cmd.append("--enable-repair")
+        return cmd
+
+    def resume_source_image(self, run_dir: Path) -> Path | None:
+        suffixes = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+        candidates = [
+            path for path in run_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in suffixes and ".preview" not in path.name.lower()
+        ]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda path: path.stat().st_mtime)[0]
+
     def select_import_json(self, path: Path, source: str):
         self.selected_import_json_path = Path(path)
         self.update_selected_json_label()
@@ -1752,6 +2092,7 @@ class MainWindow(QMainWindow):
             self.selected_json_label.setText(f"Selected final JSON: {self.selected_import_json_path}")
         else:
             self.selected_json_label.setText("Selected final JSON: none")
+        self.update_guide()
 
     def run_subprocess(self, cmd, timeout=None):
         self.bus.log.emit(self.friendly_command_name(cmd))

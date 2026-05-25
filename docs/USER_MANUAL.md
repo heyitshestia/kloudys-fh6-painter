@@ -7,6 +7,12 @@ This manual covers the normal launcher-first workflow for Kloudy's FH6 Painter.
 Use **64-bit Python 3.12**. Start from:
 
 ```text
+Kloudys Painter Launcher.exe
+```
+
+If you are using the source folder instead of the standalone launcher executable, start from:
+
+```text
 00_launcher.bat
 ```
 

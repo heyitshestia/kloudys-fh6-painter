@@ -133,6 +133,11 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Optional JSON metadata from the UI describing selected presets, overrides, and toggles.",
     )
+    parser.add_argument(
+        "--finalize-only",
+        action="store_true",
+        help="Skip raw generation and finalize existing checkpoints in --out-dir.",
+    )
     return parser.parse_args()
 
 
@@ -997,7 +1002,7 @@ def main() -> int:
     if not settings_path.is_file():
         print(f"Missing settings file: {settings_path}", file=sys.stderr)
         return 1
-    if not GENERATOR_BIN.is_file():
+    if not args.finalize_only and not GENERATOR_BIN.is_file():
         print(f"Missing generator binary: {GENERATOR_BIN}", file=sys.stderr)
         return 1
 
@@ -1056,9 +1061,12 @@ def main() -> int:
     print(f"Luma Prep mode:         {args.preprocess_mode}")
     if preprocess_output_path is not None:
         print(f"Preprocessed image:     {preprocess_output_path}")
-    interrupted = run_generator(generation_image_path, v2_settings_path, checkpoint_dir, previews_dir, stem, stop_file=stop_file)
-
-    print("INTERNAL BUILD COMPLETE. Finalize Checkpoints is starting now; do not close the app yet.", flush=True)
+    if args.finalize_only:
+        interrupted = True
+        print("RESUME FINALIZE CHECKPOINTS. Reusing existing internal checkpoints; no raw generation will run.", flush=True)
+    else:
+        interrupted = run_generator(generation_image_path, v2_settings_path, checkpoint_dir, previews_dir, stem, stop_file=stop_file)
+        print("INTERNAL BUILD COMPLETE. Finalize Checkpoints is starting now; do not close the app yet.", flush=True)
     print("Finalized JSONs are the only import-ready vinyl files. Internal checkpoints are not final.", flush=True)
 
     raw_candidates = collect_candidate_jsons(checkpoint_dir, stem, max_checkpoint=raw_stop)

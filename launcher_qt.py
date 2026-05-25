@@ -26,6 +26,9 @@ DEPENDENCY_SETUP = ROOT / "02_install_dependencies.bat"
 APP_ENTRY = ROOT / "app_qt.py"
 UPDATE_BAT = ROOT / "03_update_from_github.bat"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
+STANDALONE_FOLDER_NAME = "KloudysFH6Painter"
+LAUNCHER_EXE_NAME = "Kloudys Painter Launcher.exe"
+OLD_LAUNCHER_EXE_NAME = "Kloudys Painter.exe"
 
 
 class Bus(QObject):
@@ -54,6 +57,30 @@ def run_command(cmd, cwd=ROOT, env_extra=None):
     for line in proc.stdout:
         lines.append(line.rstrip())
     return proc.wait(), lines
+
+
+def sync_standalone_launcher_exe() -> list[str]:
+    """Let one updater run migrate the parent launcher exe without manual copying."""
+    messages: list[str] = []
+    if os.name != "nt" or ROOT.name.lower() != STANDALONE_FOLDER_NAME.lower():
+        return messages
+    inner_new = ROOT / LAUNCHER_EXE_NAME
+    parent_new = ROOT.parent / LAUNCHER_EXE_NAME
+    parent_old = ROOT.parent / OLD_LAUNCHER_EXE_NAME
+    if inner_new.exists():
+        try:
+            shutil.copy2(inner_new, parent_new)
+            inner_new.unlink()
+            messages.append(f"Standalone launcher synced: {parent_new.name}")
+        except OSError as exc:
+            messages.append(f"Standalone launcher sync skipped: {exc}")
+    if parent_new.exists() and parent_old.exists():
+        try:
+            parent_old.unlink()
+            messages.append(f"Removed old launcher name: {parent_old.name}")
+        except OSError:
+            messages.append(f"Old launcher still exists because it is probably running: {parent_old.name}")
+    return messages
 
 
 def git_output(*args: str) -> str | None:
@@ -141,8 +168,9 @@ def dependencies_ok() -> tuple[bool, str]:
 class Launcher(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Kloudy's FH6 Painter Launcher")
+        self.setWindowTitle("Kloudy's Painter Launcher")
         self.resize(920, 620)
+        self.launcher_migration_messages = sync_standalone_launcher_exe()
         self.bus = Bus()
         self.bus.status.connect(self.set_status)
         self.bus.log.connect(self.log)
@@ -151,12 +179,14 @@ class Launcher(QMainWindow):
         self.remote_full = None
         self._build()
         self.apply_theme()
+        for message in self.launcher_migration_messages:
+            self.log(message)
         self.refresh_status()
 
     def _build(self):
         root = QWidget()
         layout = QVBoxLayout(root)
-        title = QLabel("Kloudy's FH6 Painter")
+        title = QLabel("Kloudy's Painter Launcher")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)

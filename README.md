@@ -37,6 +37,12 @@ This project exists because several people and upstream projects did the hard fo
 Recommended start:
 
 ```text
+Kloudys Painter Launcher.exe
+```
+
+If you are using the source folder instead of the standalone launcher executable, run:
+
+```text
 00_launcher.bat
 ```
 
@@ -77,6 +83,17 @@ Use the launcher update button, or use only this file:
 
 Close the app first. Do not update by dragging random files over the folder. The updater syncs the latest GitHub files and preserves generated/runtime output. If Git is missing, the updater installs PortableGit for the current Windows user automatically.
 
+All normal updates are designed to work through the updater. Do not manually download individual files from the repo unless you are developing or recovering a broken install.
+
+The updater also writes logs and a pre-update program-file backup:
+
+```text
+runtime/update-logs/
+runtime/update-backups/
+```
+
+Generated images and runtime output are not intentionally removed by updates.
+
 ## What It Does
 
 - Builds finalized Forza-compatible vinyl JSON from PNG, JPG, BMP, and similar image files.
@@ -101,6 +118,7 @@ Close the app first. Do not update by dragging random files over the folder. The
 10. Select a finalized checkpoint, enter the exact template layer count, and import the final JSON.
 
 Full instructions are in [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
+Current planned improvements are tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Important Import Rule
 

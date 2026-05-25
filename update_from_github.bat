@@ -5,35 +5,42 @@ cd /d "%~dp0"
 set "REPO_URL=https://github.com/heyitshestia/kloudys-fh6-painter.git"
 set "BRANCH=main"
 
-echo Kloudy's FH6 Painter updater
-echo.
-echo Use this batch file exclusively for updates.
-echo Close the app before continuing.
-echo This updates program files from GitHub and preserves generated/runtime data.
-echo.
+call :init_update_log
+call :capture_current_version OLD_VERSION
+
+call :log "Kloudy's Painter Launcher updater"
+call :log ""
+call :log "Use this batch file exclusively for updates."
+call :log "Close the app before continuing."
+call :log "This updates program files from GitHub and preserves generated/runtime data."
+call :log "Current version: !OLD_VERSION!"
+call :log "Log file: !UPDATE_LOG!"
+call :log ""
 
 call :ensure_git
 if errorlevel 1 goto :fail
 
 if exist ".git\" (
-    echo Git checkout detected. Syncing tracked app files to latest %BRANCH%...
+    call :log "Git checkout detected. Syncing tracked app files to latest %BRANCH%..."
     git fetch origin %BRANCH%
+    if errorlevel 1 goto :fail
+    call :backup_existing_files
     if errorlevel 1 goto :fail
     git reset --hard origin/%BRANCH%
     if errorlevel 1 (
-        echo.
-        echo Update failed because Git could not reset this folder to the latest version.
-        echo Generated outputs are stored separately and are not intentionally removed.
+        call :log ""
+        call :log "Update failed because Git could not reset this folder to the latest version."
+        call :log "Generated outputs are stored separately and are not intentionally removed."
         goto :fail
     )
     call :cleanup_retired_files
     goto :done
 )
 
-echo This folder is not a Git checkout.
-echo A fresh copy will be downloaded and copied over this folder, like dragging new files over old ones.
-echo Existing generated/runtime data will be preserved.
-echo.
+call :log "This folder is not a Git checkout."
+call :log "A fresh copy will be downloaded and copied over this folder, like dragging new files over old ones."
+call :log "Existing generated/runtime data will be preserved."
+call :log ""
 
 set "TMP_PARENT=%TEMP%\kloudys-fh6-painter-update"
 set "TMP_REPO=%TMP_PARENT%\repo"
@@ -43,16 +50,13 @@ mkdir "%TMP_PARENT%" >nul 2>nul
 git clone --depth 1 --branch %BRANCH% "%REPO_URL%" "%TMP_REPO%"
 if errorlevel 1 goto :fail
 
+call :backup_existing_files
+if errorlevel 1 goto :fail
+
 robocopy "%TMP_REPO%" "%CD%" /E /R:2 /W:1 /XD runtime webui-data dist build __pycache__ >nul
 if errorlevel 8 (
-    echo File copy failed during robocopy update copy. Robocopy exit code: %ERRORLEVEL%
+    call :log "File copy failed during robocopy update copy. Robocopy exit code: %ERRORLEVEL%"
     goto :fail
-)
-
-set "NEW_VERSION="
-for /f "delims=" %%V in ('git -C "%TMP_REPO%" rev-parse --short^=8 HEAD') do set "NEW_VERSION=%%V"
-if defined NEW_VERSION (
-    > "%CD%\VERSION" echo %BRANCH%@!NEW_VERSION!
 )
 
 call :cleanup_retired_files
@@ -60,17 +64,70 @@ call :cleanup_retired_files
 rmdir /s /q "%TMP_PARENT%" >nul 2>nul
 
 :done
-echo.
-echo Update complete.
-echo Run 04_start_app.bat when you are ready.
+call :capture_current_version FINAL_VERSION
+call :log ""
+call :log "Update complete."
+call :log "Version: !OLD_VERSION! -> !FINAL_VERSION!"
+call :log "Backup folder: !BACKUP_DIR!"
+call :log "Run 04_start_app.bat when you are ready."
 pause
 exit /b 0
 
 :fail
-echo.
-echo Update failed. No generated images or runtime output were intentionally removed.
+call :log ""
+call :log "Update failed. No generated images or runtime output were intentionally removed."
+call :log "If program files were partially changed, check backup folder: !BACKUP_DIR!"
 pause
 exit /b 1
+
+:init_update_log
+set "UPDATE_STAMP=manual"
+for /f "delims=" %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss" 2^>nul') do set "UPDATE_STAMP=%%T"
+set "UPDATE_LOG_DIR=%CD%\runtime\update-logs"
+if not exist "%UPDATE_LOG_DIR%" mkdir "%UPDATE_LOG_DIR%" >nul 2>nul
+set "UPDATE_LOG=%UPDATE_LOG_DIR%\update-%UPDATE_STAMP%.log"
+> "%UPDATE_LOG%" echo Kloudy's Painter Launcher update log
+set "BACKUP_DIR=%CD%\runtime\update-backups\%UPDATE_STAMP%"
+exit /b 0
+
+:log
+if "%~1"=="" (
+    echo.
+    if defined UPDATE_LOG (
+        >> "%UPDATE_LOG%" echo.
+    )
+) else (
+    echo %~1
+    if defined UPDATE_LOG (
+        >> "%UPDATE_LOG%" echo [%DATE% %TIME%] %~1
+    )
+)
+exit /b 0
+
+:capture_current_version
+set "%~1=unknown"
+if exist "VERSION" (
+    for /f "usebackq delims=" %%V in ("VERSION") do (
+        set "%~1=%%V"
+        goto :capture_current_version_done
+    )
+)
+if exist ".git\" (
+    for /f "delims=" %%V in ('git rev-parse --short^=8 HEAD 2^>nul') do set "%~1=git:%%V"
+)
+:capture_current_version_done
+exit /b 0
+
+:backup_existing_files
+call :log "Backing up current app files before overwrite..."
+if not exist "!BACKUP_DIR!" mkdir "!BACKUP_DIR!" >nul 2>nul
+robocopy "%CD%" "!BACKUP_DIR!" /E /R:1 /W:1 /XD ".git" "runtime" "imgs" "webui-data" "dist" "build" "__pycache__" "python" /XF "*.pyc" >nul
+if errorlevel 8 (
+    call :log "Backup failed. Robocopy exit code: %ERRORLEVEL%"
+    exit /b 1
+)
+call :log "Backup folder: !BACKUP_DIR!"
+exit /b 0
 
 :ensure_git
 where git >nul 2>nul
@@ -126,6 +183,7 @@ exit /b 0
 :cleanup_retired_files
 if exist "settings\_archive_legacy_2026-05-22" rmdir /s /q "settings\_archive_legacy_2026-05-22" >nul 2>nul
 if exist "settings\_default.ini" del /f /q "settings\_default.ini" >nul 2>nul
+call :sync_launcher_exe
 for %%F in (
     "settings\a.3000-ultra-sharp.ini"
     "settings\a2.2000-ultra-sharp.ini"
@@ -154,4 +212,15 @@ for %%F in (
 ) do (
     if exist %%~F del /f /q %%~F >nul 2>nul
 )
+exit /b 0
+
+:sync_launcher_exe
+if exist "Kloudys Painter.exe" del /f /q "Kloudys Painter.exe" >nul 2>nul
+for %%I in ("%CD%") do set "CURRENT_FOLDER=%%~nxI"
+if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
+if exist "Kloudys Painter Launcher.exe" (
+    copy /y "Kloudys Painter Launcher.exe" "..\Kloudys Painter Launcher.exe" >nul 2>nul
+    del /f /q "Kloudys Painter Launcher.exe" >nul 2>nul
+)
+if exist "..\Kloudys Painter.exe" del /f /q "..\Kloudys Painter.exe" >nul 2>nul
 exit /b 0
