@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListView,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -103,6 +104,22 @@ THEMES = {
     "Blackout": "blackout",
 }
 DEFAULT_THEME = "Blackout"
+
+
+def configure_combo_box(combo: QComboBox, *, max_visible: int = 16, min_height: int = 34, editable: bool = False) -> QComboBox:
+    combo.setEditable(editable)
+    combo.setMinimumHeight(min_height)
+    combo.setMaxVisibleItems(max_visible)
+    combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(18)
+    view = QListView(combo)
+    view.setUniformItemSizes(True)
+    view.setTextElideMode(Qt.TextElideMode.ElideRight)
+    view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    combo.setView(view)
+    return combo
 
 
 def helper_python() -> Path | str:
@@ -846,6 +863,8 @@ class MainWindow(QMainWindow):
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
         self.preview_request_id = 0
+        self._all_combos: list[QComboBox] = []
+        self._theme_apply_pending = False
         self.update_alarm_state = "checking"
         self.update_alarm_text = "checking main build..."
         self.update_blink_on = False
@@ -918,6 +937,20 @@ class MainWindow(QMainWindow):
         root.addWidget(self.log)
         self.setCentralWidget(central)
 
+    def make_combo(self, items=None, *, max_visible: int = 16, min_height: int = 34, editable: bool = False) -> QComboBox:
+        combo = configure_combo_box(QComboBox(), max_visible=max_visible, min_height=min_height, editable=editable)
+        if items:
+            combo.addItems([str(item) for item in items])
+        self._all_combos.append(combo)
+        return combo
+
+    def close_combo_popups(self):
+        for combo in getattr(self, "_all_combos", []):
+            with contextlib.suppress(RuntimeError):
+                combo.hidePopup()
+                if combo.view() is not None:
+                    combo.view().hide()
+
     def _build_generate_tab(self):
         tab = QWidget()
         layout = QHBoxLayout(tab)
@@ -956,10 +989,7 @@ class MainWindow(QMainWindow):
         self.vroom = QCheckBox("vroom vroom scrrrrt zoooom!")
         self.vroom.stateChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.vroom)
-        self.profile_combo = QComboBox()
-        self.profile_combo.setEditable(False)
-        self.profile_combo.setMinimumHeight(38)
-        self.profile_combo.setMaxVisibleItems(18)
+        self.profile_combo = self.make_combo(max_visible=18, min_height=38)
         self.profile_combo.currentIndexChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.profile_combo)
         self.setting_description = QLabel("")
@@ -1038,10 +1068,8 @@ class MainWindow(QMainWindow):
 
         game = QGroupBox("Step 1 - FH6 Session")
         game_layout = QGridLayout(game)
-        self.game_combo = QComboBox()
-        self.game_combo.addItems(list(PROFILES.keys()))
-        self.pid_combo = QComboBox()
-        self.pid_combo.setEditable(True)
+        self.game_combo = self.make_combo(list(PROFILES.keys()), max_visible=12)
+        self.pid_combo = self.make_combo(max_visible=12, editable=True)
         refresh = QPushButton("Refresh")
         refresh.clicked.connect(self.refresh_processes)
         game_layout.addWidget(QLabel("Game"), 0, 0)
@@ -1058,8 +1086,7 @@ class MainWindow(QMainWindow):
         template_layout.addWidget(self.layer_count, 0, 1)
         self.mask_layers_enabled = QCheckBox("Use FH mask layers")
         self.mask_layers_enabled.setChecked(True)
-        self.mask_mode_combo = QComboBox()
-        self.mask_mode_combo.addItems(["Full legacy masks", "Precise adaptive masks", "No mask layers"])
+        self.mask_mode_combo = self.make_combo(["Full legacy masks", "Precise adaptive masks", "No mask layers"], max_visible=8)
         self.mask_mode_combo.setCurrentIndex(0)
         mask_help = QLabel("Legacy is safest. Adaptive/off are test modes to save layers if the design still imports cleanly.")
         mask_help.setWordWrap(True)
@@ -1087,9 +1114,7 @@ class MainWindow(QMainWindow):
         controls.addWidget(compare_btn)
         controls.addWidget(resume_btn)
         json_layout.addLayout(controls)
-        self.generated_folder_combo = QComboBox()
-        self.generated_folder_combo.setMaxVisibleItems(24)
-        self.generated_folder_combo.setMinimumHeight(34)
+        self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
         json_layout.addWidget(QLabel("Generated vinyl run"))
         json_layout.addWidget(QLabel("Pick a finalized checkpoint below. The highlighted final JSON is the one that will be imported."))
@@ -1177,12 +1202,11 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(tab)
         theme = QGroupBox("Appearance")
         theme_layout = QVBoxLayout(theme)
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(list(THEMES.keys()))
+        self.theme_combo = self.make_combo(list(THEMES.keys()), max_visible=len(THEMES), min_height=38)
         selected_theme = self.app_settings.get("theme", DEFAULT_THEME)
         if selected_theme in THEMES:
             self.theme_combo.setCurrentText(selected_theme)
-        self.theme_combo.currentIndexChanged.connect(self.apply_theme)
+        self.theme_combo.activated.connect(self.schedule_theme_apply)
         theme_layout.addWidget(QLabel("Theme"))
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addWidget(QLabel("Theme changes apply immediately and are saved for the next launch."))
@@ -1192,7 +1216,16 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
 
+    def schedule_theme_apply(self, *_args):
+        if self._theme_apply_pending:
+            return
+        self._theme_apply_pending = True
+        self.close_combo_popups()
+        QTimer.singleShot(80, self.apply_theme)
+
     def apply_theme(self, *_args):
+        self._theme_apply_pending = False
+        self.close_combo_popups()
         theme_name = self.theme_combo.currentText() if hasattr(self, "theme_combo") else DEFAULT_THEME
         theme_key = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
         if hasattr(self, "background_widget"):
@@ -1214,6 +1247,9 @@ class MainWindow(QMainWindow):
                 QPushButton:hover { background: #f8d9e4; }
                 QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
+                QComboBox { combobox-popup: 0; padding-right: 30px; }
+                QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #b77b8f; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background: #f3c7d6; }
+                QComboBox QAbstractItemView { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; selection-background-color: #d65f89; selection-color: white; outline: 0; padding: 4px; }
                 QScrollArea, QAbstractScrollArea { background: transparent; border: none; }
                 QCheckBox { spacing: 8px; color: #332534; }
                 QLabel { color: #332534; background: transparent; }
@@ -1236,7 +1272,9 @@ class MainWindow(QMainWindow):
                 QPushButton#primaryButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
                 QPushButton#primaryButton:hover { background: #dedede; color: #000000; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
-                QComboBox QAbstractItemView { background: #000000; color: #f4f4f4; border: 1px solid #343434; selection-background-color: #ffffff; selection-color: #000000; }
+                QComboBox { combobox-popup: 0; padding-right: 30px; }
+                QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #2b2b2b; border-top-right-radius: 7px; border-bottom-right-radius: 7px; background: #050505; }
+                QComboBox QAbstractItemView { background: #000000; color: #f4f4f4; border: 1px solid #343434; selection-background-color: #ffffff; selection-color: #000000; outline: 0; padding: 4px; }
                 QGraphicsView { background: #000000; border: 1px solid #181818; }
                 QScrollArea, QAbstractScrollArea { background: #000000; border: none; }
                 QCheckBox { spacing: 8px; color: #f4f4f4; background: #000000; }
@@ -1262,6 +1300,9 @@ class MainWindow(QMainWindow):
                 QPushButton:hover { background: #dfc9ff; }
                 QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
+                QComboBox { combobox-popup: 0; padding-right: 30px; }
+                QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #d8c2f0; border-top-right-radius: 7px; border-bottom-right-radius: 7px; background: #eadcff; }
+                QComboBox QAbstractItemView { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; selection-background-color: #cfa8ff; selection-color: #3b244d; outline: 0; padding: 4px; }
                 QCheckBox { spacing: 8px; }
                 QLabel { color: #3b244d; }
                 """
@@ -1350,9 +1391,9 @@ class MainWindow(QMainWindow):
             self.profile_combo.addItem(label, item)
             if current_path and Path(item.get("path", "")) == current_path:
                 selected_index = row
-        self.profile_combo.blockSignals(False)
         if self.profile_combo.count() > 0:
             self.profile_combo.setCurrentIndex(selected_index)
+        self.profile_combo.blockSignals(False)
 
     def current_custom_values(self):
         return {
@@ -1720,6 +1761,7 @@ class MainWindow(QMainWindow):
 
     def refresh_processes(self):
         self.processes = game_processes()
+        self.pid_combo.blockSignals(True)
         self.pid_combo.clear()
         if self.processes:
             for item in self.processes:
@@ -1727,6 +1769,7 @@ class MainWindow(QMainWindow):
             self.game_combo.setCurrentText(self.processes[0]["profile"])
         else:
             self.pid_combo.addItem("No supported game process detected", None)
+        self.pid_combo.blockSignals(False)
 
     def selected_pid_value(self) -> int | None:
         data = self.pid_combo.currentData()
@@ -2213,6 +2256,8 @@ class MainWindow(QMainWindow):
         self.generated_folder_combo.blockSignals(True)
         self.generated_folder_combo.clear()
         self.generated_folder_combo.addItems(order)
+        if self.generated_folder_combo.count() > 0:
+            self.generated_folder_combo.setCurrentIndex(0)
         self.generated_folder_combo.blockSignals(False)
         self.populate_generated_checkpoint_list(self.generated_folder_combo.currentText())
 
