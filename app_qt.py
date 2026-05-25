@@ -1097,7 +1097,7 @@ class MainWindow(QMainWindow):
 
         json_group = QGroupBox("Step 3 - Pick Final Vinyl")
         json_layout = QVBoxLayout(json_group)
-        controls = QHBoxLayout()
+        controls = QGridLayout()
         add_json = QPushButton("Choose final JSON...")
         add_json.clicked.connect(self.manual_add_json)
         refresh_jsons = QPushButton("Refresh")
@@ -1108,11 +1108,17 @@ class MainWindow(QMainWindow):
         compare_btn.clicked.connect(self.compare_selected_checkpoint)
         resume_btn = QPushButton("Resume unfinished finalize")
         resume_btn.clicked.connect(self.start_resume_finalization)
-        controls.addWidget(add_json)
-        controls.addWidget(refresh_jsons)
-        controls.addWidget(add_recommended)
-        controls.addWidget(compare_btn)
-        controls.addWidget(resume_btn)
+        for button in (add_json, add_recommended, compare_btn, resume_btn):
+            button.setMinimumWidth(170)
+        refresh_jsons.setMinimumWidth(96)
+        controls.addWidget(add_json, 0, 0)
+        controls.addWidget(refresh_jsons, 0, 1)
+        controls.addWidget(add_recommended, 0, 2)
+        controls.addWidget(compare_btn, 1, 0, 1, 2)
+        controls.addWidget(resume_btn, 1, 2)
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+        controls.setColumnStretch(2, 1)
         json_layout.addLayout(controls)
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
@@ -1243,7 +1249,7 @@ class MainWindow(QMainWindow):
                 QTabBar::tab:selected { background: #fff9fb; color: #3b1f2f; }
                 QGroupBox { border: 2px solid #9f6479; border-radius: 16px; margin-top: 14px; padding: 12px; background: #fffafa; font-weight: 700; color: #7f3d58; }
                 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; background: #fffafa; }
-                QPushButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; border-radius: 10px; padding: 8px 12px; font-weight: 700; }
+                QPushButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; border-radius: 10px; padding: 8px 14px; font-weight: 700; min-height: 26px; }
                 QPushButton:hover { background: #f8d9e4; }
                 QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
@@ -1266,7 +1272,7 @@ class MainWindow(QMainWindow):
                 QTabBar::tab:selected { background: #000000; color: #ffffff; border-color: #343434; }
                 QGroupBox { border: 1px solid #181818; border-radius: 14px; margin-top: 14px; padding: 12px; background: #000000; font-weight: 700; color: #f4f4f4; }
                 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; background: #000000; color: #ffffff; }
-                QPushButton { background: #050505; color: #f4f4f4; border: 1px solid #333333; border-radius: 10px; padding: 8px 12px; font-weight: 700; }
+                QPushButton { background: #050505; color: #f4f4f4; border: 1px solid #333333; border-radius: 10px; padding: 8px 14px; font-weight: 700; min-height: 26px; }
                 QPushButton:hover { background: #101010; border-color: #666666; }
                 QPushButton:pressed { background: #000000; }
                 QPushButton#primaryButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
@@ -1296,7 +1302,7 @@ class MainWindow(QMainWindow):
                 QTabBar::tab:selected { background: #fff8fb; color: #3b244d; }
                 QGroupBox { border: 1px solid #d8c2f0; border-radius: 14px; margin-top: 14px; padding: 12px; background: #fff8fb; font-weight: 600; color: #6c3fa0; }
                 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; }
-                QPushButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-radius: 10px; padding: 8px 12px; }
+                QPushButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-radius: 10px; padding: 8px 14px; min-height: 26px; }
                 QPushButton:hover { background: #dfc9ff; }
                 QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
