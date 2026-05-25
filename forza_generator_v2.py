@@ -731,9 +731,21 @@ def shape_homogeneity_penalty(shape: dict, target_rgba: np.ndarray) -> float:
 
 
 def expanded_shape_bbox(shape: dict, width: int, height: int, move_step: float, radius_step: float) -> tuple[int, int, int, int]:
-    cx, cy, rx, ry, rot_deg = [float(v) for v in shape["data"][:5]]
-    rx, ry = compensated_ellipse_size(rx + radius_step, ry + radius_step)
-    x0, x1, y0, y1 = ellipse_bbox(cx, cy, rx + move_step, ry + move_step, rot_deg, width, height)
+    data = list(shape.get("data", []))
+    if len(data) < 4:
+        return (0, width - 1, 0, height - 1)
+    cx, cy, rx, ry = [float(v) for v in data[:4]]
+    rot_deg = float(data[4]) if len(data) >= 5 else 0.0
+    shape_type = int(shape.get("type", ROTATED_ELLIPSE))
+    if shape_type in (RECTANGLE, ROTATED_RECTANGLE):
+        # Rectangle data stores full width/height, while ellipse data stores
+        # radii. Inflate full dimensions, then convert to half extents.
+        half_w = max(0.5, (rx + radius_step * 2.0) * 0.5) + move_step
+        half_h = max(0.5, (ry + radius_step * 2.0) * 0.5) + move_step
+        x0, x1, y0, y1 = rotated_bbox(cx, cy, half_w, half_h, rot_deg, width, height)
+    else:
+        erx, ery = compensated_ellipse_size(rx + radius_step, ry + radius_step)
+        x0, x1, y0, y1 = rotated_bbox(cx, cy, erx + move_step, ery + move_step, rot_deg, width, height)
     margin = max(4, int(math.ceil(max(move_step, radius_step))))
     return (
         max(0, x0 - margin),
