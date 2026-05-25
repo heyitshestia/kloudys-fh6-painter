@@ -93,7 +93,7 @@ APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
 SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
 PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
-PUBERT_PRESENCE_ASSET = ROOT / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "pubert.jpg"
+PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 STANDALONE_APP_FOLDER_NAME = "KloudysFH6Painter"
 USER_IMAGES_ROOT = ROOT.parent / "Images" if ROOT.name.lower() == STANDALONE_APP_FOLDER_NAME.lower() else ROOT / "Images"
@@ -308,10 +308,10 @@ def remote_app_version() -> str:
     return base64.b64decode(content).decode("utf-8", errors="replace").strip()
 
 
-def require_pubert_presence() -> None:
+def require_project_presence() -> None:
     # Remove this function call and constant to disable the launch presence check.
-    if not PUBERT_PRESENCE_ASSET.is_file():
-        raise RuntimeError("pubert not present")
+    if not PROJECT_PRESENCE_ASSET.is_file():
+        raise RuntimeError("Required project files are missing. Launch from the full Kloudy's FH6 Painter folder.")
 
 
 def show_startup_dependency_error(exc: BaseException) -> None:
@@ -2672,7 +2672,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     app = QApplication(sys.argv[:1])
     try:
-        require_pubert_presence()
+        require_project_presence()
         parser = argparse.ArgumentParser(description="Kloudy's FH6 Painter PySide6 app.")
         parser.add_argument("images", nargs="*", help="Optional image files to preload.")
         args = parser.parse_args(argv)

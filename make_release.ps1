@@ -14,6 +14,7 @@ $AppDir = Join-Path $Stage "KloudysFH6Painter"
 $ZipPath = Join-Path $DistRoot "Kloudys-FH6-Painter-$SafeVersion.zip"
 
 $ProjectItems = @(
+    ".gitattributes",
     ".gitignore",
     "00_launcher.bat",
     "01_add_python312_to_path.bat",
@@ -71,6 +72,11 @@ function Copy-ProjectItem {
         New-Item -ItemType Directory -Path $Parent -Force | Out-Null
     }
     Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force
+    if ((Test-Path -LiteralPath $Destination -PathType Leaf) -and ($Destination -match '\.(bat|cmd|ps1|ini)$')) {
+        $Text = [System.IO.File]::ReadAllText($Destination)
+        $Text = (($Text -replace "`r`n", "`n") -replace "`r", "`n") -replace "`n", "`r`n"
+        [System.IO.File]::WriteAllText($Destination, $Text, [System.Text.UTF8Encoding]::new($false))
+    }
 }
 
 if (Test-Path -LiteralPath $Stage) {
@@ -143,6 +149,24 @@ try {
         }
         if ($Name -match '(^|/)docs/development/') {
             throw "Release verification failed: development docs in zip: $Name"
+        }
+    }
+    foreach ($UpdaterName in @("KloudysFH6Painter/03_update_from_github.bat", "KloudysFH6Painter/update_from_github.bat")) {
+        $Entry = $Zip.GetEntry($UpdaterName)
+        if (-not $Entry) {
+            throw "Release verification failed: missing updater $UpdaterName"
+        }
+        $Reader = New-Object System.IO.StreamReader($Entry.Open())
+        try {
+            $Text = $Reader.ReadToEnd()
+        }
+        finally {
+            $Reader.Dispose()
+        }
+        foreach ($Label in @(":backup_existing_files", ":ensure_git", ":cleanup_retired_files")) {
+            if ($Text.ToLowerInvariant().IndexOf($Label) -lt 0) {
+                throw "Release verification failed: updater label missing $Label in $UpdaterName"
+            }
         }
     }
 }

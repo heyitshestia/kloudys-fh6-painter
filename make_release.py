@@ -18,6 +18,7 @@ IMAGES_DIR = STAGE / "Images"
 ZIP_PATH = DIST_ROOT / f"Kloudys-FH6-Painter-{SAFE_VERSION}.zip"
 
 PROJECT_ITEMS = [
+    ".gitattributes",
     ".gitignore",
     "00_launcher.bat",
     "01_add_python312_to_path.bat",
@@ -74,6 +75,15 @@ def copy_item(relative: str) -> None:
         shutil.copytree(source, destination, dirs_exist_ok=True, ignore=ignore_blocked)
     else:
         shutil.copy2(source, destination)
+        normalize_release_text(destination)
+
+
+def normalize_release_text(path: Path) -> None:
+    suffix = path.suffix.lower()
+    if suffix not in {".bat", ".cmd", ".ps1", ".ini"}:
+        return
+    text = path.read_text(encoding="utf-8", errors="replace")
+    path.write_text(text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n"), encoding="utf-8", newline="")
 
 
 def ignore_blocked(directory: str, names: list[str]) -> set[str]:
@@ -107,6 +117,7 @@ def verify_stage() -> None:
         APP_DIR / "app_qt.py",
         APP_DIR / "forza_generator_v2.py",
         APP_DIR / "fh6_probe.py",
+        APP_DIR / "assets" / "app" / "project-integrity.marker",
         APP_DIR / "settings" / "a.fast-ugly.ini",
     ]
     for path in required:
@@ -122,6 +133,18 @@ def verify_stage() -> None:
             raise RuntimeError(f"release verification failed: probe data staged: {path}")
         if rel[:3] == ("KloudysFH6Painter", "docs", "development"):
             raise RuntimeError(f"release verification failed: development docs staged: {path}")
+    verify_updater_batch(APP_DIR / "03_update_from_github.bat")
+    verify_updater_batch(APP_DIR / "update_from_github.bat")
+
+
+def verify_updater_batch(path: Path) -> None:
+    data = path.read_bytes()
+    if b"\r\n" not in data or data.count(b"\n") != data.count(b"\r\n"):
+        raise RuntimeError(f"release verification failed: updater is not CRLF-normalized: {path}")
+    text = data.decode("utf-8", errors="replace").lower()
+    for label in (":backup_existing_files", ":ensure_git", ":cleanup_retired_files"):
+        if label not in text:
+            raise RuntimeError(f"release verification failed: updater label missing {label}: {path}")
 
 
 def zip_stage() -> None:
@@ -141,6 +164,7 @@ def zip_stage() -> None:
             "KloudysFH6Painter/app_qt.py",
             "KloudysFH6Painter/forza_generator_v2.py",
             "KloudysFH6Painter/fh6_probe.py",
+            "KloudysFH6Painter/assets/app/project-integrity.marker",
             "KloudysFH6Painter/settings/a.fast-ugly.ini",
         }
         missing = sorted(required - names)

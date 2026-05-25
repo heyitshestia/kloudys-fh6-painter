@@ -18,7 +18,9 @@ import cv2
 
 
 ROOT = Path(__file__).resolve().parent
-BUNDLED_WINDOWS_GENERATOR = ROOT / "forza-painter-geometrize-go.exe"
+PROJECT_WINDOWS_GENERATOR = ROOT / "kloudys-fh6-generator.exe"
+LEGACY_WINDOWS_GENERATOR = ROOT / "forza-painter-geometrize-go.exe"
+BUNDLED_WINDOWS_GENERATOR = PROJECT_WINDOWS_GENERATOR if PROJECT_WINDOWS_GENERATOR.is_file() else LEGACY_WINDOWS_GENERATOR
 LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize-gpu/forza-painter-geometrize-go-linux-arm64")
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")
@@ -1086,6 +1088,7 @@ def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, previe
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW") else 0
     proc = subprocess.Popen(
         cmd,
+        cwd=ROOT,
         env=env,
         creationflags=flags,
         stdout=subprocess.PIPE,
