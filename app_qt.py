@@ -940,6 +940,8 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(self.generated_checkpoint_list, 2)
         self.selected_json_label = QLabel("Selected final JSON: none")
         self.selected_json_label.setWordWrap(True)
+        self.selected_json_label.setMaximumHeight(58)
+        self.selected_json_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         json_layout.addWidget(self.selected_json_label)
         left_layout.addWidget(json_group, 1)
 
@@ -2088,10 +2090,18 @@ class MainWindow(QMainWindow):
             return
         if text is not None:
             self.selected_json_label.setText(text)
+            self.selected_json_label.setToolTip(text)
         elif self.selected_import_json_path:
-            self.selected_json_label.setText(f"Selected final JSON: {self.selected_import_json_path}")
+            path = Path(self.selected_import_json_path)
+            try:
+                rel = path.relative_to(ROOT)
+            except ValueError:
+                rel = path
+            self.selected_json_label.setText(f"Selected final JSON: {path.name}\n{rel}")
+            self.selected_json_label.setToolTip(str(path))
         else:
             self.selected_json_label.setText("Selected final JSON: none")
+            self.selected_json_label.setToolTip("")
         self.update_guide()
 
     def run_subprocess(self, cmd, timeout=None):

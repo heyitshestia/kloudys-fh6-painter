@@ -355,8 +355,27 @@ class Launcher(QMainWindow):
                 lines.extend(out)
                 if code != 0:
                     return code, lines
+            lines.extend(self.post_update_cleanup())
             return 0, lines
         return 1, ["This folder is not a Git checkout. Use 03_update_from_github.bat for first sync."]
+
+    def post_update_cleanup(self) -> list[str]:
+        lines = []
+        for path in (
+            ROOT / "settings" / "_archive_legacy_2026-05-22",
+            ROOT / "settings" / "_default.ini",
+        ):
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                    lines.append(f"Removed retired folder: {path.name}")
+                elif path.exists():
+                    path.unlink()
+                    lines.append(f"Removed retired file: {path.name}")
+            except OSError as exc:
+                lines.append(f"Could not remove retired path {path}: {exc}")
+        lines.extend(sync_standalone_launcher_exe())
+        return lines
 
     def launch_app(self):
         dep_ok, dep_message = dependencies_ok()

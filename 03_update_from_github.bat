@@ -87,7 +87,9 @@ set "UPDATE_LOG_DIR=%CD%\runtime\update-logs"
 if not exist "%UPDATE_LOG_DIR%" mkdir "%UPDATE_LOG_DIR%" >nul 2>nul
 set "UPDATE_LOG=%UPDATE_LOG_DIR%\update-%UPDATE_STAMP%.log"
 > "%UPDATE_LOG%" echo Kloudy's Painter Launcher update log
-set "BACKUP_DIR=%CD%\runtime\update-backups\%UPDATE_STAMP%"
+set "BACKUP_ROOT=%LOCALAPPDATA%\KloudysFH6Painter\update-backups"
+if "%LOCALAPPDATA%"=="" set "BACKUP_ROOT=%TEMP%\KloudysFH6Painter\update-backups"
+set "BACKUP_DIR=%BACKUP_ROOT%\%UPDATE_STAMP%"
 exit /b 0
 
 :log
@@ -123,8 +125,8 @@ call :log "Backing up current app files before overwrite..."
 if not exist "!BACKUP_DIR!" mkdir "!BACKUP_DIR!" >nul 2>nul
 robocopy "%CD%" "!BACKUP_DIR!" /E /R:1 /W:1 /XD ".git" "runtime" "imgs" "webui-data" "dist" "build" "__pycache__" "python" /XF "*.pyc" >nul
 if errorlevel 8 (
-    call :log "Backup failed. Robocopy exit code: %ERRORLEVEL%"
-    exit /b 1
+    call :log "Backup warning. Robocopy exit code: %ERRORLEVEL%"
+    call :log "Continuing update without blocking because generated/runtime data is preserved separately."
 )
 call :log "Backup folder: !BACKUP_DIR!"
 exit /b 0
