@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -20,7 +18,7 @@ REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-fh6-painter"
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 BRANCH = "main"
-GITHUB_BRANCH_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/commits/{BRANCH}"
+GITHUB_VERSION_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
 PYTHON_SETUP = ROOT / "01_add_python312_to_path.bat"
 DEPENDENCY_SETUP = ROOT / "02_install_dependencies.bat"
 APP_ENTRY = ROOT / "app_qt.py"
@@ -93,37 +91,25 @@ def git_output(*args: str) -> str | None:
 
 
 def local_version() -> tuple[str, str]:
-    sha = git_output("rev-parse", "--short=8", "HEAD")
-    full = git_output("rev-parse", "HEAD")
-    if sha and full:
-        return sha, full
     try:
         text = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     except OSError:
         text = "unknown"
-    match = re.search(r"([0-9a-f]{7,40})", text, re.IGNORECASE)
-    if match:
-        sha_text = match.group(1)
-        return sha_text[:8], sha_text
     return text, text
 
 
-def versions_match(local_full: str, remote_short: str, remote_full: str) -> bool:
-    local_full = str(local_full or "").strip().lower()
-    if not local_full or local_full == "unknown":
+def versions_match(local_value: str, remote_value: str) -> bool:
+    local_value = str(local_value or "").strip().lower()
+    remote_value = str(remote_value or "").strip().lower()
+    if not local_value or local_value == "unknown" or not remote_value:
         return False
-    remote_full = remote_full.lower()
-    remote_short = remote_short.lower()
-    return remote_full == local_full or remote_full.startswith(local_full) or remote_short == local_full[:8]
+    return local_value == remote_value
 
 
 def remote_version() -> tuple[str, str, str]:
-    with urllib.request.urlopen(GITHUB_BRANCH_API, timeout=12) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    full = str(payload["sha"])
-    short = full[:8]
-    date = payload.get("commit", {}).get("committer", {}).get("date", "")
-    return short, full, date
+    with urllib.request.urlopen(GITHUB_VERSION_URL, timeout=12) as response:
+        version = response.read().decode("utf-8", errors="replace").strip()
+    return version, version, ""
 
 
 def find_python312() -> list[str] | None:
@@ -199,7 +185,7 @@ class Launcher(QMainWindow):
 
         self.info = QLabel(
             "Fresh install: click Setup Python, then Install Dependencies, then Launch App.\n"
-            "Updates: click Check Updates. If red update text appears, click Upgrade / Sync From GitHub."
+            "Updates: click Check Updates. If red update text appears, click Update."
         )
         self.info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.info.setWordWrap(True)
@@ -212,7 +198,7 @@ class Launcher(QMainWindow):
         self.install_deps_btn.clicked.connect(lambda: self.run_batch(DEPENDENCY_SETUP, "Dependency install"))
         self.check_btn = QPushButton("Check Updates")
         self.check_btn.clicked.connect(self.refresh_status)
-        self.update_btn = QPushButton("Upgrade / Sync From GitHub")
+        self.update_btn = QPushButton("Update")
         self.update_btn.setObjectName("dangerButton")
         self.update_btn.clicked.connect(self.run_update)
         self.launch_btn = QPushButton("➜ Launch App")
@@ -269,11 +255,11 @@ class Launcher(QMainWindow):
             try:
                 remote_short, remote_full, remote_date = remote_version()
                 self.remote_full = remote_full
-                self.bus.log.emit(f"GitHub main: {remote_short} {remote_date}")
-                if not versions_match(local_full, remote_short, remote_full):
+                self.bus.log.emit(f"GitHub main version: {remote_short}")
+                if not versions_match(local_full, remote_full):
                     self.update_available = True
                     self.bus.status.emit(
-                        f"UPDATE AVAILABLE!\nLocal: {local_short}  →  GitHub: {remote_short}\nClick Upgrade / Sync From GitHub.",
+                        f"UPDATE AVAILABLE!\nLocal: {local_short}  ->  GitHub main: {remote_short}\nClick Update.",
                         "bad",
                     )
                     return
@@ -314,27 +300,32 @@ class Launcher(QMainWindow):
     def run_update(self):
         if QMessageBox.question(
             self,
-            "Upgrade / Sync",
-            "This will sync app files from GitHub and preserve generated/runtime data.\n\nContinue?",
+            "Update",
+            "This will update app files from GitHub main and preserve generated/runtime data.\n\nContinue?",
         ) != QMessageBox.StandardButton.Yes:
             return
-        self.log("Starting GitHub sync in a separate updater window.")
+        self.log("Starting GitHub update.")
         if os.name == "nt" and UPDATE_BAT.exists():
-            try:
-                subprocess.Popen(["cmd", "/c", "start", "", str(UPDATE_BAT)], cwd=ROOT)
-                QMessageBox.information(
-                    self,
-                    "Updater started",
-                    "The updater window opened.\n\nClose this launcher after the updater starts so files can be replaced safely.",
-                )
-            except Exception as exc:
-                QMessageBox.critical(self, "Updater failed", str(exc))
+            threading.Thread(target=self._update_bat_worker, daemon=True).start()
             return
         threading.Thread(target=self._update_worker, daemon=True).start()
 
+    def _update_bat_worker(self):
+        self.bus.busy.emit(True)
+        self.bus.log.emit("Starting updater batch...")
+        try:
+            code, lines = run_command(["cmd", "/c", str(UPDATE_BAT)], env_extra={"FORZA_PAINTER_NO_PAUSE": "1"})
+            for line in lines:
+                if line:
+                    self.bus.log.emit(line)
+            self.bus.log.emit(f"Update exited with code {code}.")
+        finally:
+            self.bus.busy.emit(False)
+            self.refresh_status()
+
     def _update_worker(self):
         self.bus.busy.emit(True)
-        self.bus.log.emit("Starting GitHub sync...")
+        self.bus.log.emit("Starting GitHub update...")
         try:
             code, lines = self.sync_with_git()
             for line in lines:

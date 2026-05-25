@@ -102,7 +102,7 @@ Generated images and runtime output are not intentionally removed by updates.
 - Imports final JSON into the currently open FH6 vinyl group.
 - Stores new runs as `imgs/generated/<job>/finals`, `checkpoints`, `previews`, and `reports`.
 - Scans old generated folders on startup so previous finalized runs can still be imported.
-- Provides a launcher with setup, dependency checks, update status, and one-click GitHub sync.
+- Provides a launcher with setup, dependency checks, update status, and one-click GitHub update.
 
 ## Quick Workflow
 

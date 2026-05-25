@@ -70,14 +70,14 @@ call :log "Update complete."
 call :log "Version: !OLD_VERSION! -> !FINAL_VERSION!"
 call :log "Backup folder: !BACKUP_DIR!"
 call :log "Run 04_start_app.bat when you are ready."
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 0
 
 :fail
 call :log ""
 call :log "Update failed. No generated images or runtime output were intentionally removed."
 call :log "If program files were partially changed, check backup folder: !BACKUP_DIR!"
-pause
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 1
 
 :init_update_log
