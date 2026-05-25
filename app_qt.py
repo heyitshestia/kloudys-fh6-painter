@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import json
 import math
@@ -81,7 +82,7 @@ ROOT = Path(__file__).resolve().parent
 REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-fh6-painter"
 BRANCH = "main"
-GITHUB_VERSION_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
+GITHUB_VERSION_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/VERSION?ref={BRANCH}"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
@@ -286,8 +287,18 @@ def local_app_version() -> str:
 
 
 def remote_app_version() -> str:
-    with urllib.request.urlopen(GITHUB_VERSION_URL, timeout=10) as response:
-        return response.read().decode("utf-8", errors="replace").strip()
+    request = urllib.request.Request(
+        GITHUB_VERSION_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Cache-Control": "no-cache",
+            "User-Agent": "KloudysFH6Painter",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    content = str(payload.get("content", ""))
+    return base64.b64decode(content).decode("utf-8", errors="replace").strip()
 
 
 def require_pubert_presence() -> None:

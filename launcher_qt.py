@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 import shutil
 import subprocess
@@ -18,7 +20,7 @@ REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-fh6-painter"
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 BRANCH = "main"
-GITHUB_VERSION_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
+GITHUB_VERSION_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/VERSION?ref={BRANCH}"
 PYTHON_SETUP = ROOT / "01_add_python312_to_path.bat"
 DEPENDENCY_SETUP = ROOT / "02_install_dependencies.bat"
 APP_ENTRY = ROOT / "app_qt.py"
@@ -107,8 +109,17 @@ def versions_match(local_value: str, remote_value: str) -> bool:
 
 
 def remote_version() -> tuple[str, str, str]:
-    with urllib.request.urlopen(GITHUB_VERSION_URL, timeout=12) as response:
-        version = response.read().decode("utf-8", errors="replace").strip()
+    request = urllib.request.Request(
+        GITHUB_VERSION_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Cache-Control": "no-cache",
+            "User-Agent": "KloudysFH6Painter",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    version = base64.b64decode(str(payload.get("content", ""))).decode("utf-8", errors="replace").strip()
     return version, version, ""
 
 
