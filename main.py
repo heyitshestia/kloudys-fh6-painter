@@ -17,7 +17,7 @@ import subprocess
 from native import *
 from internal_classes import *
 from game_profiles import iter_profiles, PROFILES
-from geometry_json import RECTANGLE, ROTATED_RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
+from geometry_json import ELLIPSE, RECTANGLE, ROTATED_RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
 import colorsys
 import os
 
@@ -95,8 +95,8 @@ def compensated_ellipse_size(w, h):
 
 
 def shape_bbox(shape: Shape):
-    if shape.type_id in (ROTATED_ELLIPSE, ROTATED_RECTANGLE):
-        if shape.type_id == ROTATED_ELLIPSE:
+    if shape.type_id in (ELLIPSE, ROTATED_ELLIPSE, ROTATED_RECTANGLE):
+        if shape.type_id in (ELLIPSE, ROTATED_ELLIPSE):
             w, h = compensated_ellipse_size(shape.w, shape.h)
         else:
             w, h = float(shape.w), float(shape.h)
@@ -365,7 +365,7 @@ def draw_memory_shape(pid: int, profile, shape: Shape, index: int, cLiveryLayerT
     pos_data = struct.pack('f', shape.x) + struct.pack('f', -shape.y)
     try:
         write_process_memory(pid, current_layer_address + profile.layer_position_offset, pos_data)
-        if shape.type_id == ROTATED_ELLIPSE:
+        if shape.type_id in (ELLIPSE, ROTATED_ELLIPSE):
             adj_w, adj_h = compensated_ellipse_size(shape.w, shape.h)
             scale_data = struct.pack('f', adj_w / ELLIPSE_IMPORT_BASE_DIVISOR) + struct.pack('f', adj_h / ELLIPSE_IMPORT_BASE_DIVISOR)
         else:
@@ -375,7 +375,7 @@ def draw_memory_shape(pid: int, profile, shape: Shape, index: int, cLiveryLayerT
         write_process_memory(pid, current_layer_address + profile.layer_rotation_offset, rot_data)
         color_data = shape.color.get_struct()
         write_process_memory(pid, current_layer_address + profile.layer_color_offset, color_data)
-        if shape.type_id == ROTATED_ELLIPSE:
+        if shape.type_id in (ELLIPSE, ROTATED_ELLIPSE):
             shape_id_data = struct.pack('B', 102)
             write_process_memory(pid, current_layer_address + profile.layer_shape_id_offset, shape_id_data)
         elif shape.type_id in (RECTANGLE, ROTATED_RECTANGLE):
@@ -431,8 +431,9 @@ def load_geometry(
         #shape.data = [x,y,w,h,rot_deg]
         if len(shape.get('color', [])) == 4 and int(shape['color'][3]) <= 0:
             continue
-        if shape['type'] == ROTATED_ELLIPSE:
-            x,y,w,h,rot_deg = shape['data']
+        if shape['type'] in (ELLIPSE, ROTATED_ELLIPSE):
+            x,y,w,h = shape['data'][:4]
+            rot_deg = shape['data'][4] if shape['type'] == ROTATED_ELLIPSE and len(shape['data']) >= 5 else 0
             r,g,b,a = shape['color']
             shapes.append(Shape(shape['type'], x, y, w, h, rot_deg, Color(r,g,b,a), False))
         elif shape['type'] == RECTANGLE:
@@ -465,7 +466,7 @@ def load_geometry(
         for shape in shapes:
             if shape.color.a <= 0:
                 continue
-            if shape.type_id == ROTATED_ELLIPSE:
+            if shape.type_id in (ELLIPSE, ROTATED_ELLIPSE):
                 adj_w, adj_h = compensated_ellipse_size(shape.w, shape.h)
                 mask = np.zeros((image_h, image_w), np.uint8)
                 cv2.ellipse(mask, (shape.x, shape.y), (int(round(adj_h)), int(round(adj_w))), -90 + shape.rot_deg, 0., 360, 255, thickness=-1)

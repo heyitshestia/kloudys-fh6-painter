@@ -680,6 +680,97 @@ def copy_shape(shape: dict) -> dict:
     }
 
 
+def shape_visual_extents(shape: dict) -> tuple[float, float, float, float, float] | None:
+    data = list(shape.get("data", []))
+    if len(data) < 4:
+        return None
+    cx, cy, a, b = [float(v) for v in data[:4]]
+    rot = float(data[4]) if len(data) >= 5 else 0.0
+    if int(shape.get("type", ROTATED_ELLIPSE)) in (RECTANGLE, ROTATED_RECTANGLE):
+        half_w = max(0.5, a * 0.5)
+        half_h = max(0.5, b * 0.5)
+    else:
+        half_w = max(0.5, a)
+        half_h = max(0.5, b)
+    return cx, cy, half_w, half_h, rot
+
+
+def shape_family_variant(shape: dict, shape_type: int) -> dict | None:
+    extents = shape_visual_extents(shape)
+    if extents is None:
+        return None
+    cx, cy, half_w, half_h, rot = extents
+    variant = copy_shape(shape)
+    variant["type"] = shape_type
+    if shape_type == RECTANGLE:
+        variant["data"] = [
+            cx,
+            cy,
+            max(1.0, half_w * 2.0),
+            max(1.0, half_h * 2.0),
+        ]
+    elif shape_type == ROTATED_RECTANGLE:
+        variant["data"] = [
+            cx,
+            cy,
+            max(1.0, half_w * 2.0),
+            max(1.0, half_h * 2.0),
+            rot % 360.0,
+        ]
+    elif shape_type == ELLIPSE:
+        variant["data"] = [
+            cx,
+            cy,
+            max(1.0, half_w),
+            max(1.0, half_h),
+            0.0,
+        ]
+    elif shape_type == ROTATED_ELLIPSE:
+        variant["data"] = [
+            cx,
+            cy,
+            max(1.0, half_w),
+            max(1.0, half_h),
+            rot % 360.0,
+        ]
+    else:
+        return None
+    return variant
+
+
+def shape_family_variants(shape: dict) -> list[dict]:
+    current_type = int(shape.get("type", ROTATED_ELLIPSE))
+    extents = shape_visual_extents(shape)
+    if extents is None:
+        return []
+    _, _, half_w, half_h, rot = extents
+    aspect = max(half_w, half_h) / max(1.0, min(half_w, half_h))
+    near_axis = abs((rot % 90.0)) <= 2.0 or abs((rot % 90.0) - 90.0) <= 2.0
+
+    candidates = [ROTATED_ELLIPSE, ROTATED_RECTANGLE]
+    if near_axis:
+        candidates.extend([ELLIPSE, RECTANGLE])
+    if aspect <= 1.20:
+        # Round-ish details rarely benefit from rotated rectangles unless
+        # the score proves otherwise, so test ellipses first.
+        candidates = [ROTATED_ELLIPSE, ELLIPSE, ROTATED_RECTANGLE, RECTANGLE]
+    elif aspect >= 2.20:
+        # Long strokes often fit better as rectangles, but keep ellipses
+        # available for tapered hair/finger detail.
+        candidates = [ROTATED_RECTANGLE, ROTATED_ELLIPSE, RECTANGLE, ELLIPSE]
+
+    out = []
+    seen: set[int] = set()
+    for shape_type in candidates:
+        if shape_type == current_type or shape_type in seen:
+            continue
+        seen.add(shape_type)
+        variant = shape_family_variant(shape, shape_type)
+        if variant is not None:
+            out.append(variant)
+    return out
+
+
 def unscale_shape(shape: dict, sx: float, sy: float) -> dict:
     data = list(shape.get("data", []))
     if len(data) < 4:
@@ -712,7 +803,7 @@ def local_error_value(diff_map: np.ndarray, bbox: tuple[int, int, int, int]) -> 
 
 def shape_homogeneity_penalty(shape: dict, target_rgba: np.ndarray) -> float:
     height, width = target_rgba.shape[:2]
-    bbox, mask = ellipse_mask(shape, width, height)
+    bbox, mask = shape_mask(shape, width, height)
     x0, x1, y0, y1 = bbox
     if x1 < x0 or y1 < y0 or not np.any(mask):
         return 0.0
@@ -791,6 +882,7 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
     before_error = best_error
 
     improvements = 0
+    family_changes = 0
     touched_indices: set[int] = set()
     for _round in range(rounds):
         ranked = rank_repair_targets(working, top_idx, diff_top, top_alpha, target_rgba, max_shapes)
@@ -800,7 +892,11 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
                 continue
             touched_indices.add(idx)
             shape = working[idx]
-            x, y, rx, ry, rot = [float(v) for v in shape["data"][:5]]
+            data = list(shape.get("data", []))
+            if len(data) < 4:
+                continue
+            x, y, rx, ry = [float(v) for v in data[:4]]
+            rot = float(data[4]) if len(data) >= 5 else 0.0
             move_step = max(1.0, round(max(rx, ry) * 0.014))
             radius_step = max(1.0, round(max(rx, ry) * 0.03))
             rot_step = 2.0
@@ -836,6 +932,7 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
             local_best = copy_shape(shape)
             original_local_score = local_best_score
             local_best_deleted = False
+            trial_shapes: list[dict | None] = shape_family_variants(shape)
             for proposal in proposals:
                 if len(proposal) == 6:
                     delete_shape, dx, dy, drx, dry, drot = proposal
@@ -843,20 +940,23 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
                 else:
                     delete_shape, dx, dy, drx, dry, drot, dalpha = proposal
                 if delete_shape:
-                    trial = None
-                else:
-                    trial = copy_shape(shape)
-                    trial["data"] = [
-                        x + dx,
-                        y + dy,
-                        max(1.0, rx + drx),
-                        max(1.0, ry + dry),
-                        (rot + drot) % 360.0,
-                    ]
-                    trial["color"] = list(trial.get("color", [0, 0, 0, 255]))
-                    if len(trial["color"]) < 4:
-                        trial["color"] += [255] * (4 - len(trial["color"]))
-                    trial["color"][3] = int(max(0, min(255, round(alpha0 + dalpha))))
+                    trial_shapes.append(None)
+                    continue
+                trial = copy_shape(shape)
+                trial["data"] = [
+                    x + dx,
+                    y + dy,
+                    max(1.0, rx + drx),
+                    max(1.0, ry + dry),
+                    (rot + drot) % 360.0,
+                ]
+                trial["color"] = list(trial.get("color", [0, 0, 0, 255]))
+                if len(trial["color"]) < 4:
+                    trial["color"] += [255] * (4 - len(trial["color"]))
+                trial["color"][3] = int(max(0, min(255, round(alpha0 + dalpha))))
+                trial_shapes.append(trial)
+
+            for trial in trial_shapes:
                 prev = working[idx]
                 if trial is None:
                     del working[idx]
@@ -875,6 +975,11 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
 
             if local_best_score + 1e-9 < original_local_score:
                 prev = working[idx]
+                changed_family = bool(
+                    not local_best_deleted
+                    and local_best is not None
+                    and int(local_best.get("type", ROTATED_ELLIPSE)) != int(prev.get("type", ROTATED_ELLIPSE))
+                )
                 if local_best_deleted:
                     del working[idx]
                 else:
@@ -888,6 +993,8 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
                     top_idx = trial_top_idx
                     diff_top = trial_diff
                     improvements += 1
+                    if changed_family:
+                        family_changes += 1
                     changed = True
                 else:
                     if local_best_deleted:
@@ -902,6 +1009,7 @@ def repair_shapes(background: dict, shapes: list[dict], target_rgba: np.ndarray,
         "enabled": True,
         "touched": len(touched_indices),
         "improvements": improvements,
+        "family_changes": family_changes,
         "before": before_error,
         "after": best_error,
     }
