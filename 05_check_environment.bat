@@ -29,6 +29,13 @@ if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 0
 
 :find_python
+if exist "%~dp0python\python.exe" (
+    "%~dp0python\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32 else 1)" >nul 2>nul
+    if not errorlevel 1 (
+        set "PYTHON_CMD="%~dp0python\python.exe""
+        exit /b 0
+    )
+)
 py -3.12 -c "import sys; raise SystemExit(0 if sys.maxsize > 2**32 else 1)" >nul 2>nul
 if not errorlevel 1 (
     set "PYTHON_CMD=py -3.12"
