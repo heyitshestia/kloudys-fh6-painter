@@ -812,9 +812,13 @@ class MainWindow(QMainWindow):
         self.update_alarm_state = "checking"
         self.update_alarm_text = "checking main build..."
         self.update_blink_on = False
+        self.update_check_running = False
         self.update_blink_timer = QTimer(self)
         self.update_blink_timer.setInterval(650)
         self.update_blink_timer.timeout.connect(self.toggle_update_alarm_blink)
+        self.update_check_timer = QTimer(self)
+        self.update_check_timer.setInterval(5 * 60 * 1000)
+        self.update_check_timer.timeout.connect(self.start_update_check)
         self.bus = UiBus()
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
@@ -836,6 +840,7 @@ class MainWindow(QMainWindow):
         if self.images:
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
         self.start_update_check()
+        self.update_check_timer.start()
 
     def _build(self):
         central = AnimatedThemeBackground()
@@ -1206,24 +1211,30 @@ class MainWindow(QMainWindow):
         self.apply_update_alarm_style()
 
     def start_update_check(self):
+        if self.update_check_running:
+            return
+        self.update_check_running = True
         self.show_update_alert("checking", "checking main build...")
         threading.Thread(target=self.update_check_worker, daemon=True).start()
 
     def update_check_worker(self):
-        local_version = local_app_version()
         try:
-            remote_version = remote_app_version()
-        except Exception as exc:
-            self.bus.log.emit(f"Main build check failed: {exc}")
-            self.bus.update_alert.emit("unknown", "main build check unavailable")
-            return
-        if not local_version or local_version == "unknown" or not remote_version:
-            self.bus.update_alert.emit("unknown", "main build check unavailable")
-            return
-        if remote_version.strip() != local_version.strip():
-            self.bus.update_alert.emit("available", f"update available: main {remote_version}")
-        else:
-            self.bus.update_alert.emit("ok", f"up to date: main {local_version}")
+            local_version = local_app_version()
+            try:
+                remote_version = remote_app_version()
+            except Exception as exc:
+                self.bus.log.emit(f"Main build check failed: {exc}")
+                self.bus.update_alert.emit("unknown", "main build check unavailable")
+                return
+            if not local_version or local_version == "unknown" or not remote_version:
+                self.bus.update_alert.emit("unknown", "main build check unavailable")
+                return
+            if remote_version.strip() != local_version.strip():
+                self.bus.update_alert.emit("available", f"update available: main {remote_version}")
+            else:
+                self.bus.update_alert.emit("ok", f"up to date: main {local_version}")
+        finally:
+            self.update_check_running = False
 
     def show_update_alert(self, state: str, text: str):
         self.update_alarm_state = state
