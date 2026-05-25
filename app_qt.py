@@ -1283,7 +1283,7 @@ class MainWindow(QMainWindow):
         self.phase_label.setText(f"{labels.get(phase, phase.upper())}\n{detail}")
         self.phase_label.setStyleSheet(
             f"QLabel#phaseBanner {{ color: {fg}; background: {bg}; border: 2px solid {border}; "
-            "border-radius: 12px; padding: 10px; font-weight: 900; font-size: 12pt; }}"
+            "border-radius: 12px; padding: 10px; font-weight: 900; font-size: 12pt; }"
         )
 
     def show_preview_bytes(self, data: bytes):
