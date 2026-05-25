@@ -936,16 +936,16 @@ class MainWindow(QMainWindow):
         self.generated_checkpoint_list.currentRowChanged.connect(self.select_generated_checkpoint)
         json_layout.addWidget(QLabel("Finalized checkpoints"))
         json_layout.addWidget(self.generated_checkpoint_list, 2)
-        self.selected_json_label = QLabel("Selected final JSON: none")
-        self.selected_json_label.setWordWrap(True)
-        self.selected_json_label.setMaximumHeight(58)
-        self.selected_json_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        json_layout.addWidget(self.selected_json_label)
         left_layout.addWidget(json_group, 1)
 
         import_group = QGroupBox("Step 4 - Import Final JSON")
         import_layout = QVBoxLayout(import_group)
         import_layout.addWidget(QLabel("Keep FH6 in Vinyl Group Editor and do not switch menus during import."))
+        self.selected_json_label = QLabel("Selected final JSON: none")
+        self.selected_json_label.setWordWrap(False)
+        self.selected_json_label.setMaximumHeight(28)
+        self.selected_json_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        import_layout.addWidget(self.selected_json_label)
         import_btn = QPushButton("Import Final JSON into FH6")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
@@ -2078,7 +2078,7 @@ class MainWindow(QMainWindow):
                 rel = path.relative_to(ROOT)
             except ValueError:
                 rel = path
-            self.selected_json_label.setText(f"Selected final JSON: {path.name}\n{rel}")
+            self.selected_json_label.setText(f"Selected final JSON: {path.name}")
             self.selected_json_label.setToolTip(str(path))
         else:
             self.selected_json_label.setText("Selected final JSON: none")
