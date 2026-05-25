@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
-    QListView,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -113,12 +112,6 @@ def configure_combo_box(combo: QComboBox, *, max_visible: int = 16, min_height: 
     combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
     combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
     combo.setMinimumContentsLength(18)
-    view = QListView(combo)
-    view.setUniformItemSizes(True)
-    view.setTextElideMode(Qt.TextElideMode.ElideRight)
-    view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    combo.setView(view)
     return combo
 
 
@@ -948,8 +941,6 @@ class MainWindow(QMainWindow):
         for combo in getattr(self, "_all_combos", []):
             with contextlib.suppress(RuntimeError):
                 combo.hidePopup()
-                if combo.view() is not None:
-                    combo.view().hide()
 
     def _build_generate_tab(self):
         tab = QWidget()
@@ -1253,9 +1244,9 @@ class MainWindow(QMainWindow):
                 QPushButton:hover { background: #f8d9e4; }
                 QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
-                QComboBox { combobox-popup: 0; padding-right: 30px; }
+                QComboBox { padding-right: 30px; }
                 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #b77b8f; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background: #f3c7d6; }
-                QComboBox QAbstractItemView { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; selection-background-color: #d65f89; selection-color: white; outline: 0; padding: 4px; }
+                QComboBox QAbstractItemView { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; selection-background-color: #d65f89; selection-color: white; outline: 0; }
                 QScrollArea, QAbstractScrollArea { background: transparent; border: none; }
                 QCheckBox { spacing: 8px; color: #332534; }
                 QLabel { color: #332534; background: transparent; }
@@ -1278,9 +1269,9 @@ class MainWindow(QMainWindow):
                 QPushButton#primaryButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
                 QPushButton#primaryButton:hover { background: #dedede; color: #000000; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
-                QComboBox { combobox-popup: 0; padding-right: 30px; }
+                QComboBox { padding-right: 30px; }
                 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #2b2b2b; border-top-right-radius: 7px; border-bottom-right-radius: 7px; background: #050505; }
-                QComboBox QAbstractItemView { background: #000000; color: #f4f4f4; border: 1px solid #343434; selection-background-color: #ffffff; selection-color: #000000; outline: 0; padding: 4px; }
+                QComboBox QAbstractItemView { background: #000000; color: #f4f4f4; border: 1px solid #343434; selection-background-color: #ffffff; selection-color: #000000; outline: 0; }
                 QGraphicsView { background: #000000; border: 1px solid #181818; }
                 QScrollArea, QAbstractScrollArea { background: #000000; border: none; }
                 QCheckBox { spacing: 8px; color: #f4f4f4; background: #000000; }
@@ -1306,9 +1297,9 @@ class MainWindow(QMainWindow):
                 QPushButton:hover { background: #dfc9ff; }
                 QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
-                QComboBox { combobox-popup: 0; padding-right: 30px; }
+                QComboBox { padding-right: 30px; }
                 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #d8c2f0; border-top-right-radius: 7px; border-bottom-right-radius: 7px; background: #eadcff; }
-                QComboBox QAbstractItemView { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; selection-background-color: #cfa8ff; selection-color: #3b244d; outline: 0; padding: 4px; }
+                QComboBox QAbstractItemView { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; selection-background-color: #cfa8ff; selection-color: #3b244d; outline: 0; }
                 QCheckBox { spacing: 8px; }
                 QLabel { color: #3b244d; }
                 """
