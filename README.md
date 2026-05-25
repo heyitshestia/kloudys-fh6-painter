@@ -2,195 +2,280 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-Launcher-first final-vinyl builder and FH6 importer for **Forza Horizon 6**.
+Kloudy's FH6 Painter turns source art into finalized Forza Horizon 6 vinyl JSON, then imports that JSON into an open FH6 Vinyl Group Editor template.
 
-This project turns an image into finalized, import-ready Forza vinyl JSON, then imports that final JSON into an open FH6 Vinyl Group Editor template.
+This README is the readable start-here guide. The full detailed manual is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md). The very detailed FH6 group/import guide is in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
 
-## New Launcher And App
+## What You Download
 
-Start from the launcher. It checks setup state, checks GitHub for updates, runs first-time setup, and launches the painter app from one place.
+For normal users, download the latest release zip:
 
-| Launcher | Painter app |
-| --- | --- |
-| <img src="docs/screenshots/launcher-overview.png" width="460" alt="Kloudy's FH6 Painter launcher"> | <img src="docs/screenshots/app-generate-workflow.png" width="460" alt="Kloudy's FH6 Painter generate tab"> |
+```text
+Kloudys-FH6-Painter-<version>.zip
+```
 
-The import tab now works as a finalized-vinyl browser: generated run -> finalized checkpoint -> preview -> import. Duplicate generations are preserved as separate run folders, the newest run is selected automatically, and the best safe final JSON is listed first.
+The standalone release contains:
 
-<img src="docs/screenshots/app-import-json-browser.png" width="920" alt="Generated run JSON browser in the import tab">
+- `Kloudys Painter Launcher.exe`
+- `KloudysFH6Painter/`
+- bundled Python 3.12 runtime
+- bundled Python dependencies
+- bundled GPU generator: `KloudysGeneratorV4.exe`
+- `Images/` folder next to the launcher for your source art
 
-## Thank You / Credits
+You should not need to install Python manually when using the standalone release. The setup buttons are still there as a fallback.
 
-This project exists because several people and upstream projects did the hard foundational work first. License notices are kept in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
+## First Launch
 
-| Person / project | Link | Contribution |
-| --- | --- | --- |
-| AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project, MIT-licensed FH import workflow, memory-writing/import foundation, and core geometry-to-vinyl approach. |
-| BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused desktop fork used as the main upstream for this project, including FH6 UI workflow, importer/locator work, release packaging, documentation updates, and bundled app behavior. |
-| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled `KloudysGeneratorV4.exe`. |
-| Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by the project license. |
-| Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by the project license. |
-| Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in the BVZRays upstream history. |
-| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: PySide launcher-first workflow, Luma Prep, Finalize Checkpoints, Edge Repair defaults, finalized-run browser, updater batch, Kloudy presets, theme support, and FH6 import safety adjustments. |
-
-## Setup Instructions
-
-Recommended start:
+Start here:
 
 ```text
 Kloudys Painter Launcher.exe
 ```
 
-If you are using the source folder instead of the standalone launcher executable, run:
+If you are using the source folder instead of the standalone release, start here:
 
 ```text
 00_launcher.bat
 ```
 
-For a fresh install, use the launcher buttons in order:
+The launcher checks whether Python and dependencies are usable, checks GitHub `main` for updates, and opens the painter app.
 
-1. `Setup Python`
-2. `Install Dependencies`
-3. `Launch App`
+<img src="docs/screenshots/launcher-overview-annotated.png" width="900" alt="Kloudy's FH6 Painter launcher with numbered setup buttons">
 
-Manual setup files are still available if you prefer batch files directly:
+### Launcher Buttons
 
-| Order | File | What it does |
-| ---: | --- | --- |
-| 0 | `00_launcher.bat` | Opens the setup/update launcher. Use this first if you are unsure. |
-| 1 | `01_add_python312_to_path.bat` | Finds Python 3.12, or downloads and installs official 64-bit Python 3.12 if it is missing. Then adds Python and Scripts to PATH. |
-| 2 | `02_install_dependencies.bat` | Installs all required Python packages. Run this before opening the app. |
-| 3 | `04_start_app.bat` | Starts the launcher/app flow. |
-| Optional | `05_check_environment.bat` | Checks whether Python and dependencies are installed correctly. |
-| Optional | `03_update_from_github.bat` | Updates app files from GitHub. Close the app before running it. |
-| Optional | `99_clean_runtime_data.bat` | Deletes runtime/generated cache data for troubleshooting or packaging. |
+| Button | Use it when | What it does |
+| --- | --- | --- |
+| `Setup Python` | Python is missing or broken. | Finds or installs 64-bit Python 3.12 and adds it to PATH. |
+| `Install Dependencies` | App says dependencies are missing. | Installs the Python packages needed by the app, previews, importer, and launcher. |
+| `Update` | Launcher says an update is available. | Runs the GitHub updater and syncs app files from `main`. |
+| `Launch App` | Setup is green or ready. | Opens the actual painter app. |
 
-Do not open the app before installing Python 3.12 and dependencies. If something fails, run:
+If something is broken, run this from inside `KloudysFH6Painter/`:
 
 ```text
 05_check_environment.bat
 ```
 
-Manual Python download if automatic setup fails:
-https://www.python.org/downloads/release/python-31210/
+## Fast Workflow
 
-## Updating
+1. Put your source image in the `Images/` folder next to the launcher.
+2. Open `Kloudys Painter Launcher.exe`.
+3. Click `Launch App`.
+4. Open `Generate Final Vinyl`.
+5. Click `Choose source image`.
+6. Pick a preset.
+7. Leave `Edge Repair` enabled.
+8. Click `Generate Final Vinyl`.
+9. Wait until the log says `FINALIZE CHECKPOINTS COMPLETE`.
+10. Open FH6 and prepare an ungrouped vinyl template with enough layers.
+11. Open `Import Final JSON`.
+12. Pick a finalized checkpoint.
+13. Enter the exact FH6 template layer count.
+14. Click `Import Final JSON into FH6`.
 
-Use the launcher update button, or use only this file:
+The important part: generation is not done when the GPU generator finishes. The final import files are ready only after Finalize Checkpoints finishes.
+
+## Generate Final Vinyl
+
+The Generate tab creates the vinyl.
+
+<img src="docs/screenshots/app-generate-workflow-annotated.png" width="900" alt="Generate Final Vinyl tab with numbered controls">
+
+### Source Art
+
+Use one image at a time. Good source images matter. Transparent PNGs usually work best because the app can respect the cutout shape.
+
+Supported normal inputs include PNG, JPG, JPEG, BMP, and similar formats Pillow/OpenCV can read.
+
+### Presets
+
+Current stock presets are style-based, not the old fast/slow ladder:
+
+| Preset | Best for | Luma Prep default | Shape style |
+| --- | --- | --- | --- |
+| `Flat Colors / Logos` | logos, decals, hard borders, mascot art, clean color regions | on | edge-biased |
+| `Shaded Character Art` | anime, characters, skin, hair, eyes, mixed linework | off | character-art weighting |
+| `Smooth Gradients` | glossy shading, soft transitions, dark-to-light gradients | off | soft detail |
+
+If you are unsure, start with `Shaded Character Art`.
+
+### Tune This Run
+
+`Tune this run` lets you override the chosen preset without editing files.
+
+The most important settings are:
+
+- `Template layers`: how many FH6 layers your target group has.
+- `Max resolution`: largest image side used by generation.
+- `Random samples`: main search effort.
+- `Mutated samples`: local refinement around promising shapes.
+- `Finalize at layers`: checkpoints that become final import choices.
+
+Higher samples usually improve quality but take longer.
+
+### Luma Prep
+
+`Luma Prep` creates a luma-banded intermediate image before generation.
+
+Use it for flat/logos/hard regions. Leave it off for soft gradients, tiny face details, and most shaded character art unless testing proves otherwise.
+
+### Edge Repair
+
+`Edge Repair` is default-on. It runs after raw generation and tries to clean borders, transparent holes, fingers, hair gaps, and cutout edges.
+
+Keep it on unless you are debugging.
+
+### vroom vroom scrrrrt zoooom!
+
+This switch doubles random samples and mutated samples. It does not double layer count or resolution.
+
+Use it when you want more search effort without changing the output layer target.
+
+## Import Final JSON
+
+The Import tab is a finalized JSON browser plus FH6 importer.
+
+<img src="docs/screenshots/app-import-json-browser-annotated.png" width="900" alt="Import Final JSON tab with numbered controls">
+
+The browser is organized like this:
+
+```text
+Generated run folder -> Finalized checkpoint -> Preview -> Import
+```
+
+Rules:
+
+- The newest run appears first.
+- Duplicate generations are kept as separate folders, such as `image`, `imagev2`, `imagev3`.
+- Raw generator checkpoints are not the normal import target.
+- Normal users should import files from `finals/`.
+- The highlighted finalized checkpoint is the one that imports.
+- `Use best safe final` selects the best scored checkpoint that fits the import budget.
+- You can still manually choose a JSON for debugging or older files.
+
+## FH6 Template Rule
+
+FH6 import needs extra non-art layers for mask/bounds behavior.
+
+Default safe mode reserves 4 mask layers:
+
+```text
+usable drawable layers = template layer count - 4
+```
+
+Examples:
+
+| FH6 template layer count | Usable drawable layers |
+| ---: | ---: |
+| 500 | 496 |
+| 750 | 746 |
+| 1000 | 996 |
+| 1500 | 1496 |
+| 2000 | 1996 |
+| 3000 | 2996 |
+
+If the JSON has more shapes than the usable count, the app will cap/trim during finalization or import.
+
+Full FH6 setup instructions are in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
+
+## Update Correctly
+
+Use the launcher `Update` button, or run:
 
 ```text
 03_update_from_github.bat
 ```
 
-Close the app first. Do not update by dragging random files over the folder. The updater syncs the latest GitHub files and preserves generated/runtime output. If Git is missing, the updater installs PortableGit for the current Windows user automatically.
+Close the app before updating.
 
-All normal updates are designed to work through the updater. Do not manually download individual files from the repo unless you are developing or recovering a broken install.
+Do not update by dragging random files into the folder. The updater preserves generated/runtime data and syncs program files from GitHub.
 
-The updater also writes logs and a pre-update program-file backup:
+Update logs and backups are stored here:
 
 ```text
 runtime/update-logs/
 runtime/update-backups/
 ```
 
-Generated images and runtime output are not intentionally removed by updates.
+## Output Folders
 
-## What It Does
-
-- Builds finalized Forza-compatible vinyl JSON from PNG, JPG, BMP, and similar image files.
-- Uses the bundled patched GPU/OpenCL builder: `KloudysGeneratorV4.exe`.
-- Runs Finalize Checkpoints for scoring, capping, reports, Edge Repair, and previews.
-- Imports final JSON into the currently open FH6 vinyl group.
-- Stores new runs as `imgs/generated/<job>/finals`, `checkpoints`, `previews`, and `reports`.
-- Scans old generated folders on startup so previous finalized runs can still be imported.
-- Provides a launcher with setup, dependency checks, update status, and one-click GitHub update.
-
-## Quick Workflow
-
-1. Install Python 3.12 and dependencies with the batch files above.
-2. Open the launcher with `00_launcher.bat`.
-3. In `Generate Final Vinyl`, choose one image.
-4. Pick a Kloudy preset or tune the run.
-5. Leave `Edge Repair` on. Enable `Luma Prep` only if flat/anime art benefits from value banding.
-6. Click `Generate Final Vinyl` and wait for Finalize Checkpoints to complete.
-7. Open FH6 and go to `Create Vinyl Group` / `Vinyl Group Editor`.
-8. Load a template with enough simple layers and ungroup it.
-9. In the app, go to `Import`.
-10. Select a finalized checkpoint, enter the exact template layer count, and import the final JSON.
-
-Full instructions are in [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
-Current planned improvements are tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
-
-## Important Import Rule
-
-FH6 normally needs **4 boundary mask layers** for correct cover/apply behavior.
-
-That means the usable drawable count is:
+Each generation creates a run folder:
 
 ```text
-template layers - 4
+imgs/generated/<job-name>/
 ```
 
-Examples:
+Inside it:
 
-| Template layers | Usable drawable layers |
-| ---: | ---: |
-| 500 | 496 |
-| 1000 | 996 |
-| 2000 | 1996 |
-| 3000 | 2996 |
+| Folder | Meaning |
+| --- | --- |
+| `checkpoints/` | raw internal generator JSONs |
+| `finals/` | import-ready finalized JSONs |
+| `previews/` | preview PNGs |
+| `reports/` | settings, scores, metadata, and finalization details |
 
-If your JSON has more shapes than the usable count, the app trims it during import. The import tab also includes experimental adaptive/off mask modes, but `Full legacy masks` is the default because it is safest.
+Normal users import from `finals/`.
 
-## Active Presets
+## Luma Band Pass Tab
 
-The app uses a simple speed-to-quality ladder tuned for the patched faster generator:
+The standalone `Luma Band Pass` tab lets you choose one image and preview before/after luma banding without running a full generation.
 
-| Preset | Target layers | Random samples | Mutated samples | Max resolution | Best for |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Fast & Ugly | 1000 | 90,000 | 5,000 | 1800 | Quick composition checks and rough drafts. |
-| Okay Draft | 1500 | 180,000 | 9,000 | 2400 | Useful test imports without a long wait. |
-| Pretty Good | 2000 | 360,000 | 17,000 | 3000 | Recommended everyday balance. |
-| Slow & Beautiful | 3000 | 640,000 | 28,000 | 3500 | Final-quality runs when time matters less. |
+Output goes here:
 
-Luma Prep is a toggle, so separate Luma preset duplicates were removed. Custom run fields can override layer count, resolution, samples, and finalize points without needing separate preset files.
+```text
+imgs/luma-bands/
+```
 
-## Main Features
+This is useful for deciding whether Luma Prep helps or hurts a source image before spending time on a full run.
 
-- **Luma Prep**: optional preprocess pass. It creates a luma-banded intermediate image before the internal build. Good for some anime/flat-color art, but it can soften tiny detail, so it starts off.
-- **Edge Repair**: default-on finalization cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges before writing final JSONs.
-- **FH mask mode**: import safety setting. `Full legacy masks` is default; adaptive/off are test modes for saving layers.
-- **vroom vroom scrrrrt zoooom!**: optional switch. Doubles random samples and mutated samples while keeping output layers and resolution unchanged.
-- **Finalized-run browser**: shows generated run folders and finalized checkpoints from `imgs/generated`, including older runs after restart.
-- **Generated-run picker**: keeps duplicate generations separate, selects the newest run automatically, and lists the best safe final JSON first.
-- **Launcher/update frontend**: checks Python/dependencies, shows whether GitHub has a newer build, and runs setup/update actions without hunting for batch files.
-- **Run reports**: every finalized run writes a report with preset, custom settings, effective settings, toggles, candidates, and selected outputs.
+## Common Problems
+
+| Problem | Most likely fix |
+| --- | --- |
+| App does not start | Open launcher, run `Setup Python`, then `Install Dependencies`. |
+| Preview unavailable | Run `02_install_dependencies.bat` or launcher `Install Dependencies`. |
+| GPU/OpenCL error | Update NVIDIA/AMD/Intel GPU driver. |
+| FH6 process not found | Start FH6, open Vinyl Group Editor, then click Refresh. |
+| Import says ungroup/template error | You are likely in the wrong FH6 menu, wrong group, wrong layer count, or the template is not ungrouped. |
+| Located table is stale/null | Re-open the correct vinyl group, remove duplicate groups/templates above it, and run auto-locate again. |
+| Output is soft | Use more layers/samples, keep Luma Prep off for soft/character art, and pick the checkpoint visually. |
+| Borders have halos | Keep Edge Repair on; try Flat Colors / Logos with Luma Prep for hard art. |
+
+The deep troubleshooting section is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md#troubleshooting).
 
 ## Examples
 
-Source/result examples are included in [docs/examples/test-finest](docs/examples/test-finest):
+Source and result examples are included in [docs/examples/test-finest](docs/examples/test-finest).
 
 | Source | Generated result |
 | --- | --- |
 | <img src="docs/examples/test-finest/miku-original.png" width="360" alt="Miku source"> | <img src="docs/examples/test-finest/miku-vinyl.png" width="360" alt="Miku vinyl result"> |
 | <img src="docs/examples/test-finest/pokemon-original.png" width="360" alt="Pokemon source"> | <img src="docs/examples/test-finest/pokemon-vinyl.png" width="360" alt="Pokemon vinyl result"> |
 
+## Credits
+
+This project is built on top of earlier Forza Painter work. License notices are kept in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
+
+| Person / project | Link | Contribution |
+| --- | --- | --- |
+| AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project, MIT-licensed FH import workflow, memory-writing/import foundation, and geometry-to-vinyl approach. |
+| BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused desktop fork and upstream work for FH6 UI, importer/locator behavior, app packaging, and workflow ideas. |
+| zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled generator workflow. |
+| Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by the upstream license. |
+| Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by the upstream license. |
+| Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in upstream history. |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: launcher-first workflow, PySide app, style presets, Luma Prep, Edge Repair defaults, finalized-run browser, updater workflow, release packaging, and FH6 safety adjustments. |
+
 ## Limitations
 
-- The generator/importer path is currently ellipse-based.
-- Full handmade multi-shape import is not feature-complete yet.
-- FH6 import requires Windows, FH6 running, and the correct editor state.
-- GPU generation requires working OpenCL support from the GPU driver.
-- Importing may require running the app as administrator.
-
-## Common Problems
-
-- **The app will not start**: open `00_launcher.bat`, run `Setup Python`, then run `Install Dependencies`.
-- **Preview unavailable**: run `02_install_dependencies.bat`; generation/import can still work without preview dependencies.
-- **OpenProcess or permission error**: run `04_start_app.bat` as administrator.
-- **Game process not found**: start FH6 first, then click refresh in the import tab.
-- **Ungroup error even though it is ungrouped**: make sure you are inside Vinyl Group Editor, the layer count is exact, and the active group is the template being edited.
-- **Output is blurry**: use more output layers, higher random samples, `Pretty Good` or `Slow & Beautiful`, or a larger template.
-- **Output is clipped**: the template does not have enough usable layers.
+- FH6 import requires Windows and a running FH6 process.
+- Import may require running the app as administrator.
+- GPU generation requires working OpenCL support.
+- The normal importer is optimized around the currently supported generated-shape path.
+- Universal handmade multi-shape import is not complete.
+- In-game FH6 editor state matters. If FH6 is in the wrong menu, import will fail even if the JSON is valid.
 
 ## License
 

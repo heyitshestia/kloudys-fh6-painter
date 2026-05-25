@@ -124,39 +124,45 @@ TEXT = {
 
 1. First-time setup
 
-Use the launcher if possible:
+Use the launcher if possible. On first use, press the setup buttons from left to right:
 
+Setup Python
+- Makes sure 64-bit Python 3.12 is available.
+- Standalone releases include bundled Python, but this button is still the safe first check.
+
+Install Dependencies
+- Installs/checks PySide6, Pillow, NumPy, OpenCV, psutil, and import helper packages.
+- Run this before opening the app for real work.
+
+Update
+- If the launcher says an update is available, click Update before first use.
+- Close the app before updating.
+
+Launch App
+- Opens the painter app after setup is green.
+
+Manual fallback files:
 00_launcher.bat
-
-For manual setup, run these in order:
-
 01_add_python312_to_path.bat
 02_install_dependencies.bat
-04_start_app.bat
-
-If the app says dependencies are missing, run 02_install_dependencies.bat again.
+05_check_environment.bat
 
 
-2. Pick a preset
+2. Pick a style preset
 
-Presets are a simple speed-to-quality ladder:
+Current stock presets are style-based:
 
-Fast & Ugly
-- Fastest rough draft.
-- Good for checking crop, placement, and whether the source image is worth using.
-- Not meant to be the clean final import.
+Flat Colors / Logos
+- Best for logos, decals, mascot art, hard borders, and clean color regions.
+- Uses edge-biased shapes and Luma Prep by default.
 
-Okay Draft
-- Better draft quality without a long wait.
-- Good for test imports and checking FH6 scale.
+Shaded Character Art
+- Best default for anime, faces, eyes, hair, skin, and mixed linework.
+- Uses character-art weighting and leaves Luma Prep off to protect tiny detail.
 
-Pretty Good
-- Recommended normal preset.
-- Balanced speed, detail, and layer count.
-
-Slow & Beautiful
-- Highest default quality.
-- Use when the source is worth waiting for and you want the cleanest bundled result.
+Smooth Gradients
+- Best for glossy shading and dark-to-light gradients.
+- Keeps Luma Prep off and uses softer detail weighting.
 
 The vroom vroom scrrrrt zoooom! switch doubles random samples and mutated samples.
 It does not double output layers or resolution.
@@ -166,10 +172,10 @@ It does not double output layers or resolution.
 
 Open Generate Final Vinyl, choose one image, pick a preset, then click Generate Final Vinyl.
 
-Luma Prep is optional and starts off:
+Luma Prep is optional:
 - It makes a luma-banded prep image before building.
-- It can help anime, logos, stickers, and flat color art.
-- Leave it off when you want maximum tiny detail, clean curves, or soft gradients.
+- It can help logos, stickers, and flat color art.
+- Leave it off for soft gradients, hair, faces, eyes, and maximum tiny detail.
 
 Edge Repair is normally on:
 - It runs during finalization.
@@ -195,16 +201,12 @@ Do not close the app until the log says:
 
 FINALIZE CHECKPOINTS COMPLETE
 
-If the button still says Stop after next saved point, the app is still busy.
-If the log is printing Finalize Checkpoints, Edge Repair, scoring, previews, or report lines, it is still working.
-The final files appear in the run folder under:
+Final files appear under:
 
 imgs/generated/<job>/finals
 
 
 5. Understand the output folders
-
-Each generation run has its own folder:
 
 finals
 - Import-ready JSON files.
@@ -212,7 +214,7 @@ finals
 
 checkpoints
 - Internal raw builder checkpoints.
-- Useful for diagnostics, but not the normal import target.
+- Useful for diagnostics, not normal import.
 
 previews
 - Preview PNGs for raw and finalized outputs.
@@ -232,10 +234,10 @@ In Forza Horizon 6:
 5. Do not switch menus after preparing the template.
 6. Remember the exact template layer count shown by FH6.
 
-FH6 uses mask layers for correct cover/apply behavior.
+Default safe import reserves 4 mask layers.
 That means usable art layers are:
 
-template layers - selected mask layer count
+template layers - 4
 
 Examples:
 
@@ -253,7 +255,8 @@ Open Import Final JSON.
 2. Pick the finalized checkpoint you want.
 3. Check the preview.
 4. Enter the exact FH6 template layer count.
-5. Click Import Final JSON into FH6.
+5. Click Auto-locate FH6 template if needed.
+6. Click Import Final JSON into FH6.
 
 The highlighted finalized checkpoint is the one that imports.
 The best safe final is listed first, but you can pick a different finalized checkpoint yourself.
@@ -267,10 +270,10 @@ Check these first:
 - You are inside Vinyl Group Editor, not applying a vinyl to the car.
 - The template is ungrouped.
 - The layer count is exact.
-- The selected JSON fits inside template layers minus 4.
+- The selected JSON fits inside template layers minus mask layers.
 - The app may need to run as administrator.
 
-If generation looks bad, try Pretty Good or Slow & Beautiful, increase random samples, or use a cleaner source image.
+If generation looks bad, try the preset that matches the source style, increase random samples, increase layers, or use a cleaner source image.
 """,
 }
 
