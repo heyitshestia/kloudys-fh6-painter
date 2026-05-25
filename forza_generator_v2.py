@@ -27,6 +27,10 @@ FINALS_DIR_NAME = "finals"
 CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
+RECTANGLE = 1
+ROTATED_RECTANGLE = 2
+ELLIPSE = 8
+ROTATED_ELLIPSE = 16
 
 
 def parse_args() -> argparse.Namespace:
@@ -195,7 +199,7 @@ def build_save_points(target: int, stop_at: int, checkpoint_step: int) -> str:
 def write_v2_settings(base_settings: dict[str, str], out_path: Path, target: int, stop_at: int, checkpoint_step: int) -> None:
     values = dict(base_settings)
     values["description"] = f"V2 settings targeting {target} template layers"
-    values["shapeMode"] = "mixed_ellipses"
+    values.setdefault("shapeMode", "mixed_ellipses")
     values["stopAt"] = str(stop_at)
     values["saveAt"] = build_save_points(target, stop_at, checkpoint_step)
     values["saveEvery"] = str(max(1, checkpoint_step))
@@ -349,13 +353,14 @@ def candidate_json_sort_key(path: Path, stem: str) -> tuple[int, int, str]:
 
 def scale_shape(shape: dict, sx: float, sy: float) -> dict:
     scaled = {
-        "type": int(shape.get("type", 16)),
+        "type": int(shape.get("type", ROTATED_ELLIPSE)),
         "color": list(shape.get("color", [0, 0, 0, 255])),
     }
     data = list(shape.get("data", []))
-    if len(data) < 5:
-        raise ValueError("ellipse shape missing data")
-    cx, cy, rx, ry, rot = data[:5]
+    if len(data) < 4:
+        raise ValueError("shape missing data")
+    cx, cy, rx, ry = data[:4]
+    rot = data[4] if len(data) >= 5 else 0
     scaled["data"] = [
         float(cx) * sx,
         float(cy) * sy,
@@ -366,7 +371,7 @@ def scale_shape(shape: dict, sx: float, sy: float) -> dict:
     return scaled
 
 
-def ellipse_bbox(cx: float, cy: float, rx: float, ry: float, rot_deg: float, width: int, height: int) -> tuple[int, int, int, int]:
+def rotated_bbox(cx: float, cy: float, rx: float, ry: float, rot_deg: float, width: int, height: int) -> tuple[int, int, int, int]:
     theta = math.radians(rot_deg)
     cos_t = math.cos(theta)
     sin_t = math.sin(theta)
@@ -379,10 +384,38 @@ def ellipse_bbox(cx: float, cy: float, rx: float, ry: float, rot_deg: float, wid
     return x0, x1, y0, y1
 
 
+def rectangle_mask(shape: dict, width: int, height: int) -> tuple[tuple[int, int, int, int], np.ndarray]:
+    data = list(shape.get("data", []))
+    if len(data) < 4:
+        return (0, -1, 0, -1), np.zeros((0, 0), dtype=bool)
+    cx, cy, w, h = [float(v) for v in data[:4]]
+    rot_deg = float(data[4]) if len(data) >= 5 else 0.0
+    rx = max(0.5, w * 0.5)
+    ry = max(0.5, h * 0.5)
+    x0, x1, y0, y1 = rotated_bbox(cx, cy, rx, ry, rot_deg, width, height)
+    if x1 < x0 or y1 < y0:
+        return (x0, x1, y0, y1), np.zeros((0, 0), dtype=bool)
+    xs = np.arange(x0, x1 + 1, dtype=np.float32) + 0.5
+    ys = np.arange(y0, y1 + 1, dtype=np.float32) + 0.5
+    xx, yy = np.meshgrid(xs, ys)
+    theta = math.radians(rot_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    dx = xx - cx
+    dy = yy - cy
+    xr = dx * cos_t + dy * sin_t
+    yr = -dx * sin_t + dy * cos_t
+    return (x0, x1, y0, y1), (np.abs(xr) <= rx) & (np.abs(yr) <= ry)
+
+
 def ellipse_mask(shape: dict, width: int, height: int) -> tuple[tuple[int, int, int, int], np.ndarray]:
-    cx, cy, rx, ry, rot_deg = [float(v) for v in shape["data"][:5]]
+    data = list(shape.get("data", []))
+    if len(data) < 4:
+        return (0, -1, 0, -1), np.zeros((0, 0), dtype=bool)
+    cx, cy, rx, ry = [float(v) for v in data[:4]]
+    rot_deg = float(data[4]) if len(data) >= 5 else 0.0
     rx, ry = compensated_ellipse_size(rx, ry)
-    x0, x1, y0, y1 = ellipse_bbox(cx, cy, rx, ry, rot_deg, width, height)
+    x0, x1, y0, y1 = rotated_bbox(cx, cy, rx, ry, rot_deg, width, height)
     xs = np.arange(x0, x1 + 1, dtype=np.float32) + 0.5
     ys = np.arange(y0, y1 + 1, dtype=np.float32) + 0.5
     xx, yy = np.meshgrid(xs, ys)
@@ -395,6 +428,23 @@ def ellipse_mask(shape: dict, width: int, height: int) -> tuple[tuple[int, int, 
     yr = -dx * sin_t + dy * cos_t
     mask = (xr * xr) / max(1e-6, rx * rx) + (yr * yr) / max(1e-6, ry * ry) <= 1.0
     return (x0, x1, y0, y1), mask
+
+
+def shape_mask(shape: dict, width: int, height: int) -> tuple[tuple[int, int, int, int], np.ndarray]:
+    if int(shape.get("type", ROTATED_ELLIPSE)) in (RECTANGLE, ROTATED_RECTANGLE):
+        return rectangle_mask(shape, width, height)
+    return ellipse_mask(shape, width, height)
+
+
+def shape_bbox(shape: dict, width: int, height: int) -> tuple[int, int, int, int]:
+    data = list(shape.get("data", []))
+    if len(data) < 4:
+        return (0, -1, 0, -1)
+    cx, cy, w, h = [float(v) for v in data[:4]]
+    rot = float(data[4]) if len(data) >= 5 else 0.0
+    if int(shape.get("type", ROTATED_ELLIPSE)) in (RECTANGLE, ROTATED_RECTANGLE):
+        return rotated_bbox(cx, cy, max(0.5, w * 0.5), max(0.5, h * 0.5), rot, width, height)
+    return rotated_bbox(cx, cy, *compensated_ellipse_size(w, h), rot, width, height)
 
 
 def compensated_ellipse_size(w: float, h: float) -> tuple[float, float]:
@@ -442,7 +492,7 @@ def render_and_score(background: dict, shapes: list[dict], target_rgba: np.ndarr
         color = np.array(rgba[:3], dtype=np.float32)
         alpha = float(rgba[3]) / 255.0 if len(rgba) >= 4 else 1.0
         alpha = max(0.0, min(1.0, alpha))
-        bbox, mask = ellipse_mask(shape, width, height)
+        bbox, mask = shape_mask(shape, width, height)
         x0, x1, y0, y1 = bbox
         if x1 < x0 or y1 < y0 or not np.any(mask):
             continue
@@ -522,9 +572,8 @@ def render_and_score_region(
     crop_h = y1 - y0 + 1
     crop_shapes = []
     for shape in shapes:
-        sx, sy, rx, ry, rot = [float(v) for v in shape["data"][:5]]
-        shape_bbox = ellipse_bbox(sx, sy, *compensated_ellipse_size(rx, ry), rot, width, height)
-        if not bbox_intersects(shape_bbox, crop_bbox):
+        current_bbox = shape_bbox(shape, width, height)
+        if not bbox_intersects(current_bbox, crop_bbox):
             continue
         shifted = copy_shape(shape)
         shifted["data"] = list(shifted["data"])
@@ -594,12 +643,21 @@ def render_import_preview(background: dict, shapes: list[dict], width: int, heig
         if len(color) < 4 or color[3] <= 0:
             continue
         r, g, b, a = color
-        x, y, w, h, rot_deg = [float(v) for v in shape["data"][:5]]
-        adj_w, adj_h = compensated_ellipse_size(w, h)
         mask = np.zeros((height, width), dtype=np.uint8)
-        center = (int(round(x)), int(round(y)))
-        axes = (max(1, int(round(adj_h))), max(1, int(round(adj_w))))
-        cv2.ellipse(mask, center, axes, -90 + float(rot_deg), 0.0, 360.0, 255, thickness=-1)
+        data = list(shape.get("data", []))
+        if len(data) < 4:
+            continue
+        x, y, w, h = [float(v) for v in data[:4]]
+        rot_deg = float(data[4]) if len(data) >= 5 else 0.0
+        if int(shape.get("type", ROTATED_ELLIPSE)) in (RECTANGLE, ROTATED_RECTANGLE):
+            rect = ((x, y), (max(1.0, w), max(1.0, h)), rot_deg)
+            box = cv2.boxPoints(rect).astype(np.int32)
+            cv2.fillConvexPoly(mask, box, 255)
+        else:
+            adj_w, adj_h = compensated_ellipse_size(w, h)
+            center = (int(round(x)), int(round(y)))
+            axes = (max(1, int(round(adj_h))), max(1, int(round(adj_w))))
+            cv2.ellipse(mask, center, axes, -90 + rot_deg, 0.0, 360.0, 255, thickness=-1)
         alpha = max(0.0, min(1.0, a / 255.0))
         if alpha <= 0.0:
             continue
@@ -615,7 +673,7 @@ def render_import_preview(background: dict, shapes: list[dict], width: int, heig
 
 def copy_shape(shape: dict) -> dict:
     return {
-        "type": int(shape.get("type", 16)),
+        "type": int(shape.get("type", ROTATED_ELLIPSE)),
         "color": list(shape.get("color", [0, 0, 0, 255])),
         "data": list(shape.get("data", [])),
         "score": shape.get("score", 0),
@@ -623,9 +681,13 @@ def copy_shape(shape: dict) -> dict:
 
 
 def unscale_shape(shape: dict, sx: float, sy: float) -> dict:
-    x, y, rx, ry, rot = [float(v) for v in shape["data"][:5]]
+    data = list(shape.get("data", []))
+    if len(data) < 4:
+        raise ValueError("shape missing data")
+    x, y, rx, ry = [float(v) for v in data[:4]]
+    rot = float(data[4]) if len(data) >= 5 else 0.0
     return {
-        "type": int(shape.get("type", 16)),
+        "type": int(shape.get("type", ROTATED_ELLIPSE)),
         "color": list(shape.get("color", [0, 0, 0, 255])),
         "data": [
             int(round(x / max(sx, 1e-6))),
@@ -1081,7 +1143,10 @@ def main() -> int:
         flush=True,
     )
 
-    score_rgba = downscale_rgba(processed_rgba, args.score_size)
+    # Final scoring, pruning, preview rendering, and Edge Repair compare
+    # checkpoints against the original source. Luma Prep is only a raw-build
+    # helper; using it here makes fine details look artificially soft.
+    score_rgba = downscale_rgba(source_rgba, args.score_size)
 
     candidate_records = []
     repair_enabled = bool(args.enable_repair and not args.disable_refine)

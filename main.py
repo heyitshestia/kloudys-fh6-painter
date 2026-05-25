@@ -17,7 +17,7 @@ import subprocess
 from native import *
 from internal_classes import *
 from game_profiles import iter_profiles, PROFILES
-from geometry_json import RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
+from geometry_json import RECTANGLE, ROTATED_RECTANGLE, ROTATED_ELLIPSE, load_normalized_geometry
 import colorsys
 import os
 
@@ -30,6 +30,7 @@ _CV2_ERROR = None
 # These compensation values intentionally make imported ellipses a little
 # smaller, with extra shrink on the major axis for long thin blobs.
 ELLIPSE_IMPORT_BASE_DIVISOR = 63.0
+DEFAULT_MASK_BUDGET = 4
 
 
 def parse_int(value):
@@ -91,6 +92,159 @@ def compensated_ellipse_size(w, h):
         sy = uniform_scale * major_axis_scale
 
     return max(1.0, w * sx), max(1.0, h * sy)
+
+
+def shape_bbox(shape: Shape):
+    if shape.type_id in (ROTATED_ELLIPSE, ROTATED_RECTANGLE):
+        if shape.type_id == ROTATED_ELLIPSE:
+            w, h = compensated_ellipse_size(shape.w, shape.h)
+        else:
+            w, h = float(shape.w), float(shape.h)
+        angle = abs(float(shape.rot_deg)) % 180.0
+        if angle > 90.0:
+            angle = 180.0 - angle
+        import math
+        rad = math.radians(angle)
+        half_w = abs(math.cos(rad)) * w / 2.0 + abs(math.sin(rad)) * h / 2.0
+        half_h = abs(math.sin(rad)) * w / 2.0 + abs(math.cos(rad)) * h / 2.0
+    else:
+        half_w = float(shape.w) / 2.0
+        half_h = float(shape.h) / 2.0
+    return (
+        float(shape.x) - half_w,
+        float(shape.y) - half_h,
+        float(shape.x) + half_w,
+        float(shape.y) + half_h,
+    )
+
+
+def geometry_bounds(shapes, image_w, image_h):
+    visible = [shape_bbox(shape) for shape in shapes if shape.color.a > 0 and not shape.is_mask]
+    if not visible:
+        return (0.0, 0.0, float(image_w), float(image_h))
+    min_x = min(item[0] for item in visible)
+    min_y = min(item[1] for item in visible)
+    max_x = max(item[2] for item in visible)
+    max_y = max(item[3] for item in visible)
+    pad = max(8.0, min(float(image_w), float(image_h)) * 0.025)
+    return (
+        max(0.0, min_x - pad),
+        max(0.0, min_y - pad),
+        min(float(image_w), max_x + pad),
+        min(float(image_h), max_y + pad),
+    )
+
+
+def side_risk_scores(shapes, image_w, image_h):
+    margin_x = max(10.0, float(image_w) * 0.08)
+    margin_y = max(10.0, float(image_h) * 0.08)
+    scores = {"left": 0.0, "right": 0.0, "top": 0.0, "bottom": 0.0}
+    for shape in shapes:
+        if shape.color.a <= 0 or shape.is_mask:
+            continue
+        x0, y0, x1, y1 = shape_bbox(shape)
+        width = max(1.0, x1 - x0)
+        height = max(1.0, y1 - y0)
+        major = max(width, height)
+        minor = max(1.0, min(width, height))
+        aspect = major / minor
+        alpha_weight = max(0.25, float(shape.color.a) / 255.0)
+        risk = alpha_weight * (1.0 + max(0.0, aspect - 2.0) * 0.55 + min(3.0, major / max(1.0, min(image_w, image_h))))
+        if x0 <= margin_x:
+            scores["left"] += risk * (1.0 + max(0.0, margin_x - x0) / margin_x)
+        if x1 >= image_w - margin_x:
+            scores["right"] += risk * (1.0 + max(0.0, x1 - (image_w - margin_x)) / margin_x)
+        if y0 <= margin_y:
+            scores["top"] += risk * (1.0 + max(0.0, margin_y - y0) / margin_y)
+        if y1 >= image_h - margin_y:
+            scores["bottom"] += risk * (1.0 + max(0.0, y1 - (image_h - margin_y)) / margin_y)
+    return scores
+
+
+def build_mask_shape(kind, bounds):
+    min_x, min_y, max_x, max_y = bounds
+    width = max(1.0, max_x - min_x)
+    height = max(1.0, max_y - min_y)
+    mid_x = (min_x + max_x) / 2.0
+    mid_y = (min_y + max_y) / 2.0
+    specs = {
+        "left": (min_x - width * 0.25, mid_y, width * 0.50, height * 1.50),
+        "right": (max_x + width * 0.25, mid_y, width * 0.50, height * 1.50),
+        "top": (mid_x, min_y - height * 0.25, width * 1.50, height * 0.50),
+        "bottom": (mid_x, max_y + height * 0.25, width * 1.50, height * 0.50),
+        "top_left": (min_x - width * 0.25, min_y - height * 0.25, width * 0.50, height * 0.50),
+        "top_right": (max_x + width * 0.25, min_y - height * 0.25, width * 0.50, height * 0.50),
+        "bottom_left": (min_x - width * 0.25, max_y + height * 0.25, width * 0.50, height * 0.50),
+        "bottom_right": (max_x + width * 0.25, max_y + height * 0.25, width * 0.50, height * 0.50),
+    }
+    x, y, w, h = specs[kind]
+    return Shape(1, int(round(x)), int(round(y)), int(round(w)), int(round(h)), 0, Color(0, 0, 0, 255), True)
+
+
+def choose_boundary_masks(shapes, image_w, image_h, mode="full", max_masks=DEFAULT_MASK_BUDGET):
+    if mode == "off" or max_masks <= 0:
+        return [], {"mode": mode, "scores": {}, "needed": [], "selected": [], "budget": max_masks}
+
+    bounds = geometry_bounds(shapes, image_w, image_h)
+    if mode == "full":
+        selected = ["left", "right", "top", "bottom"][:max(0, int(max_masks))]
+        return [build_mask_shape(kind, bounds) for kind in selected], {
+            "mode": mode,
+            "scores": {},
+            "needed": selected,
+            "selected": selected,
+            "budget": max_masks,
+            "bounds": bounds,
+        }
+
+    scores = side_risk_scores(shapes, image_w, image_h)
+    threshold = 1.2
+    needed = {side for side, score in scores.items() if score >= threshold}
+    if not needed:
+        return [], {"mode": mode, "scores": scores, "needed": [], "selected": [], "budget": max_masks, "bounds": bounds}
+
+    candidates = [
+        ("top_left", {"top", "left"}),
+        ("top_right", {"top", "right"}),
+        ("bottom_left", {"bottom", "left"}),
+        ("bottom_right", {"bottom", "right"}),
+        ("left", {"left"}),
+        ("right", {"right"}),
+        ("top", {"top"}),
+        ("bottom", {"bottom"}),
+    ]
+    selected = []
+    covered = set()
+    budget = max(0, int(max_masks))
+    while len(selected) < budget and not needed.issubset(covered):
+        best = None
+        best_score = 0.0
+        for name, sides in candidates:
+            if name in selected:
+                continue
+            new_sides = (sides & needed) - covered
+            if not new_sides:
+                continue
+            score = sum(scores[side] for side in new_sides) / float(len(sides))
+            if len(new_sides) > 1:
+                score *= 1.25
+            if score > best_score:
+                best = (name, sides)
+                best_score = score
+        if best is None:
+            break
+        selected.append(best[0])
+        covered.update(best[1] & needed)
+
+    return [build_mask_shape(kind, bounds) for kind in selected], {
+        "mode": mode,
+        "scores": scores,
+        "needed": sorted(needed),
+        "selected": selected,
+        "covered": sorted(covered),
+        "budget": max_masks,
+        "bounds": bounds,
+    }
 
 def get_pid(game_key=None, pid_override=None):
     if pid_override:
@@ -211,7 +365,7 @@ def draw_memory_shape(pid: int, profile, shape: Shape, index: int, cLiveryLayerT
     pos_data = struct.pack('f', shape.x) + struct.pack('f', -shape.y)
     try:
         write_process_memory(pid, current_layer_address + profile.layer_position_offset, pos_data)
-        if shape.type_id == 16:
+        if shape.type_id == ROTATED_ELLIPSE:
             adj_w, adj_h = compensated_ellipse_size(shape.w, shape.h)
             scale_data = struct.pack('f', adj_w / ELLIPSE_IMPORT_BASE_DIVISOR) + struct.pack('f', adj_h / ELLIPSE_IMPORT_BASE_DIVISOR)
         else:
@@ -221,10 +375,10 @@ def draw_memory_shape(pid: int, profile, shape: Shape, index: int, cLiveryLayerT
         write_process_memory(pid, current_layer_address + profile.layer_rotation_offset, rot_data)
         color_data = shape.color.get_struct()
         write_process_memory(pid, current_layer_address + profile.layer_color_offset, color_data)
-        if shape.type_id == 16:
+        if shape.type_id == ROTATED_ELLIPSE:
             shape_id_data = struct.pack('B', 102)
             write_process_memory(pid, current_layer_address + profile.layer_shape_id_offset, shape_id_data)
-        elif shape.type_id == 1:
+        elif shape.type_id in (RECTANGLE, ROTATED_RECTANGLE):
             shape_id_data = struct.pack('B', 101)
             write_process_memory(pid, current_layer_address + profile.layer_shape_id_offset, shape_id_data)
         mask_flag = struct.pack('B', 1 if shape.is_mask else 0)
@@ -252,6 +406,8 @@ def load_geometry(
     layer_count_address=None,
     layer_table_address=None,
     layer_count_value=None,
+    boundary_mask_mode="full",
+    boundary_mask_budget=DEFAULT_MASK_BUDGET,
 ):
     try:
         data = load_normalized_geometry(path)
@@ -280,9 +436,13 @@ def load_geometry(
             r,g,b,a = shape['color']
             shapes.append(Shape(shape['type'], x, y, w, h, rot_deg, Color(r,g,b,a), False))
         elif shape['type'] == RECTANGLE:
-            x,y,w,h = shape['data']
+            x,y,w,h = shape['data'][:4]
             r,g,b,a = shape['color']
             shapes.append(Shape(shape['type'], x, y, w, h, 0, Color(r,g,b,a), False))
+        elif shape['type'] == ROTATED_RECTANGLE:
+            x,y,w,h,rot_deg = shape['data']
+            r,g,b,a = shape['color']
+            shapes.append(Shape(shape['type'], x, y, w, h, rot_deg, Color(r,g,b,a), False))
         else:
             print("Skipping unsupported shape type {}.".format(shape.get("type")))
     if len(shapes) == 0:
@@ -316,15 +476,20 @@ def load_geometry(
                     old_alpha = alpha_canvas[shape_mask]
                     premul[shape_mask] = src * alpha + premul[shape_mask] * (1.0 - alpha)
                     alpha_canvas[shape_mask] = alpha + old_alpha * (1.0 - alpha)
-            elif shape.type_id == RECTANGLE:
-                x0 = int(round(shape.x - shape.w / 2))
-                y0 = int(round(shape.y - shape.h / 2))
-                x1 = int(round(shape.x + shape.w / 2))
-                y1 = int(round(shape.y + shape.h / 2))
+            elif shape.type_id in (RECTANGLE, ROTATED_RECTANGLE):
                 alpha = max(0.0, min(1.0, float(shape.color.a) / 255.0))
                 if alpha > 0.0:
                     mask = np.zeros((image_h, image_w), np.uint8)
-                    cv2.rectangle(mask, (x0, y0), (x1, y1), 255, thickness=-1)
+                    if shape.type_id == ROTATED_RECTANGLE and shape.rot_deg % 360:
+                        rect = ((float(shape.x), float(shape.y)), (max(1.0, float(shape.w)), max(1.0, float(shape.h))), float(shape.rot_deg))
+                        box = cv2.boxPoints(rect).astype(np.int32)
+                        cv2.fillConvexPoly(mask, box, 255)
+                    else:
+                        x0 = int(round(shape.x - shape.w / 2))
+                        y0 = int(round(shape.y - shape.h / 2))
+                        x1 = int(round(shape.x + shape.w / 2))
+                        y1 = int(round(shape.y + shape.h / 2))
+                        cv2.rectangle(mask, (x0, y0), (x1, y1), 255, thickness=-1)
                     shape_mask = mask > 0
                     src = np.array((shape.color.b, shape.color.g, shape.color.r), dtype=np.float32)
                     old_alpha = alpha_canvas[shape_mask]
@@ -395,34 +560,49 @@ def load_geometry(
         print("Reload the ungrouped template, stay in Vinyl Group Editor, and run Auto Locate again.")
         return
 
-    # FH recalculates the saved vinyl/group bounds from mask layers. Without
-    # these boundary masks the design can look correct in the editor but save
-    # with a blank cover, paste blank onto the car, or recover only after the
-    # user manually moves the group.
-    boundary_masks = [
-        Shape(1, -int(image_w//4), int(image_h//2), int(image_w//2), int(image_h*1.5), 0, Color(0,0,0,255), True),
-        Shape(1, image_w + int(image_w//4), int(image_h//2), int(image_w//2), int(image_h*1.5), 0, Color(0,0,0,255), True),
-        Shape(1, int(image_w//2), -int(image_h//4), image_w + int(image_w), int(image_h//2), 0, Color(0,0,0,255), True),
-        Shape(1, int(image_w//2), image_h + int(image_h//4), image_w + int(image_w), int(image_h//2), 0, Color(0,0,0,255), True),
-    ]
+    mask_budget = max(0, min(4, int(boundary_mask_budget)))
+    mask_mode = str(boundary_mask_mode or "full").strip().lower()
+    if mask_mode not in ("precise", "full", "off"):
+        mask_mode = "full"
+
+    preliminary_capacity = max(0, min(int(current_livery_count), 3000) - (0 if mask_mode == "off" else mask_budget))
+    if len(shapes) > preliminary_capacity:
+        print(
+            "Geometry has {} drawable layers but FH mask budget reserves up to {} layers; trimming to {} drawable layers before mask selection.".format(
+                len(shapes), 0 if mask_mode == "off" else mask_budget, preliminary_capacity
+            )
+        )
+        shapes = shapes[:preliminary_capacity]
+
+    boundary_masks, mask_report = choose_boundary_masks(shapes, image_w, image_h, mode=mask_mode, max_masks=mask_budget)
     reserved_mask_layers = len(boundary_masks)
     drawable_capacity = max(0, min(int(current_livery_count), 3000) - reserved_mask_layers)
 
     if len(shapes) > drawable_capacity:
         print(
-            "Geometry has {} drawable layers but FH bounds reserve {} layers; trimming to {} drawable layers.".format(
+            "Geometry has {} drawable layers but selected {} FH mask layers; trimming to {} drawable layers.".format(
                 len(shapes), reserved_mask_layers, drawable_capacity
             )
         )
         shapes = shapes[:drawable_capacity]
+        boundary_masks, mask_report = choose_boundary_masks(shapes, image_w, image_h, mode=mask_mode, max_masks=mask_budget)
+        reserved_mask_layers = len(boundary_masks)
 
     shapes.extend(boundary_masks)
 
     print(
-        "Drawable layers to import: {} + {} FH bounds layers / template layers: {}".format(
+        "Drawable layers to import: {} + {} FH mask layers / template layers: {}".format(
             max(0, len(shapes) - reserved_mask_layers),
             reserved_mask_layers,
             current_livery_count,
+        )
+    )
+    print(
+        "FH mask strategy: mode={} budget={} selected={} needed={}".format(
+            mask_report.get("mode"),
+            mask_report.get("budget"),
+            ",".join(mask_report.get("selected") or ["none"]),
+            ",".join(mask_report.get("needed") or ["none"]),
         )
     )
     
@@ -455,6 +635,10 @@ def parse_args(args):
                         help="Manual live layer-table address. If omitted with --layer-count-address, uses count+0x1e pointer field.")
     parser.add_argument("--layer-count-value", type=int, default=None,
                         help="Known template layer count. Used by FH6 because the live count field is u16 inside a larger structure.")
+    parser.add_argument("--fh-boundary-mask-mode", choices=("precise", "full", "off"), default="full",
+                        help="FH6 bounds mask strategy: precise/adaptive, full legacy 4-mask frame, or off for testing.")
+    parser.add_argument("--fh-boundary-mask-budget", type=int, default=DEFAULT_MASK_BUDGET,
+                        help="Maximum FH6 bounds mask layers to spend in precise/full mode. Default: 4.")
     parser.add_argument("geometry_path", nargs="*", help="Generated .json geometry file path.")
     parsed = parser.parse_args(args[1:])
     parsed.geometry_path = " ".join(parsed.geometry_path)
@@ -494,6 +678,8 @@ def main(args):
             parsed.layer_count_address,
             parsed.layer_table_address,
             parsed.layer_count_value,
+            parsed.fh_boundary_mask_mode,
+            parsed.fh_boundary_mask_budget,
         )
     # else:
     #     geometrize_image(path)

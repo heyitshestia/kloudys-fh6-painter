@@ -952,8 +952,8 @@ class MainWindow(QMainWindow):
             form.addWidget(QLabel(label), row, 0)
             form.addWidget(widget, row, 1)
         quality_layout.addLayout(form)
-        self.luma_enabled = QCheckBox("Luma Prep - simplify values before building")
-        self.luma_enabled.setChecked(True)
+        self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
+        self.luma_enabled.setChecked(False)
         quality_layout.addWidget(self.luma_enabled)
         self.repair_enabled = QCheckBox("Edge Repair - clean borders and transparent holes")
         self.repair_enabled.setChecked(True)
@@ -1014,6 +1014,16 @@ class MainWindow(QMainWindow):
         self.layer_count = QLineEdit()
         template_layout.addWidget(QLabel("Exact template layer count"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
+        self.mask_layers_enabled = QCheckBox("Use FH mask layers")
+        self.mask_layers_enabled.setChecked(True)
+        self.mask_mode_combo = QComboBox()
+        self.mask_mode_combo.addItems(["Full legacy masks", "Precise adaptive masks", "No mask layers"])
+        self.mask_mode_combo.setCurrentIndex(0)
+        mask_help = QLabel("Legacy is safest. Adaptive/off are test modes to save layers if the design still imports cleanly.")
+        mask_help.setWordWrap(True)
+        template_layout.addWidget(self.mask_layers_enabled, 1, 0)
+        template_layout.addWidget(self.mask_mode_combo, 1, 1)
+        template_layout.addWidget(mask_help, 2, 0, 1, 2)
         left_layout.addWidget(template)
 
         json_group = QGroupBox("Step 3 - Pick Final Vinyl")
@@ -2438,26 +2448,37 @@ class MainWindow(QMainWindow):
                 count_address = context.get("count_address")
                 table_address = context.get("table_address")
         json_path = self.selected_import_json_path
+        mask_mode, mask_budget = self.selected_import_mask_options()
         self.set_status("Importing")
         threading.Thread(
             target=self.import_worker,
-            args=(pid, game, count_address, table_address, layer_count, json_path),
+            args=(pid, game, count_address, table_address, layer_count, json_path, mask_mode, mask_budget),
             daemon=True,
         ).start()
 
-    def check_json_layer_fit(self, json_path, layer_count):
+    def selected_import_mask_options(self):
+        if not getattr(self, "mask_layers_enabled", None) or not self.mask_layers_enabled.isChecked():
+            return "off", 0
+        label = self.mask_mode_combo.currentText() if hasattr(self, "mask_mode_combo") else "Full legacy masks"
+        if "No mask" in label:
+            return "off", 0
+        if "Precise" in label:
+            return "precise", 2
+        return "full", 4
+
+    def check_json_layer_fit(self, json_path, layer_count, mask_budget=4):
         try:
             json_layers = geometry_shape_count(json_path)
             template_layers = int(layer_count)
         except Exception:
             return
-        usable_layers = max(0, template_layers - 4)
+        usable_layers = max(0, template_layers - int(mask_budget))
         if json_layers and template_layers and json_layers > usable_layers:
-            self.bus.log.emit(f"FH needs 4 boundary layers. JSON={json_layers}, template={template_layers}, usable={usable_layers}")
+            self.bus.log.emit(f"FH mask budget reserves {mask_budget} layers. JSON={json_layers}, template={template_layers}, usable={usable_layers}")
         if json_layers and usable_layers and json_layers < usable_layers * 0.75:
             self.bus.log.emit(f"Selected JSON has far fewer drawable layers than usable capacity. JSON={json_layers}, usable={usable_layers}")
 
-    def import_worker(self, pid, game, count_address, table_address, layer_count, json_path):
+    def import_worker(self, pid, game, count_address, table_address, layer_count, json_path, mask_mode="full", mask_budget=4):
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.bus.log.emit("Finding current FH6 template...")
@@ -2476,7 +2497,7 @@ class MainWindow(QMainWindow):
                 return
         path = Path(json_path)
         if game == "fh6" and layer_count:
-            self.check_json_layer_fit(path, layer_count)
+            self.check_json_layer_fit(path, layer_count, mask_budget)
         cmd = [helper_python(), ROOT / "main.py", "--game", game, "--no-preview"]
         if pid:
             cmd.extend(["--pid", str(pid)])
@@ -2486,6 +2507,7 @@ class MainWindow(QMainWindow):
             cmd.extend(["--layer-table-address", table_address])
         if game == "fh6" and layer_count:
             cmd.extend(["--layer-count-value", str(layer_count)])
+            cmd.extend(["--fh-boundary-mask-mode", str(mask_mode), "--fh-boundary-mask-budget", str(mask_budget)])
         cmd.append(path)
         code = self.run_subprocess(cmd)
         if code != 0:
