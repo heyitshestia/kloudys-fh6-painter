@@ -140,7 +140,7 @@ Luma Prep is a toggle, so separate Luma preset duplicates were removed. Custom r
 
 - **Luma Prep**: default-on preprocess pass. It creates a luma-banded intermediate image before the internal build. Good for anime, flat colors, and sharper value separation. Turn it off for soft gradients.
 - **Edge Repair**: default-on finalization cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges before writing final JSONs.
-- **vroom vroom scrrrrt zoooom!**: optional switch. Doubles effort-style numeric settings such as samples while keeping output layers and resolution unchanged.
+- **vroom vroom scrrrrt zoooom!**: optional switch. Doubles random samples and mutated samples while keeping output layers and resolution unchanged.
 - **Finalized-run browser**: shows generated run folders and finalized checkpoints from `imgs/generated`, including older runs after restart.
 - **Generated-run picker**: keeps duplicate generations separate, selects the newest run automatically, and lists the best safe final JSON first.
 - **Launcher/update frontend**: checks Python/dependencies, shows whether GitHub has a newer build, and runs setup/update actions without hunting for batch files.

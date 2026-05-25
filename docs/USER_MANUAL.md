@@ -113,7 +113,7 @@ It is enabled by default because it usually improves import-ready final JSONs.
 
 ## 8. vroom vroom scrrrrt zoooom!
 
-This switch doubles effort-style numeric settings, such as random and mutated samples.
+This switch doubles `Random samples` and `Mutated samples`.
 
 It does not double template layers, max resolution, preview size, or output layer count.
 

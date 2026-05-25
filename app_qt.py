@@ -133,7 +133,7 @@ Slow & Beautiful
 - Highest default quality.
 - Use when the source is worth waiting for and you want the cleanest bundled result.
 
-The vroom vroom scrrrrt zoooom! switch doubles effort settings like random and mutated samples.
+The vroom vroom scrrrrt zoooom! switch doubles random samples and mutated samples.
 It does not double output layers or resolution.
 
 
@@ -1079,7 +1079,7 @@ class MainWindow(QMainWindow):
             return
         description = item.get("description") or ""
         if self.vroom.isChecked():
-            description += "\nVroom doubles effort settings; output layers and resolution stay unchanged."
+            description += "\nVroom doubles random samples and mutated samples; output layers and resolution stay unchanged."
         self.setting_description.setText(description)
         if not self.custom_enabled.isChecked():
             values = item.get("values", {})
