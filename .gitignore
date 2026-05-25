@@ -14,7 +14,6 @@ runtime/
 dist/
 build/
 python/
-kloudys-fh6-generator.exe
 *.exe.bak-*
 
 # Large/volatile FH6 diagnostics

@@ -308,6 +308,28 @@ def remote_app_version() -> str:
     return base64.b64decode(content).decode("utf-8", errors="replace").strip()
 
 
+def version_tuple(value: str) -> tuple[int, ...] | None:
+    parts = re.findall(r"\d+", str(value or ""))
+    if not parts:
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def compare_versions(local_value: str, remote_value: str) -> int:
+    local_parts = version_tuple(local_value)
+    remote_parts = version_tuple(remote_value)
+    if local_parts is None or remote_parts is None:
+        return 0 if str(local_value).strip() == str(remote_value).strip() else -1
+    width = max(len(local_parts), len(remote_parts))
+    local_parts = local_parts + (0,) * (width - len(local_parts))
+    remote_parts = remote_parts + (0,) * (width - len(remote_parts))
+    if remote_parts > local_parts:
+        return -1
+    if remote_parts < local_parts:
+        return 1
+    return 0
+
+
 def require_project_presence() -> None:
     # Remove this function call and constant to disable the launch presence check.
     if not PROJECT_PRESENCE_ASSET.is_file():
@@ -1254,8 +1276,11 @@ class MainWindow(QMainWindow):
             if not local_version or local_version == "unknown" or not remote_version:
                 self.bus.update_alert.emit("unknown", "main build check unavailable")
                 return
-            if remote_version.strip() != local_version.strip():
+            version_state = compare_versions(local_version, remote_version)
+            if version_state < 0:
                 self.bus.update_alert.emit("available", f"update available: main {remote_version}")
+            elif version_state > 0:
+                self.bus.update_alert.emit("ok", f"local test build: {local_version}")
             else:
                 self.bus.update_alert.emit("ok", f"up to date: main {local_version}")
         finally:

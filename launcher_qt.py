@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -106,6 +107,28 @@ def versions_match(local_value: str, remote_value: str) -> bool:
     if not local_value or local_value == "unknown" or not remote_value:
         return False
     return local_value == remote_value
+
+
+def version_tuple(value: str) -> tuple[int, ...] | None:
+    parts = re.findall(r"\d+", str(value or ""))
+    if not parts:
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def compare_versions(local_value: str, remote_value: str) -> int:
+    local_parts = version_tuple(local_value)
+    remote_parts = version_tuple(remote_value)
+    if local_parts is None or remote_parts is None:
+        return 0 if versions_match(local_value, remote_value) else -1
+    width = max(len(local_parts), len(remote_parts))
+    local_parts = local_parts + (0,) * (width - len(local_parts))
+    remote_parts = remote_parts + (0,) * (width - len(remote_parts))
+    if remote_parts > local_parts:
+        return -1
+    if remote_parts < local_parts:
+        return 1
+    return 0
 
 
 def remote_version() -> tuple[str, str, str]:
@@ -267,11 +290,19 @@ class Launcher(QMainWindow):
                 remote_short, remote_full, remote_date = remote_version()
                 self.remote_full = remote_full
                 self.bus.log.emit(f"GitHub main version: {remote_short}")
-                if not versions_match(local_full, remote_full):
+                version_state = compare_versions(local_full, remote_full)
+                if version_state < 0:
                     self.update_available = True
                     self.bus.status.emit(
                         f"UPDATE AVAILABLE!\nLocal: {local_short}  ->  GitHub main: {remote_short}\nClick Update.",
                         "bad",
+                    )
+                    return
+                if version_state > 0:
+                    self.update_available = False
+                    self.bus.status.emit(
+                        f"LOCAL TEST BUILD\nLocal: {local_short}  >  GitHub main: {remote_short}\nNo update needed.",
+                        "good" if dep_ok else "bad",
                     )
                     return
             except Exception as exc:
