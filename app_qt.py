@@ -20,6 +20,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -1053,7 +1054,13 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(QLabel("Pick a finalized checkpoint below. The highlighted final JSON is the one that will be imported."))
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
+        self.generated_checkpoint_list.setObjectName("finalizedCheckpointList")
         self.generated_checkpoint_list.setMinimumHeight(420)
+        self.generated_checkpoint_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.generated_checkpoint_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.generated_checkpoint_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.generated_checkpoint_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.generated_checkpoint_list.setWordWrap(True)
         self.generated_checkpoint_list.currentRowChanged.connect(self.select_generated_checkpoint)
         json_layout.addWidget(QLabel("Finalized checkpoints"))
         json_layout.addWidget(self.generated_checkpoint_list, 2)
