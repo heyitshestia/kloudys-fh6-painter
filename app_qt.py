@@ -788,13 +788,6 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setSizes([520, 760])
 
-        guide_group = QGroupBox("Quick Start Checklist")
-        guide_layout = QVBoxLayout(guide_group)
-        self.guide_label = QLabel("")
-        self.guide_label.setWordWrap(True)
-        guide_layout.addWidget(self.guide_label)
-        left_layout.addWidget(guide_group)
-
         image_group = QGroupBox("Step 1 - Source Art")
         image_layout = QVBoxLayout(image_group)
         image_row = QHBoxLayout()
@@ -815,12 +808,18 @@ class MainWindow(QMainWindow):
         self.vroom = QCheckBox("vroom vroom scrrrrt zoooom!")
         self.vroom.stateChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.vroom)
-        self.profile_combo = QComboBox()
-        self.profile_combo.setMaxVisibleItems(18)
+        self.profile_list = QListWidget()
+        self.profile_list.setMinimumHeight(128)
+        self.profile_list.setMaximumHeight(170)
         for item in self.settings:
-            self.profile_combo.addItem(item["label"], item)
-        self.profile_combo.currentIndexChanged.connect(self.update_setting_description)
-        quality_layout.addWidget(self.profile_combo)
+            preset_item = QListWidgetItem(item["label"])
+            preset_item.setData(Qt.ItemDataRole.UserRole, item)
+            preset_item.setSizeHint(QSize(0, 32))
+            self.profile_list.addItem(preset_item)
+        self.profile_list.currentRowChanged.connect(self.update_setting_description)
+        if self.profile_list.count() > 0:
+            self.profile_list.setCurrentRow(0)
+        quality_layout.addWidget(self.profile_list)
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
         quality_layout.addWidget(self.setting_description)
@@ -902,7 +901,6 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Vinyl Template")
         template_layout = QGridLayout(template)
         self.layer_count = QLineEdit()
-        self.layer_count.textChanged.connect(lambda _text: self.update_guide())
         template_layout.addWidget(QLabel("Exact template layer count"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
         left_layout.addWidget(template)
@@ -1129,7 +1127,11 @@ class MainWindow(QMainWindow):
             widget.setEnabled(enabled)
 
     def selected_setting(self):
-        return self.profile_combo.currentData() if hasattr(self, "profile_combo") else (self.settings[0] if self.settings else None)
+        if hasattr(self, "profile_list"):
+            item = self.profile_list.currentItem()
+            if item:
+                return item.data(Qt.ItemDataRole.UserRole)
+        return self.settings[0] if self.settings else None
 
     def vroom_boost_overrides(self, values):
         if not self.vroom.isChecked():
@@ -1187,7 +1189,6 @@ class MainWindow(QMainWindow):
         for path in self.images:
             self.image_list.addItem(str(path))
         self.update_selected_json_label()
-        self.update_guide()
 
     def log_line(self, message: str):
         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -1228,26 +1229,6 @@ class MainWindow(QMainWindow):
             self.set_phase("finalizing", "Stop requested. Waiting for the latest checkpoint to finalize.")
         elif text == "Importing":
             self.set_phase("importing", "Writing the selected final JSON into FH6. Do not switch menus.")
-        self.update_guide()
-
-    def update_guide(self):
-        if not hasattr(self, "guide_label"):
-            return
-        has_image = bool(self.images)
-        has_final = bool(self.outputs or self.generated_folder_entries)
-        has_json = bool(self.selected_import_json_path)
-        has_layer_count = hasattr(self, "layer_count") and bool(self.layer_count.text().strip())
-        has_process = hasattr(self, "processes") and bool(self.processes)
-        lines = [
-            "[x] App opened with Python/dependencies" if True else "[ ] App opened with Python/dependencies",
-            ("[x]" if has_image else "[ ]") + " Choose one source image",
-            ("[x]" if has_final else "[ ]") + " Generate and wait for FINALIZE CHECKPOINTS COMPLETE",
-            ("[x]" if has_process else "[ ]") + " Open FH6 Vinyl Group Editor and refresh process",
-            ("[x]" if has_layer_count else "[ ]") + " Enter exact FH6 template layer count",
-            ("[x]" if has_json else "[ ]") + " Highlight a finalized JSON under Import Final JSON",
-            "[ ] Click Import Final JSON into FH6",
-        ]
-        self.guide_label.setText("\n".join(lines))
 
     def set_progress(self, text: str):
         self.progress_label.setText(text)
@@ -1391,7 +1372,6 @@ class MainWindow(QMainWindow):
             self.game_combo.setCurrentText(self.processes[0]["profile"])
         else:
             self.pid_combo.addItem("No supported game process detected", None)
-        self.update_guide()
 
     def selected_pid_value(self) -> int | None:
         data = self.pid_combo.currentData()
@@ -1880,7 +1860,6 @@ class MainWindow(QMainWindow):
         self.generated_folder_combo.addItems(order)
         self.generated_folder_combo.blockSignals(False)
         self.populate_generated_checkpoint_list(self.generated_folder_combo.currentText())
-        self.update_guide()
 
     def populate_generated_checkpoint_list(self, folder_label: str):
         self.generated_checkpoint_entries = list(self.generated_folder_entries.get(folder_label, []))
@@ -2102,7 +2081,6 @@ class MainWindow(QMainWindow):
         else:
             self.selected_json_label.setText("Selected final JSON: none")
             self.selected_json_label.setToolTip("")
-        self.update_guide()
 
     def run_subprocess(self, cmd, timeout=None):
         self.bus.log.emit(self.friendly_command_name(cmd))

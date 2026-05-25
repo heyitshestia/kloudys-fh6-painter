@@ -19,6 +19,12 @@ FINALS_DIR_NAME = "finals"
 CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
+ACTIVE_PRESET_FILES = (
+    "a.fast-ugly.ini",
+    "b.okay-draft.ini",
+    "c.pretty-good.ini",
+    "d.slow-beautiful.ini",
+)
 
 
 SETTING_KEYS = (
@@ -73,9 +79,12 @@ def sorted_settings(values):
 def load_settings():
     profiles = []
     preset_dir = ACTIVE_PRESET_DIR if ACTIVE_PRESET_DIR.exists() else SETTINGS_DIR
-    paths = [path for path in sorted(preset_dir.glob("*.ini")) if not path.name.startswith("_")]
+    active_paths = [preset_dir / name for name in ACTIVE_PRESET_FILES if (preset_dir / name).exists()]
+    paths = active_paths or [path for path in sorted(preset_dir.glob("*.ini")) if not path.name.startswith("_")]
     for path in paths:
         values = sorted_settings(parse_settings(path))
+        if not values.get("stopAt") or not values.get("randomSamples"):
+            continue
         name = preset_display_name(path, values)
         profiles.append({
             "path": path,

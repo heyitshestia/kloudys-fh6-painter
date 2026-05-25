@@ -11,7 +11,7 @@ These are the current high-value workflow improvements being worked off in order
 | Done | Add recommendation tags such as best score, safest for template, lowest layer count, and latest. |
 | Done | Add side-by-side finalized checkpoint comparison. |
 | Done | Show exact preset settings and use cases directly in the UI. |
-| Done | Add first-run guided checklist mode. |
+| Removed | Add first-run guided checklist mode. |
 | Done | Improve technical errors into user-actionable messages. |
 | Done | Add crash-safe Finalize Checkpoints resume for unfinished runs. |
 | Done | Add release packaging automation with zip verification and no generated-output leakage. |
