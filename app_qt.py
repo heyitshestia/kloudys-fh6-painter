@@ -90,6 +90,7 @@ SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
 PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
 PUBERT_PRESENCE_ASSET = ROOT / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "pubert.jpg"
+LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 THEMES = {
     "Pastel Bloom": "pastel",
     "Sakura Glass": "sakura",
@@ -259,7 +260,7 @@ If generation looks bad, try Pretty Good or Slow & Beautiful, increase random sa
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", PROBE_DIR):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", PROBE_DIR, LUMA_BANDS_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -422,6 +423,64 @@ def image_to_png_bytes(image) -> bytes | None:
 def render_source_image(path: Path) -> bytes | None:
     image = decode_image_file(Path(path))
     return image_to_png_bytes(image) if image is not None else None
+
+
+def apply_luma_bands_image(image):
+    loaded = load_cv2()
+    if not loaded or image is None:
+        return None
+    cv2, np = loaded
+    if image.ndim == 2:
+        bgr = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        alpha = np.full(image.shape[:2], 255, dtype=np.uint8)
+    elif image.ndim != 3:
+        return None
+    elif image.shape[2] == 4:
+        bgr = image[..., :3]
+        alpha = image[..., 3]
+    elif image.shape[2] == 3:
+        bgr = image
+        alpha = np.full(image.shape[:2], 255, dtype=np.uint8)
+    else:
+        return None
+
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
+    l = lab[..., 0].astype(np.float32)
+    levels = 24.0
+    step = 256.0 / levels
+    lq = np.floor(l / step) * step + step * 0.5
+    l_out = lq * 0.82 + l * 0.18
+    l_out = (l_out - 128.0) * 1.06 + 128.0
+    lab[..., 0] = np.clip(l_out, 0, 255).astype(np.uint8)
+    rgb_out = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+    bgr_out = cv2.cvtColor(rgb_out, cv2.COLOR_RGB2BGR)
+    return np.dstack([bgr_out, alpha]).astype(np.uint8)
+
+
+def build_luma_bands_file(source: Path, output_dir: Path = LUMA_BANDS_ROOT) -> Path:
+    loaded = load_cv2()
+    if not loaded:
+        raise RuntimeError("Preview dependencies are missing. Run 02_install_dependencies.bat.")
+    cv2, _np = loaded
+    data = read_stable_file_bytes(source)
+    if not data:
+        raise RuntimeError(f"Could not read image: {source}")
+    image = decode_image_bytes(data, flags=cv2.IMREAD_UNCHANGED)
+    processed = apply_luma_bands_image(image)
+    if processed is None:
+        raise RuntimeError(f"Could not process image: {source}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", source.stem).strip("._") or "image"
+    candidate = output_dir / f"{safe_stem}.luma-bands.png"
+    index = 2
+    while candidate.exists():
+        candidate = output_dir / f"{safe_stem}.luma-bands-v{index}.png"
+        index += 1
+    ok = cv2.imwrite(str(candidate), processed)
+    if not ok:
+        raise RuntimeError(f"Could not save luma-band image: {candidate}")
+    return candidate
 
 
 def compensated_ellipse_size(w, h):
@@ -798,7 +857,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.tabs, 1)
         self._build_generate_tab()
         self._build_import_tab()
-        self._build_tools_tab()
+        self._build_luma_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
         footer = QHBoxLayout()
@@ -844,8 +903,10 @@ class MainWindow(QMainWindow):
         image_row.addWidget(open_out)
         image_layout.addLayout(image_row)
         self.image_list = QListWidget()
+        self.image_list.setMaximumHeight(72)
         self.image_list.currentRowChanged.connect(self.preview_selected_image)
         image_layout.addWidget(self.image_list)
+        image_group.setMaximumHeight(145)
         left_layout.addWidget(image_group)
 
         quality_group = QGroupBox("Step 2 - Vinyl Build Preset")
@@ -1004,40 +1065,40 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.import_preview, 1)
         self.tabs.addTab(tab, "Import Final JSON")
 
-    def _build_tools_tab(self):
+    def _build_luma_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        form = QGridLayout()
-        self.tools_layer_count = QLineEdit()
-        self.tools_layer_count.setPlaceholderText("Same value as Import tab template layer count")
-        self.tools_layer_count.textChanged.connect(lambda text: self.layer_count.setText(text) if self.layer_count.text() != text else None)
-        self.layer_count.textChanged.connect(lambda text: self.tools_layer_count.setText(text) if self.tools_layer_count.text() != text else None)
-        self.snapshot_count = QLineEdit()
-        self.current_count = QLineEdit()
-        self.inspect_table = QLineEdit()
-        form.addWidget(QLabel("Layer count"), 0, 0)
-        form.addWidget(self.tools_layer_count, 0, 1)
-        form.addWidget(QLabel("Snapshot layer count"), 1, 0)
-        form.addWidget(self.snapshot_count, 1, 1)
-        form.addWidget(QLabel("Current layer count"), 2, 0)
-        form.addWidget(self.current_count, 2, 1)
-        form.addWidget(QLabel("Candidate table"), 3, 0)
-        form.addWidget(self.inspect_table, 3, 1)
-        layout.addLayout(form)
+
+        controls = QGroupBox("Standalone Luma Band Pass")
+        controls_layout = QVBoxLayout(controls)
+        controls_layout.addWidget(QLabel("Choose one image. The app saves a luma-banded PNG into imgs/luma-bands and previews the before/after here."))
         actions = QHBoxLayout()
-        for label, handler in [
-            ("Diagnose", self.start_diagnose),
-            ("Auto-locate", self.start_auto_locate),
-            ("Save count snapshot", self.start_save_snapshot),
-            ("Compare snapshot", self.start_compare_snapshot),
-            ("Inspect table", self.start_inspect_table),
-        ]:
-            button = QPushButton(label)
-            button.clicked.connect(handler)
-            actions.addWidget(button)
-        layout.addLayout(actions)
-        layout.addStretch()
-        self.tabs.addTab(tab, "FH6 Tools")
+        choose = QPushButton("Choose image and run Luma Band Pass")
+        choose.setObjectName("primaryButton")
+        choose.clicked.connect(self.choose_luma_image)
+        open_folder = QPushButton("Open luma-band folder")
+        open_folder.clicked.connect(self.open_luma_folder)
+        actions.addWidget(choose, 2)
+        actions.addWidget(open_folder, 1)
+        controls_layout.addLayout(actions)
+        self.luma_status_label = QLabel(f"Output folder: {LUMA_BANDS_ROOT}")
+        self.luma_status_label.setWordWrap(True)
+        controls_layout.addWidget(self.luma_status_label)
+        layout.addWidget(controls)
+
+        preview_row = QHBoxLayout()
+        before_col = QVBoxLayout()
+        after_col = QVBoxLayout()
+        before_col.addWidget(QLabel("Before"))
+        after_col.addWidget(QLabel("After Luma Band Pass"))
+        self.luma_before_preview = PreviewView("Choose an image to preview the source here.")
+        self.luma_after_preview = PreviewView("The luma-banded result will appear here.")
+        before_col.addWidget(self.luma_before_preview, 1)
+        after_col.addWidget(self.luma_after_preview, 1)
+        preview_row.addLayout(before_col, 1)
+        preview_row.addLayout(after_col, 1)
+        layout.addLayout(preview_row, 1)
+        self.tabs.addTab(tab, "Luma Band Pass")
 
     def _build_tutorial_tab(self):
         tab = QWidget()
@@ -1279,6 +1340,32 @@ class MainWindow(QMainWindow):
         self.images = [path]
         self.render_lists()
         self.show_preview_bytes(render_source_image(path) or b"")
+
+    def choose_luma_image(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose image for Luma Band Pass", "", "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
+        if not file_name:
+            return
+        source = Path(file_name)
+        self.luma_status_label.setText(f"Processing: {source}")
+        self.luma_before_preview.set_bytes(render_source_image(source) or b"")
+        QApplication.processEvents()
+        try:
+            output = build_luma_bands_file(source)
+        except Exception as exc:
+            self.luma_status_label.setText(f"Luma Band Pass failed: {exc}")
+            self.luma_after_preview.clear("Luma Band Pass failed.")
+            self.log_line(f"Luma Band Pass failed: {exc}")
+            return
+        self.luma_after_preview.set_file(output)
+        self.luma_status_label.setText(f"Saved luma-band image: {output}")
+        self.log_line(f"Luma Band Pass saved: {output}")
+
+    def open_luma_folder(self):
+        LUMA_BANDS_ROOT.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            os.startfile(LUMA_BANDS_ROOT)
+        else:
+            subprocess.Popen(["xdg-open", str(LUMA_BANDS_ROOT)])
 
     def manual_add_json(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Choose finalized vinyl JSON", "", "Final vinyl JSON (*.json);;All files (*.*)")
