@@ -817,8 +817,6 @@ class MainWindow(QMainWindow):
             preset_item.setSizeHint(QSize(0, 32))
             self.profile_list.addItem(preset_item)
         self.profile_list.currentRowChanged.connect(self.update_setting_description)
-        if self.profile_list.count() > 0:
-            self.profile_list.setCurrentRow(0)
         quality_layout.addWidget(self.profile_list)
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
@@ -867,6 +865,8 @@ class MainWindow(QMainWindow):
         self.preview = PreviewView("Choose source art or a finalized vinyl to preview it here.")
         right_layout.addWidget(self.preview, 1)
         self.tabs.addTab(tab, "Generate Final Vinyl")
+        if self.profile_list.count() > 0:
+            self.profile_list.setCurrentRow(0)
         self.update_setting_description()
         self.sync_custom_state()
 
@@ -1097,6 +1097,8 @@ class MainWindow(QMainWindow):
             )
 
     def update_setting_description(self):
+        if not hasattr(self, "setting_description"):
+            return
         item = self.selected_setting()
         if not item:
             self.setting_description.setText("No Kloudy presets found.")
