@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -77,6 +78,10 @@ from version_info import get_version
 
 
 ROOT = Path(__file__).resolve().parent
+REPO_OWNER = "heyitshestia"
+REPO_NAME = "kloudys-fh6-painter"
+BRANCH = "main"
+GITHUB_VERSION_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
@@ -271,6 +276,18 @@ def save_app_settings(settings: dict) -> None:
         APP_SETTINGS_PATH.write_text(json.dumps(settings, indent=2, sort_keys=True), encoding="utf-8")
     except OSError:
         pass
+
+
+def local_app_version() -> str:
+    try:
+        return (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+
+
+def remote_app_version() -> str:
+    with urllib.request.urlopen(GITHUB_VERSION_URL, timeout=10) as response:
+        return response.read().decode("utf-8", errors="replace").strip()
 
 
 def require_pubert_presence() -> None:
@@ -545,6 +562,7 @@ class UiBus(QObject):
     status = Signal(str)
     progress = Signal(str)
     phase = Signal(str, str)
+    update_alert = Signal(str, str)
     preview_bytes = Signal(bytes)
     preview_file = Signal(str)
     json_preview = Signal(int, object)
@@ -668,6 +686,8 @@ class AnimatedThemeBackground(QWidget):
             painter.setBrush(QColor(255, 205, 222, 62))
             painter.drawEllipse(QRectF(-rect.width() * 0.20, rect.height() * 0.46, rect.width() * 0.58, rect.height() * 0.58))
             self.paint_petals(painter)
+        elif self.theme_key == "blackout":
+            painter.fillRect(rect, QColor("#000000"))
         else:
             painter.fillRect(rect, QColor("#f5edff"))
 
@@ -719,11 +739,18 @@ class MainWindow(QMainWindow):
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
         self.preview_request_id = 0
+        self.update_alarm_state = "checking"
+        self.update_alarm_text = "checking updates..."
+        self.update_blink_on = False
+        self.update_blink_timer = QTimer(self)
+        self.update_blink_timer.setInterval(650)
+        self.update_blink_timer.timeout.connect(self.toggle_update_alarm_blink)
         self.bus = UiBus()
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
         self.bus.progress.connect(self.set_progress)
         self.bus.phase.connect(self.set_phase)
+        self.bus.update_alert.connect(self.show_update_alert)
         self.bus.preview_bytes.connect(self.show_preview_bytes)
         self.bus.preview_file.connect(self.show_preview_file)
         self.bus.json_preview.connect(self.show_json_preview_result)
@@ -738,6 +765,7 @@ class MainWindow(QMainWindow):
         self.render_lists()
         if self.images:
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
+        self.start_update_check()
 
     def _build(self):
         central = AnimatedThemeBackground()
@@ -749,6 +777,12 @@ class MainWindow(QMainWindow):
         self.phase_label.setWordWrap(True)
         self.phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self.phase_label)
+        self.update_alarm = QLabel("Update: checking...")
+        self.update_alarm.setObjectName("updateAlarm")
+        self.update_alarm.setWordWrap(True)
+        self.update_alarm.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.update_alarm.setMaximumHeight(30)
+        root.addWidget(self.update_alarm)
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
         self._build_generate_tab()
@@ -1053,28 +1087,30 @@ class MainWindow(QMainWindow):
         elif theme_key == "blackout":
             self.setStyleSheet(
                 """
-                QMainWindow, QWidget { background: #030303; color: #eeeeee; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
-                QWidget#appRoot { background: #030303; }
-                QTabWidget::pane { border: 2px solid #242424; border-radius: 12px; background: #0a0a0a; }
-                QTabBar::tab { background: #111111; color: #bdbdbd; padding: 10px 18px; border: 1px solid #2a2a2a; border-bottom: none; border-top-left-radius: 10px; border-top-right-radius: 10px; margin-right: 4px; font-weight: 700; }
-                QTabBar::tab:hover { background: #191919; color: #ffffff; }
-                QTabBar::tab:selected { background: #0a0a0a; color: #ffffff; border-color: #4a4a4a; }
-                QGroupBox { border: 2px solid #252525; border-radius: 14px; margin-top: 14px; padding: 12px; background: #080808; font-weight: 700; color: #f0f0f0; }
-                QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; background: #080808; color: #ffffff; }
-                QPushButton { background: #141414; color: #f2f2f2; border: 1px solid #424242; border-radius: 10px; padding: 8px 12px; font-weight: 700; }
-                QPushButton:hover { background: #202020; border-color: #6a6a6a; }
-                QPushButton:pressed { background: #0d0d0d; }
-                QPushButton#primaryButton { background: #f5f5f5; color: #050505; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
-                QPushButton#primaryButton:hover { background: #ffffff; color: #000000; }
-                QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #050505; color: #f2f2f2; border: 1px solid #3b3b3b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
-                QComboBox QAbstractItemView { background: #050505; color: #f2f2f2; border: 1px solid #4a4a4a; selection-background-color: #ffffff; selection-color: #000000; }
-                QScrollArea, QAbstractScrollArea { background: #050505; border: none; }
-                QCheckBox { spacing: 8px; color: #eeeeee; }
-                QLabel { color: #eeeeee; background: transparent; }
-                QHeaderView::section { background: #111111; color: #f2f2f2; border: 1px solid #2a2a2a; padding: 5px; }
-                QScrollBar:vertical, QScrollBar:horizontal { background: #090909; border: none; width: 13px; height: 13px; }
-                QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #444444; border-radius: 6px; min-height: 24px; min-width: 24px; }
-                QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #666666; }
+                QMainWindow, QWidget { background: #000000; color: #f4f4f4; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
+                QWidget#appRoot { background: #000000; }
+                QTabWidget::pane { border: 1px solid #151515; border-radius: 12px; background: #000000; }
+                QTabBar::tab { background: #030303; color: #bdbdbd; padding: 10px 18px; border: 1px solid #1b1b1b; border-bottom: none; border-top-left-radius: 10px; border-top-right-radius: 10px; margin-right: 4px; font-weight: 700; }
+                QTabBar::tab:hover { background: #080808; color: #ffffff; }
+                QTabBar::tab:selected { background: #000000; color: #ffffff; border-color: #343434; }
+                QGroupBox { border: 1px solid #181818; border-radius: 14px; margin-top: 14px; padding: 12px; background: #000000; font-weight: 700; color: #f4f4f4; }
+                QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px; background: #000000; color: #ffffff; }
+                QPushButton { background: #050505; color: #f4f4f4; border: 1px solid #333333; border-radius: 10px; padding: 8px 12px; font-weight: 700; }
+                QPushButton:hover { background: #101010; border-color: #666666; }
+                QPushButton:pressed { background: #000000; }
+                QPushButton#primaryButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
+                QPushButton#primaryButton:hover { background: #dedede; color: #000000; }
+                QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
+                QComboBox QAbstractItemView { background: #000000; color: #f4f4f4; border: 1px solid #343434; selection-background-color: #ffffff; selection-color: #000000; }
+                QGraphicsView { background: #000000; border: 1px solid #181818; }
+                QScrollArea, QAbstractScrollArea { background: #000000; border: none; }
+                QCheckBox { spacing: 8px; color: #f4f4f4; background: #000000; }
+                QLabel { color: #f4f4f4; background: transparent; }
+                QLabel#updateAlarm { background: #000000; color: #9cff9c; border: 1px solid #123d12; border-radius: 8px; padding: 4px; font-weight: 800; }
+                QHeaderView::section { background: #000000; color: #f4f4f4; border: 1px solid #1d1d1d; padding: 5px; }
+                QScrollBar:vertical, QScrollBar:horizontal { background: #000000; border: none; width: 13px; height: 13px; }
+                QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #303030; border-radius: 6px; min-height: 24px; min-width: 24px; }
+                QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #555555; }
                 QScrollBar::add-line, QScrollBar::sub-line { background: transparent; border: none; width: 0; height: 0; }
                 """
             )
@@ -1095,6 +1131,62 @@ class MainWindow(QMainWindow):
                 QLabel { color: #3b244d; }
                 """
             )
+        self.apply_update_alarm_style()
+
+    def start_update_check(self):
+        self.show_update_alert("checking", "checking updates...")
+        threading.Thread(target=self.update_check_worker, daemon=True).start()
+
+    def update_check_worker(self):
+        local_version = local_app_version()
+        try:
+            remote_version = remote_app_version()
+        except Exception as exc:
+            self.bus.log.emit(f"Update check failed: {exc}")
+            self.bus.update_alert.emit("unknown", "update check unavailable")
+            return
+        if not local_version or local_version == "unknown" or not remote_version:
+            self.bus.update_alert.emit("unknown", "update check unavailable")
+            return
+        if remote_version.strip() != local_version.strip():
+            self.bus.update_alert.emit("available", f"update available ({local_version} -> {remote_version})")
+        else:
+            self.bus.update_alert.emit("ok", f"up to date ({local_version})")
+
+    def show_update_alert(self, state: str, text: str):
+        self.update_alarm_state = state
+        self.update_alarm_text = text
+        self.update_blink_on = state == "available"
+        if state == "available":
+            if not self.update_blink_timer.isActive():
+                self.update_blink_timer.start()
+        else:
+            self.update_blink_timer.stop()
+        self.apply_update_alarm_style()
+
+    def toggle_update_alarm_blink(self):
+        self.update_blink_on = not self.update_blink_on
+        self.apply_update_alarm_style()
+
+    def apply_update_alarm_style(self):
+        if not hasattr(self, "update_alarm"):
+            return
+        state = self.update_alarm_state
+        text = self.update_alarm_text
+        self.update_alarm.setText(text)
+        base_style = "QLabel#updateAlarm { border-radius: 8px; padding: 4px 10px; font-weight: 900; font-size: 9pt; }"
+        if state == "available":
+            if self.update_blink_on:
+                style = "background: #ff1f1f; color: #ffffff; border: 2px solid #ffb3b3;"
+            else:
+                style = "background: #180000; color: #ff4a4a; border: 2px solid #ff1f1f;"
+        elif state == "ok":
+            style = "background: #001300; color: #7cff7c; border: 1px solid #1f7a1f;"
+        elif state == "checking":
+            style = "background: #050505; color: #d8d8d8; border: 1px solid #3a3a3a;"
+        else:
+            style = "background: #090909; color: #b5b5b5; border: 1px solid #333333;"
+        self.update_alarm.setStyleSheet(base_style.replace("}", f" {style} }}"))
 
     def update_setting_description(self):
         if not hasattr(self, "setting_description"):
