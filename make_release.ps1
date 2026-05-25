@@ -36,6 +36,7 @@ $ProjectItems = @(
     "launcher_qt.py",
     "generator_backend.py",
     "forza_generator_v2.py",
+    "kloudys-fh6-generator.exe",
     "forza-painter-geometrize-go.exe",
     "geometry_json.py",
     "game_profiles.py",
@@ -136,6 +137,7 @@ try {
         "KloudysFH6Painter/03_update_from_github.bat",
         "KloudysFH6Painter/app_qt.py",
         "KloudysFH6Painter/forza_generator_v2.py",
+        "KloudysFH6Painter/kloudys-fh6-generator.exe",
         "KloudysFH6Painter/settings/a.fast-ugly.ini"
     )
     foreach ($RequiredName in $Required) {
