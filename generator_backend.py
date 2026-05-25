@@ -9,12 +9,16 @@ from geometry_json import drawable_shape_count
 
 ROOT = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT / "settings"
-ACTIVE_PRESET_DIR = SETTINGS_DIR / "_archive_legacy_2026-05-22"
+ACTIVE_PRESET_DIR = SETTINGS_DIR
 GENERATOR_EXE = ROOT / "forza_generator_v2.py"
 RAW_GENERATOR_EXE = ROOT / "forza-painter-geometrize-go.exe"
 PREVIEW_DIR = ROOT / "runtime" / "previews"
 CUSTOM_SETTINGS_DIR = ROOT / "runtime" / "custom-settings"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
+FINALS_DIR_NAME = "finals"
+CHECKPOINTS_DIR_NAME = "checkpoints"
+REPORTS_DIR_NAME = "reports"
+PREVIEWS_DIR_NAME = "previews"
 
 
 SETTING_KEYS = (
@@ -71,22 +75,51 @@ def load_settings():
     preset_dir = ACTIVE_PRESET_DIR if ACTIVE_PRESET_DIR.exists() else SETTINGS_DIR
     paths = [path for path in sorted(preset_dir.glob("*.ini")) if not path.name.startswith("_")]
     for path in paths:
-        name = re.sub(r"^[a-z0-9]+[.)]\s*", "", path.stem, flags=re.IGNORECASE)
-        name = name.replace(" - ", " / ")
-        name = name.replace("-", " ")
-        name = re.sub(r"\s+", " ", name).strip()
         values = sorted_settings(parse_settings(path))
+        name = preset_display_name(path, values)
         profiles.append({
             "path": path,
             "name": name,
             "description": setting_description(path),
             "values": values,
         })
-    profiles.sort(key=lambda item: item["path"].name.lower())
+    profiles.sort(key=preset_sort_key)
     for index, item in enumerate(profiles, start=1):
         item["index"] = index
         item["label"] = f"{index}. {item['name']}"
     return profiles
+
+
+def preset_display_name(path, values):
+    stem = Path(path).stem.lower()
+    if "fast-ugly" in stem:
+        family = "Fast & Ugly"
+    elif "okay-draft" in stem:
+        family = "Okay Draft"
+    elif "pretty-good" in stem:
+        family = "Pretty Good"
+    elif "slow-beautiful" in stem:
+        family = "Slow & Beautiful"
+    else:
+        family = re.sub(r"^[a-z0-9]+[.)]\s*", "", Path(path).stem, flags=re.IGNORECASE)
+        family = re.sub(r"[-_]+", " ", family).strip().title()
+    return family
+
+
+def preset_sort_key(item):
+    stem = item["path"].stem.lower()
+    ladder_order = {
+        "fast-ugly": 0,
+        "okay-draft": 1,
+        "pretty-good": 2,
+        "slow-beautiful": 3,
+    }
+    preset_rank = 99
+    for key, rank in ladder_order.items():
+        if key in stem:
+            preset_rank = rank
+            break
+    return (preset_rank, item["path"].name.lower())
 
 
 def write_custom_settings(base_setting, custom_values):
@@ -168,7 +201,14 @@ def geometry_group_stem(path):
 
 def generation_report_path(path):
     path = Path(path)
-    return path.with_name(f"{geometry_group_stem(path)}.v2.report.json")
+    candidates = [
+        path.with_name(f"{geometry_group_stem(path)}.v2.report.json"),
+        path.parent.parent / REPORTS_DIR_NAME / f"{geometry_group_stem(path)}.v2.report.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def import_drawable_budget(path):
@@ -231,7 +271,7 @@ def best_geometry_jsons(paths):
 
 def generator_preview_path(image_path):
     image_path = Path(image_path)
-    return generator_output_dir(image_path) / f"{image_path.stem}.preview.png"
+    return generator_output_dir(image_path) / PREVIEWS_DIR_NAME / f"{image_path.stem}.preview.png"
 
 
 def generated_preview_files(image_path):
@@ -240,6 +280,10 @@ def generated_preview_files(image_path):
     for folder in generator_output_dirs(image_path):
         candidates.extend(folder.glob(f"{image_path.stem}.preview*.png"))
         candidates.extend(folder.glob(f"{image_path.stem}.v2.final.*.preview.png"))
+        preview_dir = folder / PREVIEWS_DIR_NAME
+        if preview_dir.exists():
+            candidates.extend(preview_dir.glob(f"{image_path.stem}*.preview*.png"))
+            candidates.extend(preview_dir.glob("*.preview*.png"))
     legacy_folder = image_path.parent / image_path.stem
     if legacy_folder.exists():
         candidates.extend(legacy_folder.glob(f"{image_path.stem}.preview*.png"))
@@ -301,6 +345,12 @@ def next_generator_output_dir(image_path):
         index += 1
 
 
+def generator_run_subdir(output_dir, name):
+    folder = Path(output_dir) / name
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 def generator_stop_request_path(image_path, output_dir=None):
     folder = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
     return folder / ".v2-stop"
@@ -333,6 +383,7 @@ def cleanup_generated_outputs(image_path):
 def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False, output_dir=None):
     image_path = Path(image_path)
     output_dir = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
+    reports_dir = generator_run_subdir(output_dir, REPORTS_DIR_NAME)
     values = setting.get("values", {})
     target_shapes = str(values.get("stopAt", "3000"))
     try:
@@ -342,7 +393,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
     checkpoint_step = "250" if target_count <= 1000 else "500"
     preprocess_mode = values.get("v2PreprocessMode", "none")
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
-    run_metadata_path = output_dir / f"{image_path.stem}.v2.run_metadata.json"
+    run_metadata_path = reports_dir / f"{image_path.stem}.v2.run_metadata.json"
     run_metadata = {
         "selected_profile": {
             "label": setting.get("label"),

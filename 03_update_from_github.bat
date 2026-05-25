@@ -26,6 +26,7 @@ if exist ".git\" (
         echo Generated outputs are stored separately and are not intentionally removed.
         goto :fail
     )
+    call :cleanup_retired_files
     goto :done
 )
 
@@ -53,6 +54,8 @@ for /f "delims=" %%V in ('git -C "%TMP_REPO%" rev-parse --short^=8 HEAD') do set
 if defined NEW_VERSION (
     > "%CD%\VERSION" echo %BRANCH%@!NEW_VERSION!
 )
+
+call :cleanup_retired_files
 
 rmdir /s /q "%TMP_PARENT%" >nul 2>nul
 
@@ -118,4 +121,37 @@ if errorlevel 1 (
 )
 
 echo PortableGit installed and ready.
+exit /b 0
+
+:cleanup_retired_files
+if exist "settings\_archive_legacy_2026-05-22" rmdir /s /q "settings\_archive_legacy_2026-05-22" >nul 2>nul
+if exist "settings\_default.ini" del /f /q "settings\_default.ini" >nul 2>nul
+for %%F in (
+    "settings\a.3000-ultra-sharp.ini"
+    "settings\a2.2000-ultra-sharp.ini"
+    "settings\a2b.2000-ultra-sharp + Luma Bands.ini"
+    "settings\ab.3000-ultra-sharp + Luma Bands.ini"
+    "settings\b.1000-ultra-sharp.ini"
+    "settings\bb.1000-ultra-sharp + Luma Bands.ini"
+    "settings\c.3000-soft-detail.ini"
+    "settings\c2.2000-soft-detail.ini"
+    "settings\c2b.2000-soft-detail + Luma Bands.ini"
+    "settings\cb.3000-soft-detail + Luma Bands.ini"
+    "settings\d.1000-soft-detail.ini"
+    "settings\db.1000-soft-detail + Luma Bands.ini"
+    "settings\e.3000-smart-detail.ini"
+    "settings\e2.2000-smart-detail.ini"
+    "settings\e2b.2000-smart-detail + Luma Bands.ini"
+    "settings\eb.3000-smart-detail + Luma Bands.ini"
+    "settings\f.3000-anime-livery.ini"
+    "settings\f2.2000-anime-livery.ini"
+    "settings\f2b.2000-anime-livery + Luma Bands.ini"
+    "settings\fb.3000-anime-livery + Luma Bands.ini"
+    "settings\g.1000-smart-detail.ini"
+    "settings\gb.1000-smart-detail + Luma Bands.ini"
+    "settings\h.1000-anime-livery.ini"
+    "settings\hb.1000-anime-livery + Luma Bands.ini"
+) do (
+    if exist %%~F del /f /q %%~F >nul 2>nul
+)
 exit /b 0

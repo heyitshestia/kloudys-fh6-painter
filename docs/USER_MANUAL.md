@@ -1,209 +1,173 @@
 # User Manual
 
-This manual explains the normal user workflow for Kloudy's FH6 Painter.
+This manual covers the normal launcher-first workflow for Kloudy's FH6 Painter.
 
-## 1. Install
+## 1. Install And Launch
 
-Use **64-bit Python 3.12**. Other Python versions may work for parts of the app, but Python 3.12 is the expected version.
-
-Recommended:
+Use **64-bit Python 3.12**. Start from:
 
 ```text
 00_launcher.bat
 ```
 
-The launcher shows setup status, GitHub update status, and the main launch button. For a fresh install, click:
+For a fresh install, click these launcher buttons in order:
 
 1. `Setup Python`
 2. `Install Dependencies`
 3. `Launch App`
 
-Manual setup is also available:
+Manual batch files are still available, but the launcher is the intended entry point. If setup looks broken, run `05_check_environment.bat`.
 
-1. In this project folder, run:
+## 2. Generate Final Vinyl
+
+1. Open `Generate Final Vinyl`.
+2. Choose one source image.
+3. Pick a Kloudy preset.
+4. Optional: enable `Tune this run` to override layers, resolution, samples, or finalize points.
+5. Keep `Luma Prep` and `Edge Repair` enabled unless the source looks better without them.
+6. Click `Generate Final Vinyl`.
+7. Wait for `FINALIZE CHECKPOINTS COMPLETE`.
+
+Generation has two separate phases:
+
+| Phase | What happens | User action |
+| --- | --- | --- |
+| Internal build | The patched GPU builder creates raw checkpoints. These are source material for finalization. | Wait. Do not import these unless debugging. |
+| Finalize Checkpoints | The app scores checkpoints, caps them to safe layer counts, applies Edge Repair, writes previews, and creates import-ready final JSONs. | Keep waiting until completion. |
+
+The internal builder may finish before final files are ready. Do not close the app until Finalize Checkpoints completes.
+
+You can tell the app is still working when:
+
+- The button still says `Stop after next saved point`.
+- The log is printing `Finalize Checkpoints`, `Edge Repair`, scoring, report, or preview messages.
+- New files are still appearing in the run folder.
+
+The run is done when the log says:
 
 ```text
-01_add_python312_to_path.bat
+FINALIZE CHECKPOINTS COMPLETE
 ```
 
-2. Then run:
+New runs are saved under:
 
 ```text
-02_install_dependencies.bat
+imgs/generated/<job>/
 ```
 
-3. Start the launcher/app flow:
+Each new duplicate run becomes `<job>v2`, `<job>v3`, etc.
 
-```text
-04_start_app.bat
-```
+## 3. Output Folder Contract
 
-If setup looks broken, run:
+New generation folders are organized like this:
 
-```text
-05_check_environment.bat
-```
+| Folder | Purpose |
+| --- | --- |
+| `finals/` | Import-ready finalized JSON files. This is what normal users import. |
+| `checkpoints/` | Internal raw generator checkpoints. These are diagnostic/source files, not the normal import target. |
+| `previews/` | Raw and finalized preview PNGs, plus Luma Prep images. |
+| `reports/` | Run metadata, effective settings, candidate scores, and temporary V2 settings. |
 
-## 2. Generate JSON
+The app still scans older legacy folders so previous generated runs remain importable after updating.
 
-1. Open the `Generate JSON` tab.
-2. Choose one image.
-3. Pick a quality preset.
-4. Optional: enable `Use custom settings` and override the preset.
-5. Optional: enable or disable `Luma Bands`, `Targeted repair`, and `vroom vroom scrrrrt zoooom!`.
-6. Click `Start generating`.
-7. Wait for checkpoints, previews, and final V2 JSON files.
+## 4. Kloudy Presets
 
-Generated files are saved under `imgs/generated/...`.
+Presets are a simple speed-to-quality ladder:
 
-## 3. Presets
+| Preset | Target layers | Best for | Notes |
+| --- | ---: | --- | --- |
+| `Fast & Ugly` | 1000 | Quick composition checks and rough drafts. | Fastest option. Use it to test crop, source quality, and overall placement. Do not expect final quality. |
+| `Okay Draft` | 1500 | Useful test imports without a long wait. | Good for checking scale and whether FH6 import behaves correctly. |
+| `Pretty Good` | 2000 | Recommended everyday balance. | Start here for most real images. |
+| `Slow & Beautiful` | 3000 | Final-quality runs when time matters less. | Best bundled quality target. Use for sources worth waiting on. |
 
-The active preset list is intentionally simple:
+The sample budgets are tuned for the patched faster generator, so these presets are intentionally stronger than the old upstream/Bvz-style presets.
 
-| Preset | Output layers | Random samples | Mutated samples | Max resolution |
-| --- | ---: | ---: | ---: | ---: |
-| Extremely fast | 500 | 30000 | 1000 | 600 |
-| Fast | 1000 | 60000 | 2000 | 900 |
-| Balanced | 1800 | 120000 | 5000 | 1400 |
-| Slow | 2500 | 220000 | 8000 | 2000 |
-| Super slow | 3000 | 350000 | 12000 | 2400 |
+If you are unsure, use `Pretty Good`. If the image is just a test, use `Fast & Ugly` or `Okay Draft`. If the image is a final livery piece, use `Slow & Beautiful`.
 
-Higher presets usually look better, but they take longer.
+## 5. Tune This Run
 
-## 4. Custom Settings
-
-Custom settings override the selected preset for the current run.
-
-Important fields:
+Custom run fields override the selected preset only for that run.
 
 | Setting | Meaning |
 | --- | --- |
-| Output layers | Target drawable shape count before FH6 boundary trimming. |
-| Max resolution | Largest image side used by generation. Higher can preserve detail but costs time. |
-| Random samples | Main quality search effort. Higher usually improves accuracy. |
-| Mutated samples | Local refinement effort around promising shapes. |
-| Save checkpoints | Which layer counts are saved during generation. |
+| `Template layers` | Target template size. FH6 still reserves 4 boundary layers during import. |
+| `Max resolution` | Largest image side used by generation. Higher can preserve detail but costs time. |
+| `Random samples` | Main search effort. Higher usually improves accuracy. |
+| `Mutated samples` | Local refinement effort around promising shapes. |
+| `Finalize at layers` | Layer counts that become finalized import choices. |
 
-If the image is soft or inaccurate, increase random samples first.
+If an image is inaccurate, increase random samples first.
 
-## 5. Luma Bands
+## 6. Luma Prep
 
-`Luma Bands` is a preprocess pass.
+`Luma Prep` creates a luminance-banded intermediate image before the internal build. It keeps transparency and usually helps flat/anime-style images separate clean regions.
 
-It creates a new temporary image from the input, bands the luminance values, keeps transparency, and sends that processed image to the generator.
+Turn it off for soft gradients or photos where banding makes the result worse.
 
-Use it for:
+## 7. Edge Repair
 
-- anime art
-- clean flat colors
-- images with noisy midtones
-- sharper region separation
+`Edge Repair` runs during finalization. It targets border mess, transparent holes, fingers, hair gaps, cutout edges, and similar problem areas.
 
-Turn it off for:
+It is enabled by default because it usually improves import-ready final JSONs.
 
-- soft gradients
-- photos where smooth shading matters
-- sources where banding makes the image worse
+## 8. vroom vroom scrrrrt zoooom!
 
-## 6. Targeted Repair
+This switch doubles effort-style numeric settings, such as random and mutated samples.
 
-`Targeted repair` runs after raw generation.
+It does not double template layers, max resolution, preview size, or output layer count.
 
-It tries to improve difficult areas without changing the whole generation strategy:
+## 9. Pick A Final JSON
 
-- transparent holes
-- border halos
-- hair cutouts
-- fingers and small gaps
-- sharp edges
+Open `Import Final JSON`.
 
-It is enabled by default because it usually improves FH6 vinyl edges.
+The browser is organized as:
 
-## 7. vroom vroom scrrrrt zoooom!
+```text
+Generated vinyl run -> Finalized checkpoint -> Preview -> Import
+```
 
-This switch doubles effort-style numeric settings for the selected preset.
+Rules:
 
-It does not double:
+- The newest run is selected automatically.
+- Duplicate generations stay separate.
+- The best safe final JSON is listed first.
+- The highlighted finalized checkpoint is the one that will be imported.
+- Raw internal checkpoints are hidden from the normal picker.
+- Manual JSON selection still exists for debugging or older files.
 
-- output layers
-- max resolution
-- preview size
+Pick the checkpoint by looking at the preview and shape count. Higher shape counts are not always better if the preview is messier, so the browser lets you choose instead of forcing the app's recommendation.
 
-It is useful when you want more search effort without changing the template size.
-
-## 8. Checkpoints And Reports
-
-V2 writes checkpoints and reports for each run.
-
-Common files:
-
-| File | Meaning |
-| --- | --- |
-| `*.250.json`, `*.1000.json`, etc. | Raw checkpoint JSON. |
-| `*v2.json` | V2 processed JSON for a checkpoint. |
-| `*.v2.final.*.json` | Final selected V2 output. |
-| `*.preview.*.png` | Preview image for a checkpoint. |
-| `*.v2.report.json` | Run metadata, settings, candidates, and selected output. |
-
-The checkpoint browser scans the `imgs` folder on startup, so older generated runs are still available after restarting the app.
-
-The import tab groups generated JSON by run:
-
-- `Latest run` is selected automatically after a new generation.
-- `Previous run` entries are older duplicate generations of the same image.
-- The recommended import-safe JSON is shown first.
-- Raw overshoot files that exceed the import budget are marked and skipped by the `Use selected` button.
-
-## 10. Utility Files And App Areas
-
-Common files users may run:
-
-| File | Purpose |
-| --- | --- |
-| `00_launcher.bat` | Opens the setup/update launcher. Recommended entry point. |
-| `01_add_python312_to_path.bat` | Adds Python 3.12 and Scripts paths to the user PATH. |
-| `02_install_dependencies.bat` | Installs required Python packages. Run this before using the app. |
-| `03_update_from_github.bat` | Updates app files from GitHub while preserving generated/runtime data. |
-| `04_start_app.bat` | Starts the launcher/app flow. |
-| `05_check_environment.bat` | Checks Python and dependency status. |
-| `99_clean_runtime_data.bat` | Removes generated cache/runtime data before packaging or troubleshooting. |
-
-Main app areas:
-
-| Area | Purpose |
-| --- | --- |
-| `Generate JSON` | Generates checkpoints, V2 JSON, previews, and reports from one source image. |
-| `Import` | Imports a generated JSON into an open FH6 vinyl group. |
-| `Generated-run browser` | Browses generated runs and sorted checkpoints from `imgs`, with recommended JSON first. |
-| `Shape dumps` | Experimental helper for dumping single-layer shape memory while researching handmade shape compatibility. |
-| `Tutorial` | In-app quick guidance for the normal generate/import workflow. |
-
-The shape dump tooling is for research. Full handmade multi-shape import is not currently a finished user feature.
-
-## 11. Prepare FH6 For Import
+## 10. Prepare FH6 For Import
 
 1. Start Forza Horizon 6.
 2. Open `Create Vinyl Group` or `Vinyl Group Editor`.
 3. Load or create a template with enough simple layers.
 4. Ungroup the template.
-5. Keep the editor open.
-6. Do not switch menus during import.
-7. Remember the exact layer count shown by the game.
+5. Stay in the editor and do not switch menus.
+6. Remember the exact layer count shown by the game.
 
-The app writes into the currently editable layer table. If the editor state changes, refresh and import again.
+## 11. Import Final JSON Into FH6
 
-## 12. Import JSON Into FH6
-
-1. Open the app's `Import` tab.
-2. Click refresh and select the FH6 process.
-3. Choose a generated JSON from the browser or manual picker.
-4. Enter the exact template layer count.
-5. Leave advanced memory fields blank unless you are debugging.
-6. Click `Import JSON`.
+1. Open `Import Final JSON`.
+2. Refresh/select the FH6 process.
+3. Enter the exact template layer count.
+4. Pick a finalized checkpoint.
+5. Click `Import Final JSON into FH6`.
 
 The app verifies the FH6 template before writing. If verification fails, it stops before import.
 
-## 13. FH6 Boundary Layers
+During import, keep FH6 focused on the Vinyl Group Editor. Do not switch tabs, open apply/livery menus, or click around while the app is writing layers.
+
+If import reports an ungroup/template error, the usual causes are:
+
+- The group is not actually ungrouped.
+- FH6 is in the wrong menu.
+- The template layer count is wrong.
+- The active editor group is not the prepared template.
+- The app does not have permission to write to the FH6 process.
+
+## 12. FH6 Boundary Layers
 
 FH6 needs 4 non-art boundary layers for correct cover/apply behavior.
 
@@ -222,7 +186,15 @@ Examples:
 | 2000 | 1996 |
 | 3000 | 2996 |
 
-If a 2000-layer template is used, the app can write 1996 drawable shapes plus 4 FH6 boundary layers.
+## 13. App Areas
+
+| Area | Purpose |
+| --- | --- |
+| `Generate Final Vinyl` | Builds source art into finalized import-ready vinyl JSONs. |
+| `Import Final JSON` | Imports a finalized JSON into an open FH6 vinyl group. |
+| `FH6 Tools` | Diagnostics and locator utilities for import troubleshooting. |
+| `Tutorial` | Short in-app workflow reminder. |
+| `Settings` | Theme and app appearance. |
 
 ## 14. Troubleshooting
 
@@ -236,27 +208,17 @@ Run these in order:
 05_check_environment.bat
 ```
 
-### Dependencies keep asking to install
-
-Python is probably not on PATH, or a different Python version is being used. Run `01_add_python312_to_path.bat`, close the command window, then run `02_install_dependencies.bat` again.
-
 ### Preview unavailable
 
-Install dependencies again. If preview still fails, generation and import may still work.
+Install dependencies again. Generation and import may still work even if preview rendering fails.
 
 ### GPU or OpenCL error
 
-Update the NVIDIA, AMD, or Intel GPU driver. The generator uses OpenCL.
+Update the NVIDIA, AMD, or Intel GPU driver. The builder uses OpenCL.
 
 ### Import says ungroup error
 
-Check:
-
-- You are in Vinyl Group Editor.
-- The template is ungrouped.
-- The exact template layer count is entered.
-- You did not switch menus after preparing the template.
-- You selected the correct FH6 process.
+Check that you are in Vinyl Group Editor, the template is ungrouped, the exact template layer count is entered, and you did not switch menus after preparing the template.
 
 ### Import permission error
 
@@ -264,12 +226,8 @@ Close the app and run `04_start_app.bat` as administrator.
 
 ### Output is too blurry
 
-Use a higher preset, more output layers, more random samples, and a template with enough usable layers.
+Use more layers, more random samples, `Pretty Good` or `Slow & Beautiful`, or a larger template.
 
 ### Output has edge halos
 
-Keep `Targeted repair` on. Try `Luma Bands` on for flat art, or off for soft sources.
-
-### Import clips the image
-
-The template is too small. Use a larger template or generate fewer output layers.
+Keep `Edge Repair` on. Try `Luma Prep` on for flat art or off for soft sources.

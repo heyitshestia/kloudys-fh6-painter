@@ -2,9 +2,9 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-Image-to-vinyl generator and FH6 importer for **Forza Horizon 6**.
+Launcher-first final-vinyl builder and FH6 importer for **Forza Horizon 6**.
 
-This project turns an image into Forza vinyl geometry JSON, then imports that JSON into an open FH6 Vinyl Group Editor template.
+This project turns an image into finalized, import-ready Forza vinyl JSON, then imports that final JSON into an open FH6 Vinyl Group Editor template.
 
 ## New Launcher And App
 
@@ -14,7 +14,7 @@ Start from the launcher. It checks setup state, checks GitHub for updates, runs 
 | --- | --- |
 | <img src="docs/screenshots/launcher-overview.png" width="460" alt="Kloudy's FH6 Painter launcher"> | <img src="docs/screenshots/app-generate-workflow.png" width="460" alt="Kloudy's FH6 Painter generate tab"> |
 
-The import tab now has a generated-run browser. Duplicate generations are preserved as previous runs, the newest run is selected automatically, and the recommended safe JSON is listed first.
+The import tab now works as a finalized-vinyl browser: generated run -> finalized checkpoint -> preview -> import. Duplicate generations are preserved as separate run folders, the newest run is selected automatically, and the best safe final JSON is listed first.
 
 <img src="docs/screenshots/app-import-json-browser.png" width="920" alt="Generated run JSON browser in the import tab">
 
@@ -30,7 +30,7 @@ This project exists because several people and upstream projects did the hard fo
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by the project license. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by the project license. |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in the BVZRays upstream history. |
-| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: Luma Bands workflow, V2 checkpoint/finalization changes, targeted repair defaults, checkpoint browser, updater batch, preset/UI changes, theme support, and FH6 import safety adjustments. |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: PySide launcher-first workflow, Luma Prep, Finalize Checkpoints, Edge Repair defaults, finalized-run browser, updater batch, Kloudy presets, theme support, and FH6 import safety adjustments. |
 
 ## Setup Instructions
 
@@ -79,26 +79,26 @@ Close the app first. Do not update by dragging random files over the folder. The
 
 ## What It Does
 
-- Generates Forza-compatible JSON from PNG, JPG, BMP, and similar image files.
-- Uses the bundled GPU/OpenCL generator: `forza-painter-geometrize-go.exe`.
-- Adds V2 post-processing for checkpoint handling, pruning, reports, targeted repair, and previews.
-- Imports generated JSON into the currently open FH6 vinyl group.
-- Scans old generated folders on startup so previous checkpoints can be imported later.
+- Builds finalized Forza-compatible vinyl JSON from PNG, JPG, BMP, and similar image files.
+- Uses the bundled patched GPU/OpenCL builder: `forza-painter-geometrize-go.exe`.
+- Runs Finalize Checkpoints for scoring, capping, reports, Edge Repair, and previews.
+- Imports final JSON into the currently open FH6 vinyl group.
+- Stores new runs as `imgs/generated/<job>/finals`, `checkpoints`, `previews`, and `reports`.
+- Scans old generated folders on startup so previous finalized runs can still be imported.
 - Provides a launcher with setup, dependency checks, update status, and one-click GitHub sync.
-- Shows generated runs as latest/previous runs and puts the recommended safe JSON first.
 
 ## Quick Workflow
 
 1. Install Python 3.12 and dependencies with the batch files above.
 2. Open the launcher with `00_launcher.bat`.
-3. In `Generate JSON`, choose one image.
-4. Pick a quality preset or enable custom settings.
-5. Leave `Luma Bands` and `Targeted repair` on unless the source looks better without them.
-6. Click `Start generating`.
+3. In `Generate Final Vinyl`, choose one image.
+4. Pick a Kloudy preset or tune the run.
+5. Leave `Luma Prep` and `Edge Repair` on unless the source looks better without them.
+6. Click `Generate Final Vinyl` and wait for Finalize Checkpoints to complete.
 7. Open FH6 and go to `Create Vinyl Group` / `Vinyl Group Editor`.
 8. Load a template with enough simple layers and ungroup it.
 9. In the app, go to `Import`.
-10. Select the generated JSON, enter the exact template layer count, and import.
+10. Select a finalized checkpoint, enter the exact template layer count, and import the final JSON.
 
 Full instructions are in [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
 
@@ -125,27 +125,26 @@ If your JSON has more shapes than the usable count, the app trims it during impo
 
 ## Active Presets
 
-The app currently shows the simple five-preset ladder:
+The app uses a simple speed-to-quality ladder tuned for the patched faster generator:
 
-| Preset | Output layers | Random samples | Mutated samples | Max resolution | Use case |
+| Preset | Target layers | Random samples | Mutated samples | Max resolution | Best for |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Extremely fast | 500 | 30000 | 1000 | 600 | composition tests |
-| Fast | 1000 | 60000 | 2000 | 900 | quick drafts |
-| Balanced | 1800 | 120000 | 5000 | 1400 | normal default |
-| Slow | 2500 | 220000 | 8000 | 2000 | cleaner final output |
-| Super slow | 3000 | 350000 | 12000 | 2400 | highest bundled quality |
+| Fast & Ugly | 1000 | 45,000 | 2,200 | 900 | Quick composition checks and rough drafts. |
+| Okay Draft | 1500 | 100,000 | 5,000 | 1200 | Useful test imports without a long wait. |
+| Pretty Good | 2000 | 180,000 | 8,500 | 1500 | Recommended everyday balance. |
+| Slow & Beautiful | 3000 | 320,000 | 14,000 | 1750 | Final-quality runs when time matters less. |
 
-Custom settings can override the preset for one run without editing `.ini` files.
+Luma Prep is a toggle, so separate Luma preset duplicates were removed. Custom run fields can override layer count, resolution, samples, and finalize points without needing separate preset files.
 
 ## Main Features
 
-- **Luma Bands**: default-on preprocess pass. It creates a luma-banded intermediate image before generation. Good for anime, flat colors, and sharper value separation. Turn it off for soft gradients.
-- **Targeted repair**: default-on V2 cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges after raw generation.
+- **Luma Prep**: default-on preprocess pass. It creates a luma-banded intermediate image before the internal build. Good for anime, flat colors, and sharper value separation. Turn it off for soft gradients.
+- **Edge Repair**: default-on finalization cleanup. It tries to clean border mess, transparent holes, fingers, hair gaps, and cutout edges before writing final JSONs.
 - **vroom vroom scrrrrt zoooom!**: optional switch. Doubles effort-style numeric settings such as samples while keeping output layers and resolution unchanged.
-- **Checkpoint browser**: shows generated folders and checkpoints from `imgs`, including older runs after restart.
-- **Generated-run picker**: keeps duplicate generations separate, selects the newest run automatically, and lists the recommended import-safe JSON first.
+- **Finalized-run browser**: shows generated run folders and finalized checkpoints from `imgs/generated`, including older runs after restart.
+- **Generated-run picker**: keeps duplicate generations separate, selects the newest run automatically, and lists the best safe final JSON first.
 - **Launcher/update frontend**: checks Python/dependencies, shows whether GitHub has a newer build, and runs setup/update actions without hunting for batch files.
-- **Run reports**: every V2 run writes a `*.v2.report.json` with preset, custom settings, effective settings, toggles, candidates, and selected outputs.
+- **Run reports**: every finalized run writes a report with preset, custom settings, effective settings, toggles, candidates, and selected outputs.
 
 ## Examples
 
@@ -171,7 +170,7 @@ Source/result examples are included in [docs/examples/test-finest](docs/examples
 - **OpenProcess or permission error**: run `04_start_app.bat` as administrator.
 - **Game process not found**: start FH6 first, then click refresh in the import tab.
 - **Ungroup error even though it is ungrouped**: make sure you are inside Vinyl Group Editor, the layer count is exact, and the active group is the template being edited.
-- **Output is blurry**: use more output layers, higher random samples, a higher-resolution preset, or a larger template.
+- **Output is blurry**: use more output layers, higher random samples, `Pretty Good` or `Slow & Beautiful`, or a larger template.
 - **Output is clipped**: the template does not have enough usable layers.
 
 ## License

@@ -23,14 +23,18 @@ LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")
 FH6_RESERVED_BOUNDARY_LAYERS = 4
+FINALS_DIR_NAME = "finals"
+CHECKPOINTS_DIR_NAME = "checkpoints"
+REPORTS_DIR_NAME = "reports"
+PREVIEWS_DIR_NAME = "previews"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Forza Generator V2: generate target checkpoints, "
+            "Kloudy Finalize Checkpoints: build internal checkpoints, "
             "optionally prune low-contribution ellipse layers, and write manual-pick "
-            "V2 JSON outputs for each usable checkpoint."
+            "final JSON outputs for each usable checkpoint."
         )
     )
     parser.add_argument("image", help="Source image path")
@@ -115,7 +119,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=4,
         help=(
-            "Only render full V2 preview PNGs for the best N scored checkpoints plus the latest checkpoint. "
+            "Only render full final preview PNGs for the best N scored checkpoints plus the latest checkpoint. "
             "Use 0 to render every preview. JSON browser can still preview unrendered files on demand. Default: 4"
         ),
     )
@@ -324,7 +328,7 @@ def collect_candidate_jsons(out_dir: Path, stem: str, max_checkpoint: int | None
         if max_checkpoint is not None and checkpoint is not None and checkpoint > max_checkpoint:
             print(
                 f"Found overflow-named checkpoint {name}: checkpoint {checkpoint} > requested raw stop {max_checkpoint}; "
-                "V2 will validate and cap it before writing import outputs.",
+                "Finalize Checkpoints will validate and cap it before writing import outputs.",
                 flush=True,
             )
         paths.append(path)
@@ -854,7 +858,7 @@ def v2_json_path_for_candidate(out_dir: Path, stem: str, candidate_path: Path) -
 
 def v2_json_path_for_tag(out_dir: Path, stem: str, tag: str) -> Path:
     tag = re.sub(r"[^A-Za-z0-9_-]+", "", tag).strip() or "final"
-    return out_dir / f"{stem}.{tag}v2.json"
+    return out_dir / FINALS_DIR_NAME / f"{stem}.{tag}v2.json"
 
 
 def v2_preview_path_for_candidate(out_dir: Path, stem: str, candidate_path: Path) -> Path:
@@ -863,7 +867,7 @@ def v2_preview_path_for_candidate(out_dir: Path, stem: str, candidate_path: Path
 
 def v2_preview_path_for_tag(out_dir: Path, stem: str, tag: str) -> Path:
     tag = re.sub(r"[^A-Za-z0-9_-]+", "", tag).strip() or "final"
-    return out_dir / f"{stem}.preview.{tag}v2.png"
+    return out_dir / PREVIEWS_DIR_NAME / f"{stem}.preview.{tag}v2.png"
 
 
 def stem_from_image(path: Path) -> str:
@@ -874,9 +878,11 @@ def stem_from_image(path: Path) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem).strip("_") or "image"
 
 
-def run_generator(image: Path, settings_path: Path, out_dir: Path, out_stem: str, stop_file: Path | None = None) -> bool:
-    out_base = out_dir / out_stem
-    preview_path = out_dir / f"{out_stem}.preview.png"
+def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, preview_dir: Path, out_stem: str, stop_file: Path | None = None) -> bool:
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    out_base = checkpoint_dir / out_stem
+    preview_path = preview_dir / f"{out_stem}.raw.preview.png"
     env = dict(os.environ)
     if os.name != "nt":
         env["LD_LIBRARY_PATH"] = LD_LIBRARY_PATH
@@ -923,7 +929,7 @@ def run_generator(image: Path, settings_path: Path, out_dir: Path, out_stem: str
     while proc.poll() is None:
         if stop_file is not None and stop_file.exists():
             interrupted = True
-            print("Stop requested. Ending raw generation after the latest saved checkpoint...", flush=True)
+            print("Stop requested. Ending internal build after the latest saved checkpoint...", flush=True)
             try:
                 proc.terminate()
             except Exception:
@@ -996,6 +1002,12 @@ def main() -> int:
         return 1
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir = out_dir / CHECKPOINTS_DIR_NAME
+    finals_dir = out_dir / FINALS_DIR_NAME
+    reports_dir = out_dir / REPORTS_DIR_NAME
+    previews_dir = out_dir / PREVIEWS_DIR_NAME
+    for folder in (checkpoint_dir, finals_dir, reports_dir, previews_dir):
+        folder.mkdir(parents=True, exist_ok=True)
     stem = stem_from_image(image_path)
     source_copy_path = ensure_source_copy(image_path, out_dir)
     stop_file = Path(args.stop_file).expanduser().resolve() if args.stop_file else None
@@ -1020,7 +1032,7 @@ def main() -> int:
         overshoot_extra = min(args.overshoot_max_extra, max(1, int(round(target_shapes * 0.08))))
     raw_stop = target_shapes + overshoot_extra
 
-    v2_settings_path = out_dir / f"{stem}.v2.settings.ini"
+    v2_settings_path = reports_dir / f"{stem}.v2.settings.ini"
     write_v2_settings(base_settings, v2_settings_path, target_shapes, raw_stop, args.checkpoint_step)
 
     max_resolution = int(base_settings.get("maxResolution", "0") or 0)
@@ -1029,34 +1041,34 @@ def main() -> int:
     generation_image_path = image_path
     preprocess_output_path = None
     if args.preprocess_mode != "none":
-        preprocess_output_path = out_dir / f"{stem}.v2.preprocess.{args.preprocess_mode}.png"
+        preprocess_output_path = previews_dir / f"{stem}.luma-prep.png"
         Image.fromarray(np.clip(processed_rgba, 0, 255).astype(np.uint8), mode="RGBA").save(preprocess_output_path)
         generation_image_path = preprocess_output_path
 
-    print(f"Generating raw V2 candidates for {image_path.name}")
+    print(f"Building internal base geometry for {image_path.name}")
     print(f"Target template layers: {target_shapes}")
     print(f"Target drawable shapes: {drawable_target_shapes} ({target_shapes} - {FH6_RESERVED_BOUNDARY_LAYERS} FH bounds layers)")
     if raw_stop > target_shapes:
-        print(f"Raw generator stop:     {raw_stop} ({target_shapes} target + {overshoot_extra} overshoot)")
+        print(f"Internal build stop:    {raw_stop} ({target_shapes} target + {overshoot_extra} overshoot)")
     else:
-        print(f"Raw generator stop:     {raw_stop}")
+        print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
-    print(f"Preprocess mode:        {args.preprocess_mode}")
+    print(f"Luma Prep mode:         {args.preprocess_mode}")
     if preprocess_output_path is not None:
         print(f"Preprocessed image:     {preprocess_output_path}")
-    interrupted = run_generator(generation_image_path, v2_settings_path, out_dir, stem, stop_file=stop_file)
+    interrupted = run_generator(generation_image_path, v2_settings_path, checkpoint_dir, previews_dir, stem, stop_file=stop_file)
 
-    print("RAW GENERATION COMPLETE. V2 finalization is starting now; do not close the app yet.", flush=True)
-    print("V2 outputs are the import-ready final JSONs. Raw checkpoints are not final.", flush=True)
+    print("INTERNAL BUILD COMPLETE. Finalize Checkpoints is starting now; do not close the app yet.", flush=True)
+    print("Finalized JSONs are the only import-ready vinyl files. Internal checkpoints are not final.", flush=True)
 
-    raw_candidates = collect_candidate_jsons(out_dir, stem, max_checkpoint=raw_stop)
+    raw_candidates = collect_candidate_jsons(checkpoint_dir, stem, max_checkpoint=raw_stop)
     if not raw_candidates:
-        print("No generator JSON outputs found after V2 run.", file=sys.stderr)
+        print("No internal checkpoint JSON outputs found after base build.", file=sys.stderr)
         return 1
     if interrupted:
-        print("Continuing V2 finalization from interrupted checkpoints.")
+        print("Continuing Finalize Checkpoints from interrupted internal checkpoints.")
     print(
-        f"V2 finalization: found {len(raw_candidates)} raw checkpoint JSON(s). "
+        f"Finalize Checkpoints: found {len(raw_candidates)} internal checkpoint JSON(s). "
         "Scoring and preparing final import files...",
         flush=True,
     )
@@ -1066,7 +1078,7 @@ def main() -> int:
     candidate_records = []
     repair_enabled = bool(args.enable_repair and not args.disable_refine)
     for index, candidate_path in enumerate(raw_candidates):
-        print(f"V2 scoring {index + 1}/{len(raw_candidates)}: {candidate_path.name}", flush=True)
+        print(f"Finalize scoring {index + 1}/{len(raw_candidates)}: {candidate_path.name}", flush=True)
         try:
             payload = normalize_payload(candidate_path)
             background = background_shape(payload)
@@ -1085,7 +1097,7 @@ def main() -> int:
                 else:
                     print(
                         f"Checkpoint {candidate_path.name} is above requested raw stop {raw_stop}; "
-                        "V2 will cap the import output.",
+                        "Finalize Checkpoints will cap the import output.",
                         flush=True,
                     )
 
@@ -1101,7 +1113,7 @@ def main() -> int:
             if raw_count > raw_stop:
                 print(
                     f"Checkpoint {candidate_path.name} has {raw_count} drawable layers, above raw stop {raw_stop}; "
-                    "V2 will cap it before import output.",
+                    "Finalize Checkpoints will cap it before import output.",
                     flush=True,
                 )
 
@@ -1144,7 +1156,7 @@ def main() -> int:
             }
         )
     if not candidate_records:
-        print("No usable generator JSON checkpoints remained after V2 validation.", file=sys.stderr)
+        print("No usable internal checkpoints remained after finalization validation.", file=sys.stderr)
         return 1
 
     repair_indices = select_top_checkpoint_indices(candidate_records, args.repair_candidate_limit) if repair_enabled else set()
@@ -1153,28 +1165,28 @@ def main() -> int:
         skipped = len(candidate_records) - len(repair_indices)
         if skipped > 0:
             print(
-                f"Smart repair: repairing {len(repair_indices)}/{len(candidate_records)} checkpoints "
+                f"Edge Repair: repairing {len(repair_indices)}/{len(candidate_records)} finalized checkpoints "
                 f"(best scored + latest), skipping {skipped} lower-ranked checkpoints.",
                 flush=True,
             )
         else:
-            print(f"Smart repair: repairing all {len(candidate_records)} checkpoints.", flush=True)
+            print(f"Edge Repair: repairing all {len(candidate_records)} finalized checkpoints.", flush=True)
     skipped_previews = len(candidate_records) - len(preview_indices)
     if skipped_previews > 0:
         print(
-            f"Smart previews: rendering {len(preview_indices)}/{len(candidate_records)} preview PNGs; "
+            f"Final previews: rendering {len(preview_indices)}/{len(candidate_records)} preview PNGs; "
             "other JSONs preview on demand in the browser.",
             flush=True,
         )
 
     results = []
     print(
-        f"V2 finalization: writing final import JSONs for {len(candidate_records)} candidate(s)...",
+        f"Finalize Checkpoints: writing import-ready JSONs for {len(candidate_records)} candidate(s)...",
         flush=True,
     )
     for result_index, record in enumerate(candidate_records, start=1):
         candidate_path = record["candidate_path"]
-        print(f"V2 finalizing {result_index}/{len(candidate_records)}: {candidate_path.name}", flush=True)
+        print(f"Finalizing import JSON {result_index}/{len(candidate_records)}: {candidate_path.name}", flush=True)
         background = record["background"]
         raw_count = record["raw_drawables"]
         full_w, full_h = record["canvas_size"]
@@ -1205,7 +1217,7 @@ def main() -> int:
                     "error": f"{type(exc).__name__}: {exc}",
                 })
                 print(
-                    f"Targeted repair failed for {candidate_path.name}: {type(exc).__name__}: {exc}. "
+                    f"Edge Repair failed for {candidate_path.name}: {type(exc).__name__}: {exc}. "
                     "Using the pruned base candidate.",
                     file=sys.stderr,
                     flush=True,
@@ -1264,7 +1276,7 @@ def main() -> int:
     best_accuracy = min(results, key=lambda item: item["error"])
     latest_checkpoint = max(results, key=lambda item: (item["raw_drawables"], item["candidate"]))
 
-    report_path = out_dir / f"{stem}.v2.report.json"
+    report_path = reports_dir / f"{stem}.v2.report.json"
     preset = run_metadata.get("selected_profile") or {
         "path": str(settings_path),
         "values": dict(base_settings),
@@ -1374,16 +1386,16 @@ def main() -> int:
 
     print()
     print(f"Best accuracy: {best_accuracy['candidate']} -> {best_accuracy['final_drawables']} shapes, error {best_accuracy['error']:.6f}")
-    print(f"Latest checkpoint V2: {latest_checkpoint['candidate']} -> {latest_checkpoint['final_drawables']} shapes, error {latest_checkpoint['error']:.6f}")
+    print(f"Latest finalized checkpoint: {latest_checkpoint['candidate']} -> {latest_checkpoint['final_drawables']} shapes, error {latest_checkpoint['error']:.6f}")
     for item in sorted(results, key=lambda entry: (entry["raw_drawables"], entry["candidate"])):
-        print(f"V2 JSON:        {item['v2_json']}")
-        print(f"V2 preview:     {item['v2_preview']}")
+        print(f"Final JSON:     {item['v2_json']}")
+        print(f"Final preview:  {item['v2_preview']}")
     print(f"Report:         {report_path}")
     if interrupted:
         print("Stopped early by request. Every usable checkpoint was finalized, including the latest saved checkpoint.")
     else:
-        print("V2 outputs written for every usable checkpoint. Pick the one you want in the JSON browser.")
-    print("V2 FINALIZATION COMPLETE. Import-ready JSONs are now available in the JSON browser.", flush=True)
+        print("Finalized outputs written for every usable checkpoint. Pick the one you want in Import Final JSON.")
+    print("FINALIZE CHECKPOINTS COMPLETE. Import-ready JSONs are now available in the Final JSON browser.", flush=True)
 
     if not args.keep_temp_settings:
         try:

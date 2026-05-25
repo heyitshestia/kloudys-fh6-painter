@@ -95,15 +95,157 @@ def helper_python() -> Path | str:
 
 
 TEXT = {
-    "tutorial": """Beginner workflow
+    "tutorial": """Kloudy's FH6 Painter tutorial
 
-1. Run 01_add_python312_to_path.bat, then 02_install_dependencies.bat.
-2. Open Generate JSON, choose one image, pick a profile, then generate.
-3. Keep Luma Bands and Targeted Repair enabled unless the source looks better without them.
-4. Open FH6 Vinyl Group Editor, load a simple-layer template, then ungroup it.
-5. Open Import, refresh the FH6 process, enter the exact template layer count, add/select a JSON, then import.
+1. First-time setup
 
-FH6 keeps 4 boundary layers. A 2000-layer template has 1996 usable drawable layers.
+Use the launcher if possible:
+
+00_launcher.bat
+
+For manual setup, run these in order:
+
+01_add_python312_to_path.bat
+02_install_dependencies.bat
+04_start_app.bat
+
+If the app says dependencies are missing, run 02_install_dependencies.bat again.
+
+
+2. Pick a preset
+
+Presets are a simple speed-to-quality ladder:
+
+Fast & Ugly
+- Fastest rough draft.
+- Good for checking crop, placement, and whether the source image is worth using.
+- Not meant to be the clean final import.
+
+Okay Draft
+- Better draft quality without a long wait.
+- Good for test imports and checking FH6 scale.
+
+Pretty Good
+- Recommended normal preset.
+- Balanced speed, detail, and layer count.
+
+Slow & Beautiful
+- Highest default quality.
+- Use when the source is worth waiting for and you want the cleanest bundled result.
+
+The vroom vroom scrrrrt zoooom! switch doubles effort settings like random and mutated samples.
+It does not double output layers or resolution.
+
+
+3. Generate Final Vinyl
+
+Open Generate Final Vinyl, choose one image, pick a preset, then click Generate Final Vinyl.
+
+Luma Prep is normally on:
+- It makes a luma-banded prep image before building.
+- It usually helps anime, logos, stickers, and flat color art.
+- Turn it off for photos or soft gradients if banding looks worse.
+
+Edge Repair is normally on:
+- It runs during finalization.
+- It tries to clean borders, transparent holes, finger gaps, hair gaps, and cutout edges.
+
+
+4. Important: generation is not done when the raw builder finishes
+
+The app has two phases:
+
+Phase 1: internal build
+- The patched GPU builder creates raw checkpoints.
+- The preview may update while layers are being built.
+- These raw checkpoints are not the normal import target.
+
+Phase 2: Finalize Checkpoints
+- The app scores checkpoints.
+- It caps outputs to safe layer counts.
+- It applies Edge Repair if enabled.
+- It writes final import-ready JSONs and previews.
+
+Do not close the app until the log says:
+
+FINALIZE CHECKPOINTS COMPLETE
+
+If the button still says Stop after next saved point, the app is still busy.
+If the log is printing Finalize Checkpoints, Edge Repair, scoring, previews, or report lines, it is still working.
+The final files appear in the run folder under:
+
+imgs/generated/<job>/finals
+
+
+5. Understand the output folders
+
+Each generation run has its own folder:
+
+finals
+- Import-ready JSON files.
+- Use these in normal import.
+
+checkpoints
+- Internal raw builder checkpoints.
+- Useful for diagnostics, but not the normal import target.
+
+previews
+- Preview PNGs for raw and finalized outputs.
+
+reports
+- Settings, toggles, scores, candidates, and run metadata.
+
+
+6. Prepare FH6 before importing
+
+In Forza Horizon 6:
+
+1. Open Vinyl Group Editor.
+2. Load or create a simple-layer template.
+3. Ungroup the template.
+4. Stay in the Vinyl Group Editor.
+5. Do not switch menus after preparing the template.
+6. Remember the exact template layer count shown by FH6.
+
+FH6 keeps 4 boundary layers for correct cover/apply behavior.
+That means usable art layers are:
+
+template layers - 4
+
+Examples:
+
+500 template layers = 496 usable art layers
+1000 template layers = 996 usable art layers
+2000 template layers = 1996 usable art layers
+3000 template layers = 2996 usable art layers
+
+
+7. Import Final JSON
+
+Open Import Final JSON.
+
+1. Pick the generated vinyl run.
+2. Pick the finalized checkpoint you want.
+3. Check the preview.
+4. Enter the exact FH6 template layer count.
+5. Click Import Final JSON into FH6.
+
+The highlighted finalized checkpoint is the one that imports.
+The best safe final is listed first, but you can pick a different finalized checkpoint yourself.
+
+
+8. If import does nothing or errors
+
+Check these first:
+
+- FH6 is running.
+- You are inside Vinyl Group Editor, not applying a vinyl to the car.
+- The template is ungrouped.
+- The layer count is exact.
+- The selected JSON fits inside template layers minus 4.
+- The app may need to run as administrator.
+
+If generation looks bad, try Pretty Good or Slow & Beautiful, increase random samples, or use a cleaner source image.
 """,
 }
 
@@ -636,13 +778,13 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setSizes([520, 760])
 
-        image_group = QGroupBox("Step 1 - Choose Image")
+        image_group = QGroupBox("Step 1 - Source Art")
         image_layout = QVBoxLayout(image_group)
         image_row = QHBoxLayout()
-        choose = QPushButton("Choose image")
+        choose = QPushButton("Choose source image")
         choose.clicked.connect(self.add_image)
         image_row.addWidget(choose)
-        open_out = QPushButton("Open output folder")
+        open_out = QPushButton("Open latest vinyl folder")
         open_out.clicked.connect(self.open_output_folder)
         image_row.addWidget(open_out)
         image_layout.addLayout(image_row)
@@ -651,7 +793,7 @@ class MainWindow(QMainWindow):
         image_layout.addWidget(self.image_list)
         left_layout.addWidget(image_group)
 
-        quality_group = QGroupBox("Step 2 - Choose Quality")
+        quality_group = QGroupBox("Step 2 - Vinyl Build Preset")
         quality_layout = QVBoxLayout(quality_group)
         self.vroom = QCheckBox("vroom vroom scrrrrt zoooom!")
         self.vroom.stateChanged.connect(self.update_setting_description)
@@ -665,7 +807,7 @@ class MainWindow(QMainWindow):
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
         quality_layout.addWidget(self.setting_description)
-        self.custom_enabled = QCheckBox("Use custom settings")
+        self.custom_enabled = QCheckBox("Tune this run")
         self.custom_enabled.stateChanged.connect(self.sync_custom_state)
         quality_layout.addWidget(self.custom_enabled)
         form = QGridLayout()
@@ -675,40 +817,40 @@ class MainWindow(QMainWindow):
         self.custom_mutated = QLineEdit()
         self.custom_save_at = QLineEdit()
         fields = [
-            ("Output layers", self.custom_layers),
+            ("Template layers", self.custom_layers),
             ("Max resolution", self.custom_resolution),
             ("Random samples", self.custom_random),
             ("Mutated samples", self.custom_mutated),
-            ("Save checkpoints", self.custom_save_at),
+            ("Finalize at layers", self.custom_save_at),
         ]
         for row, (label, widget) in enumerate(fields):
             form.addWidget(QLabel(label), row, 0)
             form.addWidget(widget, row, 1)
         quality_layout.addLayout(form)
-        self.luma_enabled = QCheckBox("Enable Luma Bands preprocess")
+        self.luma_enabled = QCheckBox("Luma Prep - simplify values before building")
         self.luma_enabled.setChecked(True)
         quality_layout.addWidget(self.luma_enabled)
-        self.repair_enabled = QCheckBox("Use targeted repair (recommended)")
+        self.repair_enabled = QCheckBox("Edge Repair - clean borders and transparent holes")
         self.repair_enabled.setChecked(True)
         quality_layout.addWidget(self.repair_enabled)
         left_layout.addWidget(quality_group)
 
-        run_group = QGroupBox("Step 3 - Generate")
+        run_group = QGroupBox("Step 3 - Generate Final Vinyl")
         run_layout = QHBoxLayout(run_group)
-        generate = QPushButton("Generate with current settings")
+        generate = QPushButton("Generate Final Vinyl")
         generate.setObjectName("primaryButton")
         generate.clicked.connect(self.start_generate)
-        stop = QPushButton("Stop after latest checkpoint")
+        stop = QPushButton("Stop after next saved point")
         stop.clicked.connect(self.stop_generate)
         run_layout.addWidget(generate, 2)
         run_layout.addWidget(stop, 1)
         left_layout.addWidget(run_group)
         left_layout.addStretch()
 
-        right_layout.addWidget(QLabel("Preview"))
-        self.preview = PreviewView("Select an image or JSON to preview it here.")
+        right_layout.addWidget(QLabel("Live Preview"))
+        self.preview = PreviewView("Choose source art or a finalized vinyl to preview it here.")
         right_layout.addWidget(self.preview, 1)
-        self.tabs.addTab(tab, "Generate JSON")
+        self.tabs.addTab(tab, "Generate Final Vinyl")
         self.update_setting_description()
         self.sync_custom_state()
 
@@ -725,7 +867,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setSizes([620, 660])
 
-        game = QGroupBox("Step 1 - Game")
+        game = QGroupBox("Step 1 - FH6 Session")
         game_layout = QGridLayout(game)
         self.game_combo = QComboBox()
         self.game_combo.addItems(list(PROFILES.keys()))
@@ -733,28 +875,28 @@ class MainWindow(QMainWindow):
         self.pid_combo.setEditable(True)
         refresh = QPushButton("Refresh")
         refresh.clicked.connect(self.refresh_processes)
-        game_layout.addWidget(QLabel("Game profile"), 0, 0)
+        game_layout.addWidget(QLabel("Game"), 0, 0)
         game_layout.addWidget(self.game_combo, 0, 1)
         game_layout.addWidget(QLabel("Process"), 1, 0)
         game_layout.addWidget(self.pid_combo, 1, 1)
         game_layout.addWidget(refresh, 1, 2)
         left_layout.addWidget(game)
 
-        template = QGroupBox("Step 2 - Template")
+        template = QGroupBox("Step 2 - Vinyl Template")
         template_layout = QGridLayout(template)
         self.layer_count = QLineEdit()
-        template_layout.addWidget(QLabel("Template layer count"), 0, 0)
+        template_layout.addWidget(QLabel("Exact template layer count"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
         left_layout.addWidget(template)
 
-        json_group = QGroupBox("Step 3 - JSON")
+        json_group = QGroupBox("Step 3 - Pick Final Vinyl")
         json_layout = QVBoxLayout(json_group)
         controls = QHBoxLayout()
-        add_json = QPushButton("Choose JSON...")
+        add_json = QPushButton("Choose final JSON...")
         add_json.clicked.connect(self.manual_add_json)
         refresh_jsons = QPushButton("Refresh")
         refresh_jsons.clicked.connect(self.refresh_generated_browser)
-        add_recommended = QPushButton("Use recommended")
+        add_recommended = QPushButton("Use best safe final")
         add_recommended.clicked.connect(self.select_recommended_generated_json)
         controls.addWidget(add_json)
         controls.addWidget(refresh_jsons)
@@ -764,23 +906,23 @@ class MainWindow(QMainWindow):
         self.generated_folder_combo.setMaxVisibleItems(24)
         self.generated_folder_combo.setMinimumHeight(34)
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
-        json_layout.addWidget(QLabel("Generated run"))
-        json_layout.addWidget(QLabel("Click a checkpoint below. The highlighted JSON is the one that will be imported."))
+        json_layout.addWidget(QLabel("Generated vinyl run"))
+        json_layout.addWidget(QLabel("Pick a finalized checkpoint below. The highlighted final JSON is the one that will be imported."))
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
         self.generated_checkpoint_list.setMinimumHeight(420)
         self.generated_checkpoint_list.currentRowChanged.connect(self.select_generated_checkpoint)
-        json_layout.addWidget(QLabel("Checkpoints"))
+        json_layout.addWidget(QLabel("Finalized checkpoints"))
         json_layout.addWidget(self.generated_checkpoint_list, 2)
-        self.selected_json_label = QLabel("Selected import JSON: none")
+        self.selected_json_label = QLabel("Selected final JSON: none")
         self.selected_json_label.setWordWrap(True)
         json_layout.addWidget(self.selected_json_label)
         left_layout.addWidget(json_group, 1)
 
-        import_group = QGroupBox("Step 4 - Import")
+        import_group = QGroupBox("Step 4 - Import Final JSON")
         import_layout = QVBoxLayout(import_group)
         import_layout.addWidget(QLabel("Keep FH6 in Vinyl Group Editor and do not switch menus during import."))
-        import_btn = QPushButton("Import JSON into FH6")
+        import_btn = QPushButton("Import Final JSON into FH6")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
         auto_btn = QPushButton("Auto-locate FH6 template")
@@ -788,10 +930,10 @@ class MainWindow(QMainWindow):
         import_layout.addWidget(import_btn)
         import_layout.addWidget(auto_btn)
         right_layout.addWidget(import_group)
-        right_layout.addWidget(QLabel("Import Preview"))
-        self.import_preview = PreviewView("Select a JSON to preview it here.")
+        right_layout.addWidget(QLabel("Final Vinyl Preview"))
+        self.import_preview = PreviewView("Select a finalized JSON to preview it here.")
         right_layout.addWidget(self.import_preview, 1)
-        self.tabs.addTab(tab, "Import")
+        self.tabs.addTab(tab, "Import Final JSON")
 
     def _build_tools_tab(self):
         tab = QWidget()
@@ -933,7 +1075,7 @@ class MainWindow(QMainWindow):
     def update_setting_description(self):
         item = self.selected_setting()
         if not item:
-            self.setting_description.setText("No settings profiles found.")
+            self.setting_description.setText("No Kloudy presets found.")
             return
         description = item.get("description") or ""
         if self.vroom.isChecked():
@@ -989,7 +1131,7 @@ class MainWindow(QMainWindow):
         return setting
 
     def add_image(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Choose image", "", "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose source image", "", "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
         if not file_name:
             return
         path = Path(file_name)
@@ -998,12 +1140,12 @@ class MainWindow(QMainWindow):
         self.show_preview_bytes(render_source_image(path) or b"")
 
     def manual_add_json(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Choose geometry JSON", "", "Geometry JSON (*.json);;All files (*.*)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose finalized vinyl JSON", "", "Final vinyl JSON (*.json);;All files (*.*)")
         if not file_name:
             return
         path = Path(file_name)
         if path.exists():
-            self.select_import_json(path, "manual JSON")
+            self.select_import_json(path, "manual final JSON")
         self.render_lists()
 
     def render_lists(self):
@@ -1042,8 +1184,8 @@ class MainWindow(QMainWindow):
         if preview and preview.exists():
             self.show_preview_file(str(preview))
         else:
-            self.preview.clear("Rendering JSON preview...")
-            self.import_preview.clear("Rendering JSON preview...")
+            self.preview.clear("Rendering final vinyl preview...")
+            self.import_preview.clear("Rendering final vinyl preview...")
             threading.Thread(target=self.render_json_preview_worker, args=(Path(path), request_id), daemon=True).start()
 
     def render_json_preview_worker(self, path: Path, request_id: int):
@@ -1070,19 +1212,32 @@ class MainWindow(QMainWindow):
     def preview_path_for_json(self, path: Path) -> Path | None:
         path = Path(path)
         name = path.name
+        preview_dir = path.parent.parent / "previews"
         match = re.match(r"^(.*)\.(\d+)v2\.json$", name)
         if match:
             base, step = match.groups()
-            candidate = path.with_name(f"{base}.preview.{step}v2.png")
-            return candidate if candidate.exists() else None
+            candidates = [
+                preview_dir / f"{base}.preview.{step}v2.png",
+                path.with_name(f"{base}.preview.{step}v2.png"),
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    return candidate
         if name.endswith(".v2.json"):
-            candidate = path.with_name(f"{path.stem}.preview.png")
-            return candidate if candidate.exists() else None
+            candidates = [
+                preview_dir / f"{path.stem}.preview.png",
+                path.with_name(f"{path.stem}.preview.png"),
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    return candidate
         if ".v2.final." in name:
             match = re.match(r"^(.*)\.v2\.final\.(\d+)\.json$", name)
             if match:
                 base, count = match.groups()
                 candidates = [
+                    preview_dir / f"{base}.v2.final.{count}.preview.png",
+                    preview_dir / f"{base}.preview.{count}v2.png",
                     path.with_name(f"{base}.v2.final.{count}.preview.png"),
                     path.with_name(f"{base}.preview.{count}v2.png"),
                 ]
@@ -1132,7 +1287,7 @@ class MainWindow(QMainWindow):
             return
         setting = self.effective_setting()
         if not setting:
-            self.log_line("No quality profile selected.")
+            self.log_line("No Kloudy preset selected.")
             return
         if not GENERATOR_EXE.exists():
             self.log_line(f"Missing generator: {GENERATOR_EXE}")
@@ -1159,25 +1314,25 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.log_line(f"Failed to request stop for {image_path.name}: {exc}")
         self.set_status("Stopping")
-        self.log_line("Graceful stop requested. V2 will finalize saved checkpoints.")
+        self.log_line("Stop requested. Finalize Checkpoints will finish the latest saved point.")
 
     def generate_worker(self, setting, images, repair_enabled):
         try:
-            self.bus.log.emit(f"Selected profile: {setting.get('label') or setting['path'].name}")
-            self.bus.log.emit(f"Preprocess: {setting.get('values', {}).get('v2PreprocessMode', 'none')}")
-            self.bus.log.emit(f"Targeted repair: {'on' if repair_enabled else 'off'}")
+            self.bus.log.emit(f"Selected Kloudy preset: {setting.get('label') or setting['path'].name}")
+            self.bus.log.emit(f"Luma Prep: {setting.get('values', {}).get('v2PreprocessMode', 'none')}")
+            self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
             for image_path in images:
                 run_dir = next_generator_output_dir(image_path)
                 before = {path.resolve() for path in self.run_json_files(run_dir)}
                 self.latest_generated_run_dir = run_dir
                 self.active_generation_run_dirs[image_path] = run_dir
-                self.bus.log.emit(f"Generating: {image_path}")
-                self.bus.log.emit(f"Output folder: {run_dir}")
+                self.bus.log.emit(f"Generating final vinyl from: {image_path}")
+                self.bus.log.emit(f"Vinyl run folder: {run_dir}")
                 src = render_source_image(image_path)
                 if src:
                     self.bus.preview_bytes.emit(src)
                 cmd = build_generator_command(image_path, setting, enable_repair=repair_enabled, enable_overshoot=False, output_dir=run_dir)
-                self.bus.log.emit(f"Running GPU generator with {setting['path'].name}")
+                self.bus.log.emit(f"Running patched vinyl builder with {setting['path'].name}")
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1, text=True, encoding="utf-8", errors="replace", creationflags=flags)
                 self.register_process(proc)
@@ -1217,7 +1372,7 @@ class MainWindow(QMainWindow):
                 for output in sorted(new_outputs, key=lambda path: path.stat().st_mtime, reverse=True):
                     if output not in self.outputs:
                         self.outputs.append(output)
-                    self.bus.log.emit(f"Generated: {output}")
+                    self.bus.log.emit(f"Final vinyl ready: {output}")
                 preview_files = self.run_preview_files(image_path, run_dir)
                 if preview_files:
                     newest = preview_files[0]
@@ -1248,12 +1403,13 @@ class MainWindow(QMainWindow):
             friendly = self.friendly_generator_line(raw)
             if friendly and friendly != last_message:
                 if friendly.startswith((
-                    "Generated layer ",
+                    "Building layer ",
                     "Step ",
                     "Retry ",
-                    "Raw generator finished",
-                    "V2 ",
-                    "RAW GENERATION COMPLETE",
+                    "Internal build finished",
+                    "Finalize ",
+                    "Finalizing ",
+                    "FINALIZE CHECKPOINTS COMPLETE",
                 )):
                     self.bus.progress.emit(friendly)
                 self.bus.log.emit(friendly)
@@ -1268,9 +1424,9 @@ class MainWindow(QMainWindow):
         if progress:
             current, total, detail = progress.groups()
             if re.search(r"\bAdded\b.+#\d+", detail):
-                return f"Generated layer {current}/{total}"
+                return f"Building layer {current}/{total}"
             if "Saved geometry checkpoint" in detail:
-                return f"Saved JSON checkpoint {current}/{total}"
+                return f"Saved internal checkpoint {current}/{total}"
             if "Saved preview snapshot" in detail:
                 return f"Updated preview {current}/{total}"
             step_done = re.match(r"Step completed in (\d+)ms", detail)
@@ -1281,30 +1437,30 @@ class MainWindow(QMainWindow):
                 return f"Retry {retrying.group(1)}/{retrying.group(2)} at layer {current}/{total}"
             return None
         if text == "FINISHED":
-            return "Raw generator finished. V2 finalization is still running; final import JSONs are not ready yet."
+            return "Internal build finished. Finalize Checkpoints is still running; final import JSONs are not ready yet."
         important = (
-            "Generating raw V2",
+            "Building internal base geometry",
             "Target template",
             "Target drawable",
-            "Raw generator stop:",
+            "Internal build stop:",
             "Using settings:",
-            "Preprocess mode:",
+            "Luma Prep mode:",
             "Preprocessed image:",
-            "RAW GENERATION COMPLETE",
-            "V2 outputs are",
-            "V2 finalization:",
-            "V2 scoring ",
-            "V2 finalizing ",
-            "V2 FINALIZATION COMPLETE",
-            "Continuing V2 finalization",
+            "INTERNAL BUILD COMPLETE",
+            "Finalized JSONs are",
+            "Finalize Checkpoints:",
+            "Finalize scoring ",
+            "Finalizing import JSON ",
+            "FINALIZE CHECKPOINTS COMPLETE",
+            "Continuing Finalize Checkpoints",
+            "Edge Repair:",
+            "Final previews:",
             "Candidate ",
             "Best accuracy:",
-            "Latest checkpoint V2:",
-            "V2 JSON:",
-            "V2 preview:",
-            "Selected final:",
+            "Latest finalized checkpoint:",
             "Final JSON:",
             "Final preview:",
+            "Selected final:",
             "Report:",
             "Loaded image:",
             "Settings:",
@@ -1321,6 +1477,11 @@ class MainWindow(QMainWindow):
             candidates.extend(run_dir.glob(f"{image_path.stem}.preview*.png"))
             candidates.extend(run_dir.glob(f"{image_path.stem}.v2.final.*.preview.png"))
             candidates.extend(run_dir.glob("*.preview*.png"))
+            preview_dir = run_dir / "previews"
+            if preview_dir.exists():
+                candidates.extend(preview_dir.glob(f"{image_path.stem}*.preview*.png"))
+                candidates.extend(preview_dir.glob("*.preview*.png"))
+                candidates.extend(preview_dir.glob("*.raw.preview.png"))
         filtered = [path for path in candidates if ".v2.preprocess." not in path.name]
         return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
 
@@ -1353,7 +1514,14 @@ class MainWindow(QMainWindow):
             pass
 
     def open_output_folder(self):
-        folder = self.outputs[-1].parent if self.outputs else (self.images[-1].parent if self.images else None)
+        folder = None
+        if self.outputs:
+            output = self.outputs[-1]
+            folder = output.parent.parent if output.parent.name == "finals" else output.parent
+        elif self.latest_generated_run_dir:
+            folder = self.latest_generated_run_dir
+        elif self.images:
+            folder = self.images[-1].parent
         if folder and folder.exists():
             if os.name == "nt":
                 os.startfile(folder)
@@ -1372,9 +1540,9 @@ class MainWindow(QMainWindow):
         name = Path(path).name
         match = re.search(r"\.(\d+)v2\.json$", name)
         if match:
-            return (int(match.group(1)), 1, f"{match.group(1)} V2")
+            return (int(match.group(1)), 1, f"{match.group(1)} layers")
         if name.endswith(".v2.json") or ".v2.final." in name:
-            return (10**9, 1, "Final V2")
+            return (10**9, 1, "Finalized")
         match = re.search(r"\.(\d+)\.json$", name)
         if match:
             return (int(match.group(1)), 0, match.group(1))
@@ -1409,11 +1577,13 @@ class MainWindow(QMainWindow):
             stamp = "unknown time"
         return f"{prefix}: {name} ({stamp})"
 
-    def all_generated_checkpoint_jsons(self):
+    def all_generated_final_jsons(self):
         candidates = set()
         if GENERATED_ROOT.exists():
             for path in GENERATED_ROOT.rglob("*.json"):
-                if not is_internal_generator_json(path):
+                if is_internal_generator_json(path):
+                    continue
+                if self.is_v2_output_json(path):
                     candidates.add(path.resolve())
         return candidates
 
@@ -1422,7 +1592,7 @@ class MainWindow(QMainWindow):
         return bool(".v2.final." in name or re.search(r"\.\d+v2\.json$", name) or name.endswith(".v2.json"))
 
     def checkpoint_candidates(self):
-        candidates = set(self.all_generated_checkpoint_jsons())
+        candidates = set(self.all_generated_final_jsons())
         candidates = sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)
         recommended = {path.resolve() for path in best_geometry_jsons(candidates)} if candidates else set()
         entries = []
@@ -1461,23 +1631,23 @@ class MainWindow(QMainWindow):
         name = Path(path).name
         match = re.search(r"\.(\d+)v2\.json$", name)
         if match:
-            return f"Checkpoint {match.group(1)} V2"
+            return f"Finalized checkpoint {match.group(1)}"
         if name.endswith(".v2.json") or ".v2.final." in name:
-            return "V2 Final"
+            return "Final vinyl"
         match = re.search(r"\.(\d+)\.json$", name)
         if match:
-            return f"Checkpoint {match.group(1)}"
-        return "Final"
+            return f"Internal checkpoint {match.group(1)}"
+        return "Final vinyl"
 
     def generated_folder_label(self, entry):
         return self.checkpoint_run_label(entry["run_folder"])
 
     def generated_display_label(self, entry):
-        recommended = "[recommended] " if entry.get("recommended") else ""
+        recommended = "[best safe] " if entry.get("recommended") else ""
         unsafe = ""
         if not entry.get("import_safe", True):
             budget = entry.get("import_budget")
-            unsafe = f" [raw overshoot"
+            unsafe = f" [over layer budget"
             if budget:
                 unsafe += f" > {budget}"
             unsafe += "]"
@@ -1522,7 +1692,7 @@ class MainWindow(QMainWindow):
         self.generated_checkpoint_entries = list(self.generated_folder_entries.get(folder_label, []))
         self.generated_checkpoint_list.clear()
         if not self.generated_checkpoint_entries:
-            self.generated_checkpoint_list.addItem("No generated checkpoints found yet.")
+            self.generated_checkpoint_list.addItem("No finalized vinyl JSONs found yet.")
             return
         for entry in self.generated_checkpoint_entries:
             item = QListWidgetItem(self.generated_display_label(entry))
@@ -1550,22 +1720,22 @@ class MainWindow(QMainWindow):
             return
         if not entry.get("import_safe", True):
             self.selected_import_json_path = None
-            self.update_selected_json_label("Selected import JSON: none - highlighted checkpoint is raw overshoot and cannot be imported.")
+            self.update_selected_json_label("Selected final JSON: none - highlighted file is over the layer budget and cannot be imported.")
             self.preview_json(entry["path"])
-            self.log_line(f"Cannot import raw overshoot JSON: {entry['path']} ({entry['layers']} layers > {entry.get('import_budget') or 'target budget'})")
+            self.log_line(f"Cannot import over-budget final JSON: {entry['path']} ({entry['layers']} layers > {entry.get('import_budget') or 'target budget'})")
             return
-        self.select_import_json(entry["path"], "highlighted checkpoint")
+        self.select_import_json(entry["path"], "highlighted finalized checkpoint")
 
     def select_recommended_generated_json(self):
         entry = self.recommended_generated_entry()
         if not entry:
-            self.log_line("No recommended generated JSON found yet.")
+            self.log_line("No best safe final JSON found yet.")
             return
         for row, candidate in enumerate(self.generated_checkpoint_entries):
             if candidate["path"] == entry["path"]:
                 self.generated_checkpoint_list.setCurrentRow(row)
                 break
-        self.select_import_json(entry["path"], "recommended checkpoint")
+        self.select_import_json(entry["path"], "best safe final")
 
     def select_import_json(self, path: Path, source: str):
         self.selected_import_json_path = Path(path)
@@ -1579,9 +1749,9 @@ class MainWindow(QMainWindow):
         if text is not None:
             self.selected_json_label.setText(text)
         elif self.selected_import_json_path:
-            self.selected_json_label.setText(f"Selected import JSON: {self.selected_import_json_path}")
+            self.selected_json_label.setText(f"Selected final JSON: {self.selected_import_json_path}")
         else:
-            self.selected_json_label.setText("Selected import JSON: none")
+            self.selected_json_label.setText("Selected final JSON: none")
 
     def run_subprocess(self, cmd, timeout=None):
         self.bus.log.emit(self.friendly_command_name(cmd))
@@ -1717,7 +1887,7 @@ class MainWindow(QMainWindow):
 
     def start_import(self):
         if not self.selected_import_json_path:
-            self.log_line("No JSON files selected.")
+            self.log_line("No finalized JSON selected.")
             return
         pid = self.selected_pid_value()
         game = self.game_combo.currentText() or "fh6"
@@ -1736,7 +1906,7 @@ class MainWindow(QMainWindow):
                 count_address = context.get("count_address")
                 table_address = context.get("table_address")
         json_path = self.selected_import_json_path
-        self.set_status("Running")
+        self.set_status("Importing")
         threading.Thread(
             target=self.import_worker,
             args=(pid, game, count_address, table_address, layer_count, json_path),
