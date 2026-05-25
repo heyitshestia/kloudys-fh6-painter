@@ -1106,7 +1106,7 @@ class MainWindow(QMainWindow):
                 QScrollArea, QAbstractScrollArea { background: #000000; border: none; }
                 QCheckBox { spacing: 8px; color: #f4f4f4; background: #000000; }
                 QLabel { color: #f4f4f4; background: transparent; }
-                QLabel#updateAlarm { background: #000000; color: #9cff9c; border: 1px solid #123d12; border-radius: 8px; padding: 4px; font-weight: 800; }
+                QLabel#updateAlarm { background: transparent; color: #7cff7c; border: none; padding: 0; font-weight: 800; }
                 QHeaderView::section { background: #000000; color: #f4f4f4; border: 1px solid #1d1d1d; padding: 5px; }
                 QScrollBar:vertical, QScrollBar:horizontal { background: #000000; border: none; width: 13px; height: 13px; }
                 QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #303030; border-radius: 6px; min-height: 24px; min-width: 24px; }
@@ -1174,18 +1174,18 @@ class MainWindow(QMainWindow):
         state = self.update_alarm_state
         text = self.update_alarm_text
         self.update_alarm.setText(text)
-        base_style = "QLabel#updateAlarm { border-radius: 8px; padding: 4px 10px; font-weight: 900; font-size: 9pt; }"
+        base_style = "QLabel#updateAlarm { background: transparent; border: none; padding: 0; font-weight: 900; font-size: 9pt; }"
         if state == "available":
             if self.update_blink_on:
-                style = "background: #ff1f1f; color: #ffffff; border: 2px solid #ffb3b3;"
+                style = "color: #ff2020;"
             else:
-                style = "background: #180000; color: #ff4a4a; border: 2px solid #ff1f1f;"
+                style = "color: #ff7a7a;"
         elif state == "ok":
-            style = "background: #001300; color: #7cff7c; border: 1px solid #1f7a1f;"
+            style = "color: #19b84a;"
         elif state == "checking":
-            style = "background: #050505; color: #d8d8d8; border: 1px solid #3a3a3a;"
+            style = "color: #808080;"
         else:
-            style = "background: #090909; color: #b5b5b5; border: 1px solid #333333;"
+            style = "color: #808080;"
         self.update_alarm.setStyleSheet(base_style.replace("}", f" {style} }}"))
 
     def update_setting_description(self):
