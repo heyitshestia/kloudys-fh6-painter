@@ -137,6 +137,18 @@ def clamp_color(values):
     return bytes(max(0, min(255, int(v))) for v in vals)
 
 
+def shape_mask_flag(shape, data):
+    for key in ("mask", "is_mask", "isMask"):
+        if key in shape:
+            return bool(shape.get(key))
+    if len(data) > 6:
+        try:
+            return bool(int(float(data[6])))
+        except (TypeError, ValueError):
+            return bool(data[6])
+    return False
+
+
 SUPPORTED_PAGE1_CODES = {
     1048677,  # Square
     1048678,  # Circle
@@ -183,7 +195,7 @@ def load_shapes(path, allow_unknown_low_byte=False):
             "skew": float(data[5]) if len(data) > 5 else 0.0,
             "extra_data": list(data[5:]),
             "color": list(clamp_color(shape.get("color"))),
-            "mask": bool(shape.get("mask") or shape.get("is_mask") or shape.get("isMask")),
+            "mask": shape_mask_flag(shape, data),
             "score": shape.get("score"),
         })
     return out, skipped

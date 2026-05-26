@@ -94,7 +94,7 @@ def decode_layer(raw, index, ptr, include_raw=False):
         "type": type_code,
         "type_word": shape_word,
         "type_word_hex": hx(shape_word),
-        "data": [x, y, sx, sy, rotation, skew],
+        "data": [x, y, sx, sy, rotation, skew, 1 if mask else 0],
         "color": color,
         "mask": mask,
         "score": 0,
