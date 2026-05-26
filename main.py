@@ -31,7 +31,10 @@ _CV2_ERROR = None
 # These compensation values intentionally make imported ellipses a little
 # smaller, with extra shrink on the major axis for long thin blobs.
 ELLIPSE_IMPORT_BASE_DIVISOR = 63.0
-RECTANGLE_IMPORT_BASE_DIVISOR = 254.0
+# Generated geometry rectangles use the legacy geometrize coordinate scale.
+# Using the square primitive's direct type-code calibration here makes
+# rectangle-heavy generated JSONs import at half size.
+RECTANGLE_IMPORT_BASE_DIVISOR = 127.0
 DEFAULT_MASK_BUDGET = 4
 
 
