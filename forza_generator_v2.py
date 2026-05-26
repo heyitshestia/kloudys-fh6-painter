@@ -196,14 +196,50 @@ def build_save_points(target: int, stop_at: int, checkpoint_step: int) -> str:
     return ",".join(str(n) for n in sorted(points))
 
 
+def parse_save_points(value: str, stop_at: int) -> list[int]:
+    points = []
+    for part in re.split(r"[,;\\s]+", str(value or "")):
+        if not part.strip():
+            continue
+        try:
+            point = int(part)
+        except ValueError:
+            continue
+        if 0 < point <= stop_at:
+            points.append(point)
+    return sorted(set(points))
+
+
+def infer_save_every(points: list[int], fallback: int) -> int:
+    if not points:
+        return max(1, fallback)
+    if len(points) == 1:
+        return max(1, points[0])
+    deltas = [b - a for a, b in zip(points, points[1:]) if b > a]
+    if not deltas:
+        return max(1, fallback)
+    step = deltas[0]
+    for delta in deltas[1:]:
+        step = math.gcd(step, delta)
+    return max(1, step)
+
+
 def write_v2_settings(base_settings: dict[str, str], out_path: Path, target: int, stop_at: int, checkpoint_step: int) -> None:
     values = dict(base_settings)
     values["description"] = f"V2 settings targeting {target} template layers"
     values.setdefault("shapeMode", "mixed_ellipses")
     values["stopAt"] = str(stop_at)
-    values["saveAt"] = build_save_points(target, stop_at, checkpoint_step)
-    values["saveEvery"] = str(max(1, checkpoint_step))
-    values["previewEvery"] = str(max(1, checkpoint_step))
+    explicit_points = parse_save_points(values.get("saveAt", ""), stop_at)
+    if explicit_points:
+        explicit_points = sorted(set(explicit_points + [target, stop_at]))
+        save_every = infer_save_every(explicit_points, checkpoint_step)
+        values["saveAt"] = ",".join(str(point) for point in explicit_points)
+        values["saveEvery"] = str(save_every)
+        values["previewEvery"] = str(save_every)
+    else:
+        values["saveAt"] = build_save_points(target, stop_at, checkpoint_step)
+        values["saveEvery"] = str(max(1, checkpoint_step))
+        values["previewEvery"] = str(max(1, checkpoint_step))
 
     ordered_keys = [
         "description",

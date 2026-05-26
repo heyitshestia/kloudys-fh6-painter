@@ -2321,6 +2321,16 @@ class MainWindow(QMainWindow):
         path = Path(path)
         name = path.name
         preview_dir = path.parent.parent / "previews"
+        match = re.match(r"^(.*)\.([A-Za-z0-9_-]+)v2\.json$", name)
+        if match:
+            base, tag = match.groups()
+            candidates = [
+                preview_dir / f"{base}.preview.{tag}v2.png",
+                path.with_name(f"{base}.preview.{tag}v2.png"),
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    return candidate
         match = re.match(r"^(.*)\.(\d+)v2\.json$", name)
         if match:
             base, step = match.groups()
@@ -2663,6 +2673,11 @@ class MainWindow(QMainWindow):
         match = re.search(r"\.(\d+)v2\.json$", name)
         if match:
             return (int(match.group(1)), 1, f"{match.group(1)} layers")
+        match = re.search(r"\.([A-Za-z0-9_-]+)v2\.json$", name)
+        if match:
+            tag = match.group(1)
+            label = "Final" if tag.lower() == "final" else f"{tag} checkpoint"
+            return (10**9, 1, label)
         if name.endswith(".v2.json") or ".v2.final." in name:
             return (10**9, 1, "Finalized")
         match = re.search(r"\.(\d+)\.json$", name)
@@ -2705,13 +2720,19 @@ class MainWindow(QMainWindow):
             for path in GENERATED_ROOT.rglob("*.json"):
                 if is_internal_generator_json(path):
                     continue
-                if self.is_v2_output_json(path):
+                if path.parent.name == "finals" or self.is_v2_output_json(path):
                     candidates.add(path.resolve())
         return candidates
 
     def is_v2_output_json(self, path):
-        name = Path(path).name.lower()
-        return bool(".v2.final." in name or re.search(r"\.\d+v2\.json$", name) or name.endswith(".v2.json"))
+        path = Path(path)
+        name = path.name.lower()
+        return bool(
+            path.parent.name == "finals"
+            or ".v2.final." in name
+            or re.search(r"\.[a-z0-9_-]+v2\.json$", name)
+            or name.endswith(".v2.json")
+        )
 
     def checkpoint_candidates(self):
         candidates = set(self.all_generated_final_jsons())
@@ -2811,6 +2832,10 @@ class MainWindow(QMainWindow):
         match = re.search(r"\.(\d+)v2\.json$", name)
         if match:
             return f"Finalized checkpoint {match.group(1)}"
+        match = re.search(r"\.([A-Za-z0-9_-]+)v2\.json$", name)
+        if match:
+            tag = match.group(1)
+            return "Final vinyl" if tag.lower() == "final" else f"Finalized checkpoint {tag}"
         if name.endswith(".v2.json") or ".v2.final." in name:
             return "Final vinyl"
         match = re.search(r"\.(\d+)\.json$", name)

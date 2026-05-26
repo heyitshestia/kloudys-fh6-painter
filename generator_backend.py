@@ -466,7 +466,23 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         target_count = int(target_shapes)
     except (TypeError, ValueError):
         target_count = 3000
-    checkpoint_step = "250" if target_count <= 1000 else "500"
+    save_at_points = []
+    for part in re.split(r"[,;\s]+", str(values.get("saveAt", ""))):
+        if not part.strip():
+            continue
+        try:
+            point = int(part)
+        except ValueError:
+            continue
+        if point > 0:
+            save_at_points.append(point)
+    if len(save_at_points) >= 2:
+        deltas = [b - a for a, b in zip(sorted(set(save_at_points)), sorted(set(save_at_points))[1:]) if b > a]
+        checkpoint_step = str(min(deltas) if deltas else save_at_points[0])
+    elif save_at_points:
+        checkpoint_step = str(save_at_points[0])
+    else:
+        checkpoint_step = "250" if target_count <= 1000 else "500"
     preprocess_mode = values.get("v2PreprocessMode", "none")
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
     run_metadata_path = reports_dir / f"{image_path.stem}.v2.run_metadata.json"
