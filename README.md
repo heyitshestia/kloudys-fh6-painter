@@ -321,6 +321,10 @@ The custom importer license and attribution notice is in [LICENSE.custom-importe
 - Universal handmade multi-shape import is working but still marked WIP because live editor refresh and vinyl-menu thumbnail behavior are not fully polished.
 - In-game FH6 editor state matters. If FH6 is in the wrong menu, import will fail even if the JSON is valid.
 
+## Discord
+https://discord.gg/CHkAQeWM
+its not server, please don't spam, please behave.
+A bit of technical literacy is a hard requirement for all of this, there will be no "how do i download this" hand in hand walkthroughs on discord.
 ## License
 
 This project is a derivative of the Forza Painter workflow and keeps the original MIT license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
