@@ -102,6 +102,7 @@ USER_IMAGES_ROOT = ROOT.parent / "Images" if ROOT.name.lower() == STANDALONE_APP
 THEMES = {
     "Pastel Bloom": "pastel",
     "Sakura Glass": "sakura",
+    "Horizon Pulse": "horizon",
     "Blackout": "blackout",
 }
 DEFAULT_THEME = "Blackout"
@@ -889,10 +890,25 @@ class AnimatedThemeBackground(QWidget):
                     "alpha": rng.uniform(0.34, 0.68),
                 }
             )
+        self.horizon_phase = 0.0
+        self.horizon_streaks = []
+        for index in range(42):
+            lane = rng.choice([-1, 1])
+            self.horizon_streaks.append(
+                {
+                    "x": rng.uniform(0.0, 1.0),
+                    "y": rng.uniform(0.0, 1.0),
+                    "length": rng.uniform(0.035, 0.11),
+                    "speed": rng.uniform(0.006, 0.017),
+                    "lane": lane,
+                    "alpha": rng.uniform(0.22, 0.78),
+                    "color": "#24e9ff" if index % 3 else "#ff4a2b",
+                }
+            )
 
     def set_theme(self, theme_key: str):
         self.theme_key = theme_key
-        if theme_key == "sakura":
+        if theme_key in ("sakura", "horizon"):
             if not self.timer.isActive():
                 self.timer.start(33)
         else:
@@ -900,14 +916,24 @@ class AnimatedThemeBackground(QWidget):
         self.update()
 
     def advance_petals(self):
-        for petal in self.petals:
-            petal["phase"] += 0.045 * petal["drift"]
-            petal["angle"] += petal["spin"]
-            petal["x"] += petal["speed"]
-            petal["y"] += math.sin(petal["phase"]) * 0.0009
-            if petal["x"] > 1.12:
-                petal["x"] = random.uniform(-0.22, -0.04)
-                petal["y"] = random.uniform(0.04, 0.95)
+        if self.theme_key == "sakura":
+            for petal in self.petals:
+                petal["phase"] += 0.045 * petal["drift"]
+                petal["angle"] += petal["spin"]
+                petal["x"] += petal["speed"]
+                petal["y"] += math.sin(petal["phase"]) * 0.0009
+                if petal["x"] > 1.12:
+                    petal["x"] = random.uniform(-0.22, -0.04)
+                    petal["y"] = random.uniform(0.04, 0.95)
+        elif self.theme_key == "horizon":
+            self.horizon_phase = (self.horizon_phase + 0.018) % math.tau
+            for streak in self.horizon_streaks:
+                streak["x"] += streak["speed"] * streak["lane"]
+                streak["y"] += streak["speed"] * 0.35
+                if streak["x"] < -0.18 or streak["x"] > 1.18 or streak["y"] > 1.12:
+                    streak["x"] = random.uniform(0.12, 0.88)
+                    streak["y"] = random.uniform(-0.08, 0.22)
+                    streak["lane"] = random.choice([-1, 1])
         self.update()
 
     def paintEvent(self, _event):
@@ -928,6 +954,8 @@ class AnimatedThemeBackground(QWidget):
             self.paint_petals(painter)
         elif self.theme_key == "blackout":
             painter.fillRect(rect, QColor("#000000"))
+        elif self.theme_key == "horizon":
+            self.paint_horizon(painter, rect)
         else:
             painter.fillRect(rect, QColor("#f5edff"))
 
@@ -951,6 +979,64 @@ class AnimatedThemeBackground(QWidget):
             path.cubicTo(-size * 0.52, size * 0.36, -size * 0.58, -size * 0.30, 0, -size * 0.55)
             painter.drawPath(path)
             painter.restore()
+
+    def paint_horizon(self, painter: QPainter, rect):
+        width = max(1, rect.width())
+        height = max(1, rect.height())
+        pulse = 0.5 + 0.5 * math.sin(self.horizon_phase)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0.00, QColor("#050914"))
+        gradient.setColorAt(0.34, QColor("#071929"))
+        gradient.setColorAt(0.70, QColor("#120912"))
+        gradient.setColorAt(1.00, QColor("#050506"))
+        painter.fillRect(rect, gradient)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        cyan_glow = QColor(31, 225, 255, int(38 + 42 * pulse))
+        orange_glow = QColor(255, 79, 38, int(34 + 38 * (1.0 - pulse)))
+        painter.setBrush(cyan_glow)
+        painter.drawEllipse(QRectF(width * 0.66, -height * 0.17, width * 0.46, height * 0.48))
+        painter.setBrush(orange_glow)
+        painter.drawEllipse(QRectF(-width * 0.17, height * 0.55, width * 0.45, height * 0.46))
+
+        horizon_y = height * 0.57
+        road_bottom = height * 1.10
+        painter.setPen(QPen(QColor(36, 233, 255, 54), 1.1))
+        for index in range(10):
+            t = index / 9
+            x_top = width * (0.50 + (t - 0.5) * 0.10)
+            x_bottom = width * (0.50 + (t - 0.5) * 1.38)
+            painter.drawLine(int(x_top), int(horizon_y), int(x_bottom), int(road_bottom))
+
+        painter.setPen(QPen(QColor(255, 255, 255, 35), 1.0))
+        offset = (self.horizon_phase / math.tau) * 0.09
+        for index in range(13):
+            t = ((index / 12) + offset) % 1.0
+            eased = t * t
+            y = horizon_y + eased * (road_bottom - horizon_y)
+            half_width = width * (0.05 + eased * 0.72)
+            alpha = int(28 + eased * 58)
+            painter.setPen(QPen(QColor(36, 233, 255, alpha), 1.0 + eased * 2.0))
+            painter.drawLine(int(width * 0.5 - half_width), int(y), int(width * 0.5 + half_width), int(y))
+
+        for streak in self.horizon_streaks:
+            color = QColor(streak["color"])
+            color.setAlphaF(streak["alpha"])
+            pen = QPen(color, 1.2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            x = streak["x"] * width
+            y = streak["y"] * height
+            length = streak["length"] * width
+            painter.drawLine(int(x), int(y), int(x - length * streak["lane"]), int(y - length * 0.18))
+
+        gauge_rect = QRectF(width - 245, height - 205, 210, 210)
+        painter.setPen(QPen(QColor(255, 255, 255, 35), 8))
+        painter.drawArc(gauge_rect, 205 * 16, -235 * 16)
+        painter.setPen(QPen(QColor(255, 74, 43, int(130 + 80 * pulse)), 8))
+        painter.drawArc(gauge_rect, 205 * 16, int(-165 * 16 - 42 * 16 * pulse))
+        painter.setPen(QPen(QColor(36, 233, 255, 110), 2))
+        painter.drawArc(QRectF(28, 28, 210, 210), 35 * 16, 112 * 16)
 
 
 class MainWindow(QMainWindow):
@@ -1512,6 +1598,7 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(QLabel("Theme"))
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addWidget(QLabel("Theme changes apply immediately and are saved for the next launch."))
+        theme_layout.addWidget(QLabel("Horizon Pulse uses an animated neon road grid, racing streaks, and translucent dark controls."))
         theme_layout.addWidget(QLabel("Sakura Glass uses an opaque control frame with animated cherry blossoms in the background."))
         theme_layout.addWidget(QLabel("Blackout is a full dark opaque preset for low-glare use."))
         layout.addWidget(theme)
@@ -1572,6 +1659,39 @@ class MainWindow(QMainWindow):
                 QScrollArea, QAbstractScrollArea { background: transparent; border: none; }
                 QCheckBox { spacing: 8px; color: #332534; }
                 QLabel { color: #332534; background: transparent; }
+                """
+            )
+        elif theme_key == "horizon":
+            self.setStyleSheet(
+                """
+                QMainWindow { background: #050914; color: #e8fbff; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
+                QWidget#appRoot { background: transparent; }
+                QTabWidget::pane { border: 1px solid rgba(36, 233, 255, 150); border-radius: 16px; background: rgba(5, 9, 20, 218); }
+                QTabBar::tab { background: rgba(8, 22, 35, 225); color: #8bdfff; padding: 10px 18px; border: 1px solid rgba(36, 233, 255, 90); border-bottom: none; border-top-left-radius: 12px; border-top-right-radius: 12px; margin-right: 4px; font-weight: 800; }
+                QTabBar::tab:hover { background: rgba(15, 48, 70, 236); color: #ffffff; border-color: rgba(255, 74, 43, 160); }
+                QTabBar::tab:selected { background: rgba(8, 15, 28, 245); color: #ffffff; border-color: rgba(36, 233, 255, 210); }
+                QGroupBox { border: 1px solid rgba(36, 233, 255, 130); border-radius: 16px; margin-top: 14px; padding: 12px; background: rgba(7, 13, 25, 226); font-weight: 800; color: #24e9ff; }
+                QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 9px; background: rgba(7, 13, 25, 245); color: #ff8b52; border-radius: 7px; }
+                QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(11, 45, 67, 245), stop:1 rgba(17, 18, 31, 245)); color: #effcff; border: 1px solid rgba(36, 233, 255, 150); border-radius: 11px; padding: 8px 14px; font-weight: 800; min-height: 28px; }
+                QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(23, 77, 99, 252), stop:1 rgba(56, 22, 27, 252)); border-color: #ff4a2b; color: #ffffff; }
+                QPushButton:pressed { background: #050914; border-color: #ffffff; }
+                QPushButton#primaryButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.52 #ffb000, stop:1 #24e9ff); color: #07101a; border: 1px solid #ffffff; font-weight: 950; padding: 12px 16px; }
+                QPushButton#primaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff6b42, stop:0.50 #ffd166, stop:1 #6df6ff); color: #020407; }
+                QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: rgba(2, 7, 14, 238); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); border-radius: 9px; padding: 6px; selection-background-color: #ff4a2b; selection-color: #ffffff; }
+                QLineEdit:focus, QComboBox:focus, QListWidget:focus, QTextEdit:focus, QTreeWidget:focus { border: 1px solid #ffb000; }
+                QComboBox { padding-right: 30px; }
+                QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid rgba(36, 233, 255, 130); border-top-right-radius: 8px; border-bottom-right-radius: 8px; background: rgba(255, 74, 43, 190); }
+                QComboBox QAbstractItemView { background: #050914; color: #e8fbff; border: 1px solid #24e9ff; selection-background-color: #ff4a2b; selection-color: #ffffff; outline: 0; }
+                QGraphicsView { background: rgba(2, 7, 14, 236); border: 1px solid rgba(36, 233, 255, 115); border-radius: 10px; }
+                QScrollArea, QAbstractScrollArea { background: transparent; border: none; }
+                QCheckBox { spacing: 8px; color: #e8fbff; background: transparent; }
+                QLabel { color: #e8fbff; background: transparent; }
+                QLabel#updateAlarm { background: transparent; color: #19ff7f; border: none; padding: 0; font-weight: 900; }
+                QHeaderView::section { background: rgba(7, 13, 25, 245); color: #24e9ff; border: 1px solid rgba(36, 233, 255, 90); padding: 5px; font-weight: 800; }
+                QScrollBar:vertical, QScrollBar:horizontal { background: rgba(2, 7, 14, 170); border: none; width: 13px; height: 13px; }
+                QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #18556f; border-radius: 6px; min-height: 24px; min-width: 24px; }
+                QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: #ff4a2b; }
+                QScrollBar::add-line, QScrollBar::sub-line { background: transparent; border: none; width: 0; height: 0; }
                 """
             )
         elif theme_key == "blackout":
