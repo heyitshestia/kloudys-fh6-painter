@@ -15,6 +15,7 @@ dist/
 build/
 python/
 *.exe.bak-*
+BUILD_COMMIT
 
 # Large/volatile FH6 diagnostics
 *count-*.json

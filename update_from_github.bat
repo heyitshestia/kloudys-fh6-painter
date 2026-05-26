@@ -33,6 +33,7 @@ if exist ".git\" (
         call :log "Generated outputs are stored separately and are not intentionally removed."
         goto :fail
     )
+    call :write_build_commit "%CD%"
     call :cleanup_retired_files
     goto :done
 )
@@ -60,6 +61,7 @@ if errorlevel 8 (
 )
 
 call :cleanup_retired_files
+call :write_build_commit "%TMP_REPO%"
 
 rmdir /s /q "%TMP_PARENT%" >nul 2>nul
 
@@ -129,6 +131,14 @@ if errorlevel 8 (
     call :log "Continuing update without blocking because generated/runtime data is preserved separately."
 )
 call :log "Backup folder: !BACKUP_DIR!"
+exit /b 0
+
+:write_build_commit
+set "COMMIT_SHA="
+for /f "delims=" %%V in ('git -C "%~1" rev-parse HEAD 2^>nul') do set "COMMIT_SHA=%%V"
+if defined COMMIT_SHA (
+    > "%CD%\BUILD_COMMIT" echo !COMMIT_SHA!
+)
 exit /b 0
 
 :ensure_git

@@ -87,6 +87,7 @@ REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-fh6-painter"
 BRANCH = "main"
 GITHUB_VERSION_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/VERSION?ref={BRANCH}"
+GITHUB_COMMIT_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/commits/{BRANCH}"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
@@ -317,6 +318,35 @@ def local_app_version() -> str:
         return "unknown"
 
 
+def local_app_revision() -> str | None:
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=3,
+            creationflags=flags,
+            check=False,
+        )
+        revision = result.stdout.strip()
+        if result.returncode == 0 and re.fullmatch(r"[0-9a-fA-F]{7,40}", revision):
+            return revision.lower()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        revision = (ROOT / "BUILD_COMMIT").read_text(encoding="utf-8").strip()
+        if re.fullmatch(r"[0-9a-fA-F]{7,40}", revision):
+            return revision.lower()
+    except OSError:
+        pass
+    return None
+
+
 def remote_app_version() -> str:
     request = urllib.request.Request(
         GITHUB_VERSION_API,
@@ -330,6 +360,23 @@ def remote_app_version() -> str:
         payload = json.loads(response.read().decode("utf-8", errors="replace"))
     content = str(payload.get("content", ""))
     return base64.b64decode(content).decode("utf-8", errors="replace").strip()
+
+
+def remote_main_revision() -> str | None:
+    request = urllib.request.Request(
+        GITHUB_COMMIT_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Cache-Control": "no-cache",
+            "User-Agent": "KloudysFH6Painter",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    revision = str(payload.get("sha", "")).strip()
+    if re.fullmatch(r"[0-9a-fA-F]{7,40}", revision):
+        return revision.lower()
+    return None
 
 
 def version_tuple(value: str) -> tuple[int, ...] | None:
@@ -352,6 +399,12 @@ def compare_versions(local_value: str, remote_value: str) -> int:
     if remote_parts < local_parts:
         return 1
     return 0
+
+
+def main_revision_has_bugfix(local_revision: str | None, remote_revision: str | None) -> bool:
+    if not local_revision or not remote_revision:
+        return False
+    return not remote_revision.startswith(local_revision) and not local_revision.startswith(remote_revision)
 
 
 def require_project_presence() -> None:
@@ -1600,15 +1653,27 @@ class MainWindow(QMainWindow):
             elif version_state > 0:
                 self.bus.update_alert.emit("ok", f"local test build: {local_version}")
             else:
-                self.bus.update_alert.emit("ok", f"up to date: main {local_version}")
+                try:
+                    local_revision = local_app_revision()
+                    remote_revision = remote_main_revision()
+                except Exception as exc:
+                    self.bus.log.emit(f"Main revision check failed: {exc}")
+                    self.bus.update_alert.emit("ok", f"up to date: main {local_version}")
+                    return
+                if main_revision_has_bugfix(local_revision, remote_revision):
+                    remote_short = remote_revision[:8] if remote_revision else ""
+                    suffix = f" {remote_short}" if remote_short else ""
+                    self.bus.update_alert.emit("bugfix", f"bugfix available: main {local_version}{suffix}")
+                else:
+                    self.bus.update_alert.emit("ok", f"up to date: main {local_version}")
         finally:
             self.update_check_running = False
 
     def show_update_alert(self, state: str, text: str):
         self.update_alarm_state = state
         self.update_alarm_text = text
-        self.update_blink_on = state == "available"
-        if state == "available":
+        self.update_blink_on = state in ("available", "bugfix")
+        if state in ("available", "bugfix"):
             if not self.update_blink_timer.isActive():
                 self.update_blink_timer.start()
         else:
@@ -1631,6 +1696,11 @@ class MainWindow(QMainWindow):
                 style = "color: #ff2020;"
             else:
                 style = "color: #ff7a7a;"
+        elif state == "bugfix":
+            if self.update_blink_on:
+                style = "color: #ff4fb8;"
+            else:
+                style = "color: #ffb3dc;"
         elif state == "ok":
             style = "color: #19b84a;"
         elif state == "checking":
