@@ -20,7 +20,7 @@ The standalone release contains:
 - `KloudysFH6Painter/`
 - bundled Python 3.12 runtime
 - bundled Python dependencies
-- bundled GPU generator: `KloudysGeneratorV4.exe`
+- bundled GPU generator: `KloudysGeneratorV5.exe`
 - `Images/` folder next to the launcher for your source art
 
 You should not need to install Python manually when using the standalone release. The setup buttons are still there as a fallback.

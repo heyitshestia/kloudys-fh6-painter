@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import contextlib
 import json
 import math
@@ -86,8 +85,7 @@ ROOT = Path(__file__).resolve().parent
 REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-fh6-painter"
 BRANCH = "main"
-GITHUB_VERSION_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/VERSION?ref={BRANCH}"
-GITHUB_COMMIT_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/commits/{BRANCH}"
+GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
@@ -350,33 +348,38 @@ def local_app_revision() -> str | None:
 
 def remote_app_version() -> str:
     request = urllib.request.Request(
-        GITHUB_VERSION_API,
+        GITHUB_VERSION_RAW,
         headers={
-            "Accept": "application/vnd.github+json",
+            "Accept": "text/plain",
             "Cache-Control": "no-cache",
             "User-Agent": "KloudysFH6Painter",
         },
     )
     with urllib.request.urlopen(request, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8", errors="replace"))
-    content = str(payload.get("content", ""))
-    return base64.b64decode(content).decode("utf-8", errors="replace").strip()
+        return response.read().decode("utf-8", errors="replace").strip()
 
 
 def remote_main_revision() -> str | None:
-    request = urllib.request.Request(
-        GITHUB_COMMIT_API,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Cache-Control": "no-cache",
-            "User-Agent": "KloudysFH6Painter",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8", errors="replace"))
-    revision = str(payload.get("sha", "")).strip()
-    if re.fullmatch(r"[0-9a-fA-F]{7,40}", revision):
-        return revision.lower()
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git", f"refs/heads/{BRANCH}"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=8,
+            creationflags=flags,
+            check=False,
+        )
+        if result.returncode == 0:
+            revision = result.stdout.split()[0].strip()
+            if re.fullmatch(r"[0-9a-fA-F]{7,40}", revision):
+                return revision.lower()
+    except (OSError, subprocess.SubprocessError, IndexError):
+        pass
     return None
 
 

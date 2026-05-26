@@ -164,7 +164,7 @@ echo Git was not found. Installing PortableGit silently for this user...
 set "GIT_INSTALLER=%TEMP%\PortableGit-64-bit.7z.exe"
 if exist "%GIT_INSTALLER%" del /f /q "%GIT_INSTALLER%" >nul 2>nul
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $release=Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest'; $asset=$release.assets | Where-Object { $_.name -match '^PortableGit-.*-64-bit\.7z\.exe$' } | Select-Object -First 1; if(-not $asset){ throw 'PortableGit asset not found.' }; Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $env:TEMP\PortableGit-64-bit.7z.exe"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Continue'; $out=Join-Path $env:TEMP 'PortableGit-64-bit.7z.exe'; $urls=@('https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/PortableGit-2.54.0-64-bit.7z.exe','https://sourceforge.net/projects/git-for-windows.mirror/files/v2.54.0.windows.1/PortableGit-2.54.0-64-bit.7z.exe/download'); foreach($url in $urls){ try { Write-Host ('Downloading PortableGit from ' + $url); Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $out -Headers @{'User-Agent'='KloudysFH6Painter'}; if((Test-Path $out) -and ((Get-Item $out).Length -gt 1000000)){ exit 0 } } catch { Write-Host ('PortableGit download failed from ' + $url + ': ' + $_.Exception.Message) } }; exit 1"
 if errorlevel 1 (
     echo Failed to download PortableGit.
     exit /b 1
