@@ -323,7 +323,7 @@ The custom importer license and attribution notice is in [LICENSE.custom-importe
 
 ## Discord
 https://discord.gg/CHkAQeWM
-its not server, please don't spam, please behave.
+its not my server, please don't spam, please behave.
 A bit of technical literacy is a hard requirement for all of this, there will be no "how do i download this" hand in hand walkthroughs on discord.
 ## License
 
