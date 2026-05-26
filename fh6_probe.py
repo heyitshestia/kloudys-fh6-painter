@@ -375,8 +375,9 @@ def summarize_table_candidate(pid, profile, table, layer_count, blob_size, reque
 def collect_auto_locate_tables(pid, profile, layer_count, max_seconds=None):
     groups = []
     if profile.key == "fh6":
-        groups.extend(locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds))
         groups.extend(locate_clivery_groups_by_rtti(pid, profile, layer_count))
+        if not groups:
+            groups.extend(locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds))
     else:
         groups.extend(locate_clivery_groups_by_rtti(pid, profile, layer_count))
         if not groups:
@@ -949,7 +950,9 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
     started = time.monotonic()
 
     if profile.key == "fh6":
-        fast_groups = locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds)
+        fast_groups = locate_clivery_groups_by_rtti(pid, profile, layer_count)
+        if not fast_groups:
+            fast_groups = locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds)
     else:
         fast_groups = locate_clivery_groups_by_rtti(pid, profile, layer_count)
         if not fast_groups:

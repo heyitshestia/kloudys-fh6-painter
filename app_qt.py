@@ -17,8 +17,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QObject, QRectF, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -1039,6 +1039,105 @@ class AnimatedThemeBackground(QWidget):
         painter.drawArc(QRectF(28, 28, 210, 210), 35 * 16, 112 * 16)
 
 
+class SparkleLinkPanel(QWidget):
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+        self.phase = 0.0
+        rng = random.Random(260526)
+        self.sparkles = [
+            {
+                "angle": (math.tau * index / 48.0) + rng.uniform(-0.035, 0.035),
+                "length": rng.uniform(9.0, 20.0),
+                "speed": rng.uniform(0.035, 0.075),
+                "phase": rng.uniform(0.0, math.tau),
+                "color": rng.choice(["#ffffff", "#ff4fb8", "#24e9ff", "#ffd166"]),
+            }
+            for index in range(48)
+        ]
+        self.timer = QTimer(self)
+        self.timer.setInterval(33)
+        self.timer.timeout.connect(self.advance)
+        self.timer.start()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.addStretch(1)
+
+        open_button = QPushButton(url)
+        open_button.setObjectName("backgroundRemoverButton")
+        open_button.setMinimumSize(560, 72)
+        open_button.setMaximumWidth(740)
+        open_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.url)))
+        open_button.setStyleSheet(
+            """
+            QPushButton#backgroundRemoverButton {
+                color: #07101a;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4fb8, stop:0.48 #ffd166, stop:1 #24e9ff);
+                border: 2px solid #ffffff;
+                border-radius: 18px;
+                font-size: 15pt;
+                font-weight: 950;
+                padding: 16px 24px;
+            }
+            QPushButton#backgroundRemoverButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff80cf, stop:0.50 #ffe299, stop:1 #74f8ff);
+            }
+            QPushButton#backgroundRemoverButton:pressed {
+                background: #ffffff;
+                color: #07101a;
+            }
+            """
+        )
+        self.link_button = open_button
+        layout.addWidget(open_button, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch(1)
+
+    def advance(self):
+        self.phase = (self.phase + 0.035) % math.tau
+        for sparkle in self.sparkles:
+            sparkle["phase"] = (sparkle["phase"] + sparkle["speed"]) % math.tau
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect()
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0.00, QColor("#070914"))
+        gradient.setColorAt(0.45, QColor("#15112a"))
+        gradient.setColorAt(1.00, QColor("#061c26"))
+        painter.fillRect(rect, gradient)
+
+        glow_alpha = int(38 + 30 * (0.5 + 0.5 * math.sin(self.phase)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(255, 79, 184, glow_alpha))
+        painter.drawEllipse(QRectF(rect.width() * 0.06, rect.height() * 0.10, rect.width() * 0.28, rect.height() * 0.32))
+        painter.setBrush(QColor(36, 233, 255, glow_alpha))
+        painter.drawEllipse(QRectF(rect.width() * 0.66, rect.height() * 0.52, rect.width() * 0.31, rect.height() * 0.34))
+
+        button_rect = QRectF(self.link_button.geometry()) if hasattr(self, "link_button") else QRectF()
+        if button_rect.isNull():
+            button_rect = QRectF(rect.width() * 0.25, rect.height() * 0.46, rect.width() * 0.50, 72)
+        center = button_rect.center()
+        radius_x = button_rect.width() * 0.56
+        radius_y = button_rect.height() * 1.55
+        for sparkle in self.sparkles:
+            twinkle = 0.5 + 0.5 * math.sin(sparkle["phase"])
+            color = QColor(sparkle["color"])
+            color.setAlphaF(0.18 + 0.82 * twinkle)
+            angle = sparkle["angle"] + math.sin(self.phase * 0.65) * 0.045
+            inner_x = center.x() + math.cos(angle) * radius_x
+            inner_y = center.y() + math.sin(angle) * radius_y
+            length = sparkle["length"] * (0.72 + 0.62 * twinkle)
+            outer_x = center.x() + math.cos(angle) * (radius_x + length)
+            outer_y = center.y() + math.sin(angle) * (radius_y + length)
+            pen = QPen(color, 1.2 + 1.3 * twinkle)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawLine(int(inner_x), int(inner_y), int(outer_x), int(outer_y))
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_images: list[str]):
         super().__init__()
@@ -1129,6 +1228,7 @@ class MainWindow(QMainWindow):
         self._build_handmade_import_tab()
         self._build_game_export_tab()
         self._build_luma_tab()
+        self._build_background_remover_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
         footer = QHBoxLayout()
@@ -1575,6 +1675,13 @@ class MainWindow(QMainWindow):
         preview_row.addLayout(after_col, 1)
         layout.addLayout(preview_row, 1)
         self.tabs.addTab(tab, "Luma Band Pass")
+
+    def _build_background_remover_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(SparkleLinkPanel("https://www.photoroom.com/tools/background-remover"), 1)
+        self.tabs.addTab(tab, "Background Remover")
 
     def _build_tutorial_tab(self):
         tab = QWidget()
