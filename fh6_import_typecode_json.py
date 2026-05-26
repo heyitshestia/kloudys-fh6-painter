@@ -183,6 +183,7 @@ def load_shapes(path, allow_unknown_low_byte=False):
             "skew": float(data[5]) if len(data) > 5 else 0.0,
             "extra_data": list(data[5:]),
             "color": list(clamp_color(shape.get("color"))),
+            "mask": bool(shape.get("mask") or shape.get("is_mask") or shape.get("isMask")),
             "score": shape.get("score"),
         })
     return out, skipped
@@ -241,7 +242,7 @@ def main():
                 (0x50, struct.pack("<f", item["rotation"])),
                 (0x70, struct.pack("<f", item["skew"])),
                 (0x74, bytes(item["color"])),
-                (0x78, b"\x00"),
+                (0x78, b"\x01" if item.get("mask") else b"\x00"),
                 (0x7A, struct.pack("<H", item["shape_word"])),
             ]
             for offset, raw in writes:

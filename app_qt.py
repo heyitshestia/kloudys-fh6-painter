@@ -567,13 +567,67 @@ def compensated_ellipse_size(w, h):
     return max(1.0, w * uniform_scale), max(1.0, h * uniform_scale * major_axis_scale)
 
 
+def load_preview_geometry(path: Path) -> dict:
+    try:
+        return load_normalized_geometry(path)
+    except Exception:
+        pass
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    source = payload.get("source") if isinstance(payload, dict) else {}
+    shapes_in = payload.get("shapes") if isinstance(payload, dict) else None
+    if not isinstance(shapes_in, list) or not shapes_in:
+        raise ValueError("JSON does not contain previewable shapes.")
+
+    drawables = []
+    max_x = 1.0
+    max_y = 1.0
+    for item in shapes_in:
+        if not isinstance(item, dict):
+            continue
+        data = list(item.get("data") or [])
+        color = list(item.get("color") or [])
+        if len(data) < 4 or len(color) < 4:
+            continue
+        try:
+            x, y, w, h = [float(v) for v in data[:4]]
+            rot = float(data[4]) if len(data) >= 5 else 0.0
+            rgba = [max(0, min(255, int(round(float(v))))) for v in color[:4]]
+        except (TypeError, ValueError):
+            continue
+        if rgba[3] <= 0:
+            continue
+        type_code = int(item.get("type", ROTATED_ELLIPSE))
+        word = int(item.get("type_word", type_code & 0xFFFF))
+        shape_type = ROTATED_ELLIPSE
+        out_data = [round(x), round(y), max(1, round(w)), max(1, round(h)), round(rot) % 360]
+        if word == 0x65:  # FH primitive square
+            shape_type = ROTATED_RECTANGLE
+            out_data = [round(x), round(y), max(1, round(w)), max(1, round(h)), round(rot) % 360]
+        elif word in (0x66, 0x88):  # circle / ellipse
+            shape_type = ROTATED_ELLIPSE
+        drawables.append({"type": shape_type, "data": out_data, "color": rgba, "score": item.get("score", 0)})
+        max_x = max(max_x, x + abs(w) + 64)
+        max_y = max(max_y, y + abs(h) + 64)
+
+    if not drawables:
+        raise ValueError("JSON does not contain visible previewable layers.")
+    src_size = source.get("canvas_size") or source.get("size") if isinstance(source, dict) else None
+    if isinstance(src_size, list) and len(src_size) >= 2:
+        width, height = int(src_size[0]), int(src_size[1])
+    else:
+        width, height = max(1, int(math.ceil(max_x))), max(1, int(math.ceil(max_y)))
+    background = {"type": RECTANGLE, "data": [0, 0, width, height], "color": [0, 0, 0, 0], "score": 0}
+    return {"shapes": [background] + drawables}
+
+
 def render_geometry_json(path: Path, max_size: int = PREVIEW_MAX) -> bytes | None:
     loaded = load_cv2()
     if not loaded:
         return None
     cv2, np = loaded
     try:
-        data = load_normalized_geometry(path)
+        data = load_preview_geometry(path)
         shapes = data["shapes"]
         image_w, image_h = [int(v) for v in shapes[0]["data"][2:]]
         scale = min(1.0, float(max_size) / float(max(1, image_w, image_h)))
@@ -697,9 +751,11 @@ class UiBus(QObject):
     preview_bytes = Signal(bytes)
     preview_file = Signal(str)
     json_preview = Signal(int, object)
+    export_json_preview = Signal(int, object)
     refresh_lists = Signal()
     generated_changed = Signal()
     auto_located = Signal(str, str, str, str, str)
+    ui_call = Signal(object)
 
 
 class PreviewView(QGraphicsView):
@@ -870,7 +926,9 @@ class MainWindow(QMainWindow):
         self.auto_located_context: dict | None = None
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
+        self.exported_game_json_entries: list[dict] = []
         self.preview_request_id = 0
+        self.export_preview_request_id = 0
         self._all_combos: list[QComboBox] = []
         self._theme_apply_pending = False
         self.update_alarm_state = "checking"
@@ -892,14 +950,17 @@ class MainWindow(QMainWindow):
         self.bus.preview_bytes.connect(self.show_preview_bytes)
         self.bus.preview_file.connect(self.show_preview_file)
         self.bus.json_preview.connect(self.show_json_preview_result)
+        self.bus.export_json_preview.connect(self.show_export_json_preview_result)
         self.bus.refresh_lists.connect(self.render_lists)
         self.bus.generated_changed.connect(self.refresh_generated_browser)
         self.bus.auto_located.connect(self.apply_auto_locate_result)
+        self.bus.ui_call.connect(lambda fn: fn())
         self._build()
         self.apply_theme()
         self.set_phase("ready", "Choose a source image or select a finalized JSON to import.")
         self.refresh_processes()
         self.refresh_generated_browser()
+        self.refresh_game_export_browser()
         self.render_lists()
         if self.images:
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
@@ -927,6 +988,7 @@ class MainWindow(QMainWindow):
         self._build_generate_tab()
         self._build_import_tab()
         self._build_handmade_import_tab()
+        self._build_game_export_tab()
         self._build_luma_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
@@ -1174,8 +1236,8 @@ class MainWindow(QMainWindow):
         splitter.setSizes([640, 640])
 
         intro = QLabel(
-            "Universal handmade importer. Start from a fresh 3000-layer FH6 vinyl group, "
-            "choose a handmade JSON with full shape type codes, then import and trim."
+            "Universal handmade importer/exporter. Import a handmade JSON into a fresh template, "
+            "or export the currently open FH6 group into a compatible handmade JSON."
         )
         intro.setWordWrap(True)
         left_layout.addWidget(intro)
@@ -1244,6 +1306,7 @@ class MainWindow(QMainWindow):
             "Confirmed model:\n"
             "- Uses full 16-bit shape word at layer offset 0x7A.\n"
             "- Writes position, scale, rotation, skew, color, mask flag, and shape word only.\n"
+            "- Exports the same fields read-only from the current FH6 group.\n"
             "- Does not copy volatile render/cache fields or resource pointers.\n"
             "- Auto-locates the loaded template by layer count.\n"
             "- Trims FH6 group count and table end after import.\n\n"
@@ -1251,12 +1314,93 @@ class MainWindow(QMainWindow):
             "1. Open FH6 Vinyl Group Editor.\n"
             "2. Load/prepare a fresh 3000-layer circle template.\n"
             "3. Ungroup it.\n"
-            "4. Choose a handmade JSON.\n"
-            "5. Import and wait for Done.\n"
-            "6. Save, reload, and verify layer count."
+            "4. To import: choose a handmade JSON, import, then save/reload.\n"
+            "5. To export: enter the current group layer count and click export."
         )
         right_layout.addWidget(notes, 1)
         self.tabs.addTab(tab, "Import Handmade JSON")
+
+    def _build_game_export_tab(self):
+        tab = QWidget()
+        layout = QHBoxLayout(tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter)
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setSizes([620, 660])
+
+        intro = QLabel(
+            "Export the currently open FH6 vinyl group into a handmade-compatible JSON. "
+            "This is read-only: it only reads the live layer table and writes a JSON file."
+        )
+        intro.setWordWrap(True)
+        left_layout.addWidget(intro)
+
+        game = QGroupBox("Step 1 - FH6 Session")
+        game_layout = QGridLayout(game)
+        self.export_pid_combo = self.make_combo(max_visible=12, editable=True)
+        export_refresh = QPushButton("Refresh FH6")
+        export_refresh.clicked.connect(self.refresh_processes)
+        game_layout.addWidget(QLabel("Process"), 0, 0)
+        game_layout.addWidget(self.export_pid_combo, 0, 1)
+        game_layout.addWidget(export_refresh, 0, 2)
+        left_layout.addWidget(game)
+
+        template = QGroupBox("Step 2 - Current Open Group")
+        template_layout = QGridLayout(template)
+        self.export_template_count = QLineEdit("3000")
+        self.export_template_count.setToolTip("Enter the exact layer count of the currently open and ungrouped FH6 group.")
+        template_layout.addWidget(QLabel("Current group layer count"), 0, 0)
+        template_layout.addWidget(self.export_template_count, 0, 1)
+        template_help = QLabel("Keep the group open, ungrouped, and do not switch FH6 menus while exporting.")
+        template_help.setWordWrap(True)
+        template_layout.addWidget(template_help, 1, 0, 1, 2)
+        left_layout.addWidget(template)
+
+        run_group = QGroupBox("Step 3 - Export")
+        run_layout = QVBoxLayout(run_group)
+        export_btn = QPushButton("Export Current FH6 Group")
+        export_btn.setObjectName("primaryButton")
+        export_btn.clicked.connect(self.start_game_export)
+        run_layout.addWidget(export_btn)
+        run_layout.addWidget(QLabel("Output is saved under runtime/universal-import and appears in the browser below."))
+        left_layout.addWidget(run_group)
+
+        browser = QGroupBox("Exported Game JSON Browser")
+        browser_layout = QVBoxLayout(browser)
+        browser_controls = QHBoxLayout()
+        refresh_exports = QPushButton("Refresh exports")
+        refresh_exports.clicked.connect(self.refresh_game_export_browser)
+        use_for_import = QPushButton("Use selected in Handmade Import")
+        use_for_import.clicked.connect(self.use_selected_export_for_handmade_import)
+        browser_controls.addWidget(refresh_exports)
+        browser_controls.addWidget(use_for_import)
+        browser_layout.addLayout(browser_controls)
+        self.exported_game_json_list = QListWidget()
+        self.exported_game_json_list.setMinimumHeight(310)
+        self.exported_game_json_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.exported_game_json_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.exported_game_json_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.exported_game_json_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.exported_game_json_list.setWordWrap(True)
+        self.exported_game_json_list.currentRowChanged.connect(self.select_exported_game_json)
+        browser_layout.addWidget(self.exported_game_json_list, 1)
+        left_layout.addWidget(browser, 1)
+
+        right_layout.addWidget(QLabel("Export Preview"))
+        self.export_preview = PreviewView("Export a game group or select an exported JSON to preview it here.")
+        right_layout.addWidget(self.export_preview, 1)
+        note = QLabel(
+            "Preview is an approximation for non-basic FH shapes until full shape rendering is added. "
+            "The JSON still preserves the real FH type word for re-import."
+        )
+        note.setWordWrap(True)
+        right_layout.addWidget(note)
+        self.tabs.addTab(tab, "Export Game JSON")
 
     def _build_luma_tab(self):
         tab = QWidget()
@@ -1849,6 +1993,33 @@ class MainWindow(QMainWindow):
         if request_id == self.preview_request_id:
             self.show_preview_bytes(data or b"")
 
+    def preview_export_json(self, path: Path):
+        self.export_preview_request_id += 1
+        request_id = self.export_preview_request_id
+        self.export_preview.clear("Rendering exported game JSON preview...")
+        threading.Thread(target=self.render_export_json_preview_worker, args=(Path(path), request_id), daemon=True).start()
+
+    def render_export_json_preview_worker(self, path: Path, request_id: int):
+        cache_path = self.rendered_preview_cache_path(path)
+        try:
+            if cache_path.exists() and cache_path.stat().st_mtime >= path.stat().st_mtime:
+                self.bus.export_json_preview.emit(request_id, cache_path.read_bytes())
+                return
+        except OSError:
+            pass
+        data = render_geometry_json(path)
+        if data:
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_bytes(data)
+            except OSError:
+                pass
+        self.bus.export_json_preview.emit(request_id, data)
+
+    def show_export_json_preview_result(self, request_id: int, data):
+        if request_id == self.export_preview_request_id:
+            self.export_preview.set_bytes(data or b"")
+
     def preview_path_for_json(self, path: Path) -> Path | None:
         path = Path(path)
         name = path.name
@@ -1903,6 +2074,8 @@ class MainWindow(QMainWindow):
         combos = [self.pid_combo]
         if hasattr(self, "handmade_pid_combo"):
             combos.append(self.handmade_pid_combo)
+        if hasattr(self, "export_pid_combo"):
+            combos.append(self.export_pid_combo)
         for combo in combos:
             combo.blockSignals(True)
             combo.clear()
@@ -2447,6 +2620,85 @@ class MainWindow(QMainWindow):
             return
         self.select_import_json(entry["path"], "highlighted finalized checkpoint")
 
+    def exported_game_json_candidates(self) -> list[dict]:
+        entries = []
+        if not UNIVERSAL_IMPORT_ROOT.exists():
+            return entries
+        for path in UNIVERSAL_IMPORT_ROOT.glob("export-current-group-*/*.json"):
+            if path.name.endswith(".report.json"):
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if payload.get("format") != "fh6_typecode_json_export_v1":
+                continue
+            source = payload.get("source") or {}
+            shape_count = len(payload.get("shapes") or [])
+            report_path = path.with_suffix(".report.json")
+            entries.append({
+                "path": path,
+                "run_folder": path.parent,
+                "mtime": path.stat().st_mtime,
+                "shape_count": shape_count,
+                "layer_count": source.get("layer_count"),
+                "table": source.get("table"),
+                "group": source.get("group"),
+                "report": report_path if report_path.exists() else None,
+            })
+        return sorted(entries, key=lambda entry: entry["mtime"], reverse=True)
+
+    def exported_game_json_label(self, entry):
+        timestamp = datetime.fromtimestamp(entry["mtime"]).strftime("%Y-%m-%d %H:%M:%S")
+        return (
+            f"{entry['path'].name}\n"
+            f"{entry['shape_count']} exported layers | source count {entry.get('layer_count') or 'unknown'} | {timestamp}\n"
+            f"group={entry.get('group') or 'unknown'} table={entry.get('table') or 'unknown'}"
+        )
+
+    def refresh_game_export_browser(self):
+        if not hasattr(self, "exported_game_json_list"):
+            return
+        self.exported_game_json_entries = self.exported_game_json_candidates()
+        self.exported_game_json_list.clear()
+        if not self.exported_game_json_entries:
+            self.exported_game_json_list.addItem("No exported FH6 group JSONs found yet.")
+            if hasattr(self, "export_preview"):
+                self.export_preview.clear("Export a game group or select an exported JSON to preview it here.")
+            return
+        for entry in self.exported_game_json_entries:
+            item = QListWidgetItem(self.exported_game_json_label(entry))
+            item.setSizeHint(QSize(0, 86))
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            self.exported_game_json_list.addItem(item)
+        self.exported_game_json_list.setCurrentRow(0)
+
+    def selected_exported_game_entry(self):
+        if not hasattr(self, "exported_game_json_list"):
+            return None
+        item = self.exported_game_json_list.currentItem()
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def select_exported_game_json(self, _row: int):
+        entry = self.selected_exported_game_entry()
+        if not entry:
+            return
+        self.preview_export_json(entry["path"])
+        self.log_line(f"Selected exported game JSON: {entry['path']}")
+
+    def use_selected_export_for_handmade_import(self):
+        entry = self.selected_exported_game_entry()
+        if not entry:
+            self.log_line("No exported game JSON selected.")
+            return
+        path = Path(entry["path"])
+        self.selected_handmade_json_path = path
+        text = f"Selected handmade JSON: {path.name}\nShapes: {entry.get('shape_count') or handmade_shape_count(path)}\n{path}"
+        if hasattr(self, "handmade_json_label"):
+            self.handmade_json_label.setText(text)
+            self.handmade_json_label.setToolTip(str(path))
+        self.log_line(f"Export selected for handmade import: {path}")
+
     def select_recommended_generated_json(self):
         entry = self.recommended_generated_entry()
         if not entry:
@@ -2667,6 +2919,8 @@ class MainWindow(QMainWindow):
             return "Locating loaded FH6 handmade-import template..."
         if "fh6_import_typecode_json.py" in joined:
             return "Importing handmade JSON into FH6..."
+        if "fh6_export_typecode_json.py" in joined:
+            return "Exporting current FH6 group to handmade JSON..."
         if "fh6_trim_group_count.py" in joined:
             return "Trimming FH6 handmade-import layer count..."
         if "main.py" in joined:
@@ -2891,104 +3145,99 @@ class MainWindow(QMainWindow):
             daemon=True,
         ).start()
 
+    def locate_universal_template(self, pid, template_count, run_dir, purpose="template"):
+        session_report = run_dir / f"fast-{purpose}-session.json"
+        probe_report = run_dir / f"fallback-{purpose}-probe.json"
+        self.bus.log.emit(f"Fast-locating loaded FH6 group with {template_count} layers...")
+        fast_cmd = [
+            helper_python(),
+            ROOT / "fh6_probe.py",
+            "--game",
+            "fh6",
+            "--pid",
+            str(pid),
+            "--layer-count",
+            str(template_count),
+            "--auto-locate",
+            "--write-session",
+            session_report,
+            "--dump-slot-radius",
+            "16",
+            "--limit-mb",
+            str(MEMORY_SNAPSHOT_LIMIT_MB),
+            "--max-matches",
+            "500000",
+            "--inspect-radius",
+            "0x800",
+            "--max-seconds",
+            "45",
+        ]
+        group = None
+        table = None
+        code = self.run_subprocess(fast_cmd, timeout=90)
+        if code == 0 and session_report.exists():
+            session = json.loads(session_report.read_text(encoding="utf-8"))
+            if str(session.get("layer_count", "")) == str(template_count):
+                table_value = session.get("table_address")
+                count_value = session.get("count_address")
+                group_value = session.get("group_address")
+                if table_value and (group_value or count_value):
+                    table = f"0x{int(table_value):x}" if isinstance(table_value, int) else str(table_value)
+                    if group_value:
+                        group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
+                    else:
+                        group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
+                    self.bus.log.emit(f"FH6 group fast-located: group={group}, table={table}, layers={template_count}")
+        if group and table:
+            return group, table
+
+        self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
+        probe_cmd = [
+            helper_python(),
+            ROOT / "fh6_group1000_probe.py",
+            "--pid",
+            str(pid),
+            "--count",
+            str(template_count),
+            "--max-seconds",
+            "90",
+            "--report-layers",
+            "40",
+            "--out-dir",
+            run_dir,
+        ]
+        code = self.run_subprocess(probe_cmd, timeout=140)
+        if code != 0:
+            raise RuntimeError("template probe did not complete")
+        probe_files = sorted(run_dir.glob(f"fh6-group{template_count}-probe-*.json"), key=lambda path: path.stat().st_mtime)
+        if not probe_files:
+            raise RuntimeError("template probe report was not created")
+        probe_files[-1].replace(probe_report)
+        probe = json.loads(probe_report.read_text(encoding="utf-8"))
+        candidates = probe.get("candidates") or []
+        if not candidates:
+            raise RuntimeError("no matching loaded FH6 group was found")
+        best = candidates[0]
+        group = best.get("group")
+        table = best.get("table")
+        valid_ptrs = int(best.get("valid_ptrs") or 0)
+        sample_ok = int(best.get("sample_ok_count") or 0)
+        if not group or not table or valid_ptrs < template_count or sample_ok < min(8, template_count):
+            raise RuntimeError(f"located group did not validate strongly enough (valid_ptrs={valid_ptrs}, sample_ok={sample_ok})")
+        self.bus.log.emit(f"FH6 group fallback-located: group={group}, table={table}, layers={template_count}")
+        return group, table
+
     def handmade_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"{json_path.stem}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
-        session_report = run_dir / "fast-template-session.json"
-        probe_report = run_dir / "fallback-template-probe.json"
         import_backup = run_dir / "import-backup.json"
         import_report = run_dir / "import-report.json"
         trim_backup = run_dir / "trim-backup.json"
         try:
             self.bus.log.emit(f"Universal import run folder: {run_dir}")
             self.bus.log.emit(f"Handmade JSON shapes: {shape_count}")
-            self.bus.log.emit(f"Fast-locating loaded FH6 template with {template_count} layers...")
-            fast_cmd = [
-                helper_python(),
-                ROOT / "fh6_probe.py",
-                "--game",
-                "fh6",
-                "--pid",
-                str(pid),
-                "--layer-count",
-                str(template_count),
-                "--auto-locate",
-                "--write-session",
-                session_report,
-                "--dump-slot-radius",
-                "16",
-                "--limit-mb",
-                str(MEMORY_SNAPSHOT_LIMIT_MB),
-                "--max-matches",
-                "500000",
-                "--inspect-radius",
-                "0x800",
-                "--max-seconds",
-                "45",
-            ]
-            group = None
-            table = None
-            code = self.run_subprocess(fast_cmd, timeout=90)
-            if code == 0 and session_report.exists():
-                session = json.loads(session_report.read_text(encoding="utf-8"))
-                if str(session.get("layer_count", "")) == str(template_count):
-                    table_value = session.get("table_address")
-                    count_value = session.get("count_address")
-                    group_value = session.get("group_address")
-                    if table_value and (group_value or count_value):
-                        table = f"0x{int(table_value):x}" if isinstance(table_value, int) else str(table_value)
-                        if group_value:
-                            group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
-                        else:
-                            group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
-                        self.bus.log.emit(f"FH6 template fast-located: group={group}, table={table}, layers={template_count}")
-            if not group or not table:
-                self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
-                probe_cmd = [
-                    helper_python(),
-                    ROOT / "fh6_group1000_probe.py",
-                    "--pid",
-                    str(pid),
-                    "--count",
-                    str(template_count),
-                    "--max-seconds",
-                    "90",
-                    "--report-layers",
-                    "40",
-                    "--out-dir",
-                    run_dir,
-                ]
-                code = self.run_subprocess(probe_cmd, timeout=140)
-                if code != 0:
-                    self.bus.log.emit("Universal import failed: template probe did not complete.")
-                    self.bus.status.emit("Failed")
-                    return
-                probe_files = sorted(run_dir.glob(f"fh6-group{template_count}-probe-*.json"), key=lambda path: path.stat().st_mtime)
-                if not probe_files:
-                    self.bus.log.emit("Universal import failed: template probe report was not created.")
-                    self.bus.status.emit("Failed")
-                    return
-                probe_files[-1].replace(probe_report)
-                probe = json.loads(probe_report.read_text(encoding="utf-8"))
-                candidates = probe.get("candidates") or []
-                if not candidates:
-                    self.bus.log.emit("Universal import failed: no matching loaded FH6 template was found.")
-                    self.bus.status.emit("Failed")
-                    return
-                best = candidates[0]
-                group = best.get("group")
-                table = best.get("table")
-                valid_ptrs = int(best.get("valid_ptrs") or 0)
-                sample_ok = int(best.get("sample_ok_count") or 0)
-                if not group or not table or valid_ptrs < template_count or sample_ok < min(8, template_count):
-                    self.bus.log.emit(
-                        "Universal import failed: located template did not validate strongly enough "
-                        f"(valid_ptrs={valid_ptrs}, sample_ok={sample_ok})."
-                    )
-                    self.bus.status.emit("Failed")
-                    return
-                self.bus.log.emit(f"FH6 template fallback-located: group={group}, table={table}, layers={template_count}")
+            group, table = self.locate_universal_template(pid, template_count, run_dir, purpose="import-template")
             import_cmd = [
                 helper_python(),
                 ROOT / "fh6_import_typecode_json.py",
@@ -3056,6 +3305,81 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.bus.log.emit(f"Universal import failed: {exc}")
             self.bus.status.emit("Failed")
+
+    def start_game_export(self):
+        pid = self.selected_pid_value(self.export_pid_combo)
+        if not pid:
+            self.log_line("Select or refresh the FH6 process before export.")
+            return
+        try:
+            template_count = int(self.export_template_count.text().strip())
+        except ValueError:
+            self.log_line("Loaded template layer count must be a number.")
+            return
+        if template_count <= 0:
+            self.log_line("Loaded template layer count must be greater than zero.")
+            return
+        self.set_status("Exporting")
+        self.set_phase("importing", "Exporting current FH6 group into handmade-compatible JSON.")
+        threading.Thread(
+            target=self.handmade_export_worker,
+            args=(pid, template_count),
+            daemon=True,
+        ).start()
+
+    def handmade_export_worker(self, pid, template_count):
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_dir = UNIVERSAL_IMPORT_ROOT / f"export-current-group-{template_count}-{timestamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        export_json = run_dir / f"fh6-current-group-{template_count}-{timestamp}.json"
+        export_report = run_dir / f"fh6-current-group-{template_count}-{timestamp}.report.json"
+        try:
+            self.bus.log.emit(f"Universal export run folder: {run_dir}")
+            group, table = self.locate_universal_template(pid, template_count, run_dir, purpose="export-template")
+            export_cmd = [
+                helper_python(),
+                ROOT / "fh6_export_typecode_json.py",
+                "--pid",
+                str(pid),
+                "--group",
+                str(group),
+                "--table",
+                str(table),
+                "--count",
+                str(template_count),
+                "--out",
+                export_json,
+                "--report",
+                export_report,
+            ]
+            self.bus.log.emit("Reading current FH6 group into handmade JSON...")
+            code = self.run_subprocess(export_cmd, timeout=240)
+            if code != 0:
+                self.bus.log.emit("Universal export failed while reading layers.")
+                self.bus.status.emit("Failed")
+                return
+            report = json.loads(export_report.read_text(encoding="utf-8"))
+            exported = int(report.get("exported_shape_count") or 0)
+            failures = int(report.get("failure_count") or 0)
+            self.selected_handmade_json_path = export_json
+            self.bus.log.emit(f"Universal export complete: {exported} layers -> {export_json}")
+            if failures:
+                self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
+            self.bus.status.emit("Done")
+            self.bus.phase.emit("done", "Current FH6 group exported to handmade-compatible JSON.")
+            self.bus.ui_call.emit(self.refresh_game_export_browser)
+            self.bus.ui_call.emit(lambda: self.select_exported_path_after_refresh(export_json))
+        except Exception as exc:
+            self.bus.log.emit(f"Universal export failed: {exc}")
+            self.bus.status.emit("Failed")
+
+    def select_exported_path_after_refresh(self, path: Path):
+        if not hasattr(self, "exported_game_json_list"):
+            return
+        for row, entry in enumerate(self.exported_game_json_entries):
+            if Path(entry["path"]) == Path(path):
+                self.exported_game_json_list.setCurrentRow(row)
+                break
 
     def start_diagnose(self):
         cmd = [helper_python(), ROOT / "main.py", "--game", self.game_combo.currentText() or "fh6", "--diagnose"]

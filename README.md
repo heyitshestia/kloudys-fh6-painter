@@ -232,9 +232,9 @@ imgs/luma-bands/
 
 This is useful for deciding whether Luma Prep helps or hurts a source image before spending time on a full run.
 
-## Import Handmade JSON
+## Import / Export Handmade JSON
 
-The `Import Handmade JSON` tab is the experimental universal FH6 shape importer.
+The `Import Handmade JSON` tab is the experimental universal FH6 shape importer/exporter.
 
 It is intended for handmade/exported JSONs that contain real FH shape type codes, not only the generated ellipse/rectangle path.
 
@@ -253,6 +253,7 @@ Important WIP notes:
 - A strange vinyl thumbnail in the FH6 menu is normal right now.
 - Both the live-editor display refresh and thumbnail behavior are still being worked on.
 - The importer trims the live group count after import, so one large template can be used and culled down to the final layer count.
+- The exporter is read-only. It exports the currently loaded/open FH6 group into a compatible JSON using the live layer count you enter.
 
 ## Common Problems
 
@@ -303,6 +304,7 @@ Confirmed implementation details:
 
 - FH6 primitive selection uses the 16-bit shape word at layer offset `0x7A`.
 - The importer writes only save-safe layer fields: position, scale, rotation, skew, color, mask flag, and shape word.
+- The exporter reads the same save-safe fields from the currently open FH6 group and writes them to a compatible JSON.
 - Volatile render/cache fields and resource pointers are intentionally not copied.
 - A 3000-layer template can be used as the base for imports.
 - After import, the app trims the FH6 group count and table end so the saved vinyl uses only the actual layer count.

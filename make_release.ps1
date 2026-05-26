@@ -44,6 +44,7 @@ $ProjectItems = @(
     "main.py",
     "fh6_probe.py",
     "fh6_group1000_probe.py",
+    "fh6_export_typecode_json.py",
     "fh6_import_typecode_json.py",
     "fh6_trim_group_count.py",
     "fh6_shape_experiment.py",
@@ -141,6 +142,7 @@ try {
         "KloudysFH6Painter/app_qt.py",
         "KloudysFH6Painter/forza_generator_v2.py",
         "KloudysFH6Painter/KloudysGeneratorV4.exe",
+        "KloudysFH6Painter/fh6_export_typecode_json.py",
         "KloudysFH6Painter/fh6_import_typecode_json.py",
         "KloudysFH6Painter/fh6_trim_group_count.py",
         "KloudysFH6Painter/settings/a.flat-colors.ini"
