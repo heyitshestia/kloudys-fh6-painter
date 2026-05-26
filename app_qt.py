@@ -93,6 +93,7 @@ APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
 SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
 PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
+UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 STANDALONE_APP_FOLDER_NAME = "KloudysFH6Painter"
@@ -117,6 +118,14 @@ def configure_combo_box(combo: QComboBox, *, max_visible: int = 16, min_height: 
 
 def helper_python() -> Path | str:
     return EMBEDDED_PYTHON if EMBEDDED_PYTHON.exists() else sys.executable
+
+
+def handmade_shape_count(path: Path) -> int:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    shapes = payload.get("shapes")
+    if not isinstance(shapes, list):
+        raise ValueError("Handmade JSON must contain a shapes list.")
+    return len(shapes)
 
 
 TEXT = {
@@ -234,17 +243,19 @@ In Forza Horizon 6:
 5. Do not switch menus after preparing the template.
 6. Remember the exact template layer count shown by FH6.
 
-Default safe import reserves 4 mask layers.
-That means usable art layers are:
+Default import uses the full template for art layers.
+Finalize Checkpoints keeps transparent-source shapes inside the PNG canvas, so normal imports do not need FH border masks.
+Legacy 4-mask import is available in Settings only if you need to test old behavior.
+That means normal usable art layers are:
 
-template layers - 4
+template layers
 
 Examples:
 
-500 template layers = 496 usable art layers
-1000 template layers = 996 usable art layers
-2000 template layers = 1996 usable art layers
-3000 template layers = 2996 usable art layers
+500 template layers = 500 usable art layers
+1000 template layers = 1000 usable art layers
+2000 template layers = 2000 usable art layers
+3000 template layers = 3000 usable art layers
 
 
 7. Import Final JSON
@@ -270,7 +281,7 @@ Check these first:
 - You are inside Vinyl Group Editor, not applying a vinyl to the car.
 - The template is ungrouped.
 - The layer count is exact.
-- The selected JSON fits inside template layers minus mask layers.
+- The selected JSON fits inside the template layer count.
 - The app may need to run as administrator.
 
 If generation looks bad, try the preset that matches the source style, increase random samples, increase layers, or use a cleaner source image.
@@ -279,7 +290,7 @@ If generation looks bad, try the preset that matches the source style, increase 
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, USER_IMAGES_ROOT):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -846,6 +857,7 @@ class MainWindow(QMainWindow):
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
         self.selected_import_json_path: Path | None = None
+        self.selected_handmade_json_path: Path | None = None
         self.outputs: list[Path] = []
         self.processes = []
         self.active_processes = set()
@@ -914,6 +926,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.tabs, 1)
         self._build_generate_tab()
         self._build_import_tab()
+        self._build_handmade_import_tab()
         self._build_luma_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
@@ -1075,18 +1088,12 @@ class MainWindow(QMainWindow):
 
         template = QGroupBox("Step 2 - Vinyl Template")
         template_layout = QGridLayout(template)
-        self.layer_count = QLineEdit()
+        self.layer_count = QLineEdit("3000")
         template_layout.addWidget(QLabel("Exact template layer count"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
-        self.mask_layers_enabled = QCheckBox("Use FH mask layers")
-        self.mask_layers_enabled.setChecked(True)
-        self.mask_mode_combo = self.make_combo(["Full legacy masks", "Precise adaptive masks", "No mask layers"], max_visible=8)
-        self.mask_mode_combo.setCurrentIndex(0)
-        mask_help = QLabel("Legacy is safest. Adaptive/off are test modes to save layers if the design still imports cleanly.")
-        mask_help.setWordWrap(True)
-        template_layout.addWidget(self.mask_layers_enabled, 1, 0)
-        template_layout.addWidget(self.mask_mode_combo, 1, 1)
-        template_layout.addWidget(mask_help, 2, 0, 1, 2)
+        template_help = QLabel("Default workflow: use one 3000-layer template. Imports are culled to the JSON's drawable layer count after writing.")
+        template_help.setWordWrap(True)
+        template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
 
         json_group = QGroupBox("Step 3 - Pick Final Vinyl")
@@ -1153,6 +1160,104 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.import_preview, 1)
         self.tabs.addTab(tab, "Import Final JSON")
 
+    def _build_handmade_import_tab(self):
+        tab = QWidget()
+        layout = QHBoxLayout(tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter)
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setSizes([640, 640])
+
+        intro = QLabel(
+            "Universal handmade importer. Start from a fresh 3000-layer FH6 vinyl group, "
+            "choose a handmade JSON with full shape type codes, then import and trim."
+        )
+        intro.setWordWrap(True)
+        left_layout.addWidget(intro)
+        warning = QLabel(
+            "WIP: after importing, save and reload the vinyl group to view the shapes properly. "
+            "A weird vinyl thumbnail in the menu is normal right now. Both issues are being worked on."
+        )
+        warning.setWordWrap(True)
+        warning.setStyleSheet("font-weight: 900; font-size: 15px;")
+        left_layout.addWidget(warning)
+
+        game = QGroupBox("Step 1 - FH6 Session")
+        game_layout = QGridLayout(game)
+        self.handmade_pid_combo = self.make_combo(max_visible=12, editable=True)
+        handmade_refresh = QPushButton("Refresh FH6")
+        handmade_refresh.clicked.connect(self.refresh_processes)
+        game_layout.addWidget(QLabel("Process"), 0, 0)
+        game_layout.addWidget(self.handmade_pid_combo, 0, 1)
+        game_layout.addWidget(handmade_refresh, 0, 2)
+        left_layout.addWidget(game)
+
+        template = QGroupBox("Step 2 - Base Template")
+        template_layout = QGridLayout(template)
+        self.handmade_template_count = QLineEdit("3000")
+        self.handmade_template_count.setToolTip("Use a fresh 3000-layer circle template for universal imports, then the app trims to the used layer count.")
+        template_layout.addWidget(QLabel("Loaded template layer count"), 0, 0)
+        template_layout.addWidget(self.handmade_template_count, 0, 1)
+        template_help = QLabel("Recommended: open a fresh 3000-layer template in FH6 Vinyl Group Editor and ungroup it before importing.")
+        template_help.setWordWrap(True)
+        template_layout.addWidget(template_help, 1, 0, 1, 2)
+        left_layout.addWidget(template)
+
+        json_group = QGroupBox("Step 3 - Handmade JSON")
+        json_layout = QVBoxLayout(json_group)
+        pick_row = QHBoxLayout()
+        pick = QPushButton("Choose handmade JSON")
+        pick.clicked.connect(self.choose_handmade_json)
+        pick_row.addWidget(pick)
+        json_layout.addLayout(pick_row)
+        self.handmade_json_label = QLabel("Selected handmade JSON: none")
+        self.handmade_json_label.setWordWrap(True)
+        self.handmade_json_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        json_layout.addWidget(self.handmade_json_label)
+        left_layout.addWidget(json_group)
+
+        run_group = QGroupBox("Step 4 - Import And Trim")
+        run_layout = QVBoxLayout(run_group)
+        self.handmade_clear_unused = QCheckBox("Clear unused template layers before trimming")
+        self.handmade_clear_unused.setChecked(True)
+        self.handmade_clear_unused.setToolTip("Keeps the save file clean if FH6 briefly sees the old template capacity during import.")
+        run_layout.addWidget(self.handmade_clear_unused)
+        import_btn = QPushButton("Import Handmade JSON into 3000 Template")
+        import_btn.setObjectName("primaryButton")
+        import_btn.clicked.connect(self.start_handmade_import)
+        run_layout.addWidget(import_btn)
+        run_help = QLabel("After import completes, save and reload the vinyl group to confirm the final trimmed layer count.")
+        run_help.setWordWrap(True)
+        run_layout.addWidget(run_help)
+        left_layout.addWidget(run_group)
+        left_layout.addStretch()
+
+        right_layout.addWidget(QLabel("Universal Import Notes"))
+        notes = QTextEdit()
+        notes.setReadOnly(True)
+        notes.setText(
+            "Confirmed model:\n"
+            "- Uses full 16-bit shape word at layer offset 0x7A.\n"
+            "- Writes position, scale, rotation, skew, color, mask flag, and shape word only.\n"
+            "- Does not copy volatile render/cache fields or resource pointers.\n"
+            "- Auto-locates the loaded template by layer count.\n"
+            "- Trims FH6 group count and table end after import.\n\n"
+            "Current best workflow:\n"
+            "1. Open FH6 Vinyl Group Editor.\n"
+            "2. Load/prepare a fresh 3000-layer circle template.\n"
+            "3. Ungroup it.\n"
+            "4. Choose a handmade JSON.\n"
+            "5. Import and wait for Done.\n"
+            "6. Save, reload, and verify layer count."
+        )
+        right_layout.addWidget(notes, 1)
+        self.tabs.addTab(tab, "Import Handmade JSON")
+
     def _build_luma_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -1213,8 +1318,25 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(QLabel("Sakura Glass uses an opaque control frame with animated cherry blossoms in the background."))
         theme_layout.addWidget(QLabel("Blackout is a full dark opaque preset for low-glare use."))
         layout.addWidget(theme)
+        importer = QGroupBox("Importer")
+        importer_layout = QVBoxLayout(importer)
+        self.legacy_masks_enabled = QCheckBox("Use legacy 4 big FH border masks")
+        self.legacy_masks_enabled.setChecked(bool(self.app_settings.get("legacy_border_masks", False)))
+        self.legacy_masks_enabled.stateChanged.connect(self.save_importer_settings)
+        importer_layout.addWidget(self.legacy_masks_enabled)
+        mask_note = QLabel(
+            "Default uses no FH border masks. Finalize Checkpoints now keeps transparent-source shapes inside the PNG canvas. Legacy uses the old 4 big border masks and may make underlying vinyls transparent when stacking designs."
+        )
+        mask_note.setWordWrap(True)
+        importer_layout.addWidget(mask_note)
+        layout.addWidget(importer)
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
+
+    def save_importer_settings(self, *_args):
+        if hasattr(self, "legacy_masks_enabled"):
+            self.app_settings["legacy_border_masks"] = bool(self.legacy_masks_enabled.isChecked())
+            save_app_settings(self.app_settings)
 
     def schedule_theme_apply(self, *_args):
         if self._theme_apply_pending:
@@ -1580,6 +1702,23 @@ class MainWindow(QMainWindow):
             self.select_import_json(path, "manual final JSON")
         self.render_lists()
 
+    def choose_handmade_json(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose handmade JSON", "", "Handmade JSON (*.json);;All files (*.*)")
+        if not file_name:
+            return
+        path = Path(file_name)
+        if not path.exists():
+            return
+        try:
+            count = handmade_shape_count(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Invalid handmade JSON", str(exc))
+            return
+        self.selected_handmade_json_path = path
+        self.handmade_json_label.setText(f"Selected handmade JSON: {path.name}\nShapes: {count}\n{path}")
+        self.handmade_json_label.setToolTip(str(path))
+        self.log_line(f"Selected handmade JSON: {path} ({count} shapes)")
+
     def render_lists(self):
         self.image_list.clear()
         for path in self.images:
@@ -1761,21 +1900,29 @@ class MainWindow(QMainWindow):
 
     def refresh_processes(self):
         self.processes = game_processes()
-        self.pid_combo.blockSignals(True)
-        self.pid_combo.clear()
+        combos = [self.pid_combo]
+        if hasattr(self, "handmade_pid_combo"):
+            combos.append(self.handmade_pid_combo)
+        for combo in combos:
+            combo.blockSignals(True)
+            combo.clear()
         if self.processes:
             for item in self.processes:
-                self.pid_combo.addItem(item["label"], item)
+                for combo in combos:
+                    combo.addItem(item["label"], item)
             self.game_combo.setCurrentText(self.processes[0]["profile"])
         else:
-            self.pid_combo.addItem("No supported game process detected", None)
-        self.pid_combo.blockSignals(False)
+            for combo in combos:
+                combo.addItem("No supported game process detected", None)
+        for combo in combos:
+            combo.blockSignals(False)
 
-    def selected_pid_value(self) -> int | None:
-        data = self.pid_combo.currentData()
+    def selected_pid_value(self, combo: QComboBox | None = None) -> int | None:
+        combo = combo or self.pid_combo
+        data = combo.currentData()
         if data and data.get("pid"):
             return int(data["pid"])
-        raw = self.pid_combo.currentText()
+        raw = combo.currentText()
         match = re.search(r"pid\s+(\d+)", raw, re.I)
         if match:
             return int(match.group(1))
@@ -2516,6 +2663,12 @@ class MainWindow(QMainWindow):
         joined = " ".join(str(x) for x in cmd)
         if "fh6_probe.py" in joined and "--auto-locate" in joined:
             return "Finding current FH6 template..."
+        if "fh6_group1000_probe.py" in joined:
+            return "Locating loaded FH6 handmade-import template..."
+        if "fh6_import_typecode_json.py" in joined:
+            return "Importing handmade JSON into FH6..."
+        if "fh6_trim_group_count.py" in joined:
+            return "Trimming FH6 handmade-import layer count..."
         if "main.py" in joined:
             return "Importing JSON into FH6..."
         return "Starting helper..."
@@ -2644,14 +2797,9 @@ class MainWindow(QMainWindow):
         ).start()
 
     def selected_import_mask_options(self):
-        if not getattr(self, "mask_layers_enabled", None) or not self.mask_layers_enabled.isChecked():
-            return "off", 0
-        label = self.mask_mode_combo.currentText() if hasattr(self, "mask_mode_combo") else "Full legacy masks"
-        if "No mask" in label:
-            return "off", 0
-        if "Precise" in label:
-            return "precise", 2
-        return "full", 4
+        if bool(self.app_settings.get("legacy_border_masks", False)):
+            return "full", 4
+        return "off", 0
 
     def check_json_layer_fit(self, json_path, layer_count, mask_budget=4):
         try:
@@ -2701,6 +2849,213 @@ class MainWindow(QMainWindow):
             self.bus.status.emit("Failed")
             return
         self.bus.status.emit("Done")
+
+    def start_handmade_import(self):
+        if not self.selected_handmade_json_path:
+            self.log_line("No handmade JSON selected.")
+            return
+        pid = self.selected_pid_value(self.handmade_pid_combo)
+        if not pid:
+            self.log_line("Select or refresh the FH6 process before handmade import.")
+            return
+        try:
+            template_count = int(self.handmade_template_count.text().strip())
+        except ValueError:
+            self.log_line("Loaded template layer count must be a number.")
+            return
+        if template_count <= 0:
+            self.log_line("Loaded template layer count must be greater than zero.")
+            return
+        try:
+            shape_count = handmade_shape_count(self.selected_handmade_json_path)
+        except Exception as exc:
+            self.log_line(f"Handmade JSON is invalid: {exc}")
+            return
+        if shape_count <= 0:
+            self.log_line("Handmade JSON has no shapes.")
+            return
+        if shape_count > template_count:
+            self.log_line(f"Handmade JSON has too many shapes for the loaded template. JSON={shape_count}, template={template_count}")
+            return
+        self.set_status("Importing")
+        self.set_phase("importing", "Importing handmade JSON into FH6, then trimming unused template layers.")
+        threading.Thread(
+            target=self.handmade_import_worker,
+            args=(
+                pid,
+                template_count,
+                shape_count,
+                Path(self.selected_handmade_json_path),
+                self.handmade_clear_unused.isChecked(),
+            ),
+            daemon=True,
+        ).start()
+
+    def handmade_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_dir = UNIVERSAL_IMPORT_ROOT / f"{json_path.stem}-{timestamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        session_report = run_dir / "fast-template-session.json"
+        probe_report = run_dir / "fallback-template-probe.json"
+        import_backup = run_dir / "import-backup.json"
+        import_report = run_dir / "import-report.json"
+        trim_backup = run_dir / "trim-backup.json"
+        try:
+            self.bus.log.emit(f"Universal import run folder: {run_dir}")
+            self.bus.log.emit(f"Handmade JSON shapes: {shape_count}")
+            self.bus.log.emit(f"Fast-locating loaded FH6 template with {template_count} layers...")
+            fast_cmd = [
+                helper_python(),
+                ROOT / "fh6_probe.py",
+                "--game",
+                "fh6",
+                "--pid",
+                str(pid),
+                "--layer-count",
+                str(template_count),
+                "--auto-locate",
+                "--write-session",
+                session_report,
+                "--dump-slot-radius",
+                "16",
+                "--limit-mb",
+                str(MEMORY_SNAPSHOT_LIMIT_MB),
+                "--max-matches",
+                "500000",
+                "--inspect-radius",
+                "0x800",
+                "--max-seconds",
+                "45",
+            ]
+            group = None
+            table = None
+            code = self.run_subprocess(fast_cmd, timeout=90)
+            if code == 0 and session_report.exists():
+                session = json.loads(session_report.read_text(encoding="utf-8"))
+                if str(session.get("layer_count", "")) == str(template_count):
+                    table_value = session.get("table_address")
+                    count_value = session.get("count_address")
+                    group_value = session.get("group_address")
+                    if table_value and (group_value or count_value):
+                        table = f"0x{int(table_value):x}" if isinstance(table_value, int) else str(table_value)
+                        if group_value:
+                            group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
+                        else:
+                            group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
+                        self.bus.log.emit(f"FH6 template fast-located: group={group}, table={table}, layers={template_count}")
+            if not group or not table:
+                self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
+                probe_cmd = [
+                    helper_python(),
+                    ROOT / "fh6_group1000_probe.py",
+                    "--pid",
+                    str(pid),
+                    "--count",
+                    str(template_count),
+                    "--max-seconds",
+                    "90",
+                    "--report-layers",
+                    "40",
+                    "--out-dir",
+                    run_dir,
+                ]
+                code = self.run_subprocess(probe_cmd, timeout=140)
+                if code != 0:
+                    self.bus.log.emit("Universal import failed: template probe did not complete.")
+                    self.bus.status.emit("Failed")
+                    return
+                probe_files = sorted(run_dir.glob(f"fh6-group{template_count}-probe-*.json"), key=lambda path: path.stat().st_mtime)
+                if not probe_files:
+                    self.bus.log.emit("Universal import failed: template probe report was not created.")
+                    self.bus.status.emit("Failed")
+                    return
+                probe_files[-1].replace(probe_report)
+                probe = json.loads(probe_report.read_text(encoding="utf-8"))
+                candidates = probe.get("candidates") or []
+                if not candidates:
+                    self.bus.log.emit("Universal import failed: no matching loaded FH6 template was found.")
+                    self.bus.status.emit("Failed")
+                    return
+                best = candidates[0]
+                group = best.get("group")
+                table = best.get("table")
+                valid_ptrs = int(best.get("valid_ptrs") or 0)
+                sample_ok = int(best.get("sample_ok_count") or 0)
+                if not group or not table or valid_ptrs < template_count or sample_ok < min(8, template_count):
+                    self.bus.log.emit(
+                        "Universal import failed: located template did not validate strongly enough "
+                        f"(valid_ptrs={valid_ptrs}, sample_ok={sample_ok})."
+                    )
+                    self.bus.status.emit("Failed")
+                    return
+                self.bus.log.emit(f"FH6 template fallback-located: group={group}, table={table}, layers={template_count}")
+            import_cmd = [
+                helper_python(),
+                ROOT / "fh6_import_typecode_json.py",
+                "--pid",
+                str(pid),
+                "--table",
+                str(table),
+                "--json",
+                json_path,
+                "--template-count",
+                str(template_count),
+                "--compact-supported-layers",
+                "--allow-unknown-low-byte",
+                "--backup",
+                import_backup,
+                "--report",
+                import_report,
+                "--write",
+            ]
+            if clear_unused:
+                import_cmd.append("--clear-unused")
+            self.bus.log.emit("Writing handmade shapes into FH6...")
+            code = self.run_subprocess(import_cmd, timeout=240)
+            if code != 0:
+                self.bus.log.emit("Universal import failed while writing layers.")
+                self.bus.status.emit("Failed")
+                return
+            report = json.loads(import_report.read_text(encoding="utf-8"))
+            imported = int(report.get("imported_layer_count") or 0)
+            failures = int(report.get("failure_count") or 0)
+            unsupported = int(report.get("unsupported_shape_count") or 0)
+            if failures:
+                self.bus.log.emit(f"Universal import wrote with failures: imported={imported}, failures={failures}, unsupported={unsupported}")
+                self.bus.status.emit("Failed")
+                return
+            if imported <= 0:
+                self.bus.log.emit("Universal import failed: no layers were imported.")
+                self.bus.status.emit("Failed")
+                return
+            self.bus.log.emit(f"Imported {imported} handmade shape layers. Trimming FH6 group count...")
+            trim_cmd = [
+                helper_python(),
+                ROOT / "fh6_trim_group_count.py",
+                "--pid",
+                str(pid),
+                "--group",
+                str(group),
+                "--table",
+                str(table),
+                "--new-count",
+                str(imported),
+                "--trim-vector-end",
+                "--backup",
+                trim_backup,
+                "--write",
+            ]
+            code = self.run_subprocess(trim_cmd, timeout=60)
+            if code != 0:
+                self.bus.log.emit("Universal import wrote layers but failed while trimming layer count.")
+                self.bus.status.emit("Failed")
+                return
+            self.bus.log.emit(f"Universal import complete: {imported} layers. Save and reload the vinyl group to verify.")
+            self.bus.status.emit("Done")
+            self.bus.phase.emit("done", "Handmade JSON imported and layer count trimmed. Save/reload in FH6 to verify.")
+        except Exception as exc:
+            self.bus.log.emit(f"Universal import failed: {exc}")
+            self.bus.status.emit("Failed")
 
     def start_diagnose(self):
         cmd = [helper_python(), ROOT / "main.py", "--game", self.game_combo.currentText() or "fh6", "--diagnose"]

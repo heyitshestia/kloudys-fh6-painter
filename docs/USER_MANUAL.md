@@ -491,7 +491,7 @@ Target template layer count.
 
 If your FH6 group has 2000 layers, use `2000`.
 
-The app still reserves mask layers during import unless you change mask mode.
+Default import uses the full template layer count. Border masks are off unless legacy mask mode is enabled in Settings.
 
 ### Max Resolution
 
@@ -718,22 +718,13 @@ If the group has 2000 layers, enter:
 
 Do not guess. Wrong layer count can make auto-location fail or point to the wrong memory region.
 
-### Use FH Mask Layers
+### Legacy FH Border Masks
 
-Default: enabled.
+Default: off.
 
-The safest mode is:
+Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so normal imports do not need FH border masks.
 
-```text
-Full legacy masks
-```
-
-Other modes:
-
-- `Precise adaptive masks`: tries to save layers by using only needed masks.
-- `No mask layers`: experimental/testing only.
-
-Use full legacy masks unless you are intentionally testing layer-saving behavior.
+Legacy 4-mask mode is available in Settings as a fallback test mode. Use it only when intentionally testing old behavior because it can make underlying stacked vinyls transparent.
 
 ### Auto-Locate FH6 Template
 
@@ -1105,11 +1096,11 @@ imagev3/
 
 so previous runs are preserved.
 
-### Why Mask Layers Exist
+### Why Legacy Mask Layers Exist
 
-FH6 needs non-art boundary/mask layers for correct cover/apply behavior.
+Older imports used non-art boundary/mask layers to hide shapes that crossed the PNG canvas edge.
 
-The default safe importer reserves 4 layers. This reduces drawable art capacity but avoids edge/import weirdness.
+The current default avoids that by keeping transparent-source geometry inside the canvas during Finalize Checkpoints.
 
 ### Why Exact Layer Count Matters
 

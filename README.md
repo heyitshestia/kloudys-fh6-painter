@@ -157,26 +157,28 @@ Rules:
 
 ## FH6 Template Rule
 
-FH6 import needs extra non-art layers for mask/bounds behavior.
+Default import uses the full template for art layers.
+Finalize Checkpoints keeps transparent-source shapes inside the PNG canvas, so normal imports do not need FH border masks.
+Legacy 4-mask import remains available in Settings as a fallback test mode, but it can make underlying stacked vinyls transparent.
 
-Default safe mode reserves 4 mask layers:
+Default usable layer count:
 
 ```text
-usable drawable layers = template layer count - 4
+usable drawable layers = template layer count
 ```
 
 Examples:
 
 | FH6 template layer count | Usable drawable layers |
 | ---: | ---: |
-| 500 | 496 |
-| 750 | 746 |
-| 1000 | 996 |
-| 1500 | 1496 |
-| 2000 | 1996 |
-| 3000 | 2996 |
+| 500 | 500 |
+| 750 | 750 |
+| 1000 | 1000 |
+| 1500 | 1500 |
+| 2000 | 2000 |
+| 3000 | 3000 |
 
-If the JSON has more shapes than the usable count, the app will cap/trim during finalization or import.
+If the JSON has more shapes than the template count, the app will cap/trim during finalization or import.
 
 Full FH6 setup instructions are in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
 
@@ -230,6 +232,28 @@ imgs/luma-bands/
 
 This is useful for deciding whether Luma Prep helps or hurts a source image before spending time on a full run.
 
+## Import Handmade JSON
+
+The `Import Handmade JSON` tab is the experimental universal FH6 shape importer.
+
+It is intended for handmade/exported JSONs that contain real FH shape type codes, not only the generated ellipse/rectangle path.
+
+Current workflow:
+
+1. Open FH6 Vinyl Group Editor.
+2. Load a fresh 3000-layer template.
+3. Ungroup the template.
+4. Choose the handmade JSON in the app.
+5. Import it.
+6. Save and reload the vinyl group before judging the final result.
+
+Important WIP notes:
+
+- Save/reload is currently needed before the imported shapes display correctly.
+- A strange vinyl thumbnail in the FH6 menu is normal right now.
+- Both the live-editor display refresh and thumbnail behavior are still being worked on.
+- The importer trims the live group count after import, so one large template can be used and culled down to the final layer count.
+
 ## Common Problems
 
 | Problem | Most likely fix |
@@ -263,10 +287,28 @@ This project is built on top of earlier Forza Painter work. License notices are 
 | AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project, MIT-licensed FH import workflow, memory-writing/import foundation, and geometry-to-vinyl approach. |
 | BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused desktop fork and upstream work for FH6 UI, importer/locator behavior, app packaging, and workflow ideas. |
 | zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled generator workflow. |
+| Community FH5 shape-code spreadsheet | https://docs.google.com/spreadsheets/d/1zmdme-c1ZqxTw8dd-ooYhJV8aOSYc1LkZlmIfELRbqo/edit#gid=0 | Shape-code ordering and names used as the starting point for FH6 universal-shape registry work. |
+| Frozander | Discord | Shared the practical page/offset observation that FH6 shape pages follow the FH5 ordering with offset/page changes, which helped guide the registry inference. |
+| FH painter / modding Discord testers | Discord | Live templates, screenshots, crash/save reports, and shape-order checks used to validate the handmade importer behavior. |
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by the upstream license. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by the upstream license. |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in upstream history. |
-| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: launcher-first workflow, PySide app, style presets, Luma Prep, Edge Repair defaults, finalized-run browser, updater workflow, release packaging, and FH6 safety adjustments. |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork: launcher-first workflow, PySide app, style presets, Luma Prep, Edge Repair defaults, finalized-run browser, updater workflow, release packaging, FH6 safety adjustments, 3000-template layer culling, and custom FH6 handmade/universal importer completion. |
+
+### Custom Importer Work
+
+The handmade/universal importer was completed in this fork by combining community shape-code information with live FH6 memory validation.
+
+Confirmed implementation details:
+
+- FH6 primitive selection uses the 16-bit shape word at layer offset `0x7A`.
+- The importer writes only save-safe layer fields: position, scale, rotation, skew, color, mask flag, and shape word.
+- Volatile render/cache fields and resource pointers are intentionally not copied.
+- A 3000-layer template can be used as the base for imports.
+- After import, the app trims the FH6 group count and table end so the saved vinyl uses only the actual layer count.
+- A 13-tab / 520-shape FH6 registry was built from confirmed tab anchors plus sheet-backed and inferred shape ordering.
+
+The custom importer license and attribution notice is in [LICENSE.custom-importer](LICENSE.custom-importer).
 
 ## Limitations
 
@@ -274,9 +316,10 @@ This project is built on top of earlier Forza Painter work. License notices are 
 - Import may require running the app as administrator.
 - GPU generation requires working OpenCL support.
 - The normal importer is optimized around the currently supported generated-shape path.
-- Universal handmade multi-shape import is not complete.
+- Universal handmade multi-shape import is working but still marked WIP because live editor refresh and vinyl-menu thumbnail behavior are not fully polished.
 - In-game FH6 editor state matters. If FH6 is in the wrong menu, import will fail even if the JSON is valid.
 
 ## License
 
 This project is a derivative of the Forza Painter workflow and keeps the original MIT license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
+The custom handmade/universal importer is MIT-licensed with its own attribution notice in [LICENSE.custom-importer](LICENSE.custom-importer).

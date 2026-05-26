@@ -39,33 +39,27 @@ This is why most import errors are editor-state errors, not generator errors.
 
 ## Template Layer Budget
 
-FH6 import normally reserves 4 mask/boundary layers.
+Default import uses the full template for drawable art layers. Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so normal imports do not need FH border masks.
 
 Formula:
 
 ```text
-usable drawable layers = template layer count - 4
+usable drawable layers = template layer count
 ```
 
 Examples:
 
-| Template layer count in FH6 | Usable art shapes in default safe mode |
+| Template layer count in FH6 | Usable art shapes in default mode |
 | ---: | ---: |
-| 500 | 496 |
-| 750 | 746 |
-| 1000 | 996 |
-| 1500 | 1496 |
-| 2000 | 1996 |
-| 2500 | 2496 |
-| 3000 | 2996 |
+| 500 | 500 |
+| 750 | 750 |
+| 1000 | 1000 |
+| 1500 | 1500 |
+| 2000 | 2000 |
+| 2500 | 2500 |
+| 3000 | 3000 |
 
-If you want to import a 2000-shape final JSON with full legacy masks, you need at least:
-
-```text
-2004 total FH6 layers
-```
-
-In practice, most templates are round numbers like 2000. That means default safe import can use 1996 drawable art layers.
+Legacy 4-mask import remains available in Settings as a fallback test mode, but it can make underlying stacked vinyls transparent.
 
 ## Which JSON Should You Import?
 
@@ -236,24 +230,34 @@ DONE!
 Default:
 
 ```text
-Full legacy masks
+No FH border masks
 ```
 
-This is safest.
+Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so this is the normal mode.
 
-### Full Legacy Masks
+### No FH Border Masks
 
-Uses the full default mask/boundary behavior.
+Uses every template layer for art.
 
 Pros:
 
-- safest
+- maximum drawable layers
+- does not punch transparent strips through stacked vinyls
+- default behavior
+
+### Full Legacy Masks
+
+Uses the old 4-mask boundary behavior.
+
+Pros:
+
 - best tested
-- cleanest for FH cover/apply behavior
+- fallback if an old import needs it
 
 Cons:
 
 - reserves 4 layers
+- may make underlying stacked vinyls transparent
 
 ### Precise Adaptive Masks
 
@@ -267,19 +271,6 @@ Cons:
 
 - less tested
 - may behave differently on edge cases
-
-### No Mask Layers
-
-Experimental/testing mode.
-
-Pros:
-
-- maximum drawable layers
-
-Cons:
-
-- can cause visible/import/apply issues
-- not recommended for normal users
 
 ## Common Import Errors
 

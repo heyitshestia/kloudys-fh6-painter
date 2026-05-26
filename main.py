@@ -22,6 +22,7 @@ import colorsys
 import os
 
 FH6_DISCOVERED_TABLE_POINTER_DELTA = 0x1E
+FH6_GROUP_TABLE_END_OFFSET = 0x80
 _CV2_CACHE = None
 _CV2_ERROR = None
 
@@ -181,6 +182,105 @@ def build_mask_shape(kind, bounds):
     return Shape(1, int(round(x)), int(round(y)), int(round(w)), int(round(h)), 0, Color(0, 0, 0, 255), True)
 
 
+def merge_intervals(intervals, gap=8.0):
+    if not intervals:
+        return []
+    ordered = sorted((float(a), float(b)) for a, b in intervals if b > a)
+    merged = [list(ordered[0])]
+    for start, end in ordered[1:]:
+        if start <= merged[-1][1] + gap:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [(a, b) for a, b in merged]
+
+
+def build_overhang_mask(side, interval, depth, image_w, image_h):
+    pad = max(3.0, min(float(image_w), float(image_h)) * 0.006)
+    inside_overlap = max(2.0, min(8.0, min(float(image_w), float(image_h)) * 0.006))
+    depth = max(1.0, min(float(depth) + pad, max(float(image_w), float(image_h)) * 0.12))
+    a, b = interval
+    if side in ("left", "right"):
+        a = max(0.0, a - pad)
+        b = min(float(image_h), b + pad)
+        h = max(1.0, b - a)
+        w = depth + inside_overlap
+        x = (-depth + inside_overlap) / 2.0 if side == "left" else float(image_w) + (depth - inside_overlap) / 2.0
+        y = (a + b) / 2.0
+    else:
+        a = max(0.0, a - pad)
+        b = min(float(image_w), b + pad)
+        w = max(1.0, b - a)
+        h = depth + inside_overlap
+        x = (a + b) / 2.0
+        y = (-depth + inside_overlap) / 2.0 if side == "top" else float(image_h) + (depth - inside_overlap) / 2.0
+    return Shape(1, int(round(x)), int(round(y)), int(round(w)), int(round(h)), 0, Color(0, 0, 0, 255), True)
+
+
+def choose_overhang_masks(shapes, image_w, image_h, max_masks=DEFAULT_MASK_BUDGET):
+    side_data = {
+        "left": {"depth": 0.0, "intervals": []},
+        "right": {"depth": 0.0, "intervals": []},
+        "top": {"depth": 0.0, "intervals": []},
+        "bottom": {"depth": 0.0, "intervals": []},
+    }
+    min_depth = max(0.75, min(float(image_w), float(image_h)) * 0.001)
+    for shape in shapes:
+        if shape.color.a <= 0 or shape.is_mask:
+            continue
+        x0, y0, x1, y1 = shape_bbox(shape)
+        clipped_x0 = max(0.0, min(float(image_w), x0))
+        clipped_x1 = max(0.0, min(float(image_w), x1))
+        clipped_y0 = max(0.0, min(float(image_h), y0))
+        clipped_y1 = max(0.0, min(float(image_h), y1))
+        if x0 < -min_depth and clipped_y1 > clipped_y0:
+            side_data["left"]["depth"] = max(side_data["left"]["depth"], -x0)
+            side_data["left"]["intervals"].append((clipped_y0, clipped_y1))
+        if x1 > float(image_w) + min_depth and clipped_y1 > clipped_y0:
+            side_data["right"]["depth"] = max(side_data["right"]["depth"], x1 - float(image_w))
+            side_data["right"]["intervals"].append((clipped_y0, clipped_y1))
+        if y0 < -min_depth and clipped_x1 > clipped_x0:
+            side_data["top"]["depth"] = max(side_data["top"]["depth"], -y0)
+            side_data["top"]["intervals"].append((clipped_x0, clipped_x1))
+        if y1 > float(image_h) + min_depth and clipped_x1 > clipped_x0:
+            side_data["bottom"]["depth"] = max(side_data["bottom"]["depth"], y1 - float(image_h))
+            side_data["bottom"]["intervals"].append((clipped_x0, clipped_x1))
+
+    candidates = []
+    for side, data in side_data.items():
+        merged = merge_intervals(data["intervals"])
+        if not merged:
+            continue
+        # Prefer the largest continuous spill span per side. This keeps mask
+        # usage bounded and avoids returning to full-border masks.
+        interval = max(merged, key=lambda item: item[1] - item[0])
+        span = interval[1] - interval[0]
+        score = float(data["depth"]) * max(1.0, span)
+        candidates.append((score, side, interval, float(data["depth"]), len(merged)))
+
+    candidates.sort(reverse=True)
+    selected = candidates[: max(0, int(max_masks))]
+    masks = [build_overhang_mask(side, interval, depth, image_w, image_h) for _score, side, interval, depth, _parts in selected]
+    report = {
+        "mode": "precise",
+        "scores": {side: score for score, side, _interval, _depth, _parts in candidates},
+        "needed": [side for _score, side, _interval, _depth, _parts in candidates],
+        "selected": [side for _score, side, _interval, _depth, _parts in selected],
+        "overhangs": [
+            {
+                "side": side,
+                "interval": [round(interval[0], 3), round(interval[1], 3)],
+                "depth": round(depth, 3),
+                "merged_spans": parts,
+            }
+            for _score, side, interval, depth, parts in selected
+        ],
+        "budget": max_masks,
+        "bounds": geometry_bounds(shapes, image_w, image_h),
+    }
+    return masks, report
+
+
 def choose_boundary_masks(shapes, image_w, image_h, mode="full", max_masks=DEFAULT_MASK_BUDGET):
     if mode == "off" or max_masks <= 0:
         return [], {"mode": mode, "scores": {}, "needed": [], "selected": [], "budget": max_masks}
@@ -196,6 +296,12 @@ def choose_boundary_masks(shapes, image_w, image_h, mode="full", max_masks=DEFAU
             "budget": max_masks,
             "bounds": bounds,
         }
+
+    if mode == "precise":
+        masks, report = choose_overhang_masks(shapes, image_w, image_h, max_masks=max_masks)
+        if masks:
+            return masks, report
+        return [], {"mode": mode, "scores": {}, "needed": [], "selected": [], "budget": max_masks, "bounds": bounds, "overhangs": []}
 
     scores = side_risk_scores(shapes, image_w, image_h)
     threshold = 1.2
@@ -398,6 +504,30 @@ def draw_memory_shape(pid: int, profile, shape: Shape, index: int, cLiveryLayerT
     return True
     
 
+def trim_fh6_group_count(pid, profile, group_address, table_address, old_count, new_count):
+    if profile.key != "fh6":
+        return
+    if not group_address or not table_address:
+        print("Layer count culling skipped: missing FH6 group/table address.")
+        return
+    new_count = max(0, min(int(new_count), int(old_count)))
+    if new_count >= int(old_count):
+        print("Layer count culling skipped: imported count already matches the template.")
+        return
+    count_address = int(group_address) + profile.livery_count_offset
+    table_end_address = int(group_address) + FH6_GROUP_TABLE_END_OFFSET
+    new_table_end = int(table_address) + new_count * 8
+    write_process_memory(pid, count_address, struct.pack("<H", new_count))
+    write_process_memory(pid, table_end_address, struct.pack("<Q", new_table_end))
+    print(
+        "Culled FH6 layer count: {} -> {} layers; table end -> 0x{:x}".format(
+            old_count,
+            new_count,
+            new_table_end,
+        )
+    )
+
+
 def load_geometry(
     path,
     game_key=None,
@@ -406,7 +536,7 @@ def load_geometry(
     layer_count_address=None,
     layer_table_address=None,
     layer_count_value=None,
-    boundary_mask_mode="full",
+    boundary_mask_mode="off",
     boundary_mask_budget=DEFAULT_MASK_BUDGET,
 ):
     try:
@@ -511,7 +641,10 @@ def load_geometry(
     if pid == -1:
         return
 
+    cLiveryGroup = None
     if layer_count_address:
+        if profile.key == "fh6":
+            cLiveryGroup = int(layer_count_address) - int(profile.livery_count_offset)
         if layer_count_value:
             current_livery_count = int(layer_count_value)
             print("Manual layer count address 0x{0:x}; using template layer count {1}".format(layer_count_address, current_livery_count))
@@ -562,34 +695,45 @@ def load_geometry(
         return
 
     mask_budget = max(0, min(4, int(boundary_mask_budget)))
-    mask_mode = str(boundary_mask_mode or "full").strip().lower()
+    mask_mode = str(boundary_mask_mode or "off").strip().lower()
     if mask_mode not in ("precise", "full", "off"):
-        mask_mode = "full"
+        mask_mode = "off"
 
-    preliminary_capacity = max(0, min(int(current_livery_count), 3000) - (0 if mask_mode == "off" else mask_budget))
+    requested_drawable_count = len(shapes)
+    target_total_layers = max(0, min(int(current_livery_count), 3000, requested_drawable_count))
+    preliminary_reserved = mask_budget if mask_mode == "full" else 0
+    preliminary_capacity = max(0, target_total_layers - preliminary_reserved)
     if len(shapes) > preliminary_capacity:
         print(
             "Geometry has {} drawable layers but FH mask budget reserves up to {} layers; trimming to {} drawable layers before mask selection.".format(
-                len(shapes), 0 if mask_mode == "off" else mask_budget, preliminary_capacity
+                len(shapes), preliminary_reserved, preliminary_capacity
             )
         )
         shapes = shapes[:preliminary_capacity]
 
     boundary_masks, mask_report = choose_boundary_masks(shapes, image_w, image_h, mode=mask_mode, max_masks=mask_budget)
     reserved_mask_layers = len(boundary_masks)
-    drawable_capacity = max(0, min(int(current_livery_count), 3000) - reserved_mask_layers)
+    drawable_capacity = max(0, target_total_layers - reserved_mask_layers)
+    if shapes and drawable_capacity == 0:
+        drawable_capacity = 1
 
     if len(shapes) > drawable_capacity:
         print(
-            "Geometry has {} drawable layers but selected {} FH mask layers; trimming to {} drawable layers.".format(
-                len(shapes), reserved_mask_layers, drawable_capacity
+            "Geometry has {} drawable layers but selected {} FH mask layers; trimming to {} drawable layers to keep {} total layers.".format(
+                len(shapes), reserved_mask_layers, drawable_capacity, target_total_layers
             )
         )
         shapes = shapes[:drawable_capacity]
         boundary_masks, mask_report = choose_boundary_masks(shapes, image_w, image_h, mode=mask_mode, max_masks=mask_budget)
         reserved_mask_layers = len(boundary_masks)
+        drawable_capacity = max(0, target_total_layers - reserved_mask_layers)
+        if shapes and drawable_capacity == 0:
+            drawable_capacity = 1
+        if len(shapes) > drawable_capacity:
+            shapes = shapes[:drawable_capacity]
 
     shapes.extend(boundary_masks)
+    imported_layer_count = len(shapes)
 
     print(
         "Drawable layers to import: {} + {} FH mask layers / template layers: {}".format(
@@ -616,6 +760,8 @@ def load_geometry(
             print("Writing layer {}/{}".format(i + 1, current_livery_count), flush=True)
         if not draw_memory_shape(pid, profile, shape, i, cLiveryLayerTable, current_livery_count):
             return
+
+    trim_fh6_group_count(pid, profile, cLiveryGroup, cLiveryLayerTable, current_livery_count, imported_layer_count)
     
     print("DONE!")
 
@@ -636,8 +782,8 @@ def parse_args(args):
                         help="Manual live layer-table address. If omitted with --layer-count-address, uses count+0x1e pointer field.")
     parser.add_argument("--layer-count-value", type=int, default=None,
                         help="Known template layer count. Used by FH6 because the live count field is u16 inside a larger structure.")
-    parser.add_argument("--fh-boundary-mask-mode", choices=("precise", "full", "off"), default="full",
-                        help="FH6 bounds mask strategy: precise/adaptive, full legacy 4-mask frame, or off for testing.")
+    parser.add_argument("--fh-boundary-mask-mode", choices=("precise", "full", "off"), default="off",
+                        help="FH6 bounds mask strategy: off by default, full legacy 4-mask frame, or precise/adaptive test mode.")
     parser.add_argument("--fh-boundary-mask-budget", type=int, default=DEFAULT_MASK_BUDGET,
                         help="Maximum FH6 bounds mask layers to spend in precise/full mode. Default: 4.")
     parser.add_argument("geometry_path", nargs="*", help="Generated .json geometry file path.")

@@ -1,0 +1,43 @@
+MIT License
+
+Custom FH6 handmade/universal importer implementation
+copyright (c) 2026 heyitshestia / Kloudy
+
+This custom importer is part of Kloudy's FH6 Painter. It is licensed under the
+same MIT terms below.
+
+Attribution and research notes:
+- AE / A-Dawg#0001 created the original Forza Painter project and MIT-licensed
+  memory-writing/import workflow that this project derives from.
+- BVZRays / bvz rays maintained FH6-focused Forza Painter work and importer /
+  locator behavior that helped guide the FH6 editor workflow.
+- The community FH5 shape-code spreadsheet provided the ordered shape-code data
+  used as a starting point for building the FH6 shape registry.
+- Frozander's Discord observation that FH6 shape pages follow the FH5 order with
+  page/offset changes helped guide the page-anchor inference work.
+- The broader FH modding / painter Discord community provided live testing,
+  templates, reports, and practical importer behavior observations.
+- Kloudy / heyitshestia completed the FH6 universal-import path by live dumping
+  and validating FH6 layer memory, confirming the save-safe 16-bit shape word at
+  layer offset 0x7A, deriving the group count/table trim model, building the
+  13-tab/520-shape registry, adding save/reload validation, and integrating the
+  importer into this application.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice, attribution notes, and this permission notice shall
+be included in all copies or substantial portions of the custom importer
+software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
