@@ -21,8 +21,8 @@ CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
 ACTIVE_PRESET_FILES = (
-    "a.flat-colors.ini",
     "b.shaded-art.ini",
+    "a.flat-colors.ini",
     "c.gradients.ini",
 )
 
@@ -132,8 +132,8 @@ def preset_display_name(path, values):
 def preset_sort_key(item):
     stem = item["path"].stem.lower()
     ladder_order = {
-        "flat-colors": 0,
-        "shaded-art": 1,
+        "shaded-art": 0,
+        "flat-colors": 1,
         "gradients": 2,
     }
     preset_rank = 99

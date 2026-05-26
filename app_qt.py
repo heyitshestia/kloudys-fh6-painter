@@ -163,13 +163,13 @@ Manual fallback files:
 
 Current stock presets are style-based:
 
-Flat Colors / Logos
-- Best for logos, decals, mascot art, hard borders, and clean color regions.
-- Uses edge-biased shapes and Luma Prep by default.
-
 Shaded Character Art
 - Best default for anime, faces, eyes, hair, skin, and mixed linework.
 - Uses smart-detail weighting and leaves Luma Prep off to protect tiny detail.
+
+Flat Colors / Logos
+- Best for logos, decals, mascot art, hard borders, and clean color regions.
+- Uses edge-biased shapes and Luma Prep by default.
 
 Smooth Gradients
 - Best for glossy shading and dark-to-light gradients.
@@ -2256,6 +2256,8 @@ class MainWindow(QMainWindow):
         self.import_preview.set_bytes(data)
 
     def show_preview_file(self, path: str):
+        if not Path(path).exists():
+            return
         self.preview.set_file(path)
         self.import_preview.set_file(path)
 
@@ -2490,7 +2492,9 @@ class MainWindow(QMainWindow):
                     preview_files = self.run_preview_files(image_path, run_dir)
                     if preview_files:
                         newest = preview_files[0]
-                        mtime = newest.stat().st_mtime
+                        mtime = self.safe_path_mtime(newest)
+                        if mtime is None:
+                            continue
                         if mtime != last_preview_mtime:
                             last_preview_mtime = mtime
                             self.bus.preview_file.emit(str(newest))
@@ -2513,8 +2517,8 @@ class MainWindow(QMainWindow):
                 preview_files = self.run_preview_files(image_path, run_dir)
                 if preview_files:
                     newest = preview_files[0]
-                    mtime = newest.stat().st_mtime
-                    if mtime != last_preview_mtime:
+                    mtime = self.safe_path_mtime(newest)
+                    if mtime is not None and mtime != last_preview_mtime:
                         self.bus.preview_file.emit(str(newest))
                 if self.stop_generation_event.is_set():
                     self.bus.log.emit(f"Stopped after finalizing {image_path.name}.")
@@ -2583,7 +2587,10 @@ class MainWindow(QMainWindow):
             "Internal build stop:",
             "Using settings:",
             "Luma Prep mode:",
+            "Source profile:",
+            "Source recommendation:",
             "Preprocessed image:",
+            "Canvas boundary:",
             "INTERNAL BUILD COMPLETE",
             "Finalized JSONs are",
             "Finalize Checkpoints:",
@@ -2620,8 +2627,26 @@ class MainWindow(QMainWindow):
                 candidates.extend(preview_dir.glob(f"{image_path.stem}*.preview*.png"))
                 candidates.extend(preview_dir.glob("*.preview*.png"))
                 candidates.extend(preview_dir.glob("*.raw.preview.png"))
-        filtered = [path for path in candidates if ".v2.preprocess." not in path.name]
-        return sorted(set(filtered), key=lambda path: path.stat().st_mtime, reverse=True)
+        filtered = []
+        seen = set()
+        for path in candidates:
+            if ".v2.preprocess." in path.name:
+                continue
+            if path in seen:
+                continue
+            mtime = self.safe_path_mtime(path)
+            if mtime is None:
+                continue
+            seen.add(path)
+            filtered.append((path, mtime))
+        return [path for path, _mtime in sorted(filtered, key=lambda item: item[1], reverse=True)]
+
+    @staticmethod
+    def safe_path_mtime(path: Path) -> float | None:
+        try:
+            return Path(path).stat().st_mtime
+        except OSError:
+            return None
 
     def run_json_files(self, run_dir):
         run_dir = Path(run_dir)

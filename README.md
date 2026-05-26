@@ -95,8 +95,8 @@ Current stock presets are style-based, not the old fast/slow ladder:
 
 | Preset | Best for | Luma Prep default | Shape style |
 | --- | --- | --- | --- |
-| `Flat Colors / Logos` | logos, decals, hard borders, mascot art, clean color regions | on | edge-biased |
 | `Shaded Character Art` | anime, characters, skin, hair, eyes, mixed linework | off | character-art weighting |
+| `Flat Colors / Logos` | logos, decals, hard borders, mascot art, clean color regions | on | edge-biased |
 | `Smooth Gradients` | glossy shading, soft transitions, dark-to-light gradients | off | soft detail |
 
 If you are unsure, start with `Shaded Character Art`.

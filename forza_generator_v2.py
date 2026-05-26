@@ -529,6 +529,49 @@ def target_has_alpha_boundary(target_rgba: np.ndarray) -> bool:
     return bool(alpha.size and int(np.min(alpha)) < 250)
 
 
+def canvas_edge_context(target_rgba: np.ndarray) -> dict | None:
+    if not target_has_alpha_boundary(target_rgba):
+        return None
+    height, width = target_rgba.shape[:2]
+    if height <= 0 or width <= 0:
+        return None
+    alpha = target_rgba[..., 3] if target_rgba.ndim >= 3 and target_rgba.shape[2] >= 4 else None
+    if alpha is None:
+        return None
+    strip = max(2, min(12, int(round(min(height, width) * 0.01))))
+    visible = alpha > 8
+    return {
+        "left": np.max(visible[:, :strip], axis=1),
+        "right": np.max(visible[:, width - strip :], axis=1),
+        "top": np.max(visible[:strip, :], axis=0),
+        "bottom": np.max(visible[height - strip :, :], axis=0),
+        "strip": strip,
+    }
+
+
+def edge_side_allows_overhang(
+    edge_context: dict | None,
+    side: str,
+    span_start: float,
+    span_end: float,
+    length: int,
+    min_visible_fraction: float = 0.08,
+) -> bool:
+    if not edge_context:
+        return False
+    edge = edge_context.get(side)
+    if edge is None or length <= 0:
+        return False
+    start = max(0, min(length - 1, int(math.floor(span_start))))
+    end = max(0, min(length - 1, int(math.ceil(span_end))))
+    if end < start:
+        return False
+    span = edge[start : end + 1]
+    if span.size == 0:
+        return False
+    return (float(np.count_nonzero(span)) / float(span.size)) >= min_visible_fraction
+
+
 def raw_rotated_bbox(cx: float, cy: float, rx: float, ry: float, rot_deg: float) -> tuple[float, float, float, float]:
     theta = math.radians(rot_deg)
     cos_t = math.cos(theta)
@@ -621,7 +664,7 @@ def shape_raw_bbox(shape: dict) -> tuple[float, float, float, float] | None:
     return raw_rotated_bbox(cx, cy, *compensated_ellipse_size(w, h), rot)
 
 
-def shape_boundary_penalty(shape: dict, width: int, height: int, enabled: bool) -> float:
+def shape_boundary_penalty(shape: dict, width: int, height: int, enabled: bool, edge_context: dict | None = None) -> float:
     if not enabled:
         return 0.0
     bbox = shape_raw_bbox(shape)
@@ -632,12 +675,16 @@ def shape_boundary_penalty(shape: dict, width: int, height: int, enabled: bool) 
     bbox_h = max(0.0, y1 - y0)
     if bbox_w <= 0.0 or bbox_h <= 0.0:
         return 0.0
-    ix0 = max(0.0, min(float(width), x0))
-    ix1 = max(0.0, min(float(width), x1))
-    iy0 = max(0.0, min(float(height), y0))
-    iy1 = max(0.0, min(float(height), y1))
-    inside_area = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
-    outside_area = max(0.0, bbox_w * bbox_h - inside_area)
+    outside_area = 0.0
+    if x0 < 0.0 and not edge_side_allows_overhang(edge_context, "left", y0, y1, height):
+        outside_area += min(-x0, bbox_w) * bbox_h
+    if x1 > float(width) and not edge_side_allows_overhang(edge_context, "right", y0, y1, height):
+        outside_area += min(x1 - float(width), bbox_w) * bbox_h
+    if y0 < 0.0 and not edge_side_allows_overhang(edge_context, "top", x0, x1, width):
+        outside_area += min(-y0, bbox_h) * bbox_w
+    if y1 > float(height) and not edge_side_allows_overhang(edge_context, "bottom", x0, x1, width):
+        outside_area += min(y1 - float(height), bbox_h) * bbox_w
+    outside_area = min(outside_area, bbox_w * bbox_h)
     if outside_area <= 0.25:
         return 0.0
     color = list(shape.get("color", [0, 0, 0, 255]))
@@ -648,13 +695,13 @@ def shape_boundary_penalty(shape: dict, width: int, height: int, enabled: bool) 
     return outside_area * alpha * alpha * float(255.0 * 255.0 * 3.0 * 8.0)
 
 
-def shape_boundary_penalties(shapes: list[dict], width: int, height: int, enabled: bool) -> np.ndarray:
+def shape_boundary_penalties(shapes: list[dict], width: int, height: int, enabled: bool, edge_context: dict | None = None) -> np.ndarray:
     if not enabled:
         return np.zeros(len(shapes), dtype=np.float64)
-    return np.array([shape_boundary_penalty(shape, width, height, True) for shape in shapes], dtype=np.float64)
+    return np.array([shape_boundary_penalty(shape, width, height, True, edge_context) for shape in shapes], dtype=np.float64)
 
 
-def fit_shape_inside_canvas(shape: dict, width: int, height: int) -> dict:
+def fit_shape_inside_canvas(shape: dict, width: int, height: int, edge_context: dict | None = None) -> dict:
     fitted = copy_shape(shape)
     data = list(fitted.get("data", []))
     if len(data) < 4:
@@ -664,11 +711,24 @@ def fit_shape_inside_canvas(shape: dict, width: int, height: int) -> dict:
         if bbox is None:
             break
         x0, x1, y0, y1 = bbox
-        if x0 >= 0.0 and y0 >= 0.0 and x1 <= float(width) and y1 <= float(height):
+        allow_left = edge_side_allows_overhang(edge_context, "left", y0, y1, height)
+        allow_right = edge_side_allows_overhang(edge_context, "right", y0, y1, height)
+        allow_top = edge_side_allows_overhang(edge_context, "top", x0, x1, width)
+        allow_bottom = edge_side_allows_overhang(edge_context, "bottom", x0, x1, width)
+        violate_left = x0 < 0.0 and not allow_left
+        violate_right = x1 > float(width) and not allow_right
+        violate_top = y0 < 0.0 and not allow_top
+        violate_bottom = y1 > float(height) and not allow_bottom
+        if not (violate_left or violate_right or violate_top or violate_bottom):
             break
         bbox_w = max(1.0, x1 - x0)
         bbox_h = max(1.0, y1 - y0)
-        scale = min(1.0, max(1.0, float(width) - 1.0) / bbox_w, max(1.0, float(height) - 1.0) / bbox_h)
+        scale_limits = [1.0]
+        if violate_left and violate_right:
+            scale_limits.append(max(1.0, float(width) - 1.0) / bbox_w)
+        if violate_top and violate_bottom:
+            scale_limits.append(max(1.0, float(height) - 1.0) / bbox_h)
+        scale = min(scale_limits)
         if scale < 0.999:
             data = list(fitted["data"])
             data[2] = max(1.0, float(data[2]) * scale)
@@ -678,15 +738,19 @@ def fit_shape_inside_canvas(shape: dict, width: int, height: int) -> dict:
             if bbox is None:
                 break
             x0, x1, y0, y1 = bbox
+            allow_left = edge_side_allows_overhang(edge_context, "left", y0, y1, height)
+            allow_right = edge_side_allows_overhang(edge_context, "right", y0, y1, height)
+            allow_top = edge_side_allows_overhang(edge_context, "top", x0, x1, width)
+            allow_bottom = edge_side_allows_overhang(edge_context, "bottom", x0, x1, width)
         dx = 0.0
         dy = 0.0
-        if x0 < 0.0:
+        if x0 < 0.0 and not allow_left:
             dx = -x0
-        if x1 > float(width):
+        if x1 > float(width) and not allow_right:
             dx = min(dx, float(width) - x1) if dx else float(width) - x1
-        if y0 < 0.0:
+        if y0 < 0.0 and not allow_top:
             dy = -y0
-        if y1 > float(height):
+        if y1 > float(height) and not allow_bottom:
             dy = min(dy, float(height) - y1) if dy else float(height) - y1
         data = list(fitted["data"])
         data[0] = float(data[0]) + dx
@@ -731,6 +795,7 @@ def render_and_score(
     enforce_canvas_boundary: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
     height, width = target_rgba.shape[:2]
+    edge_context = canvas_edge_context(target_rgba) if enforce_canvas_boundary else None
     bg_rgba = np.array(list(background.get("color", [0, 0, 0, 0]))[:4], dtype=np.float32)
     top_rgb = np.empty((height, width, 3), dtype=np.float32)
     top_rgb[:] = bg_rgba[:3]
@@ -790,7 +855,7 @@ def render_and_score(
         ).astype(np.float64)
     else:
         contributions = np.zeros(len(shapes), dtype=np.float64)
-    boundary_penalties = shape_boundary_penalties(shapes, width, height, enforce_canvas_boundary)
+    boundary_penalties = shape_boundary_penalties(shapes, width, height, enforce_canvas_boundary, edge_context)
     if len(boundary_penalties):
         contributions += boundary_penalties
     pixel_weights = np.where(target_alpha > 0.02, 1.0, 0.35).astype(np.float32)
@@ -1283,7 +1348,8 @@ def rank_repair_targets(
     visible_pixels = np.bincount(top_idx[valid].ravel(), minlength=len(shapes)).astype(np.float64)
     spill = np.maximum(0.0, top_alpha - target_alpha)
     spill_pixels = np.bincount(top_idx[valid].ravel(), weights=spill[valid].ravel(), minlength=len(shapes)).astype(np.float64)
-    boundary_penalty = shape_boundary_penalties(shapes, target_rgba.shape[1], target_rgba.shape[0], enforce_canvas_boundary)
+    edge_context = canvas_edge_context(target_rgba) if enforce_canvas_boundary else None
+    boundary_penalty = shape_boundary_penalties(shapes, target_rgba.shape[1], target_rgba.shape[0], enforce_canvas_boundary, edge_context)
     area = np.array([max(1.0, float(shape["data"][2]) * float(shape["data"][3])) for shape in shapes], dtype=np.float64)
     homogeneity = np.array([shape_homogeneity_penalty(shape, target_rgba) for shape in shapes], dtype=np.float64)
     index = np.arange(len(shapes), dtype=np.float64)
@@ -1323,6 +1389,7 @@ def repair_shapes(
     render_rgb, top_alpha, top_idx, diff_top, _, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
     best_error = normalized_error(total_error, scored_pixels)
     before_error = best_error
+    edge_context = canvas_edge_context(target_rgba) if enforce_canvas_boundary else None
 
     improvements = 0
     family_changes = 0
@@ -1348,7 +1415,7 @@ def repair_shapes(
             local_best_score = local_error_value(diff_top, local_bbox)
             if enforce_canvas_boundary:
                 local_area = max(1.0, float((local_bbox[1] - local_bbox[0] + 1) * (local_bbox[3] - local_bbox[2] + 1)))
-                local_best_score += shape_boundary_penalty(shape, target_rgba.shape[1], target_rgba.shape[0], True) / local_area
+                local_best_score += shape_boundary_penalty(shape, target_rgba.shape[1], target_rgba.shape[0], True, edge_context) / local_area
             alpha0 = float(shape.get("color", [0, 0, 0, 255])[3])
             alpha_step = max(10.0, round(alpha0 * 0.12))
             proposals = [
@@ -1380,8 +1447,8 @@ def repair_shapes(
             original_local_score = local_best_score
             local_best_deleted = False
             trial_shapes: list[dict | None] = shape_family_variants(shape, prefer_smooth_shapes=prefer_smooth_shapes)
-            if enforce_canvas_boundary and shape_boundary_penalty(shape, target_rgba.shape[1], target_rgba.shape[0], True) > 0:
-                trial_shapes.append(fit_shape_inside_canvas(shape, target_rgba.shape[1], target_rgba.shape[0]))
+            if enforce_canvas_boundary and shape_boundary_penalty(shape, target_rgba.shape[1], target_rgba.shape[0], True, edge_context) > 0:
+                trial_shapes.append(fit_shape_inside_canvas(shape, target_rgba.shape[1], target_rgba.shape[0], edge_context))
             for proposal in proposals:
                 if len(proposal) == 6:
                     delete_shape, dx, dy, drx, dry, drot = proposal
@@ -1415,7 +1482,7 @@ def repair_shapes(
                 trial_local_score = float(trial_diff.mean()) if trial_diff.size else local_best_score
                 if enforce_canvas_boundary and trial is not None:
                     local_area = max(1.0, float((local_bbox[1] - local_bbox[0] + 1) * (local_bbox[3] - local_bbox[2] + 1)))
-                    trial_local_score += shape_boundary_penalty(trial, target_rgba.shape[1], target_rgba.shape[0], True) / local_area
+                    trial_local_score += shape_boundary_penalty(trial, target_rgba.shape[1], target_rgba.shape[0], True, edge_context) / local_area
                 if trial_local_score + 1e-9 < local_best_score:
                     local_best_score = trial_local_score
                     local_best = None if trial is None else copy_shape(trial)
@@ -1447,7 +1514,7 @@ def repair_shapes(
                     improvements += 1
                     if changed_family:
                         family_changes += 1
-                    if enforce_canvas_boundary and shape_boundary_penalty(prev, target_rgba.shape[1], target_rgba.shape[0], True) > 0:
+                    if enforce_canvas_boundary and shape_boundary_penalty(prev, target_rgba.shape[1], target_rgba.shape[0], True, edge_context) > 0:
                         boundary_fits += 1
                     changed = True
                 else:
@@ -1475,14 +1542,15 @@ def repair_shapes(
 def enforce_shapes_inside_canvas(background: dict, shapes: list[dict], target_rgba: np.ndarray) -> tuple[list[dict], float, dict]:
     width = target_rgba.shape[1]
     height = target_rgba.shape[0]
+    edge_context = canvas_edge_context(target_rgba)
     working: list[dict] = []
     fitted_count = 0
     remaining_penalty = 0.0
     for shape in shapes:
-        before_penalty = shape_boundary_penalty(shape, width, height, True)
+        before_penalty = shape_boundary_penalty(shape, width, height, True, edge_context)
         if before_penalty > 0.0:
-            fitted = fit_shape_inside_canvas(shape, width, height)
-            after_penalty = shape_boundary_penalty(fitted, width, height, True)
+            fitted = fit_shape_inside_canvas(shape, width, height, edge_context)
+            after_penalty = shape_boundary_penalty(fitted, width, height, True, edge_context)
             if after_penalty < before_penalty:
                 working.append(fitted)
                 fitted_count += 1
@@ -1800,7 +1868,7 @@ def main() -> int:
     enforce_canvas_boundary = target_has_alpha_boundary(source_rgba)
     if enforce_canvas_boundary:
         print(
-            "Canvas boundary: transparent source detected; outer PNG edges are treated as hard alpha borders.",
+            "Canvas boundary: transparent source detected; transparent outer edge spans are constrained, cropped visible edge spans are preserved.",
             flush=True,
         )
     else:
