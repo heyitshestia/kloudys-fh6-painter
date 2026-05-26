@@ -169,11 +169,11 @@ Flat Colors / Logos
 
 Shaded Character Art
 - Best default for anime, faces, eyes, hair, skin, and mixed linework.
-- Uses character-art weighting and leaves Luma Prep off to protect tiny detail.
+- Uses smart-detail weighting and leaves Luma Prep off to protect tiny detail.
 
 Smooth Gradients
 - Best for glossy shading and dark-to-light gradients.
-- Keeps Luma Prep off and uses softer detail weighting.
+- Keeps Luma Prep off, uses softer detail weighting, and allows alpha for smoother blends.
 
 The vroom vroom scrrrrt zoooom! switch doubles random samples and mutated samples.
 It does not double output layers or resolution.
@@ -3150,6 +3150,7 @@ class MainWindow(QMainWindow):
             return None
         target_shapes = str(options.get("target_shapes") or values.get("stopAt") or "3000")
         checkpoint_step = str(options.get("checkpoint_step") or "250")
+        live_preview_every = str(options.get("live_preview_every") or "50")
         preprocess = str(options.get("preprocess_mode") or values.get("v2PreprocessMode") or "none")
         cmd = [
             helper_python(),
@@ -3163,6 +3164,8 @@ class MainWindow(QMainWindow):
             target_shapes,
             "--checkpoint-step",
             checkpoint_step,
+            "--live-preview-every",
+            live_preview_every,
             "--overshoot-ratio",
             str(options.get("overshoot_ratio") or "1.0"),
             "--overshoot-max-extra",

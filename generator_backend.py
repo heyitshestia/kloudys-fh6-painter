@@ -506,6 +506,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         "generator_command_options": {
             "target_shapes": target_shapes,
             "checkpoint_step": checkpoint_step,
+            "live_preview_every": "50",
             "preprocess_mode": preprocess_mode,
             "overshoot_ratio": "1.12" if enable_overshoot else "1.0",
             "overshoot_max_extra": "400" if enable_overshoot else "0",
@@ -527,6 +528,8 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         target_shapes,
         "--checkpoint-step",
         checkpoint_step,
+        "--live-preview-every",
+        "50",
         "--stop-file",
         str(generator_stop_request_path(image_path, output_dir)),
         "--preprocess-mode",

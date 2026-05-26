@@ -74,6 +74,15 @@ def parse_args() -> argparse.Namespace:
         help="Checkpoint interval used in the V2 temp settings. Default: 250",
     )
     parser.add_argument(
+        "--live-preview-every",
+        type=int,
+        default=50,
+        help=(
+            "Overwrite the raw live preview this often during the internal build. "
+            "This does not create extra final JSONs. Default: 50"
+        ),
+    )
+    parser.add_argument(
         "--score-size",
         type=int,
         default=640,
@@ -224,22 +233,29 @@ def infer_save_every(points: list[int], fallback: int) -> int:
     return max(1, step)
 
 
-def write_v2_settings(base_settings: dict[str, str], out_path: Path, target: int, stop_at: int, checkpoint_step: int) -> None:
+def write_v2_settings(
+    base_settings: dict[str, str],
+    out_path: Path,
+    target: int,
+    stop_at: int,
+    checkpoint_step: int,
+    live_preview_every: int,
+) -> None:
     values = dict(base_settings)
     values["description"] = f"V2 settings targeting {target} template layers"
     values.setdefault("shapeMode", "mixed_ellipses")
     values["stopAt"] = str(stop_at)
+    preview_every = max(1, min(int(live_preview_every or checkpoint_step or 50), max(1, stop_at)))
     explicit_points = parse_save_points(values.get("saveAt", ""), stop_at)
     if explicit_points:
         explicit_points = sorted(set(explicit_points + [target, stop_at]))
-        save_every = infer_save_every(explicit_points, checkpoint_step)
         values["saveAt"] = ",".join(str(point) for point in explicit_points)
-        values["saveEvery"] = str(save_every)
-        values["previewEvery"] = str(save_every)
+        values["saveEvery"] = str(preview_every)
+        values["previewEvery"] = str(preview_every)
     else:
         values["saveAt"] = build_save_points(target, stop_at, checkpoint_step)
-        values["saveEvery"] = str(max(1, checkpoint_step))
-        values["previewEvery"] = str(max(1, checkpoint_step))
+        values["saveEvery"] = str(preview_every)
+        values["previewEvery"] = str(preview_every)
 
     ordered_keys = [
         "description",
@@ -358,14 +374,14 @@ def source_art_profile(rgba: np.ndarray) -> dict:
         recommendation = "Flat crisp livery art: edge-biased shapes and Luma Prep usually preserve borders and broad color regions best."
     elif alpha_coverage < 0.70 and edge_density < 0.30 and luma_std < 65.0:
         category = "soft_gradient_character"
-        recommended_shape_mode = "mixed_character_art"
+        recommended_shape_mode = "mixed_soft_detail"
         recommended_luma = "none"
-        recommendation = "Soft transparent character art: character-art shape weighting without Luma Prep usually avoids posterized gradients, hard rectangle blocks, and over-smoothed hair."
+        recommendation = "Soft transparent character art: soft-detail or smart-detail weighting without Luma Prep usually avoids posterized gradients, hard rectangle blocks, and over-smoothed hair."
     else:
         category = "general_art"
-        recommended_shape_mode = "mixed_character_art"
+        recommended_shape_mode = "mixed_smart_detail"
         recommended_luma = "none"
-        recommendation = "General art: character-art shape weighting without Luma Prep is the safer default; enable Luma Prep manually for flat logo/livery sources."
+        recommendation = "General art: smart-detail weighting without Luma Prep is the safer default; enable Luma Prep manually for flat logo/livery sources."
 
     return {
         "alpha_coverage": round(alpha_coverage, 4),
@@ -406,6 +422,26 @@ def drawable_shapes(payload: dict) -> list[dict]:
             continue
         out.append(shape)
     return out
+
+
+def shape_type_name(shape_type: int) -> str:
+    if shape_type == RECTANGLE:
+        return "rectangle"
+    if shape_type == ROTATED_RECTANGLE:
+        return "rotated_rectangle"
+    if shape_type == ELLIPSE:
+        return "ellipse"
+    if shape_type == ROTATED_ELLIPSE:
+        return "rotated_ellipse"
+    return f"type_{shape_type}"
+
+
+def shape_type_counts(shapes: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for shape in shapes:
+        name = shape_type_name(int(shape.get("type", ROTATED_ELLIPSE)))
+        counts[name] = counts.get(name, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def background_shape(payload: dict) -> dict:
@@ -815,12 +851,20 @@ def prune_to_target(
     enforce_canvas_boundary: bool = False,
 ) -> tuple[list[dict], float]:
     working = list(shapes)
+    working, _, _ = remove_fully_covered_layers(
+        background,
+        working,
+        target_rgba,
+        enforce_canvas_boundary=enforce_canvas_boundary,
+        max_batch=96,
+    )
     if len(working) <= target_count:
         _, _, _, _, _, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
         return working, normalized_error(total_error, scored_pixels)
 
     while len(working) > target_count:
         _, _, _, _, contributions, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+        current_error = normalized_error(total_error, scored_pixels)
         excess = len(working) - target_count
         order = np.argsort(contributions)
         zeroish = int(np.count_nonzero(contributions[order] <= 1e-6))
@@ -828,12 +872,18 @@ def prune_to_target(
             remove_count = min(excess, zeroish)
         else:
             # Overshoot checkpoints can be hundreds of shapes over the FH-safe
-            # budget. Remove low-contribution shapes in larger batches so V2
-            # does not spend most of its time re-rendering nearly identical
-            # oversized candidates.
-            remove_count = min(excess, max(1, min(160, excess // 3 if excess > 6 else 1)))
-        remove_idx = set(int(i) for i in order[:remove_count])
-        working = [shape for idx, shape in enumerate(working) if idx not in remove_idx]
+            # budget, but large blind batches can thin hair/edges. Start with
+            # a moderate batch, then validate and shrink it if the score jumps.
+            remove_count = min(excess, max(1, min(72, excess // 8 if excess > 24 else 1)))
+        working, current_error = remove_lowest_ranked_batch(
+            background,
+            working,
+            target_rgba,
+            order,
+            remove_count,
+            current_error,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+        )
 
     _, _, _, _, _, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
     return working, normalized_error(total_error, scored_pixels)
@@ -842,6 +892,140 @@ def prune_to_target(
 def normalized_error(total_error: float, scored_pixels: float) -> float:
     denom = max(1.0, scored_pixels * 4.0)
     return total_error / float(denom)
+
+
+def score_shape_list(
+    background: dict,
+    shapes: list[dict],
+    target_rgba: np.ndarray,
+    enforce_canvas_boundary: bool = False,
+) -> float:
+    _, _, _, _, _, total_error, scored_pixels = render_and_score(
+        background,
+        shapes,
+        target_rgba,
+        enforce_canvas_boundary=enforce_canvas_boundary,
+    )
+    return normalized_error(total_error, scored_pixels)
+
+
+def remove_lowest_ranked_batch(
+    background: dict,
+    shapes: list[dict],
+    target_rgba: np.ndarray,
+    ranked_indices: np.ndarray,
+    requested_remove_count: int,
+    current_error: float,
+    enforce_canvas_boundary: bool = False,
+) -> tuple[list[dict], float]:
+    if requested_remove_count <= 0 or len(shapes) <= 1:
+        return shapes, current_error
+
+    requested_remove_count = max(1, min(int(requested_remove_count), len(shapes) - 1))
+    tolerance = max(0.0025, current_error * 0.0018)
+    trial_sizes = []
+    size = requested_remove_count
+    while size >= 1:
+        if size not in trial_sizes:
+            trial_sizes.append(size)
+        if size == 1:
+            break
+        size = max(1, size // 2)
+
+    for remove_count in trial_sizes:
+        remove_idx = set(int(i) for i in ranked_indices[:remove_count])
+        candidate = [shape for idx, shape in enumerate(shapes) if idx not in remove_idx]
+        candidate_error = score_shape_list(
+            background,
+            candidate,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+        )
+        if candidate_error <= current_error + tolerance or remove_count == 1:
+            return candidate, candidate_error
+    return shapes, current_error
+
+
+def visible_shape_pixels(top_idx: np.ndarray, shape_count: int) -> np.ndarray:
+    valid = top_idx >= 0
+    if not np.any(valid):
+        return np.zeros(shape_count, dtype=np.int64)
+    return np.bincount(top_idx[valid].ravel(), minlength=shape_count).astype(np.int64)
+
+
+def remove_fully_covered_layers(
+    background: dict,
+    shapes: list[dict],
+    target_rgba: np.ndarray,
+    enforce_canvas_boundary: bool = False,
+    max_batch: int = 64,
+) -> tuple[list[dict], float, dict]:
+    if not shapes:
+        return [], 0.0, {"removed": 0, "before": 0, "after": 0, "score_before": 0.0, "score_after": 0.0}
+
+    working = list(shapes)
+    initial_count = len(working)
+    current_error = score_shape_list(
+        background,
+        working,
+        target_rgba,
+        enforce_canvas_boundary=enforce_canvas_boundary,
+    )
+    removed_total = 0
+    rejected_total = 0
+
+    while working:
+        _, _, top_idx, _, _, _, _ = render_and_score(
+            background,
+            working,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+        )
+        visible_pixels = visible_shape_pixels(top_idx, len(working))
+        hidden_indices = [idx for idx, pixels in enumerate(visible_pixels) if int(pixels) <= 0]
+        if not hidden_indices:
+            break
+
+        progress = False
+        while hidden_indices:
+            batch = hidden_indices[: max(1, min(max_batch, len(hidden_indices)))]
+            remove_idx = set(batch)
+            candidate = [shape for idx, shape in enumerate(working) if idx not in remove_idx]
+            candidate_error = score_shape_list(
+                background,
+                candidate,
+                target_rgba,
+                enforce_canvas_boundary=enforce_canvas_boundary,
+            )
+            tolerance = max(0.0015, current_error * 0.00075)
+            if candidate_error <= current_error + tolerance:
+                working = candidate
+                current_error = candidate_error
+                removed_total += len(remove_idx)
+                progress = True
+                break
+            if len(batch) == 1:
+                rejected_total += 1
+                hidden_indices = hidden_indices[1:]
+                continue
+            max_batch = max(1, len(batch) // 2)
+
+        if not progress and not hidden_indices:
+            break
+
+    return working, current_error, {
+        "removed": removed_total,
+        "rejected": rejected_total,
+        "before": initial_count,
+        "after": len(working),
+        "score_before": score_shape_list(
+            background,
+            shapes,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+        ),
+        "score_after": current_error,
+    }
 
 
 def render_import_preview(background: dict, shapes: list[dict], width: int, height: int) -> Image.Image:
@@ -965,7 +1149,7 @@ def shape_family_variant(shape: dict, shape_type: int) -> dict | None:
     return variant
 
 
-def shape_family_variants(shape: dict) -> list[dict]:
+def shape_family_variants(shape: dict, prefer_smooth_shapes: bool = False) -> list[dict]:
     current_type = int(shape.get("type", ROTATED_ELLIPSE))
     extents = shape_visual_extents(shape)
     if extents is None:
@@ -974,17 +1158,26 @@ def shape_family_variants(shape: dict) -> list[dict]:
     aspect = max(half_w, half_h) / max(1.0, min(half_w, half_h))
     near_axis = abs((rot % 90.0)) <= 2.0 or abs((rot % 90.0) - 90.0) <= 2.0
 
-    candidates = [ROTATED_ELLIPSE, ROTATED_RECTANGLE]
-    if near_axis:
-        candidates.extend([ELLIPSE, RECTANGLE])
-    if aspect <= 1.20:
-        # Round-ish details rarely benefit from rotated rectangles unless
-        # the score proves otherwise, so test ellipses first.
-        candidates = [ROTATED_ELLIPSE, ELLIPSE, ROTATED_RECTANGLE, RECTANGLE]
-    elif aspect >= 2.20:
-        # Long strokes often fit better as rectangles, but keep ellipses
-        # available for tapered hair/finger detail.
-        candidates = [ROTATED_RECTANGLE, ROTATED_ELLIPSE, RECTANGLE, ELLIPSE]
+    if prefer_smooth_shapes:
+        candidates = [ROTATED_ELLIPSE, ELLIPSE, ROTATED_RECTANGLE]
+        if near_axis:
+            candidates.append(RECTANGLE)
+        if aspect >= 4.0:
+            # Very long strokes may still need rectangles, but soft/shaded
+            # presets should only reach them after ellipse variants fail.
+            candidates = [ROTATED_ELLIPSE, ROTATED_RECTANGLE, ELLIPSE, RECTANGLE]
+    else:
+        candidates = [ROTATED_ELLIPSE, ROTATED_RECTANGLE]
+        if near_axis:
+            candidates.extend([ELLIPSE, RECTANGLE])
+        if aspect <= 1.20:
+            # Round-ish details rarely benefit from rotated rectangles unless
+            # the score proves otherwise, so test ellipses first.
+            candidates = [ROTATED_ELLIPSE, ELLIPSE, ROTATED_RECTANGLE, RECTANGLE]
+        elif aspect >= 2.20:
+            # Long strokes often fit better as rectangles, but keep ellipses
+            # available for tapered hair/finger detail.
+            candidates = [ROTATED_RECTANGLE, ROTATED_ELLIPSE, RECTANGLE, ELLIPSE]
 
     out = []
     seen: set[int] = set()
@@ -1119,6 +1312,7 @@ def repair_shapes(
     max_shapes: int = 8,
     rounds: int = 1,
     enforce_canvas_boundary: bool = False,
+    prefer_smooth_shapes: bool = False,
 ) -> tuple[list[dict], float, dict]:
     if not shapes:
         _, _, _, _, _, total_error, scored_pixels = render_and_score(background, shapes, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
@@ -1185,7 +1379,7 @@ def repair_shapes(
             local_best = copy_shape(shape)
             original_local_score = local_best_score
             local_best_deleted = False
-            trial_shapes: list[dict | None] = shape_family_variants(shape)
+            trial_shapes: list[dict | None] = shape_family_variants(shape, prefer_smooth_shapes=prefer_smooth_shapes)
             if enforce_canvas_boundary and shape_boundary_penalty(shape, target_rgba.shape[1], target_rgba.shape[0], True) > 0:
                 trial_shapes.append(fit_shape_inside_canvas(shape, target_rgba.shape[1], target_rgba.shape[0]))
             for proposal in proposals:
@@ -1391,6 +1585,34 @@ def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, previe
         bufsize=1,
     )
     interrupted = False
+
+    def _cleanup_live_preview_snapshots() -> None:
+        # The raw generator writes numbered snapshots beside the overwritten
+        # live preview. Promote the newest numbered snapshot to the stable
+        # preview path first so the UI has one file to poll, then remove the
+        # numbered files to avoid preview clutter.
+        snapshots = sorted(
+            preview_dir.glob(f"{out_stem}.raw.preview.*.png"),
+            key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+        )
+        if snapshots:
+            latest = snapshots[-1]
+            temp_preview = preview_path.with_suffix(preview_path.suffix + ".tmp")
+            try:
+                shutil.copy2(latest, temp_preview)
+                os.replace(temp_preview, preview_path)
+            except OSError:
+                try:
+                    if temp_preview.exists():
+                        temp_preview.unlink()
+                except OSError:
+                    pass
+        for snapshot in snapshots:
+            try:
+                snapshot.unlink()
+            except OSError:
+                pass
+
     def _forward_output():
         try:
             if proc.stdout is None:
@@ -1399,6 +1621,8 @@ def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, previe
                 line = raw_line.rstrip("\r\n")
                 if line:
                     print(line, flush=True)
+                    if "Saved preview snapshot" in line:
+                        _cleanup_live_preview_snapshots()
         finally:
             if proc.stdout is not None:
                 try:
@@ -1425,6 +1649,7 @@ def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, previe
         except subprocess.TimeoutExpired:
             continue
     reader.join(timeout=2)
+    _cleanup_live_preview_snapshots()
     if not interrupted and proc.returncode not in (0, None):
         raise subprocess.CalledProcessError(proc.returncode, cmd)
     return interrupted
@@ -1513,9 +1738,15 @@ def main() -> int:
     if overshoot_extra == 0 and args.overshoot_ratio > 1.0:
         overshoot_extra = min(args.overshoot_max_extra, max(1, int(round(target_shapes * 0.08))))
     raw_stop = target_shapes + overshoot_extra
+    shape_mode = str(base_settings.get("shapeMode", "")).strip().lower()
+    prefer_smooth_repair = (
+        shape_mode in {"mixed_soft_detail", "mixed_character_art", "mixed_smart_detail"}
+        and args.preprocess_mode == "none"
+    )
 
     v2_settings_path = reports_dir / f"{stem}.v2.settings.ini"
-    write_v2_settings(base_settings, v2_settings_path, target_shapes, raw_stop, args.checkpoint_step)
+    live_preview_every = max(1, int(args.live_preview_every or 50))
+    write_v2_settings(base_settings, v2_settings_path, target_shapes, raw_stop, args.checkpoint_step, live_preview_every)
 
     max_resolution = int(base_settings.get("maxResolution", "0") or 0)
     source_rgba = resize_source_for_generation(image_path, max_resolution)
@@ -1537,6 +1768,7 @@ def main() -> int:
         print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Luma Prep mode:         {args.preprocess_mode}")
+    print(f"Live preview every:     {live_preview_every} layer(s)")
     print(f"Source profile:         {art_profile['category']}")
     print(f"Source recommendation:  {art_profile['recommendation']}")
     if preprocess_output_path is not None:
@@ -1726,9 +1958,12 @@ def main() -> int:
                     max_shapes=18 if enforce_canvas_boundary else 8,
                     rounds=2 if enforce_canvas_boundary else 1,
                     enforce_canvas_boundary=enforce_canvas_boundary,
+                    prefer_smooth_shapes=prefer_smooth_repair,
                 )
                 final_shapes = [unscale_shape(shape, sx, sy) for shape in refined_scaled]
                 final_error = refined_error
+                refinement = dict(refinement)
+                refinement["prefer_smooth_shapes"] = prefer_smooth_repair
             except Exception as exc:
                 refinement = dict(refinement)
                 refinement.update({
@@ -1756,6 +1991,29 @@ def main() -> int:
             except Exception as exc:
                 refinement = dict(refinement)
                 refinement["canvas_boundary_failed"] = f"{type(exc).__name__}: {exc}"
+        try:
+            scaled_bg = dict(background)
+            scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
+            scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
+            cleaned_scaled, cleaned_error, covered_cleanup = remove_fully_covered_layers(
+                scaled_bg,
+                scaled_selected,
+                score_rgba,
+                enforce_canvas_boundary=enforce_canvas_boundary,
+            )
+            if covered_cleanup.get("removed", 0):
+                final_shapes = [unscale_shape(shape, sx, sy) for shape in cleaned_scaled]
+                final_error = cleaned_error
+                print(
+                    f"Covered Layer Cleanup: removed {covered_cleanup['removed']} fully hidden layer(s) "
+                    f"from {candidate_path.name}.",
+                    flush=True,
+                )
+            refinement = dict(refinement)
+            refinement["covered_layer_cleanup"] = covered_cleanup
+        except Exception as exc:
+            refinement = dict(refinement)
+            refinement["covered_layer_cleanup_failed"] = f"{type(exc).__name__}: {exc}"
         if len(final_shapes) > drawable_target_shapes:
             try:
                 scaled_bg = dict(background)
@@ -1777,6 +2035,27 @@ def main() -> int:
                 refinement["hard_cap_failed"] = f"{type(exc).__name__}: {exc}"
             refinement = dict(refinement)
             refinement["after_hard_cap"] = final_error
+            try:
+                scaled_bg = dict(background)
+                scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
+                scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
+                cleaned_scaled, cleaned_error, post_cap_cleanup = remove_fully_covered_layers(
+                    scaled_bg,
+                    scaled_selected,
+                    score_rgba,
+                    enforce_canvas_boundary=enforce_canvas_boundary,
+                )
+                if post_cap_cleanup.get("removed", 0):
+                    final_shapes = [unscale_shape(shape, sx, sy) for shape in cleaned_scaled]
+                    final_error = cleaned_error
+                    print(
+                        f"Covered Layer Cleanup after cap: removed {post_cap_cleanup['removed']} fully hidden layer(s) "
+                        f"from {candidate_path.name}.",
+                        flush=True,
+                    )
+                refinement["covered_layer_cleanup_after_cap"] = post_cap_cleanup
+            except Exception as exc:
+                refinement["covered_layer_cleanup_after_cap_failed"] = f"{type(exc).__name__}: {exc}"
         checkpoint_tag = record["checkpoint_tag"]
         final_json_path = v2_json_path_for_tag(out_dir, stem, checkpoint_tag)
         final_preview_path = v2_preview_path_for_tag(out_dir, stem, checkpoint_tag)
@@ -1844,6 +2123,7 @@ def main() -> int:
             "candidate": item["candidate"],
             "raw_drawables": item["raw_drawables"],
             "final_drawables": item["final_drawables"],
+            "shape_types": shape_type_counts(item.get("kept_shapes", [])),
             "error": item["error"],
             "base_error": item["base_error"],
             "repair_applied": item["repair_applied"],
@@ -1891,6 +2171,8 @@ def main() -> int:
         "overshoot_extra": overshoot_extra,
         "interrupted": interrupted,
         "score_size": args.score_size,
+        "live_preview_every": live_preview_every,
+        "prefer_smooth_repair": prefer_smooth_repair,
         "efficiency_tolerance": args.efficiency_tolerance,
         "prune_enabled": args.enable_prune,
         "refine_enabled": repair_enabled,
