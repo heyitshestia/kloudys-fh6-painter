@@ -1145,8 +1145,8 @@ class MainWindow(QMainWindow):
         if _PSUTIL_ERROR is not None:
             raise _PSUTIL_ERROR
         self.setWindowTitle(f"Kloudy's FH6 Painter - {get_version()}")
-        self.resize(1280, 980)
-        self.setMinimumSize(1180, 900)
+        self.resize(1280, 1060)
+        self.setMinimumSize(1180, 940)
         self.app_settings = load_app_settings()
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
@@ -1366,11 +1366,16 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(tab)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         left = QWidget()
         left_layout = QVBoxLayout(left)
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        splitter.addWidget(left)
+        left_scroll.setWidget(left)
+        splitter.addWidget(left_scroll)
         splitter.addWidget(right)
         splitter.setSizes([620, 660])
 
@@ -1429,7 +1434,8 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
         self.generated_checkpoint_list.setObjectName("finalizedCheckpointList")
-        self.generated_checkpoint_list.setMinimumHeight(420)
+        self.generated_checkpoint_list.setMinimumHeight(560)
+        self.generated_checkpoint_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.generated_checkpoint_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.generated_checkpoint_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.generated_checkpoint_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
