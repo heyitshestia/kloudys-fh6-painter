@@ -31,6 +31,7 @@ _CV2_ERROR = None
 # These compensation values intentionally make imported ellipses a little
 # smaller, with extra shrink on the major axis for long thin blobs.
 ELLIPSE_IMPORT_BASE_DIVISOR = 63.0
+RECTANGLE_IMPORT_BASE_DIVISOR = 254.0
 DEFAULT_MASK_BUDGET = 4
 
 
@@ -475,7 +476,7 @@ def draw_memory_shape(pid: int, profile, shape: Shape, index: int, cLiveryLayerT
             adj_w, adj_h = compensated_ellipse_size(shape.w, shape.h)
             scale_data = struct.pack('f', adj_w / ELLIPSE_IMPORT_BASE_DIVISOR) + struct.pack('f', adj_h / ELLIPSE_IMPORT_BASE_DIVISOR)
         else:
-            scale_data = struct.pack('f', shape.w / 127) + struct.pack('f', shape.h / 127)
+            scale_data = struct.pack('f', shape.w / RECTANGLE_IMPORT_BASE_DIVISOR) + struct.pack('f', shape.h / RECTANGLE_IMPORT_BASE_DIVISOR)
         write_process_memory(pid, current_layer_address + profile.layer_scale_offset, scale_data)
         rot_data = struct.pack('f', 360 - shape.rot_deg)
         write_process_memory(pid, current_layer_address + profile.layer_rotation_offset, rot_data)
@@ -750,6 +751,10 @@ def load_geometry(
             ",".join(mask_report.get("needed") or ["none"]),
         )
     )
+    print("FH6 import scale: ellipse divisor={}, rectangle divisor={}".format(
+        ELLIPSE_IMPORT_BASE_DIVISOR,
+        RECTANGLE_IMPORT_BASE_DIVISOR,
+    ))
     
     # Enumerate every template slot. Any unused slot is hidden so larger templates
     # do not leave their original spheres visible after importing smaller JSON.

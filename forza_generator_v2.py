@@ -18,7 +18,9 @@ import cv2
 
 
 ROOT = Path(__file__).resolve().parent
-BUNDLED_WINDOWS_GENERATOR = ROOT / "KloudysGeneratorV4.exe"
+BUNDLED_WINDOWS_GENERATOR_V5 = ROOT / "KloudysGeneratorV5.exe"
+BUNDLED_WINDOWS_GENERATOR_V4 = ROOT / "KloudysGeneratorV4.exe"
+BUNDLED_WINDOWS_GENERATOR = BUNDLED_WINDOWS_GENERATOR_V5 if BUNDLED_WINDOWS_GENERATOR_V5.is_file() else BUNDLED_WINDOWS_GENERATOR_V4
 LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize-gpu/forza-painter-geometrize-go-linux-arm64")
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")
@@ -529,6 +531,55 @@ def target_has_alpha_boundary(target_rgba: np.ndarray) -> bool:
     return bool(alpha.size and int(np.min(alpha)) < 250)
 
 
+def build_importance_map(target_rgba: np.ndarray) -> np.ndarray:
+    """Weight scoring toward edges, alpha cuts, saturated detail, and linework."""
+    height, width = target_rgba.shape[:2]
+    if height <= 0 or width <= 0:
+        return np.ones((max(1, height), max(1, width)), dtype=np.float32)
+
+    rgba = target_rgba.astype(np.float32)
+    rgb = rgba[..., :3]
+    alpha = np.clip(rgba[..., 3] / 255.0, 0.0, 1.0)
+    luma = (rgb[..., 0] * 0.299 + rgb[..., 1] * 0.587 + rgb[..., 2] * 0.114) / 255.0
+    maxc = rgb.max(axis=2) / 255.0
+    minc = rgb.min(axis=2) / 255.0
+    saturation = maxc - minc
+
+    gx = np.zeros_like(luma, dtype=np.float32)
+    gy = np.zeros_like(luma, dtype=np.float32)
+    gx[:, 1:] = np.abs(luma[:, 1:] - luma[:, :-1])
+    gy[1:, :] = np.abs(luma[1:, :] - luma[:-1, :])
+    edge = np.maximum(gx, gy)
+
+    agx = np.zeros_like(alpha, dtype=np.float32)
+    agy = np.zeros_like(alpha, dtype=np.float32)
+    agx[:, 1:] = np.abs(alpha[:, 1:] - alpha[:, :-1])
+    agy[1:, :] = np.abs(alpha[1:, :] - alpha[:-1, :])
+    alpha_edge = np.maximum(agx, agy)
+
+    linework = np.clip((0.48 - luma) / 0.48, 0.0, 1.0) * np.clip(saturation * 1.35, 0.0, 1.0) * alpha
+    highlights = np.clip((luma - 0.78) / 0.22, 0.0, 1.0) * np.clip(saturation * 1.15, 0.0, 1.0) * alpha
+    visible = np.where(alpha > 0.02, 1.0, 0.55).astype(np.float32)
+
+    importance = (
+        1.0
+        + np.clip(edge * 9.0, 0.0, 2.6)
+        + np.clip(alpha_edge * 7.5, 0.0, 2.8)
+        + np.clip(saturation * 0.55, 0.0, 0.75) * alpha
+        + linework * 1.35
+        + highlights * 0.70
+    ) * visible
+
+    # Cheap dilation prevents one-pixel hair/eye edges from being pruned by
+    # nearby average-color improvements.
+    padded = np.pad(importance, 1, mode="edge")
+    dilated = importance.copy()
+    for dy in range(3):
+        for dx in range(3):
+            dilated = np.maximum(dilated, padded[dy : dy + height, dx : dx + width] * 0.92)
+    return np.clip(dilated, 0.55, 5.25).astype(np.float32)
+
+
 def canvas_edge_context(target_rgba: np.ndarray) -> dict | None:
     if not target_has_alpha_boundary(target_rgba):
         return None
@@ -793,6 +844,7 @@ def render_and_score(
     shapes: list[dict],
     target_rgba: np.ndarray,
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
     height, width = target_rgba.shape[:2]
     edge_context = canvas_edge_context(target_rgba) if enforce_canvas_boundary else None
@@ -843,8 +895,12 @@ def render_and_score(
     alpha_under = np.square(under_alpha - target_alpha) * alpha_scale
     spill_top = np.square(np.maximum(0.0, top_alpha - target_alpha)) * transparent_boost * spill_scale
     spill_under = np.square(np.maximum(0.0, under_alpha - target_alpha)) * transparent_boost * spill_scale
-    diff_top = rgb_top + alpha_top + spill_top
-    diff_under = rgb_under + alpha_under + spill_under
+    if importance_map is not None and importance_map.shape == target_alpha.shape:
+        importance = np.clip(importance_map.astype(np.float32), 0.25, 8.0)
+    else:
+        importance = np.ones_like(target_alpha, dtype=np.float32)
+    diff_top = (rgb_top + alpha_top + spill_top) * importance
+    diff_under = (rgb_under + alpha_under + spill_under) * importance
     contrib_map = diff_under - diff_top
     valid = top_idx >= 0
     if np.any(valid):
@@ -860,7 +916,7 @@ def render_and_score(
         contributions += boundary_penalties
     pixel_weights = np.where(target_alpha > 0.02, 1.0, 0.35).astype(np.float32)
     total_error = float((diff_top * pixel_weights).sum() + boundary_penalties.sum())
-    scored_pixels = float(pixel_weights.sum())
+    scored_pixels = float((pixel_weights * importance).sum())
     return top_rgb, top_alpha, top_idx, diff_top, contributions, total_error, scored_pixels
 
 
@@ -876,6 +932,7 @@ def render_and_score_region(
     target_rgba: np.ndarray,
     bbox: tuple[int, int, int, int],
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
     x0, x1, y0, y1 = bbox
     if x1 < x0 or y1 < y0:
@@ -905,7 +962,14 @@ def render_and_score_region(
 
     crop_bg = dict(background)
     crop_bg["data"] = [0, 0, crop_w, crop_h]
-    return render_and_score(crop_bg, crop_shapes, target_rgba[y0 : y1 + 1, x0 : x1 + 1], enforce_canvas_boundary=False)
+    crop_importance = importance_map[y0 : y1 + 1, x0 : x1 + 1] if importance_map is not None else None
+    return render_and_score(
+        crop_bg,
+        crop_shapes,
+        target_rgba[y0 : y1 + 1, x0 : x1 + 1],
+        enforce_canvas_boundary=False,
+        importance_map=crop_importance,
+    )
 
 
 def prune_to_target(
@@ -914,6 +978,7 @@ def prune_to_target(
     target_rgba: np.ndarray,
     target_count: int,
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> tuple[list[dict], float]:
     working = list(shapes)
     working, _, _ = remove_fully_covered_layers(
@@ -921,14 +986,27 @@ def prune_to_target(
         working,
         target_rgba,
         enforce_canvas_boundary=enforce_canvas_boundary,
+        importance_map=importance_map,
         max_batch=96,
     )
     if len(working) <= target_count:
-        _, _, _, _, _, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+        _, _, _, _, _, total_error, scored_pixels = render_and_score(
+            background,
+            working,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
+        )
         return working, normalized_error(total_error, scored_pixels)
 
     while len(working) > target_count:
-        _, _, _, _, contributions, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+        _, _, _, _, contributions, total_error, scored_pixels = render_and_score(
+            background,
+            working,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
+        )
         current_error = normalized_error(total_error, scored_pixels)
         excess = len(working) - target_count
         order = np.argsort(contributions)
@@ -948,9 +1026,16 @@ def prune_to_target(
             remove_count,
             current_error,
             enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
         )
 
-    _, _, _, _, _, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+    _, _, _, _, _, total_error, scored_pixels = render_and_score(
+        background,
+        working,
+        target_rgba,
+        enforce_canvas_boundary=enforce_canvas_boundary,
+        importance_map=importance_map,
+    )
     return working, normalized_error(total_error, scored_pixels)
 
 
@@ -964,12 +1049,14 @@ def score_shape_list(
     shapes: list[dict],
     target_rgba: np.ndarray,
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> float:
     _, _, _, _, _, total_error, scored_pixels = render_and_score(
         background,
         shapes,
         target_rgba,
         enforce_canvas_boundary=enforce_canvas_boundary,
+        importance_map=importance_map,
     )
     return normalized_error(total_error, scored_pixels)
 
@@ -982,6 +1069,7 @@ def remove_lowest_ranked_batch(
     requested_remove_count: int,
     current_error: float,
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> tuple[list[dict], float]:
     if requested_remove_count <= 0 or len(shapes) <= 1:
         return shapes, current_error
@@ -1005,6 +1093,7 @@ def remove_lowest_ranked_batch(
             candidate,
             target_rgba,
             enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
         )
         if candidate_error <= current_error + tolerance or remove_count == 1:
             return candidate, candidate_error
@@ -1023,6 +1112,7 @@ def remove_fully_covered_layers(
     shapes: list[dict],
     target_rgba: np.ndarray,
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
     max_batch: int = 64,
 ) -> tuple[list[dict], float, dict]:
     if not shapes:
@@ -1035,6 +1125,7 @@ def remove_fully_covered_layers(
         working,
         target_rgba,
         enforce_canvas_boundary=enforce_canvas_boundary,
+        importance_map=importance_map,
     )
     removed_total = 0
     rejected_total = 0
@@ -1045,6 +1136,7 @@ def remove_fully_covered_layers(
             working,
             target_rgba,
             enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
         )
         visible_pixels = visible_shape_pixels(top_idx, len(working))
         hidden_indices = [idx for idx, pixels in enumerate(visible_pixels) if int(pixels) <= 0]
@@ -1061,6 +1153,7 @@ def remove_fully_covered_layers(
                 candidate,
                 target_rgba,
                 enforce_canvas_boundary=enforce_canvas_boundary,
+                importance_map=importance_map,
             )
             tolerance = max(0.0015, current_error * 0.00075)
             if candidate_error <= current_error + tolerance:
@@ -1088,6 +1181,7 @@ def remove_fully_covered_layers(
             shapes,
             target_rgba,
             enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
         ),
         "score_after": current_error,
     }
@@ -1339,13 +1433,18 @@ def rank_repair_targets(
     target_rgba: np.ndarray,
     max_shapes: int,
     enforce_canvas_boundary: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> list[int]:
     target_alpha = np.clip(target_rgba[..., 3].astype(np.float32) / 255.0, 0.0, 1.0)
     valid = top_idx >= 0
     if not np.any(valid):
         return []
     shape_error = np.bincount(top_idx[valid].ravel(), weights=diff_top[valid].ravel(), minlength=len(shapes)).astype(np.float64)
-    visible_pixels = np.bincount(top_idx[valid].ravel(), minlength=len(shapes)).astype(np.float64)
+    if importance_map is not None and importance_map.shape == target_alpha.shape:
+        visible_weights = np.clip(importance_map.astype(np.float32), 0.25, 8.0)
+        visible_pixels = np.bincount(top_idx[valid].ravel(), weights=visible_weights[valid].ravel(), minlength=len(shapes)).astype(np.float64)
+    else:
+        visible_pixels = np.bincount(top_idx[valid].ravel(), minlength=len(shapes)).astype(np.float64)
     spill = np.maximum(0.0, top_alpha - target_alpha)
     spill_pixels = np.bincount(top_idx[valid].ravel(), weights=spill[valid].ravel(), minlength=len(shapes)).astype(np.float64)
     edge_context = canvas_edge_context(target_rgba) if enforce_canvas_boundary else None
@@ -1379,14 +1478,27 @@ def repair_shapes(
     rounds: int = 1,
     enforce_canvas_boundary: bool = False,
     prefer_smooth_shapes: bool = False,
+    importance_map: np.ndarray | None = None,
 ) -> tuple[list[dict], float, dict]:
     if not shapes:
-        _, _, _, _, _, total_error, scored_pixels = render_and_score(background, shapes, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+        _, _, _, _, _, total_error, scored_pixels = render_and_score(
+            background,
+            shapes,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
+        )
         error = normalized_error(total_error, scored_pixels)
         return shapes, error, {"enabled": True, "touched": 0, "improvements": 0, "before": error, "after": error}
 
     working = [copy_shape(shape) for shape in shapes]
-    render_rgb, top_alpha, top_idx, diff_top, _, total_error, scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+    render_rgb, top_alpha, top_idx, diff_top, _, total_error, scored_pixels = render_and_score(
+        background,
+        working,
+        target_rgba,
+        enforce_canvas_boundary=enforce_canvas_boundary,
+        importance_map=importance_map,
+    )
     best_error = normalized_error(total_error, scored_pixels)
     before_error = best_error
     edge_context = canvas_edge_context(target_rgba) if enforce_canvas_boundary else None
@@ -1396,7 +1508,16 @@ def repair_shapes(
     boundary_fits = 0
     touched_indices: set[int] = set()
     for _round in range(rounds):
-        ranked = rank_repair_targets(working, top_idx, diff_top, top_alpha, target_rgba, max_shapes, enforce_canvas_boundary=enforce_canvas_boundary)
+        ranked = rank_repair_targets(
+            working,
+            top_idx,
+            diff_top,
+            top_alpha,
+            target_rgba,
+            max_shapes,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
+        )
         changed = False
         for idx in ranked:
             if idx >= len(working):
@@ -1478,7 +1599,13 @@ def repair_shapes(
                     del working[idx]
                 else:
                     working[idx] = trial
-                _, _, _, trial_diff, _, _, _ = render_and_score_region(background, working, target_rgba, local_bbox)
+                _, _, _, trial_diff, _, _, _ = render_and_score_region(
+                    background,
+                    working,
+                    target_rgba,
+                    local_bbox,
+                    importance_map=importance_map,
+                )
                 trial_local_score = float(trial_diff.mean()) if trial_diff.size else local_best_score
                 if enforce_canvas_boundary and trial is not None:
                     local_area = max(1.0, float((local_bbox[1] - local_bbox[0] + 1) * (local_bbox[3] - local_bbox[2] + 1)))
@@ -1503,7 +1630,13 @@ def repair_shapes(
                     del working[idx]
                 else:
                     working[idx] = local_best
-                trial_render_rgb, trial_alpha, trial_top_idx, trial_diff, _, trial_total_error, trial_scored_pixels = render_and_score(background, working, target_rgba, enforce_canvas_boundary=enforce_canvas_boundary)
+                trial_render_rgb, trial_alpha, trial_top_idx, trial_diff, _, trial_total_error, trial_scored_pixels = render_and_score(
+                    background,
+                    working,
+                    target_rgba,
+                    enforce_canvas_boundary=enforce_canvas_boundary,
+                    importance_map=importance_map,
+                )
                 trial_error = normalized_error(trial_total_error, trial_scored_pixels)
                 if trial_error <= best_error + 1e-6 or trial_error + 1e-9 < best_error:
                     best_error = trial_error
@@ -1539,7 +1672,12 @@ def repair_shapes(
     return working, best_error, summary
 
 
-def enforce_shapes_inside_canvas(background: dict, shapes: list[dict], target_rgba: np.ndarray) -> tuple[list[dict], float, dict]:
+def enforce_shapes_inside_canvas(
+    background: dict,
+    shapes: list[dict],
+    target_rgba: np.ndarray,
+    importance_map: np.ndarray | None = None,
+) -> tuple[list[dict], float, dict]:
     width = target_rgba.shape[1]
     height = target_rgba.shape[0]
     edge_context = canvas_edge_context(target_rgba)
@@ -1563,6 +1701,7 @@ def enforce_shapes_inside_canvas(background: dict, shapes: list[dict], target_rg
         working,
         target_rgba,
         enforce_canvas_boundary=True,
+        importance_map=importance_map,
     )
     error = normalized_error(total_error, scored_pixels)
     return working, error, {
@@ -1865,6 +2004,11 @@ def main() -> int:
     # checkpoints against the original source. Luma Prep is only a raw-build
     # helper; using it here makes fine details look artificially soft.
     score_rgba = downscale_rgba(source_rgba, args.score_size)
+    score_importance = build_importance_map(score_rgba)
+    print(
+        "V5 detail weighting: Finalize Checkpoints protects edges, alpha cuts, saturated detail, and linework during scoring/cleanup.",
+        flush=True,
+    )
     enforce_canvas_boundary = target_has_alpha_boundary(source_rgba)
     if enforce_canvas_boundary:
         print(
@@ -1928,6 +2072,7 @@ def main() -> int:
                     score_rgba,
                     drawable_target_shapes,
                     enforce_canvas_boundary=enforce_canvas_boundary,
+                    importance_map=score_importance,
                 )
                 kept_indices = []
                 scaled_map = {id(shape): idx for idx, shape in enumerate(scaled_drawables)}
@@ -1941,6 +2086,7 @@ def main() -> int:
                     scaled_drawables,
                     score_rgba,
                     enforce_canvas_boundary=enforce_canvas_boundary,
+                    importance_map=score_importance,
                 )
                 error = normalized_error(total_error, scored_pixels)
                 kept_original = list(drawables)
@@ -2027,6 +2173,7 @@ def main() -> int:
                     rounds=2 if enforce_canvas_boundary else 1,
                     enforce_canvas_boundary=enforce_canvas_boundary,
                     prefer_smooth_shapes=prefer_smooth_repair,
+                    importance_map=score_importance,
                 )
                 final_shapes = [unscale_shape(shape, sx, sy) for shape in refined_scaled]
                 final_error = refined_error
@@ -2050,7 +2197,12 @@ def main() -> int:
                 scaled_bg = dict(background)
                 scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
                 scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
-                bounded_scaled, bounded_error, boundary_summary = enforce_shapes_inside_canvas(scaled_bg, scaled_selected, score_rgba)
+                bounded_scaled, bounded_error, boundary_summary = enforce_shapes_inside_canvas(
+                    scaled_bg,
+                    scaled_selected,
+                    score_rgba,
+                    importance_map=score_importance,
+                )
                 if boundary_summary.get("fitted", 0):
                     final_shapes = [unscale_shape(shape, sx, sy) for shape in bounded_scaled]
                     final_error = bounded_error
@@ -2068,6 +2220,7 @@ def main() -> int:
                 scaled_selected,
                 score_rgba,
                 enforce_canvas_boundary=enforce_canvas_boundary,
+                importance_map=score_importance,
             )
             if covered_cleanup.get("removed", 0):
                 final_shapes = [unscale_shape(shape, sx, sy) for shape in cleaned_scaled]
@@ -2093,6 +2246,7 @@ def main() -> int:
                     score_rgba,
                     drawable_target_shapes,
                     enforce_canvas_boundary=enforce_canvas_boundary,
+                    importance_map=score_importance,
                 )
                 final_shapes = [unscale_shape(shape, sx, sy) for shape in capped_scaled]
                 final_error = capped_error
@@ -2112,6 +2266,7 @@ def main() -> int:
                     scaled_selected,
                     score_rgba,
                     enforce_canvas_boundary=enforce_canvas_boundary,
+                    importance_map=score_importance,
                 )
                 if post_cap_cleanup.get("removed", 0):
                     final_shapes = [unscale_shape(shape, sx, sy) for shape in cleaned_scaled]
@@ -2239,6 +2394,7 @@ def main() -> int:
         "overshoot_extra": overshoot_extra,
         "interrupted": interrupted,
         "score_size": args.score_size,
+        "v5_detail_weighting": True,
         "live_preview_every": live_preview_every,
         "prefer_smooth_repair": prefer_smooth_repair,
         "efficiency_tolerance": args.efficiency_tolerance,

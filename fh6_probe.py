@@ -755,7 +755,7 @@ def locate_clivery_group_rtti(pid):
     descriptor_match, descriptor_pattern = find_first_pattern_in_typed_regions(pid, patterns, MEM_IMAGE)
     descriptor_address = descriptor_match - 0x10 if descriptor_match else None
     if not descriptor_address:
-        print("ERROR: Failed to find the CLiveryGroup descriptor address.", flush=True)
+        print("CLiveryGroup descriptor pattern was not found; trying layout-count fallback.", flush=True)
         return None
 
     module_base = get_base_address(pid)

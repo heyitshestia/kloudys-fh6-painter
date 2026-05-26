@@ -2591,6 +2591,7 @@ class MainWindow(QMainWindow):
             "Source recommendation:",
             "Preprocessed image:",
             "Canvas boundary:",
+            "V5 detail weighting:",
             "INTERNAL BUILD COMPLETE",
             "Finalized JSONs are",
             "Finalize Checkpoints:",
@@ -3441,6 +3442,12 @@ class MainWindow(QMainWindow):
                 self.bus.status.emit("Failed")
                 return
         path = Path(json_path)
+        try:
+            json_layers = geometry_shape_count(path)
+            layer_label = str(json_layers)
+        except Exception:
+            layer_label = "unknown"
+        self.bus.log.emit(f"Import target: {path.name} ({layer_label} drawable layers)")
         if game == "fh6" and layer_count:
             self.check_json_layer_fit(path, layer_count, mask_budget)
         cmd = [helper_python(), ROOT / "main.py", "--game", game, "--no-preview"]
