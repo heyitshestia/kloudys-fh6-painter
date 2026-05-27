@@ -2237,6 +2237,25 @@ class MainWindow(QMainWindow):
         if not self.custom_enabled.isChecked():
             self.custom_enabled.setChecked(True)
 
+    def custom_fields_differ_from_setting(self, values):
+        checks = (
+            ("stopAt", self.custom_layers),
+            ("maxResolution", self.custom_resolution),
+            ("randomSamples", self.custom_random),
+            ("mutatedSamples", self.custom_mutated),
+            ("saveAt", self.custom_save_at),
+        )
+        for key, widget in checks:
+            current = str(widget.text()).strip()
+            if not current:
+                continue
+            preset = str(values.get(key, "")).strip()
+            if key == "saveAt" and not preset:
+                preset = str(values.get("stopAt", "")).strip()
+            if current != preset:
+                return True
+        return False
+
     def selected_setting(self):
         if hasattr(self, "profile_combo"):
             item = self.profile_combo.currentData()
@@ -2259,18 +2278,20 @@ class MainWindow(QMainWindow):
         setting = self.selected_setting()
         if not setting:
             return None
+        setting_values = dict(setting.get("values", {}))
+        custom_active = self.custom_enabled.isChecked() or self.custom_fields_differ_from_setting(setting_values)
         overrides = {
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
         }
-        if self.custom_enabled.isChecked():
+        if custom_active:
             overrides.update(self.current_custom_values())
-        base_values = dict(setting.get("values", {}))
+        base_values = dict(setting_values)
         base_values.update({key: value for key, value in overrides.items() if str(value).strip()})
         overrides.update(self.vroom_boost_overrides(base_values))
         if (
-            self.custom_enabled.isChecked()
+            custom_active
             or self.vroom.isChecked()
-            or overrides["v2PreprocessMode"] != str(setting.get("values", {}).get("v2PreprocessMode", "none")).strip().lower()
+            or overrides["v2PreprocessMode"] != str(setting_values.get("v2PreprocessMode", "none")).strip().lower()
         ):
             boosted = write_custom_settings(setting, overrides)
             boosted["label"] = setting.get("label", boosted.get("label"))
@@ -2631,7 +2652,12 @@ class MainWindow(QMainWindow):
     def generate_worker(self, setting, images, repair_enabled):
         try:
             self.bus.log.emit(f"Selected Kloudy preset: {setting.get('label') or setting['path'].name}")
-            self.bus.log.emit(f"Luma Prep: {setting.get('values', {}).get('v2PreprocessMode', 'none')}")
+            values = setting.get("values", {})
+            self.bus.log.emit(f"Target template layers: {values.get('stopAt', 'n/a')}")
+            self.bus.log.emit(f"Finalize at layers: {values.get('saveAt', values.get('stopAt', 'n/a'))}")
+            self.bus.log.emit(f"Search effort: random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
+            self.bus.log.emit(f"Max resolution: {values.get('maxResolution', 'n/a')}")
+            self.bus.log.emit(f"Luma Prep: {values.get('v2PreprocessMode', 'none')}")
             self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
             for image_path in images:
                 run_dir = next_generator_output_dir(image_path)
