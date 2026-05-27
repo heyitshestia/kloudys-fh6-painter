@@ -1,10 +1,12 @@
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 from geometry_json import drawable_shape_count
+from version_info import get_version
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,6 +24,7 @@ FINALS_DIR_NAME = "finals"
 CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
+VERSION_FILE = ROOT / "VERSION"
 ACTIVE_PRESET_FILES = (
     "b.shaded-art.ini",
     "a.flat-colors.ini",
@@ -77,6 +80,54 @@ def parse_settings(path):
 
 def sorted_settings(values):
     return {key: values[key] for key in sorted(values)}
+
+
+def text_file_value(path):
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def git_output(*args):
+    try:
+        return subprocess.check_output(
+            ["git", *args],
+            cwd=ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=1.5,
+        ).strip()
+    except Exception:
+        return ""
+
+
+def file_sha256(path):
+    path = Path(path)
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return ""
+
+
+def app_build_info():
+    commit = git_output("rev-parse", "--short=8", "HEAD")
+    if not commit:
+        commit = text_file_value(ROOT / "BUILD_COMMIT")
+    return {
+        "app_name": "Kloudy's FH6 Painter",
+        "app_version": text_file_value(VERSION_FILE) or "unknown",
+        "build_label": get_version(),
+        "build_commit": commit,
+        "metadata_schema": "kloudys_run_metadata_v2",
+        "generator_wrapper": GENERATOR_EXE.name,
+        "raw_generator": RAW_GENERATOR_EXE.name if RAW_GENERATOR_EXE else "",
+        "raw_generator_sha256": file_sha256(RAW_GENERATOR_EXE) if RAW_GENERATOR_EXE else "",
+    }
 
 
 def load_settings():
@@ -515,7 +566,10 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
     preprocess_mode = values.get("v2PreprocessMode", "none")
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
     run_metadata_path = reports_dir / f"{image_path.stem}.v2.run_metadata.json"
+    build_info = app_build_info()
     run_metadata = {
+        "app_version": build_info["app_version"],
+        "app_build": build_info,
         "selected_profile": {
             "label": setting.get("label"),
             "name": setting.get("name"),

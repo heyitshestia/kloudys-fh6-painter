@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import shutil
 import json
 import math
@@ -16,6 +17,8 @@ import numpy as np
 from PIL import Image
 import cv2
 
+from version_info import get_version
+
 
 ROOT = Path(__file__).resolve().parent
 BUNDLED_WINDOWS_GENERATOR_V5 = ROOT / "KloudysGeneratorV5.exe"
@@ -29,6 +32,7 @@ FINALS_DIR_NAME = "finals"
 CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
+VERSION_FILE = ROOT / "VERSION"
 RECTANGLE = 1
 ROTATED_RECTANGLE = 2
 ELLIPSE = 8
@@ -199,6 +203,51 @@ def sorted_mapping(value):
     if isinstance(value, list):
         return [sorted_mapping(item) for item in value]
     return value
+
+
+def text_file_value(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def git_output(*args: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", *args],
+            cwd=ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=1.5,
+        ).strip()
+    except Exception:
+        return ""
+
+
+def file_sha256(path: Path) -> str:
+    try:
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return ""
+
+
+def app_build_info() -> dict:
+    commit = git_output("rev-parse", "--short=8", "HEAD") or text_file_value(ROOT / "BUILD_COMMIT")
+    return {
+        "app_name": "Kloudy's FH6 Painter",
+        "app_version": text_file_value(VERSION_FILE) or "unknown",
+        "build_label": get_version(),
+        "build_commit": commit,
+        "metadata_schema": "kloudys_report_metadata_v2",
+        "generator_wrapper": Path(__file__).name,
+        "raw_generator": GENERATOR_BIN.name if GENERATOR_BIN else "",
+        "raw_generator_sha256": file_sha256(GENERATOR_BIN) if GENERATOR_BIN else "",
+    }
 
 
 def build_save_points(target: int, stop_at: int, checkpoint_step: int) -> str:
@@ -2396,6 +2445,8 @@ def main() -> int:
     })
     generator_command_options = dict(generator_command_options)
     generator_command_options["reserved_import_layers"] = str(reserved_import_layers)
+    app_build = run_metadata.get("app_build") or app_build_info()
+    app_version = run_metadata.get("app_version") or app_build.get("app_version") or "unknown"
 
     def report_candidate(item: dict) -> dict:
         return {
@@ -2423,9 +2474,12 @@ def main() -> int:
     ]
 
     report = {
+        "app_version": app_version,
+        "app_build": sorted_mapping(app_build),
         "source_image": str(image_path),
         "source_copy": str(source_copy_path) if source_copy_path is not None else None,
         "settings": {
+            "app_build": sorted_mapping(app_build),
             "preset": sorted_mapping(preset),
             "base_preset": sorted_mapping(base_preset),
             "ui_overrides": sorted_mapping(ui_overrides),
