@@ -5,17 +5,21 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import math
 import struct
 import time
+from collections import Counter
 from ctypes import wintypes
 from pathlib import Path
 
 
 PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_VM_READ = 0x0010
-LAYER_SIZE = 0x140
+FULL_LAYER_SIZE = 0x140
+GROUPED_SAFE_LAYER_SIZE = 0xC0
+MIN_LAYER_DECODE_SIZE = 0x7C
 TYPE_CODE_BASE = 0x100000
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -115,6 +119,49 @@ def decode_layer(raw, index, ptr, include_raw=False):
     return shape, layer
 
 
+def rounded_values(values, digits=6):
+    return [round(float(value), digits) for value in values]
+
+
+def layer_fingerprint_item(shape):
+    data = list(shape.get("data") or [])
+    return {
+        "type": int(shape.get("type") or 0),
+        "data": rounded_values(data[:7]),
+        "color": [int(value) for value in shape.get("color") or []],
+        "mask": bool(shape.get("mask")),
+    }
+
+
+def content_hash(shapes):
+    digest = hashlib.sha256()
+    for shape in shapes:
+        digest.update(json.dumps(layer_fingerprint_item(shape), sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def summarize_export(shapes, layers):
+    type_counts = Counter(str(shape.get("type")) for shape in shapes)
+    color_counts = Counter(" ".join(str(int(value)) for value in shape.get("color", [])) for shape in shapes)
+    mask_count = sum(1 for shape in shapes if shape.get("mask"))
+    read_size_counts = Counter(str(layer.get("read_size")) for layer in layers)
+    resource_counts = Counter(str(layer.get("resource_ptr_0xa8")) for layer in layers if layer.get("resource_ptr_0xa8"))
+    uniform_template = False
+    if shapes:
+        first = layer_fingerprint_item(shapes[0])
+        uniform_template = all(layer_fingerprint_item(shape) == first for shape in shapes)
+    return {
+        "content_hash_sha256": content_hash(shapes),
+        "type_counts": dict(type_counts.most_common(32)),
+        "color_counts": dict(color_counts.most_common(32)),
+        "mask_layer_count": mask_count,
+        "read_size_counts": dict(read_size_counts.most_common()),
+        "resource_ptr_0xa8_counts": dict(resource_counts.most_common(16)),
+        "uniform_layer_template": uniform_template,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pid", type=int, required=True)
@@ -136,8 +183,12 @@ def main():
     try:
         for index in range(int(args.count)):
             ptr = ptr_at(handle, table, index)
-            raw = try_read_memory(handle, ptr, LAYER_SIZE)
-            if len(raw) != LAYER_SIZE:
+            raw = try_read_memory(handle, ptr, FULL_LAYER_SIZE)
+            layer_size = FULL_LAYER_SIZE
+            if len(raw) != FULL_LAYER_SIZE:
+                raw = try_read_memory(handle, ptr, GROUPED_SAFE_LAYER_SIZE)
+                layer_size = GROUPED_SAFE_LAYER_SIZE
+            if len(raw) < MIN_LAYER_DECODE_SIZE:
                 failures.append({
                     "index": index,
                     "layer": index + 1,
@@ -146,6 +197,9 @@ def main():
                 })
                 continue
             shape, layer = decode_layer(raw, index, ptr, include_raw=args.include_raw)
+            layer["read_size"] = layer_size
+            if len(raw) >= 0xB0:
+                layer["resource_ptr_0xa8"] = hx(struct.unpack_from("<Q", raw, 0xA8)[0])
             layers.append(layer)
             if args.skip_transparent and int(shape["color"][3]) <= 0:
                 continue
@@ -153,6 +207,7 @@ def main():
     finally:
         close_handle(handle)
 
+    summary = summarize_export(shapes, layers)
     payload = {
         "format": "fh6_typecode_json_export_v1",
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -165,6 +220,7 @@ def main():
             "coordinate_model": "fh6_live_layer_offsets",
             "type_model": "type = 0x100000 + uint16_at_layer_0x7A; importer writes low uint16 back to 0x7A",
         },
+        "summary": summary,
         "shapes": shapes,
     }
     out = Path(args.out)
@@ -178,9 +234,13 @@ def main():
         "group": payload["source"]["group"],
         "table": hx(table),
         "requested_count": int(args.count),
+        "preferred_layer_read_size": hx(FULL_LAYER_SIZE),
+        "fallback_layer_read_size": hx(GROUPED_SAFE_LAYER_SIZE),
+        "minimum_decode_size": hx(MIN_LAYER_DECODE_SIZE),
         "exported_shape_count": len(shapes),
         "read_layer_count": len(layers),
         "failure_count": len(failures),
+        "summary": summary,
         "output_json": str(out),
         "layers": layers,
         "failures": failures,

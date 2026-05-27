@@ -16,7 +16,9 @@ PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_VM_OPERATION = 0x0008
 PROCESS_VM_READ = 0x0010
 PROCESS_VM_WRITE = 0x0020
-LAYER_SIZE = 0x140
+FULL_LAYER_SIZE = 0x140
+GROUPED_SAFE_LAYER_SIZE = 0xC0
+MIN_IMPORT_READ_SIZE = 0x7C
 CLEAR_REQUIRED_SIZE = 0x80
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -107,6 +109,16 @@ def decode(raw):
         "rotation": struct.unpack_from("<f", raw, 0x50)[0],
         "resource_ptr_0xa8": hx(struct.unpack_from("<Q", raw, 0xA8)[0]),
     }
+
+
+def read_layer_blob(handle, ptr):
+    raw = try_read_memory(handle, ptr, FULL_LAYER_SIZE)
+    if len(raw) == FULL_LAYER_SIZE:
+        return raw, FULL_LAYER_SIZE
+    raw = try_read_memory(handle, ptr, GROUPED_SAFE_LAYER_SIZE)
+    if len(raw) == GROUPED_SAFE_LAYER_SIZE:
+        return raw, GROUPED_SAFE_LAYER_SIZE
+    return raw, len(raw)
 
 
 def decode_partial(raw):
@@ -235,8 +247,8 @@ def main():
             idx = target_idx if args.compact_supported_layers else item["index"]
             used_indices.add(idx)
             ptr = ptr_at(handle, table, idx)
-            before = try_read_memory(handle, ptr, LAYER_SIZE)
-            if len(before) != LAYER_SIZE:
+            before, before_size = read_layer_blob(handle, ptr)
+            if len(before) < MIN_IMPORT_READ_SIZE:
                 failure = {
                     "phase": "import",
                     "index": idx,
@@ -247,7 +259,14 @@ def main():
                 report_layers.append({**failure, "shape": item, "target_index": idx})
                 log(f"FAILED import layer {idx + 1}: {failure['reason']} ptr={hx(ptr)}")
                 continue
-            backup_layers.append({"index": idx, "ptr": hx(ptr), "raw_hex": before.hex(), "decoded": decode(before)})
+            backup_layers.append({
+                "index": idx,
+                "ptr": hx(ptr),
+                "read_size": before_size,
+                "raw_hex": before.hex(),
+                "decoded": decode(before) if len(before) >= 0xB0 else decode_partial(before),
+                "partial": len(before) < FULL_LAYER_SIZE,
+            })
             writes = [
                 (0x18, struct.pack("<ff", item["x"], item["y"])),
                 (0x28, struct.pack("<ff", item["sx"], item["sy"])),
@@ -259,17 +278,19 @@ def main():
             ]
             for offset, raw in writes:
                 write_memory(handle, ptr + offset, raw, args.write)
-            after = try_read_memory(handle, ptr, LAYER_SIZE) if args.write else before
-            if len(after) != LAYER_SIZE:
+            after, after_size = read_layer_blob(handle, ptr) if args.write else (before, before_size)
+            if len(after) < MIN_IMPORT_READ_SIZE:
                 after = before
             report_layers.append({
                 "index": idx,
                 "target_index": idx,
                 "source_index": item["index"],
                 "ptr": hx(ptr),
+                "read_size": before_size,
                 "shape": item,
-                "before": decode(before),
-                "after": decode(after),
+                "before": decode(before) if len(before) >= 0xB0 else decode_partial(before),
+                "after": decode(after) if len(after) >= 0xB0 else decode_partial(after),
+                "after_read_size": after_size,
             })
             if target_idx == 0 or (target_idx + 1) % 10 == 0 or target_idx == len(shapes) - 1:
                 log(
@@ -295,12 +316,13 @@ def main():
                 if first_clear is None:
                     first_clear = idx
                 ptr = ptr_at(handle, table, idx)
-                before = try_read_memory(handle, ptr, LAYER_SIZE)
+                before, before_size = read_layer_blob(handle, ptr)
                 partial = False
-                if len(before) != LAYER_SIZE:
+                if len(before) != FULL_LAYER_SIZE:
                     prefix = try_read_memory(handle, ptr, CLEAR_REQUIRED_SIZE)
                     if len(prefix) >= CLEAR_REQUIRED_SIZE:
                         before = prefix
+                        before_size = len(prefix)
                         partial = True
                     else:
                         failure = {
@@ -321,9 +343,16 @@ def main():
                         "reason": f"full layer read crossed unreadable memory; cleared writable prefix {len(before)} bytes",
                     }
                     partial_clears.append(partial_item)
-                    backup_layers.append({"index": idx, "ptr": hx(ptr), "raw_hex": before.hex(), "decoded": decode_partial(before), "partial": True})
+                    backup_layers.append({"index": idx, "ptr": hx(ptr), "read_size": before_size, "raw_hex": before.hex(), "decoded": decode_partial(before), "partial": True})
                 else:
-                    backup_layers.append({"index": idx, "ptr": hx(ptr), "raw_hex": before.hex(), "decoded": decode(before)})
+                    backup_layers.append({
+                        "index": idx,
+                        "ptr": hx(ptr),
+                        "read_size": before_size,
+                        "raw_hex": before.hex(),
+                        "decoded": decode(before) if len(before) >= 0xB0 else decode_partial(before),
+                        "partial": len(before) < FULL_LAYER_SIZE,
+                    })
                 for offset, raw in clear_writes:
                     write_memory(handle, ptr + offset, raw, args.write)
                 if partial:
@@ -340,6 +369,9 @@ def main():
         "table": args.table,
         "source_json": args.json,
         "write": args.write,
+        "preferred_layer_read_size": hx(FULL_LAYER_SIZE),
+        "fallback_layer_read_size": hx(GROUPED_SAFE_LAYER_SIZE),
+        "minimum_import_read_size": hx(MIN_IMPORT_READ_SIZE),
         "compact_supported_layers": args.compact_supported_layers,
         "unsupported_shape_count": len(skipped_shapes),
         "unsupported_shapes": skipped_shapes,

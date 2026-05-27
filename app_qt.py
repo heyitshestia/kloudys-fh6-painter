@@ -368,7 +368,9 @@ HELP_TEXT = {
     "handmade_template": (
         "Universal Import Template",
         "Use a fresh 3000-layer circle template for universal handmade imports.\n\n"
-        "The importer writes the requested shapes, then trims the group to the used layer count after writing."
+        "Ungrouped templates are still the safest target. Grouped templates can be found and written in current testing, "
+        "but treat grouped import as experimental until more save/reload cases are verified. The importer writes the "
+        "requested shapes, then trims the group to the used layer count after writing."
     ),
     "clear_unused": (
         "Clear Unused Layers",
@@ -378,7 +380,8 @@ HELP_TEXT = {
     "export_template": (
         "Export Layer Count",
         "Enter the exact layer count of the currently open FH6 group.\n\n"
-        "Exporter is read-only: it reads the live layer table and saves a compatible handmade JSON."
+        "Exporter is read-only and supports grouped or ungrouped groups. It reads the live layer table, records a "
+        "content fingerprint/summary, and saves a compatible handmade JSON."
     ),
     "luma_tab": (
         "Standalone Luma Band Pass",
@@ -1670,10 +1673,10 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Base Template")
         template_layout = QGridLayout(template)
         self.handmade_template_count = QLineEdit("3000")
-        self.handmade_template_count.setToolTip("Use a fresh 3000-layer circle template for universal imports, then the app trims to the used layer count.")
+        self.handmade_template_count.setToolTip("Use a fresh 3000-layer circle template for universal imports, then the app trims to the used layer count. Ungrouped is safest; grouped import is experimental.")
         template_layout.addWidget(self.label_with_help("Loaded template layer count", "handmade_template"), 0, 0)
         template_layout.addWidget(self.handmade_template_count, 0, 1)
-        template_help = QLabel("Recommended: open a fresh 3000-layer template in FH6 Vinyl Group Editor and ungroup it before importing.")
+        template_help = QLabel("Recommended: open a fresh 3000-layer template in FH6 Vinyl Group Editor and ungroup it before importing. Grouped targets can be written in current testing, but verify with save/reload.")
         template_help.setWordWrap(True)
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
@@ -1697,7 +1700,7 @@ class MainWindow(QMainWindow):
         self.handmade_clear_unused.setChecked(True)
         self.handmade_clear_unused.setToolTip("Keeps the save file clean if FH6 briefly sees the old template capacity during import.")
         run_layout.addWidget(self.checkbox_with_help(self.handmade_clear_unused, "clear_unused"))
-        import_btn = QPushButton("Import Handmade JSON into 3000 Template")
+        import_btn = QPushButton("Import Handmade JSON into Loaded Template")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_handmade_import)
         run_layout.addWidget(import_btn)
@@ -1715,13 +1718,14 @@ class MainWindow(QMainWindow):
             "- Uses full 16-bit shape word at layer offset 0x7A.\n"
             "- Writes position, scale, rotation, skew, color, mask flag, and shape word only.\n"
             "- Exports the same fields read-only from the current FH6 group.\n"
+            "- Export supports grouped and ungrouped FH6 groups and records a content fingerprint.\n"
             "- Does not copy volatile render/cache fields or resource pointers.\n"
             "- Auto-locates the loaded template by layer count.\n"
             "- Trims FH6 group count and table end after import.\n\n"
             "Current best workflow:\n"
             "1. Open FH6 Vinyl Group Editor.\n"
             "2. Load/prepare a fresh 3000-layer circle template.\n"
-            "3. Ungroup it.\n"
+            "3. Ungroup it when possible. Grouped import is experimental but possible in current testing.\n"
             "4. To import: choose a handmade JSON, import, then save/reload.\n"
             "5. To export: enter the current group layer count and click export."
         )
@@ -1761,10 +1765,10 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Current Open Group")
         template_layout = QGridLayout(template)
         self.export_template_count = QLineEdit("3000")
-        self.export_template_count.setToolTip("Enter the exact layer count of the currently open and ungrouped FH6 group.")
+        self.export_template_count.setToolTip("Enter the exact layer count of the currently open FH6 group. Export can read grouped or ungrouped groups.")
         template_layout.addWidget(self.label_with_help("Current group layer count", "export_template"), 0, 0)
         template_layout.addWidget(self.export_template_count, 0, 1)
-        template_help = QLabel("Keep the group open, ungrouped, and do not switch FH6 menus while exporting.")
+        template_help = QLabel("Keep the group open and do not switch FH6 menus while exporting. Grouped and ungrouped groups are both supported.")
         template_help.setWordWrap(True)
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
@@ -3715,50 +3719,53 @@ class MainWindow(QMainWindow):
     def locate_universal_template(self, pid, template_count, run_dir, purpose="template"):
         session_report = run_dir / f"fast-{purpose}-session.json"
         probe_report = run_dir / f"fallback-{purpose}-probe.json"
-        self.bus.log.emit(f"Fast-locating loaded FH6 group with {template_count} layers...")
-        fast_cmd = [
-            helper_python(),
-            ROOT / "fh6_probe.py",
-            "--game",
-            "fh6",
-            "--pid",
-            str(pid),
-            "--layer-count",
-            str(template_count),
-            "--auto-locate",
-            "--write-session",
-            session_report,
-            "--dump-slot-radius",
-            "16",
-            "--limit-mb",
-            str(MEMORY_SNAPSHOT_LIMIT_MB),
-            "--max-matches",
-            "500000",
-            "--inspect-radius",
-            "0x800",
-            "--max-seconds",
-            "45",
-        ]
         group = None
         table = None
-        code = self.run_subprocess(fast_cmd, timeout=90)
-        if code == 0 and session_report.exists():
-            session = json.loads(session_report.read_text(encoding="utf-8"))
-            if str(session.get("layer_count", "")) == str(template_count):
-                table_value = session.get("table_address")
-                count_value = session.get("count_address")
-                group_value = session.get("group_address")
-                if table_value and (group_value or count_value):
-                    table = f"0x{int(table_value):x}" if isinstance(table_value, int) else str(table_value)
-                    if group_value:
-                        group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
-                    else:
-                        group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
-                    self.bus.log.emit(f"FH6 group fast-located: group={group}, table={table}, layers={template_count}")
-        if group and table:
-            return group, table
-
-        self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
+        use_research_scanner = True
+        if not use_research_scanner:
+            self.bus.log.emit(f"Fast-locating loaded FH6 group with {template_count} layers...")
+            fast_cmd = [
+                helper_python(),
+                ROOT / "fh6_probe.py",
+                "--game",
+                "fh6",
+                "--pid",
+                str(pid),
+                "--layer-count",
+                str(template_count),
+                "--auto-locate",
+                "--write-session",
+                session_report,
+                "--dump-slot-radius",
+                "16",
+                "--limit-mb",
+                str(MEMORY_SNAPSHOT_LIMIT_MB),
+                "--max-matches",
+                "500000",
+                "--inspect-radius",
+                "0x800",
+                "--max-seconds",
+                "45",
+            ]
+            code = self.run_subprocess(fast_cmd, timeout=90)
+            if code == 0 and session_report.exists():
+                session = json.loads(session_report.read_text(encoding="utf-8"))
+                if str(session.get("layer_count", "")) == str(template_count):
+                    table_value = session.get("table_address")
+                    count_value = session.get("count_address")
+                    group_value = session.get("group_address")
+                    if table_value and (group_value or count_value):
+                        table = f"0x{int(table_value):x}" if isinstance(table_value, int) else str(table_value)
+                        if group_value:
+                            group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
+                        else:
+                            group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
+                        self.bus.log.emit(f"FH6 group fast-located: group={group}, table={table}, layers={template_count}")
+            if group and table:
+                return group, table
+            self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
+        else:
+            self.bus.log.emit("Universal import/export uses the research scanner so grouped vinyl child tables can be found safely.")
         probe_cmd = [
             helper_python(),
             ROOT / "fh6_group1000_probe.py",
