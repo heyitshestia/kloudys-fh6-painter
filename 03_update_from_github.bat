@@ -230,8 +230,16 @@ for %%F in (
     "KloudysGeneratorV2Speed.exe"
     "kloudys-fh6-generator.exe"
     "forza-painter-geometrize-go.exe"
+    "docs\GENERATOR_BENCHMARK_PLAN.md"
+    "tools\benchmark_generator_settings.py"
 ) do (
     if exist %%~F del /f /q %%~F >nul 2>nul
+)
+if exist "tools\__pycache__" rmdir /s /q "tools\__pycache__" >nul 2>nul
+set "TOOLS_HAS_CONTENT="
+if exist "tools\" (
+    for /f "delims=" %%A in ('dir /a /b "tools" 2^>nul') do set "TOOLS_HAS_CONTENT=1"
+    if not defined TOOLS_HAS_CONTENT rmdir /q "tools" >nul 2>nul
 )
 exit /b 0
 
