@@ -3784,14 +3784,25 @@ class MainWindow(QMainWindow):
         candidates = probe.get("candidates") or []
         if not candidates:
             raise RuntimeError("no matching loaded FH6 group was found")
-        best = candidates[0]
-        group = best.get("group")
-        table = best.get("table")
-        valid_ptrs = int(best.get("valid_ptrs") or 0)
-        sample_ok = int(best.get("sample_ok_count") or 0)
-        if not group or not table or valid_ptrs < template_count or sample_ok < min(8, template_count):
-            raise RuntimeError(f"located group did not validate strongly enough (valid_ptrs={valid_ptrs}, sample_ok={sample_ok})")
-        self.bus.log.emit(f"FH6 group fallback-located: group={group}, table={table}, layers={template_count}")
+        min_sample_ok = min(8, template_count)
+        rejected = []
+        selected = None
+        for index, candidate in enumerate(candidates, start=1):
+            group = candidate.get("group")
+            table = candidate.get("table")
+            valid_ptrs = int(candidate.get("valid_ptrs") or 0)
+            sample_ok = int(candidate.get("sample_ok_count") or 0)
+            if group and table and valid_ptrs >= template_count and sample_ok >= min_sample_ok:
+                selected = (index, group, table, valid_ptrs, sample_ok)
+                break
+            rejected.append(f"#{index}: valid_ptrs={valid_ptrs}, sample_ok={sample_ok}")
+        if not selected:
+            detail = "; ".join(rejected[:5]) if rejected else "no candidates"
+            raise RuntimeError(f"located group did not validate strongly enough ({detail})")
+        index, group, table, valid_ptrs, sample_ok = selected
+        if index > 1:
+            self.bus.log.emit(f"Skipped {index - 1} weaker fallback candidate(s): {'; '.join(rejected[:3])}")
+        self.bus.log.emit(f"FH6 group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}")
         return group, table
 
     def handmade_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):
