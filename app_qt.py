@@ -302,6 +302,21 @@ def load_app_settings() -> dict:
         return {}
 
 
+def settings_bool(value, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off", ""}:
+        return False
+    return default
+
+
 def save_app_settings(settings: dict) -> None:
     try:
         APP_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1722,7 +1737,7 @@ class MainWindow(QMainWindow):
         importer = QGroupBox("Importer")
         importer_layout = QVBoxLayout(importer)
         self.legacy_masks_enabled = QCheckBox("Use legacy 4 big FH border masks")
-        self.legacy_masks_enabled.setChecked(bool(self.app_settings.get("legacy_border_masks", False)))
+        self.legacy_masks_enabled.setChecked(settings_bool(self.app_settings.get("legacy_border_masks"), False))
         self.legacy_masks_enabled.stateChanged.connect(self.save_importer_settings)
         importer_layout.addWidget(self.legacy_masks_enabled)
         mask_note = QLabel(
@@ -3409,11 +3424,11 @@ class MainWindow(QMainWindow):
         ).start()
 
     def selected_import_mask_options(self):
-        if bool(self.app_settings.get("legacy_border_masks", False)):
+        if settings_bool(self.app_settings.get("legacy_border_masks"), False):
             return "full", 4
         return "off", 0
 
-    def check_json_layer_fit(self, json_path, layer_count, mask_budget=4):
+    def check_json_layer_fit(self, json_path, layer_count, mask_budget=0):
         try:
             json_layers = geometry_shape_count(json_path)
             template_layers = int(layer_count)
@@ -3425,7 +3440,7 @@ class MainWindow(QMainWindow):
         if json_layers and usable_layers and json_layers < usable_layers * 0.75:
             self.bus.log.emit(f"Selected JSON has far fewer drawable layers than usable capacity. JSON={json_layers}, usable={usable_layers}")
 
-    def import_worker(self, pid, game, count_address, table_address, layer_count, json_path, mask_mode="full", mask_budget=4):
+    def import_worker(self, pid, game, count_address, table_address, layer_count, json_path, mask_mode="off", mask_budget=0):
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.bus.log.emit("Finding current FH6 template...")
