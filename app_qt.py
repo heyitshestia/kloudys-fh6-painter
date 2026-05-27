@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTabWidget,
     QTextEdit,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -176,6 +177,13 @@ Smooth Gradients
 The 2x Sample Goblin (slower) switch doubles random samples and mutated samples.
 It does not double output layers or resolution, and it usually takes longer.
 
+Resolution / samples / layers, short version:
+- Max resolution controls how much detail the generator can see.
+- Layer count controls how many vinyl shapes it can spend drawing that detail.
+- Random samples search for good new shapes.
+- Mutated samples refine promising shapes after they are found.
+- Too much resolution with too few layers can look worse because the generator chases detail it cannot afford to draw.
+
 
 3. Generate Final Vinyl
 
@@ -286,6 +294,102 @@ Check these first:
 
 If generation looks bad, try the preset that matches the source style, increase random samples, increase layers, or use a cleaner source image.
 """,
+}
+
+
+HELP_TEXT = {
+    "preset": (
+        "Preset",
+        "Pick the preset that matches the source style, not just the speed.\n\n"
+        "Flat Colors / Logos is for hard borders, text-like art, decals, and broad color islands.\n"
+        "Shaded Character Art is the best default for anime, skin, hair, eyes, and mixed linework.\n"
+        "Smooth Gradients is for glossy shading, soft ramps, and painterly blends."
+    ),
+    "sample_goblin": (
+        "2x Sample Goblin",
+        "Doubles random samples and mutated samples for the selected run.\n\n"
+        "It usually improves search quality, but it is slower. It does not increase output layers, max resolution, or finalized checkpoint counts."
+    ),
+    "template_layers": (
+        "Template Layers",
+        "The target layer budget for generation and the FH6 template size you should import into.\n\n"
+        "More layers can describe more detail, gradients, and corrections. More layers also take longer and make the FH6 vinyl heavier."
+    ),
+    "max_resolution": (
+        "Max Resolution",
+        "The largest internal image size the generator scores.\n\n"
+        "Higher values let it see smaller details, but only help if the layer count and samples can actually draw those details.\n\n"
+        "Practical ranges:\n"
+        "- Logos / flat art: 1000-1400\n"
+        "- Anime / clean art: 1400-1800\n"
+        "- Detailed shaded art: 1600-2200\n"
+        "- Soft gradients: 1800-2400"
+    ),
+    "random_samples": (
+        "Random Samples",
+        "Fresh shape guesses tried for each new layer.\n\n"
+        "Higher values improve the odds of finding a strong starting shape, especially for small details and hard edges. This is one of the main quality/speed tradeoffs."
+    ),
+    "mutated_samples": (
+        "Mutated Samples",
+        "Local refinement tries after a promising candidate exists.\n\n"
+        "This improves position, size, rotation, and fit. It is usually more useful once random samples are high enough to find good candidates."
+    ),
+    "finalize_at": (
+        "Finalize At Layers",
+        "Checkpoint layer counts to finalize into import-ready JSON files.\n\n"
+        "Example: 500,1000,1500,2000 writes final choices at those layer counts, so you can pick the best one manually instead of only using the last output."
+    ),
+    "luma_prep": (
+        "Luma Prep",
+        "Preprocesses the source into cleaner brightness/color bands before generation.\n\n"
+        "Best for logos, stickers, and flat art. It can soften tiny detail, hair, skin, eyes, and smooth gradients."
+    ),
+    "edge_repair": (
+        "Edge Repair",
+        "Final pass that tightens transparent holes, cutout edges, and border adherence.\n\n"
+        "Normally keep this on. It only affects finalized outputs, not the raw builder checkpoints."
+    ),
+    "import_template": (
+        "Import Template Layer Count",
+        "Enter the exact layer count of the open ungrouped FH6 template.\n\n"
+        "Normal imports now use all template layers for art and then cull to the JSON's used layer count. A 2000-shape JSON should use a 2000-layer template unless you intentionally use a larger one."
+    ),
+    "final_json_browser": (
+        "Final JSON Browser",
+        "Only import files from the finals folder.\n\n"
+        "Pick a generated run, then click the finalized checkpoint you want. The highlighted checkpoint is the one that imports. The app does not auto-pick the best one for you."
+    ),
+    "auto_locate": (
+        "Auto-Locate",
+        "Finds the live FH6 vinyl layer table in memory.\n\n"
+        "Keep FH6 in Vinyl Group Editor, keep the group ungrouped, and do not switch menus while locating or importing."
+    ),
+    "handmade_template": (
+        "Universal Import Template",
+        "Use a fresh 3000-layer circle template for universal handmade imports.\n\n"
+        "The importer writes the requested shapes, then trims the group to the used layer count after writing."
+    ),
+    "clear_unused": (
+        "Clear Unused Layers",
+        "Clears leftover template slots before trimming.\n\n"
+        "This helps avoid stale shapes being briefly visible or saved if FH6 still sees the old template capacity during import."
+    ),
+    "export_template": (
+        "Export Layer Count",
+        "Enter the exact layer count of the currently open FH6 group.\n\n"
+        "Exporter is read-only: it reads the live layer table and saves a compatible handmade JSON."
+    ),
+    "luma_tab": (
+        "Standalone Luma Band Pass",
+        "Creates a separate luma-banded PNG without running generation.\n\n"
+        "Use it to inspect whether Luma Prep helps a source before committing to a full run."
+    ),
+    "legacy_masks": (
+        "Legacy FH Border Masks",
+        "Old import mode that adds four large FH mask layers around the art.\n\n"
+        "Default is off because finalized JSONs now keep shapes inside the canvas. Legacy masks can make vinyls underneath turn transparent when stacking designs."
+    ),
 }
 
 
@@ -1272,6 +1376,41 @@ class MainWindow(QMainWindow):
         self._all_combos.append(combo)
         return combo
 
+    def help_button(self, key: str) -> QToolButton:
+        title, body = HELP_TEXT[key]
+        button = QToolButton()
+        button.setText("?")
+        button.setObjectName("helpButton")
+        button.setCursor(Qt.CursorShape.WhatsThisCursor)
+        button.setToolTip(title)
+        button.setFixedSize(24, 24)
+        button.clicked.connect(lambda _checked=False, t=title, b=body: self.show_help(t, b))
+        return button
+
+    def label_with_help(self, text: str, help_key: str) -> QWidget:
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        label = QLabel(text)
+        label.setWordWrap(True)
+        layout.addWidget(label, 1)
+        layout.addWidget(self.help_button(help_key))
+        layout.addStretch(1)
+        return widget
+
+    def checkbox_with_help(self, checkbox: QCheckBox, help_key: str) -> QWidget:
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        layout.addWidget(checkbox, 1)
+        layout.addWidget(self.help_button(help_key), 0, Qt.AlignmentFlag.AlignRight)
+        return widget
+
+    def show_help(self, title: str, body: str) -> None:
+        QMessageBox.information(self, title, body)
+
     def close_combo_popups(self):
         for combo in getattr(self, "_all_combos", []):
             with contextlib.suppress(RuntimeError):
@@ -1315,7 +1454,8 @@ class MainWindow(QMainWindow):
         self.vroom = QCheckBox("2x Sample Goblin (slower)")
         self.vroom.setToolTip("Doubles random and mutated samples for more search effort. Usually slower, sometimes cleaner.")
         self.vroom.stateChanged.connect(self.update_setting_description)
-        quality_layout.addWidget(self.vroom)
+        quality_layout.addWidget(self.checkbox_with_help(self.vroom, "sample_goblin"))
+        quality_layout.addWidget(self.label_with_help("Preset", "preset"))
         self.profile_combo = self.make_combo(max_visible=18, min_height=38)
         self.profile_combo.currentIndexChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.profile_combo)
@@ -1332,14 +1472,14 @@ class MainWindow(QMainWindow):
         self.custom_mutated = QLineEdit()
         self.custom_save_at = QLineEdit()
         fields = [
-            ("Template layers", self.custom_layers),
-            ("Max resolution", self.custom_resolution),
-            ("Random samples", self.custom_random),
-            ("Mutated samples", self.custom_mutated),
-            ("Finalize at layers", self.custom_save_at),
+            ("Template layers", self.custom_layers, "template_layers"),
+            ("Max resolution", self.custom_resolution, "max_resolution"),
+            ("Random samples", self.custom_random, "random_samples"),
+            ("Mutated samples", self.custom_mutated, "mutated_samples"),
+            ("Finalize at layers", self.custom_save_at, "finalize_at"),
         ]
-        for row, (label, widget) in enumerate(fields):
-            form.addWidget(QLabel(label), row, 0)
+        for row, (label, widget, help_key) in enumerate(fields):
+            form.addWidget(self.label_with_help(label, help_key), row, 0)
             form.addWidget(widget, row, 1)
         quality_layout.addLayout(form)
         preset_actions = QHBoxLayout()
@@ -1353,11 +1493,11 @@ class MainWindow(QMainWindow):
         self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
         self.luma_enabled.setToolTip("Best for flat logos/liveries and hard color bands. Leave off for most anime, hair, skin, and smooth gradients.")
         self.luma_enabled.setChecked(False)
-        quality_layout.addWidget(self.luma_enabled)
+        quality_layout.addWidget(self.checkbox_with_help(self.luma_enabled, "luma_prep"))
         self.repair_enabled = QCheckBox("Edge Repair - clean borders and transparent holes")
         self.repair_enabled.setToolTip("Final pass that tightens borders and transparent holes on the finalized checkpoints.")
         self.repair_enabled.setChecked(True)
-        quality_layout.addWidget(self.repair_enabled)
+        quality_layout.addWidget(self.checkbox_with_help(self.repair_enabled, "edge_repair"))
         left_layout.addWidget(quality_group)
 
         run_group = QGroupBox("Step 3 - Generate Final Vinyl")
@@ -1414,7 +1554,7 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Vinyl Template")
         template_layout = QGridLayout(template)
         self.layer_count = QLineEdit("3000")
-        template_layout.addWidget(QLabel("Exact template layer count"), 0, 0)
+        template_layout.addWidget(self.label_with_help("Exact template layer count", "import_template"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
         template_help = QLabel("Default workflow: use one 3000-layer template. Imports are culled to the JSON's drawable layer count after writing.")
         template_help.setWordWrap(True)
@@ -1448,7 +1588,7 @@ class MainWindow(QMainWindow):
         json_layout.addLayout(controls)
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
-        json_layout.addWidget(QLabel("Generated vinyl run"))
+        json_layout.addWidget(self.label_with_help("Generated vinyl run", "final_json_browser"))
         json_layout.addWidget(QLabel("Pick a finalized checkpoint below. The highlighted final JSON is the one that will be imported."))
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
@@ -1479,7 +1619,10 @@ class MainWindow(QMainWindow):
         auto_btn = QPushButton("Auto-locate FH6 template")
         auto_btn.clicked.connect(self.start_auto_locate)
         import_layout.addWidget(import_btn)
-        import_layout.addWidget(auto_btn)
+        auto_row = QHBoxLayout()
+        auto_row.addWidget(auto_btn, 1)
+        auto_row.addWidget(self.help_button("auto_locate"))
+        import_layout.addLayout(auto_row)
         right_layout.addWidget(import_group)
         right_layout.addWidget(QLabel("Final Vinyl Preview"))
         self.import_preview = PreviewView("Select a finalized JSON to preview it here.")
@@ -1527,7 +1670,7 @@ class MainWindow(QMainWindow):
         template_layout = QGridLayout(template)
         self.handmade_template_count = QLineEdit("3000")
         self.handmade_template_count.setToolTip("Use a fresh 3000-layer circle template for universal imports, then the app trims to the used layer count.")
-        template_layout.addWidget(QLabel("Loaded template layer count"), 0, 0)
+        template_layout.addWidget(self.label_with_help("Loaded template layer count", "handmade_template"), 0, 0)
         template_layout.addWidget(self.handmade_template_count, 0, 1)
         template_help = QLabel("Recommended: open a fresh 3000-layer template in FH6 Vinyl Group Editor and ungroup it before importing.")
         template_help.setWordWrap(True)
@@ -1552,7 +1695,7 @@ class MainWindow(QMainWindow):
         self.handmade_clear_unused = QCheckBox("Clear unused template layers before trimming")
         self.handmade_clear_unused.setChecked(True)
         self.handmade_clear_unused.setToolTip("Keeps the save file clean if FH6 briefly sees the old template capacity during import.")
-        run_layout.addWidget(self.handmade_clear_unused)
+        run_layout.addWidget(self.checkbox_with_help(self.handmade_clear_unused, "clear_unused"))
         import_btn = QPushButton("Import Handmade JSON into 3000 Template")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_handmade_import)
@@ -1618,7 +1761,7 @@ class MainWindow(QMainWindow):
         template_layout = QGridLayout(template)
         self.export_template_count = QLineEdit("3000")
         self.export_template_count.setToolTip("Enter the exact layer count of the currently open and ungrouped FH6 group.")
-        template_layout.addWidget(QLabel("Current group layer count"), 0, 0)
+        template_layout.addWidget(self.label_with_help("Current group layer count", "export_template"), 0, 0)
         template_layout.addWidget(self.export_template_count, 0, 1)
         template_help = QLabel("Keep the group open, ungrouped, and do not switch FH6 menus while exporting.")
         template_help.setWordWrap(True)
@@ -1672,7 +1815,7 @@ class MainWindow(QMainWindow):
 
         controls = QGroupBox("Standalone Luma Band Pass")
         controls_layout = QVBoxLayout(controls)
-        controls_layout.addWidget(QLabel("Choose one image. The app saves a luma-banded PNG into imgs/luma-bands and previews the before/after here."))
+        controls_layout.addWidget(self.label_with_help("Choose one image. The app saves a luma-banded PNG into imgs/luma-bands and previews the before/after here.", "luma_tab"))
         actions = QHBoxLayout()
         choose = QPushButton("Choose image and run Luma Band Pass")
         choose.setObjectName("primaryButton")
@@ -1739,7 +1882,7 @@ class MainWindow(QMainWindow):
         self.legacy_masks_enabled = QCheckBox("Use legacy 4 big FH border masks")
         self.legacy_masks_enabled.setChecked(settings_bool(self.app_settings.get("legacy_border_masks"), False))
         self.legacy_masks_enabled.stateChanged.connect(self.save_importer_settings)
-        importer_layout.addWidget(self.legacy_masks_enabled)
+        importer_layout.addWidget(self.checkbox_with_help(self.legacy_masks_enabled, "legacy_masks"))
         mask_note = QLabel(
             "Default uses no FH border masks. Finalize Checkpoints now keeps transparent-source shapes inside the PNG canvas. Legacy uses the old 4 big border masks and may make underlying vinyls transparent when stacking designs."
         )
@@ -1784,6 +1927,8 @@ class MainWindow(QMainWindow):
                 QPushButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; border-radius: 10px; padding: 8px 14px; font-weight: 700; min-height: 26px; }
                 QPushButton:hover { background: #f8d9e4; }
                 QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
+                QToolButton#helpButton { background: #7f3d58; color: #ffffff; border: 1px solid #fffafa; border-radius: 12px; font-weight: 900; }
+                QToolButton#helpButton:hover { background: #a83f67; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
                 QComboBox { padding-right: 30px; }
                 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #b77b8f; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background: #f3c7d6; }
@@ -1809,6 +1954,8 @@ class MainWindow(QMainWindow):
                 QPushButton:pressed { background: #050914; border-color: #ffffff; }
                 QPushButton#primaryButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.52 #ffb000, stop:1 #24e9ff); color: #07101a; border: 1px solid #ffffff; font-weight: 950; padding: 12px 16px; }
                 QPushButton#primaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff6b42, stop:0.50 #ffd166, stop:1 #6df6ff); color: #020407; }
+                QToolButton#helpButton { background: #24e9ff; color: #07101a; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
+                QToolButton#helpButton:hover { background: #ffb000; color: #020407; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: rgba(2, 7, 14, 238); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); border-radius: 9px; padding: 6px; selection-background-color: #ff4a2b; selection-color: #ffffff; }
                 QLineEdit:focus, QComboBox:focus, QListWidget:focus, QTextEdit:focus, QTreeWidget:focus { border: 1px solid #ffb000; }
                 QComboBox { padding-right: 30px; }
@@ -1842,6 +1989,8 @@ class MainWindow(QMainWindow):
                 QPushButton:pressed { background: #000000; }
                 QPushButton#primaryButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
                 QPushButton#primaryButton:hover { background: #dedede; color: #000000; }
+                QToolButton#helpButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
+                QToolButton#helpButton:hover { background: #d0d0d0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
                 QComboBox { padding-right: 30px; }
                 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #2b2b2b; border-top-right-radius: 7px; border-bottom-right-radius: 7px; background: #050505; }
@@ -1870,6 +2019,8 @@ class MainWindow(QMainWindow):
                 QPushButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-radius: 10px; padding: 8px 14px; min-height: 26px; }
                 QPushButton:hover { background: #dfc9ff; }
                 QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
+                QToolButton#helpButton { background: #9f6ad8; color: white; border: 1px solid #ffffff; border-radius: 12px; font-weight: 900; }
+                QToolButton#helpButton:hover { background: #7b4eb0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
                 QComboBox { padding-right: 30px; }
                 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #d8c2f0; border-top-right-radius: 7px; border-bottom-right-radius: 7px; background: #eadcff; }
