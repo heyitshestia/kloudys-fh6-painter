@@ -227,6 +227,21 @@ def parse_save_points(value: str, stop_at: int) -> list[int]:
     return sorted(set(points))
 
 
+def parse_bool(value, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off", ""}:
+        return False
+    return default
+
+
 def infer_save_every(points: list[int], fallback: int) -> int:
     if not points:
         return max(1, fallback)
@@ -1256,6 +1271,20 @@ def copy_shape(shape: dict) -> dict:
     }
 
 
+def force_opaque_drawables(shapes: list[dict]) -> list[dict]:
+    out = []
+    for shape in shapes:
+        fixed = copy_shape(shape)
+        color = list(fixed.get("color", [0, 0, 0, 255]))
+        if len(color) < 4:
+            color += [255] * (4 - len(color))
+        if int(color[3]) > 0:
+            color[3] = 255
+        fixed["color"] = color
+        out.append(fixed)
+    return out
+
+
 def shape_visual_extents(shape: dict) -> tuple[float, float, float, float, float] | None:
     data = list(shape.get("data", []))
     if len(data) < 4:
@@ -1485,6 +1514,7 @@ def repair_shapes(
     enforce_canvas_boundary: bool = False,
     prefer_smooth_shapes: bool = False,
     importance_map: np.ndarray | None = None,
+    allow_alpha_repair: bool = True,
 ) -> tuple[list[dict], float, dict]:
     if not shapes:
         _, _, _, _, _, total_error, scored_pixels = render_and_score(
@@ -1561,14 +1591,17 @@ def repair_shapes(
                 (False, 0.0, 0.0, 0.0, 0.0, -rot_step),
                 (False, 0.0, 0.0, -radius_step, 0.0, rot_step),
                 (False, 0.0, 0.0, 0.0, -radius_step, -rot_step),
-                (False, 0.0, 0.0, -radius_step, -radius_step, 0.0, -alpha_step),
-                (False, 0.0, 0.0, 0.0, 0.0, 0.0, -alpha_step),
-                (False, 0.0, 0.0, 0.0, 0.0, 0.0, -alpha_step * 2.0),
-                (False,  move_step * 0.5, 0.0, -radius_step, 0.0, 0.0, -alpha_step),
-                (False, -move_step * 0.5, 0.0, -radius_step, 0.0, 0.0, -alpha_step),
-                (False, 0.0,  move_step * 0.5, 0.0, -radius_step, 0.0, -alpha_step),
-                (False, 0.0, -move_step * 0.5, 0.0, -radius_step, 0.0, -alpha_step),
             ]
+            if allow_alpha_repair:
+                proposals.extend([
+                    (False, 0.0, 0.0, -radius_step, -radius_step, 0.0, -alpha_step),
+                    (False, 0.0, 0.0, 0.0, 0.0, 0.0, -alpha_step),
+                    (False, 0.0, 0.0, 0.0, 0.0, 0.0, -alpha_step * 2.0),
+                    (False,  move_step * 0.5, 0.0, -radius_step, 0.0, 0.0, -alpha_step),
+                    (False, -move_step * 0.5, 0.0, -radius_step, 0.0, 0.0, -alpha_step),
+                    (False, 0.0,  move_step * 0.5, 0.0, -radius_step, 0.0, -alpha_step),
+                    (False, 0.0, -move_step * 0.5, 0.0, -radius_step, 0.0, -alpha_step),
+                ])
 
             local_best = copy_shape(shape)
             original_local_score = local_best_score
@@ -1596,7 +1629,7 @@ def repair_shapes(
                 trial["color"] = list(trial.get("color", [0, 0, 0, 255]))
                 if len(trial["color"]) < 4:
                     trial["color"] += [255] * (4 - len(trial["color"]))
-                trial["color"][3] = int(max(0, min(255, round(alpha0 + dalpha))))
+                trial["color"][3] = int(max(0, min(255, round(alpha0 + dalpha)))) if allow_alpha_repair else int(max(1, min(255, round(alpha0))))
                 trial_shapes.append(trial)
 
             for trial in trial_shapes:
@@ -1671,6 +1704,7 @@ def repair_shapes(
         "improvements": improvements,
         "family_changes": family_changes,
         "boundary_fits": boundary_fits,
+        "alpha_repair": allow_alpha_repair,
         "canvas_boundary_enforced": enforce_canvas_boundary,
         "before": before_error,
         "after": best_error,
@@ -1953,6 +1987,7 @@ def main() -> int:
         overshoot_extra = min(args.overshoot_max_extra, max(1, int(round(target_shapes * 0.08))))
     raw_stop = target_shapes + overshoot_extra
     shape_mode = str(base_settings.get("shapeMode", "")).strip().lower()
+    force_opaque_shapes = parse_bool(base_settings.get("forceOpaqueShapes"), False)
     prefer_smooth_repair = (
         shape_mode in {"mixed_soft_detail", "mixed_character_art", "mixed_smart_detail"}
         and args.preprocess_mode == "none"
@@ -1985,6 +2020,7 @@ def main() -> int:
         print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Luma Prep mode:         {args.preprocess_mode}")
+    print(f"Force opaque shapes:   {force_opaque_shapes}")
     print(f"Live preview every:     {live_preview_every} layer(s)")
     print(f"Source profile:         {art_profile['category']}")
     print(f"Source recommendation:  {art_profile['recommendation']}")
@@ -2184,11 +2220,15 @@ def main() -> int:
                     enforce_canvas_boundary=enforce_canvas_boundary,
                     prefer_smooth_shapes=prefer_smooth_repair,
                     importance_map=score_importance,
+                    allow_alpha_repair=not force_opaque_shapes,
                 )
                 final_shapes = [unscale_shape(shape, sx, sy) for shape in refined_scaled]
+                if force_opaque_shapes:
+                    final_shapes = force_opaque_drawables(final_shapes)
                 final_error = refined_error
                 refinement = dict(refinement)
                 refinement["prefer_smooth_shapes"] = prefer_smooth_repair
+                refinement["force_opaque_shapes"] = force_opaque_shapes
             except Exception as exc:
                 refinement = dict(refinement)
                 refinement.update({
@@ -2224,6 +2264,8 @@ def main() -> int:
         try:
             scaled_bg = dict(background)
             scaled_bg["color"] = list(background.get("color", [0, 0, 0, 0]))
+            if force_opaque_shapes:
+                final_shapes = force_opaque_drawables(final_shapes)
             scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
             cleaned_scaled, cleaned_error, covered_cleanup = remove_fully_covered_layers(
                 scaled_bg,
@@ -2292,6 +2334,8 @@ def main() -> int:
         checkpoint_tag = record["checkpoint_tag"]
         final_json_path = v2_json_path_for_tag(out_dir, stem, checkpoint_tag)
         final_preview_path = v2_preview_path_for_tag(out_dir, stem, checkpoint_tag)
+        if force_opaque_shapes:
+            final_shapes = force_opaque_drawables(final_shapes)
         final_payload = {"shapes": [background] + final_shapes}
         save_json(final_json_path, final_payload)
         preview_written = int(record["index"]) in preview_indices
