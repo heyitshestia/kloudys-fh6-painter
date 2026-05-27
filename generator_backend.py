@@ -36,6 +36,7 @@ SETTING_KEYS = (
     "maxResolution",
     "maxThreads",
     "mutatedSamples",
+    "maxNoImproveRetries",
     "forceOpaqueShapes",
     "posterizeLevels",
     "previewEvery",
@@ -456,19 +457,32 @@ def cleanup_generated_outputs(image_path):
             pass
 
 
-def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False, output_dir=None):
-    image_path = Path(image_path)
-    output_dir = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
-    reports_dir = generator_run_subdir(output_dir, REPORTS_DIR_NAME)
-    values = setting.get("values", {})
-    target_shapes = str(values.get("stopAt", "3000"))
-    reserved_import_layers = str(values.get("reservedImportLayers", "0"))
+def positive_int_text(value, fallback):
     try:
-        target_count = int(target_shapes)
+        number = int(str(value).strip())
     except (TypeError, ValueError):
-        target_count = 3000
+        number = int(fallback)
+    return str(max(1, number))
+
+
+def normalized_save_at_text(value, target_count):
+    points = set()
+    for part in re.split(r"[,;\s]+", str(value or "")):
+        if not part.strip():
+            continue
+        try:
+            point = int(part)
+        except ValueError:
+            continue
+        if point > 0:
+            points.add(point)
+    points.add(max(1, int(target_count)))
+    return ",".join(str(point) for point in sorted(points))
+
+
+def checkpoint_step_from_save_at(save_at_text, target_count):
     save_at_points = []
-    for part in re.split(r"[,;\s]+", str(values.get("saveAt", ""))):
+    for part in re.split(r"[,;\s]+", str(save_at_text or "")):
         if not part.strip():
             continue
         try:
@@ -478,12 +492,26 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         if point > 0:
             save_at_points.append(point)
     if len(save_at_points) >= 2:
-        deltas = [b - a for a, b in zip(sorted(set(save_at_points)), sorted(set(save_at_points))[1:]) if b > a]
-        checkpoint_step = str(min(deltas) if deltas else save_at_points[0])
-    elif save_at_points:
-        checkpoint_step = str(save_at_points[0])
-    else:
-        checkpoint_step = "250" if target_count <= 1000 else "500"
+        ordered = sorted(set(save_at_points))
+        deltas = [b - a for a, b in zip(ordered, ordered[1:]) if b > a]
+        return str(min(deltas) if deltas else ordered[0])
+    if save_at_points:
+        return str(save_at_points[0])
+    return "250" if target_count <= 1000 else "500"
+
+
+def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False, output_dir=None):
+    image_path = Path(image_path)
+    output_dir = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
+    reports_dir = generator_run_subdir(output_dir, REPORTS_DIR_NAME)
+    values = setting.get("values", {})
+    target_shapes = positive_int_text(values.get("stopAt", "3000"), 3000)
+    target_count = int(target_shapes)
+    values = dict(values)
+    values["stopAt"] = target_shapes
+    values["saveAt"] = normalized_save_at_text(values.get("saveAt", ""), target_count)
+    reserved_import_layers = str(values.get("reservedImportLayers", "0"))
+    checkpoint_step = checkpoint_step_from_save_at(values.get("saveAt", ""), target_count)
     preprocess_mode = values.get("v2PreprocessMode", "none")
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
     run_metadata_path = reports_dir / f"{image_path.stem}.v2.run_metadata.json"

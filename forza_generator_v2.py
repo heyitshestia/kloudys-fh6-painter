@@ -215,7 +215,7 @@ def build_save_points(target: int, stop_at: int, checkpoint_step: int) -> str:
 
 def parse_save_points(value: str, stop_at: int) -> list[int]:
     points = []
-    for part in re.split(r"[,;\\s]+", str(value or "")):
+    for part in re.split(r"[,;\s]+", str(value or "")):
         if not part.strip():
             continue
         try:

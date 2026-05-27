@@ -1481,6 +1481,7 @@ class MainWindow(QMainWindow):
         for row, (label, widget, help_key) in enumerate(fields):
             form.addWidget(self.label_with_help(label, help_key), row, 0)
             form.addWidget(widget, row, 1)
+            widget.textEdited.connect(self.enable_custom_tuning_from_edit)
         quality_layout.addLayout(form)
         preset_actions = QHBoxLayout()
         save_preset = QPushButton("Save custom preset")
@@ -2227,9 +2228,14 @@ class MainWindow(QMainWindow):
             self.repair_enabled.setChecked(str(values.get("v2EnableRepair", "true")).strip().lower() in ("1", "true", "yes", "on"))
 
     def sync_custom_state(self):
-        enabled = self.custom_enabled.isChecked()
         for widget in (self.custom_layers, self.custom_resolution, self.custom_random, self.custom_mutated, self.custom_save_at):
-            widget.setEnabled(enabled)
+            # Keep fields editable so typing into any field can automatically
+            # enable Tune this run instead of silently ignoring the edit.
+            widget.setEnabled(True)
+
+    def enable_custom_tuning_from_edit(self, _text=None):
+        if not self.custom_enabled.isChecked():
+            self.custom_enabled.setChecked(True)
 
     def selected_setting(self):
         if hasattr(self, "profile_combo"):
