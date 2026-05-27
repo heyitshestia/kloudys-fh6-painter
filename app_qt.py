@@ -1457,7 +1457,7 @@ class MainWindow(QMainWindow):
         quality_layout.addWidget(self.checkbox_with_help(self.vroom, "sample_goblin"))
         quality_layout.addWidget(self.label_with_help("Preset", "preset"))
         self.profile_combo = self.make_combo(max_visible=18, min_height=38)
-        self.profile_combo.currentIndexChanged.connect(self.update_setting_description)
+        self.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
         quality_layout.addWidget(self.profile_combo)
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
@@ -2134,6 +2134,11 @@ class MainWindow(QMainWindow):
         if self.profile_combo.count() > 0:
             self.profile_combo.setCurrentIndex(selected_index)
         self.profile_combo.blockSignals(False)
+
+    def on_profile_changed(self):
+        if hasattr(self, "custom_enabled") and self.custom_enabled.isChecked():
+            self.custom_enabled.setChecked(False)
+        self.update_setting_description()
 
     def current_custom_values(self):
         return {
