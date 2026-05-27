@@ -256,6 +256,7 @@ for %%F in (
     "KloudysGeneratorV2Speed.exe"
     "kloudys-fh6-generator.exe"
     "forza-painter-geometrize-go.exe"
+    "fh6_export_typecode_json.py"
     "docs\GENERATOR_BENCHMARK_PLAN.md"
     "tools\benchmark_generator_settings.py"
 ) do (
