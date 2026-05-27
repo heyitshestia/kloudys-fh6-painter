@@ -151,7 +151,7 @@ def verify_updater_batch(path: Path) -> None:
     if b"\r\n" not in data or data.count(b"\n") != data.count(b"\r\n"):
         raise RuntimeError(f"release verification failed: updater is not CRLF-normalized: {path}")
     text = data.decode("utf-8", errors="replace").lower()
-    for label in (":backup_existing_files", ":ensure_git", ":cleanup_retired_files"):
+    for label in (":backup_existing_files", ":write_build_commit", ":ensure_git", ":cleanup_retired_files"):
         if label not in text:
             raise RuntimeError(f"release verification failed: updater label missing {label}: {path}")
 

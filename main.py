@@ -844,8 +844,7 @@ if __name__ == "__main__":
         # Capture any exceptions
         try:
             main(sys.argv)
-        except BaseException:
-            import sys
+        except Exception:
             print(sys.exc_info()[0])
             import traceback
             print(traceback.format_exc())
@@ -853,7 +852,10 @@ if __name__ == "__main__":
             #ThreadManager.ensure_all_threads_killed()
             if os.environ.get("FORZA_PAINTER_NO_PAUSE") != "1":
                 print("Press Enter to continue ...")
-                input()
+                try:
+                    input()
+                except EOFError:
+                    pass
     else:
         # Run as admin
         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, subprocess.list2cmdline(sys.argv), None, 1)

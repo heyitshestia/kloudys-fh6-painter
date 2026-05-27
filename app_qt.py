@@ -2088,18 +2088,15 @@ class MainWindow(QMainWindow):
             return None
         overrides = {
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
-            "forceOpaqueShapes": "true",
         }
         if self.custom_enabled.isChecked():
             overrides.update(self.current_custom_values())
         base_values = dict(setting.get("values", {}))
         base_values.update({key: value for key, value in overrides.items() if str(value).strip()})
         overrides.update(self.vroom_boost_overrides(base_values))
-        force_opaque_changed = str(setting.get("values", {}).get("forceOpaqueShapes", "true")).strip().lower() not in ("1", "true", "yes", "on")
         if (
             self.custom_enabled.isChecked()
             or self.vroom.isChecked()
-            or force_opaque_changed
             or overrides["v2PreprocessMode"] != str(setting.get("values", {}).get("v2PreprocessMode", "none")).strip().lower()
         ):
             boosted = write_custom_settings(setting, overrides)
