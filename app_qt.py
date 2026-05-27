@@ -1323,7 +1323,6 @@ class MainWindow(QMainWindow):
         self.set_phase("ready", "Choose a source image or select a finalized JSON to import.")
         self.refresh_processes()
         self.refresh_generated_browser()
-        self.refresh_game_export_browser()
         self.render_lists()
         if self.images:
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
@@ -1351,7 +1350,6 @@ class MainWindow(QMainWindow):
         self._build_generate_tab()
         self._build_import_tab()
         self._build_handmade_import_tab()
-        self._build_game_export_tab()
         self._build_luma_tab()
         self._build_background_remover_tab()
         self._build_tutorial_tab()
@@ -1647,8 +1645,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([640, 640])
 
         intro = QLabel(
-            "Universal handmade importer/exporter. Import a handmade JSON into a fresh template, "
-            "or export the currently open FH6 group into a compatible handmade JSON."
+            "Universal handmade importer. Import a handmade JSON into a fresh FH6 template."
         )
         intro.setWordWrap(True)
         left_layout.addWidget(intro)
@@ -1717,8 +1714,6 @@ class MainWindow(QMainWindow):
             "Confirmed model:\n"
             "- Uses full 16-bit shape word at layer offset 0x7A.\n"
             "- Writes position, scale, rotation, skew, color, mask flag, and shape word only.\n"
-            "- Exports the same fields read-only from the current FH6 group.\n"
-            "- Export supports grouped and ungrouped FH6 groups and records a content fingerprint.\n"
             "- Does not copy volatile render/cache fields or resource pointers.\n"
             "- Auto-locates the loaded template by layer count.\n"
             "- Trims FH6 group count and table end after import.\n\n"
@@ -1726,8 +1721,7 @@ class MainWindow(QMainWindow):
             "1. Open FH6 Vinyl Group Editor.\n"
             "2. Load/prepare a fresh 3000-layer circle template.\n"
             "3. Ungroup it when possible. Grouped import is experimental but possible in current testing.\n"
-            "4. To import: choose a handmade JSON, import, then save/reload.\n"
-            "5. To export: enter the current group layer count and click export."
+            "4. To import: choose a handmade JSON, import, then save/reload."
         )
         right_layout.addWidget(notes, 1)
         self.tabs.addTab(tab, "Import Handmade JSON")
