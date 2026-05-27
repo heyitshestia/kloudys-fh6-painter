@@ -20,7 +20,7 @@ Use this with:
 9. [Tune This Run](#tune-this-run)
 10. [Luma Prep](#luma-prep)
 11. [Edge Repair](#edge-repair)
-12. [vroom vroom scrrrrt zoooom!](#vroom-vroom-scrrrrt-zoooom)
+12. [2x Sample Goblin](#2x-sample-goblin-slower)
 13. [Final JSON Browser](#final-json-browser)
 14. [Import Final JSON](#import-final-json)
 15. [Luma Band Pass Tab](#luma-band-pass-tab)
@@ -572,7 +572,7 @@ It is meant to help:
 
 It is not magic. If the raw generation is structurally wrong very early, Edge Repair may not fully fix it. Pick a better preset/source/settings if needed.
 
-## vroom vroom scrrrrt zoooom!
+## 2x Sample Goblin (slower)
 
 This toggle doubles:
 
@@ -586,7 +586,7 @@ It does not double:
 - template layer count
 - final layer budget
 
-Use it when the current preset is close but needs more search effort.
+Use it when the current preset is close but needs more search effort. It is a quality/search-effort toggle, not a speed toggle, so expect longer generation times.
 
 ## Final JSON Browser
 

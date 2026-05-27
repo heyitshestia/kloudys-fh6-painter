@@ -173,8 +173,8 @@ Smooth Gradients
 - Best for glossy shading and dark-to-light gradients.
 - Keeps Luma Prep off, uses softer detail weighting, and allows alpha for smoother blends.
 
-The vroom vroom scrrrrt zoooom! switch doubles random samples and mutated samples.
-It does not double output layers or resolution.
+The 2x Sample Goblin (slower) switch doubles random samples and mutated samples.
+It does not double output layers or resolution, and it usually takes longer.
 
 
 3. Generate Final Vinyl
@@ -1297,7 +1297,8 @@ class MainWindow(QMainWindow):
 
         quality_group = QGroupBox("Step 2 - Vinyl Build Preset")
         quality_layout = QVBoxLayout(quality_group)
-        self.vroom = QCheckBox("vroom vroom scrrrrt zoooom!")
+        self.vroom = QCheckBox("2x Sample Goblin (slower)")
+        self.vroom.setToolTip("Doubles random and mutated samples for more search effort. Usually slower, sometimes cleaner.")
         self.vroom.stateChanged.connect(self.update_setting_description)
         quality_layout.addWidget(self.vroom)
         self.profile_combo = self.make_combo(max_visible=18, min_height=38)
@@ -2046,7 +2047,7 @@ class MainWindow(QMainWindow):
             f"\n- Finalize at: {values.get('saveAt', values.get('stopAt', 'n/a'))}"
         )
         if self.vroom.isChecked():
-            description += "\nVroom doubles random samples and mutated samples; output layers and resolution stay unchanged."
+            description += "\n2x Sample Goblin doubles random samples and mutated samples. It is usually slower; output layers and resolution stay unchanged."
         if item.get("is_user_preset"):
             description += "\nThis is a saved custom preset stored in runtime/user-presets."
         self.setting_description.setText(description)

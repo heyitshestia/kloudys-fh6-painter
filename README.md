@@ -127,9 +127,9 @@ Use it for flat/logos/hard regions. Leave it off for soft gradients, tiny face d
 
 Keep it on unless you are debugging.
 
-### vroom vroom scrrrrt zoooom!
+### 2x Sample Goblin (slower)
 
-This switch doubles random samples and mutated samples. It does not double layer count or resolution.
+This switch doubles random samples and mutated samples. It does not double layer count or resolution, and it usually takes longer.
 
 Use it when you want more search effort without changing the output layer target.
 
