@@ -24,7 +24,7 @@ BUNDLED_WINDOWS_GENERATOR = BUNDLED_WINDOWS_GENERATOR_V5 if BUNDLED_WINDOWS_GENE
 LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize-gpu/forza-painter-geometrize-go-linux-arm64")
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")
-FH6_RESERVED_BOUNDARY_LAYERS = 4
+DEFAULT_RESERVED_IMPORT_LAYERS = 0
 FINALS_DIR_NAME = "finals"
 CHECKPOINTS_DIR_NAME = "checkpoints"
 REPORTS_DIR_NAME = "reports"
@@ -56,6 +56,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Final drawable target. Defaults to stopAt from settings.",
+    )
+    parser.add_argument(
+        "--reserved-import-layers",
+        type=int,
+        default=DEFAULT_RESERVED_IMPORT_LAYERS,
+        help="Template layers reserved for importer helper layers. Default: 0.",
     )
     parser.add_argument(
         "--overshoot-ratio",
@@ -913,7 +919,7 @@ def render_and_score(
         contributions = np.zeros(len(shapes), dtype=np.float64)
     boundary_penalties = shape_boundary_penalties(shapes, width, height, enforce_canvas_boundary, edge_context)
     if len(boundary_penalties):
-        contributions += boundary_penalties
+        contributions -= boundary_penalties
     pixel_weights = np.where(target_alpha > 0.02, 1.0, 0.35).astype(np.float32)
     total_error = float((diff_top * pixel_weights).sum() + boundary_penalties.sum())
     scored_pixels = float((pixel_weights * importance).sum())
@@ -1940,7 +1946,8 @@ def main() -> int:
         print("target shape count must be positive", file=sys.stderr)
         return 1
 
-    drawable_target_shapes = max(1, target_shapes - FH6_RESERVED_BOUNDARY_LAYERS)
+    reserved_import_layers = max(0, min(int(args.reserved_import_layers), max(0, target_shapes - 1)))
+    drawable_target_shapes = max(1, target_shapes - reserved_import_layers)
     overshoot_extra = min(args.overshoot_max_extra, max(0, int(math.ceil(target_shapes * max(0.0, args.overshoot_ratio - 1.0)))))
     if overshoot_extra == 0 and args.overshoot_ratio > 1.0:
         overshoot_extra = min(args.overshoot_max_extra, max(1, int(round(target_shapes * 0.08))))
@@ -1968,7 +1975,10 @@ def main() -> int:
 
     print(f"Building internal base geometry for {image_path.name}")
     print(f"Target template layers: {target_shapes}")
-    print(f"Target drawable shapes: {drawable_target_shapes} ({target_shapes} - {FH6_RESERVED_BOUNDARY_LAYERS} FH bounds layers)")
+    if reserved_import_layers:
+        print(f"Target drawable shapes: {drawable_target_shapes} ({target_shapes} - {reserved_import_layers} reserved import layer(s))")
+    else:
+        print(f"Target drawable shapes: {drawable_target_shapes} (no reserved import layers)")
     if raw_stop > target_shapes:
         print(f"Internal build stop:    {raw_stop} ({target_shapes} target + {overshoot_extra} overshoot)")
     else:
@@ -2333,12 +2343,15 @@ def main() -> int:
     })
     generator_command_options = run_metadata.get("generator_command_options", {
         "target_shapes": str(target_shapes),
+        "reserved_import_layers": str(reserved_import_layers),
         "checkpoint_step": str(args.checkpoint_step),
         "preprocess_mode": args.preprocess_mode,
         "overshoot_ratio": str(args.overshoot_ratio),
         "overshoot_max_extra": str(args.overshoot_max_extra),
         "repair_enabled": repair_enabled,
     })
+    generator_command_options = dict(generator_command_options)
+    generator_command_options["reserved_import_layers"] = str(reserved_import_layers)
 
     def report_candidate(item: dict) -> dict:
         return {

@@ -308,8 +308,6 @@ def import_drawable_budget(path):
         target_shapes = int(report.get("target_shapes"))
     except (TypeError, ValueError):
         return None
-    if target_shapes > 4:
-        return target_shapes - 4
     return target_shapes if target_shapes > 0 else None
 
 
@@ -464,6 +462,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
     reports_dir = generator_run_subdir(output_dir, REPORTS_DIR_NAME)
     values = setting.get("values", {})
     target_shapes = str(values.get("stopAt", "3000"))
+    reserved_import_layers = str(values.get("reservedImportLayers", "0"))
     try:
         target_count = int(target_shapes)
     except (TypeError, ValueError):
@@ -507,6 +506,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         },
         "generator_command_options": {
             "target_shapes": target_shapes,
+            "reserved_import_layers": reserved_import_layers,
             "checkpoint_step": checkpoint_step,
             "live_preview_every": "50",
             "preprocess_mode": preprocess_mode,
@@ -528,6 +528,8 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         str(output_dir),
         "--target-shapes",
         target_shapes,
+        "--reserved-import-layers",
+        reserved_import_layers,
         "--checkpoint-step",
         checkpoint_step,
         "--live-preview-every",
