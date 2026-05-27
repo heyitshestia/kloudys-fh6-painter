@@ -19,6 +19,8 @@ call :log ""
 
 call :ensure_git
 if errorlevel 1 goto :fail
+call :check_update_locks
+if errorlevel 1 goto :fail_quiet
 
 if exist ".git\" (
     call :log "Git checkout detected. Syncing tracked app files to latest %BRANCH%..."
@@ -53,6 +55,8 @@ if errorlevel 1 goto :fail
 
 call :backup_existing_files
 if errorlevel 1 goto :fail
+call :check_update_locks
+if errorlevel 1 goto :fail_quiet
 
 robocopy "%TMP_REPO%" "%CD%" /E /R:2 /W:1 /XD runtime webui-data dist build __pycache__ >nul
 if errorlevel 8 (
@@ -74,6 +78,10 @@ call :log "Backup folder: !BACKUP_DIR!"
 call :log "Run 04_start_app.bat when you are ready."
 if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
 exit /b 0
+
+:fail_quiet
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
+exit /b 1
 
 :fail
 call :log ""
@@ -131,6 +139,24 @@ if errorlevel 8 (
     call :log "Continuing update without blocking because generated/runtime data is preserved separately."
 )
 call :log "Backup folder: !BACKUP_DIR!"
+exit /b 0
+
+:check_update_locks
+set "LOCK_REPORT=%TEMP%\kloudys-update-locks-%RANDOM%.txt"
+if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $locks=Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'KloudysGeneratorV5.exe') -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 }; exit 0"
+if errorlevel 1 (
+    call :log ""
+    call :log "Update cannot continue because Kloudy's Painter is still running a generation, benchmark, or app window."
+    call :log "Close Generate Final Vinyl, stop any benchmark/generator process, then run this updater again."
+    if exist "!LOCK_REPORT!" (
+        call :log "Running process details:"
+        for /f "usebackq delims=" %%L in ("!LOCK_REPORT!") do call :log "%%L"
+        del /f /q "!LOCK_REPORT!" >nul 2>nul
+    )
+    exit /b 1
+)
+if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
 exit /b 0
 
 :write_build_commit
