@@ -2316,14 +2316,6 @@ class MainWindow(QMainWindow):
             return
         description = item.get("description") or ""
         values = item.get("values", {})
-        description += (
-            "\n\nPreset details:"
-            f"\n- Target layers: {values.get('stopAt', 'n/a')}"
-            f"\n- Random samples: {values.get('randomSamples', 'n/a')}"
-            f"\n- Mutated samples: {values.get('mutatedSamples', 'n/a')}"
-            f"\n- Max resolution: {values.get('maxResolution', 'n/a')}"
-            f"\n- Finalize at: {values.get('saveAt', values.get('stopAt', 'n/a'))}"
-        )
         if self.vroom.isChecked():
             description += "\n2x Sample Goblin doubles random samples and mutated samples. It is usually slower; output layers and resolution stay unchanged."
         if item.get("is_user_preset"):
