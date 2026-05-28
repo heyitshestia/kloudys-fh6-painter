@@ -21,14 +21,8 @@ from version_info import get_version
 
 
 ROOT = Path(__file__).resolve().parent
-BUNDLED_WINDOWS_GENERATOR_DETAIL_LOCK = ROOT / "KloudysGeneratorV5DetailLock.exe"
 BUNDLED_WINDOWS_GENERATOR_V5 = ROOT / "KloudysGeneratorV5.exe"
-BUNDLED_WINDOWS_GENERATOR_V4 = ROOT / "KloudysGeneratorV4.exe"
-BUNDLED_WINDOWS_GENERATOR = (
-    BUNDLED_WINDOWS_GENERATOR_DETAIL_LOCK
-    if BUNDLED_WINDOWS_GENERATOR_DETAIL_LOCK.is_file()
-    else (BUNDLED_WINDOWS_GENERATOR_V5 if BUNDLED_WINDOWS_GENERATOR_V5.is_file() else BUNDLED_WINDOWS_GENERATOR_V4)
-)
+BUNDLED_WINDOWS_GENERATOR = BUNDLED_WINDOWS_GENERATOR_V5
 LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize-gpu/forza-painter-geometrize-go-linux-arm64")
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")

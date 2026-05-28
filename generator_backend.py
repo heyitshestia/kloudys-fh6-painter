@@ -13,14 +13,8 @@ ROOT = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT / "settings"
 ACTIVE_PRESET_DIR = SETTINGS_DIR
 GENERATOR_EXE = ROOT / "forza_generator_v2.py"
-RAW_GENERATOR_EXE_DETAIL_LOCK = ROOT / "KloudysGeneratorV5DetailLock.exe"
 RAW_GENERATOR_EXE_V5 = ROOT / "KloudysGeneratorV5.exe"
-RAW_GENERATOR_EXE_V4 = ROOT / "KloudysGeneratorV4.exe"
-RAW_GENERATOR_EXE = (
-    RAW_GENERATOR_EXE_DETAIL_LOCK
-    if RAW_GENERATOR_EXE_DETAIL_LOCK.is_file()
-    else (RAW_GENERATOR_EXE_V5 if RAW_GENERATOR_EXE_V5.is_file() else RAW_GENERATOR_EXE_V4)
-)
+RAW_GENERATOR_EXE = RAW_GENERATOR_EXE_V5
 PREVIEW_DIR = ROOT / "runtime" / "previews"
 CUSTOM_SETTINGS_DIR = ROOT / "runtime" / "custom-settings"
 USER_PRESET_DIR = ROOT / "runtime" / "user-presets"

@@ -254,6 +254,8 @@ for %%F in (
     "KloudysGeneratorV2.exe"
     "KloudysGeneratorV2Fast.exe"
     "KloudysGeneratorV2Speed.exe"
+    "KloudysGeneratorV4.exe"
+    "KloudysGeneratorV5DetailLock.exe"
     "kloudys-fh6-generator.exe"
     "forza-painter-geometrize-go.exe"
     "fh6_export_typecode_json.py"
