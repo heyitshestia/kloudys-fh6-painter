@@ -70,7 +70,7 @@ If something is broken, run this from inside `KloudysFH6Painter/`:
 4. Open `Generate Final Vinyl`.
 5. Click `Choose source image`.
 6. Pick a preset.
-7. Leave `Edge Repair` enabled.
+7. Set `Template layers` to the FH6 template size you plan to use.
 8. Click `Generate Final Vinyl`.
 9. Wait until the log says `FINALIZE CHECKPOINTS COMPLETE`.
 10. Open FH6 and prepare an ungrouped vinyl template with enough layers.
@@ -99,43 +99,50 @@ Current stock presets are style-based, not the old fast/slow ladder:
 
 | Preset | Best for | Luma Prep default | Shape style |
 | --- | --- | --- | --- |
+| `Logo Decals` | brand marks, text-like logos, emblems, clean decals | off | sharp edges, smooth curves, logo color cleanup |
 | `Shaded Character Art` | anime, characters, skin, hair, eyes, mixed linework | off | character-art weighting |
-| `Flat Colors / Logos` | logos, decals, hard borders, mascot art, clean color regions | on | edge-biased |
+| `Flat Colors` | stickers, mascot art, hard borders, clean color regions | on | edge-biased |
 | `Smooth Gradients` | glossy shading, soft transitions, dark-to-light gradients | off | soft detail |
 
 If you are unsure, start with `Shaded Character Art`.
 
-### Tune This Run
+### Automatic Settings And Pro Settings
 
-`Tune this run` lets you override the chosen preset without editing files.
+By default, the Generate tab only asks for the settings normal users should touch:
 
-The most important settings are:
+- `Template layers`: how many FH6 layers you want to build for.
+- `Finalize at layers`: which checkpoints should become final import choices.
 
-- `Template layers`: how many FH6 layers your target group has.
-- `Max resolution`: largest image side used by generation.
-- `Random samples`: main search effort.
-- `Mutated samples`: local refinement around promising shapes.
-- `Finalize at layers`: checkpoints that become final import choices.
+The app calculates the rest automatically from the source image, visible alpha area, edge/detail density, preset, and target layer count.
 
-Higher samples usually improve quality but take longer.
+Enable `Pro settings - manual samples/resolution` only if you want direct control over:
+
+- `Max resolution`: how much detail the generator can see.
+- `Random samples`: broad shape-search effort.
+- `Mutated samples`: local fit/refinement effort.
+- `2x Sample Goblin`: doubles random and mutated samples for a slower but deeper search.
+- `Luma Prep`: luma-banded preprocessing for broad clean regions.
+- `Edge Repair`: finalization cleanup for borders, holes, and transparent cutouts.
+
+The app remembers whether Pro settings were open, and it remembers your Pro values across restarts.
 
 ### Luma Prep
 
 `Luma Prep` creates a luma-banded intermediate image before generation.
 
-Use it for flat/logos/hard regions. Leave it off for soft gradients, tiny face details, and most shaded character art unless testing proves otherwise.
+Use it for flat regions, stickers, and hard color art. Leave it off for soft gradients, tiny face details, and most shaded character art unless testing proves otherwise.
 
 ### Edge Repair
 
-`Edge Repair` is default-on. It runs after raw generation and tries to clean borders, transparent holes, fingers, hair gaps, and cutout edges.
+`Edge Repair` runs after raw generation and tries to clean borders, transparent holes, fingers, hair gaps, and cutout edges.
 
-Keep it on unless you are debugging.
+Keep it on unless you are debugging. It is inside Pro settings because most users should not need to touch it.
 
 ### 2x Sample Goblin (slower)
 
 This switch doubles random samples and mutated samples. It does not double layer count or resolution, and it usually takes longer.
 
-Use it when you want more search effort without changing the output layer target.
+Use it when you want more search effort without changing the output layer target. It is inside Pro settings.
 
 ## Import Final JSON
 
@@ -236,6 +243,18 @@ imgs/luma-bands/
 
 This is useful for deciding whether Luma Prep helps or hurts a source image before spending time on a full run.
 
+## Image Tools Tab
+
+The `Image Tools` tab collects external browser tools that are useful before generation:
+
+| Tool | Use |
+| --- | --- |
+| `Background Remover` | Opens PhotoRoom's online background remover for transparent cutouts. |
+| `2x / 4x Browser Upscaler` | Opens a local-in-browser upscaler that can enlarge small sources before generation. |
+| `Browser Downscaler / Compressor` | Opens Squoosh for clean resizing, format conversion, and compression. |
+
+These tools are links only. They do not upload anything through the app itself.
+
 ## Import / Export Handmade JSON
 
 The `Import Handmade JSON` tab is the experimental universal FH6 shape importer/exporter.
@@ -269,8 +288,8 @@ Important WIP notes:
 | FH6 process not found | Start FH6, open Vinyl Group Editor, then click Refresh. |
 | Import says ungroup/template error | You are likely in the wrong FH6 menu, wrong group, wrong layer count, or the template is not ungrouped. |
 | Located table is stale/null | Re-open the correct vinyl group, remove duplicate groups/templates above it, and run auto-locate again. |
-| Output is soft | Use more layers/samples, keep Luma Prep off for soft/character art, and pick the checkpoint visually. |
-| Borders have halos | Keep Edge Repair on; try Flat Colors / Logos with Luma Prep for hard art. |
+| Output is soft | Use the right preset, more layers, Pro settings with more samples if needed, keep Luma Prep off for soft/character art, and pick the checkpoint visually. |
+| Borders have halos | Keep Edge Repair on; try Logo Decals or Flat Colors with Luma Prep for hard art. |
 
 The deep troubleshooting section is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md#troubleshooting).
 

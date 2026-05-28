@@ -182,26 +182,29 @@ Smooth Gradients
 The 2x Sample Goblin (slower) switch doubles random samples and mutated samples.
 It does not double output layers or resolution, and it usually takes longer.
 
-Resolution / samples / layers, short version:
-- Max resolution controls how much detail the generator can see.
-- Layer count controls how many vinyl shapes it can spend drawing that detail.
-- Random samples search for good new shapes.
-- Mutated samples refine promising shapes after they are found.
-- Too much resolution with too few layers can look worse because the generator chases detail it cannot afford to draw.
+Default settings are source-aware now:
+- Template layers controls the target vinyl layer budget.
+- Finalize at layers controls which checkpoints become import choices.
+- Max resolution, random samples, and mutated samples are calculated automatically from the source image, visible alpha area, detail/edge density, preset, and target layers.
+- Enable Pro settings only if you want to override the automatic math yourself.
+- Pro settings stay open/closed across app restarts.
 
 
 3. Generate Final Vinyl
 
 Open Generate Final Vinyl, choose one image, pick a preset, then click Generate Final Vinyl.
 
-Luma Prep is optional:
-- It makes a luma-banded prep image before building.
-- It can help logos, stickers, and flat color art.
-- Leave it off for soft gradients, hair, faces, eyes, and maximum tiny detail.
+Visible default controls:
+- Template layers: match the FH6 template size you plan to use.
+- Finalize at layers: checkpoints you want as final choices.
 
-Edge Repair is normally on:
-- It runs during finalization.
-- It tries to clean borders, transparent holes, finger gaps, hair gaps, and cutout edges.
+Pro controls:
+- Max resolution: how much detail the generator can see.
+- Random samples: broad search effort.
+- Mutated samples: local fit/refinement effort.
+- 2x Sample Goblin: doubles random and mutated samples.
+- Luma Prep: luma-banded preprocessing for broad clean regions.
+- Edge Repair: finalization cleanup for borders, holes, hair gaps, and transparent cutouts.
 
 
 4. Important: generation is not done when the raw builder finishes
@@ -286,7 +289,17 @@ The highlighted finalized checkpoint is the one that imports.
 The best safe final is listed first, but you can pick a different finalized checkpoint yourself.
 
 
-8. If import does nothing or errors
+8. Image Tools and Luma Band Pass
+
+Open Image Tools when your source needs prep before generation:
+- Background Remover opens PhotoRoom's online cutout tool.
+- 2x / 4x Browser Upscaler opens a browser-local upscaler.
+- Browser Downscaler / Compressor opens Squoosh.
+
+Open Luma Band Pass when you want to preview luma banding before spending time on a full run.
+
+
+9. If import does nothing or errors
 
 Check these first:
 
@@ -297,7 +310,7 @@ Check these first:
 - The selected JSON fits inside the template layer count.
 - The app may need to run as administrator.
 
-If generation looks bad, try the preset that matches the source style, increase random samples, increase layers, or use a cleaner source image.
+If generation looks bad, try the preset that matches the source style, increase layers, enable Pro settings for more samples if needed, or use a cleaner source image.
 """,
 }
 
@@ -306,7 +319,8 @@ HELP_TEXT = {
     "preset": (
         "Preset",
         "Pick the preset that matches the source style, not just the speed.\n\n"
-        "Flat Colors / Logos is for hard borders, text-like art, decals, and broad color islands.\n"
+        "Logo Decals is for brand marks, text-like art, decals, sharp edges, and smooth curves.\n"
+        "Flat Colors is for mascot art, stickers, hard borders, and broad color islands.\n"
         "Shaded Character Art is the best default for anime, skin, hair, eyes, and mixed linework.\n"
         "Smooth Gradients is for glossy shading, soft ramps, and painterly blends."
     ),
@@ -322,6 +336,7 @@ HELP_TEXT = {
     ),
     "max_resolution": (
         "Max Resolution",
+        "Pro setting. When Pro settings are closed, the app calculates this automatically per source image.\n\n"
         "The largest internal image size the generator scores.\n\n"
         "Higher values let it see smaller details, but only help if the layer count and samples can actually draw those details.\n\n"
         "Practical ranges:\n"
@@ -332,11 +347,13 @@ HELP_TEXT = {
     ),
     "random_samples": (
         "Random Samples",
+        "Pro setting. When Pro settings are closed, the app calculates this automatically per source image.\n\n"
         "Fresh shape guesses tried for each new layer.\n\n"
         "Higher values improve the odds of finding a strong starting shape, especially for small details and hard edges. This is one of the main quality/speed tradeoffs."
     ),
     "mutated_samples": (
         "Mutated Samples",
+        "Pro setting. When Pro settings are closed, the app calculates this automatically per source image.\n\n"
         "Local refinement tries after a promising candidate exists.\n\n"
         "This improves position, size, rotation, and fit. It is usually more useful once random samples are high enough to find good candidates."
     ),

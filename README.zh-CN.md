@@ -20,31 +20,36 @@
    - `Launch App`
 5. 在 `Generate Final Vinyl` 里选择一张图片。
 6. 选择适合图片类型的预设：
-   - `Flat Colors / Logos`：logo、贴纸、硬边、平涂区域。
+   - `Logo Decals`：logo、文字类图案、徽章、清晰曲线和硬边。
    - `Shaded Character Art`：动漫、人物、头发、眼睛、皮肤、混合线稿。
+   - `Flat Colors`：贴纸、吉祥物、硬边、平涂区域。
    - `Smooth Gradients`：柔和阴影、渐变、高光过渡。
-7. 等到日志显示 `FINALIZE CHECKPOINTS COMPLETE`。
-8. 在 FH6 里打开 Vinyl Group Editor，准备足够层数的模板，并确保模板已经 ungroup。
-9. 在 `Import Final JSON` 里选择 finalized checkpoint，输入 FH6 模板的准确层数，然后导入。
+7. 设置 `Template layers` 为 FH6 模板的准确层数。
+8. 普通用户默认不需要打开 Pro settings。Max resolution、Random samples、Mutated samples 会根据图片和预设自动计算。
+9. 等到日志显示 `FINALIZE CHECKPOINTS COMPLETE`。
+10. 在 FH6 里打开 Vinyl Group Editor，准备足够层数的模板，并确保模板已经 ungroup。
+11. 在 `Import Final JSON` 里选择 finalized checkpoint，输入 FH6 模板的准确层数，然后导入。
 
 ## 关键规则
 
-默认安全导入模式会保留 4 个 FH mask/boundary 层：
+默认导入现在会把模板层数全部当作可用绘图层：
 
 ```text
-可用绘图层数 = FH6 模板总层数 - 4
+可用绘图层数 = FH6 模板总层数
 ```
 
 例子：
 
 | FH6 模板层数 | 默认可用绘图层数 |
 | ---: | ---: |
-| 500 | 496 |
-| 1000 | 996 |
-| 2000 | 1996 |
-| 3000 | 2996 |
+| 500 | 500 |
+| 1000 | 1000 |
+| 2000 | 2000 |
+| 3000 | 3000 |
 
 普通用户应该导入 `finals/` 里的 final JSON，不要导入 `checkpoints/` 里的 raw checkpoint。
+
+`Image Tools` 标签页提供常用网页工具链接：背景移除、浏览器本地 2x/4x 放大、Squoosh 缩放/压缩。
 
 ## 更新
 

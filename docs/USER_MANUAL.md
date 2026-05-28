@@ -17,18 +17,19 @@ Use this with:
 6. [Generate Final Vinyl: Every Control Explained](#generate-final-vinyl-every-control-explained)
 7. [Generation Phases](#generation-phases)
 8. [Presets Explained](#presets-explained)
-9. [Tune This Run](#tune-this-run)
+9. [Automatic Settings And Pro Settings](#automatic-settings-and-pro-settings)
 10. [Luma Prep](#luma-prep)
 11. [Edge Repair](#edge-repair)
 12. [2x Sample Goblin](#2x-sample-goblin-slower)
 13. [Final JSON Browser](#final-json-browser)
 14. [Import Final JSON](#import-final-json)
 15. [Luma Band Pass Tab](#luma-band-pass-tab)
-16. [Settings And Themes](#settings-and-themes)
-17. [Files And Folders](#files-and-folders)
-18. [Updating](#updating)
-19. [Troubleshooting](#troubleshooting)
-20. [Deep Reference](#deep-reference)
+16. [Image Tools Tab](#image-tools-tab)
+17. [Settings And Themes](#settings-and-themes)
+18. [Files And Folders](#files-and-folders)
+19. [Updating](#updating)
+20. [Troubleshooting](#troubleshooting)
+21. [Deep Reference](#deep-reference)
 
 ## What The App Does
 
@@ -243,7 +244,7 @@ Open the `Generate Final Vinyl` tab.
 Numbered areas:
 
 1. Source image chooser
-2. Preset, custom settings, Luma Prep, Edge Repair
+2. Preset, template layers, finalized checkpoints, and optional Pro settings
 3. Generate/stop controls
 4. Live preview
 5. Progress/log area
@@ -251,11 +252,12 @@ Numbered areas:
 1. Click `Choose source image`.
 2. Pick one image.
 3. Pick a preset.
-4. Leave `Edge Repair` enabled.
-5. Leave `Luma Prep` off unless the source is flat/logo-like or you are testing.
-6. Click `Generate Final Vinyl`.
-7. Wait until `FINALIZE CHECKPOINTS COMPLETE`.
-8. Go to `Import Final JSON`.
+4. Set `Template layers` to the FH6 template size you plan to use.
+5. Adjust `Finalize at layers` if you want specific checkpoint choices.
+6. Leave Pro settings closed unless you know you want manual samples/resolution.
+7. Click `Generate Final Vinyl`.
+8. Wait until `FINALIZE CHECKPOINTS COMPLETE`.
+9. Go to `Import Final JSON`.
 
 ## Generate Final Vinyl: Every Control Explained
 
@@ -289,15 +291,58 @@ Chooses the starting settings family.
 
 The current stock presets are:
 
-- `Flat Colors / Logos`
+- `Logo Decals`
 - `Shaded Character Art`
+- `Flat Colors`
 - `Smooth Gradients`
 
 Saved custom presets appear in the same dropdown marked as saved/custom.
 
+### Template Layers
+
+The target layer count for generation and the FH6 template size you should import into.
+
+If your FH6 group has 2000 layers, use:
+
+```text
+2000
+```
+
+Default import uses the full template layer count. Border masks are off unless legacy mask mode is enabled in Settings.
+
+### Finalize At Layers
+
+Comma-separated checkpoint targets.
+
+Example:
+
+```text
+500,1000,1500,2000
+```
+
+The app will finalize those checkpoints so you can choose visually.
+
+If the target layer count is larger than the last value, the app also keeps the requested target layer count.
+
+### Pro Settings - Manual Samples/Resolution
+
+Default: off.
+
+When this is off, the app calculates max resolution, random samples, and mutated samples from:
+
+- source image size
+- visible alpha area
+- edge/detail density
+- selected preset
+- template layer count
+
+Turn it on only when you want to override that automatic math yourself.
+
+The app remembers whether Pro settings were open or closed across restarts. It also remembers your Pro field values.
+
 ### Save Custom Preset
 
-Saves the current selected preset plus your `Tune this run` overrides into:
+Saves the current selected preset plus your current visible/manual overrides into:
 
 ```text
 runtime/user-presets/
@@ -310,6 +355,49 @@ Use this when you find settings that work for your art style.
 Deletes the selected saved custom preset.
 
 It does not delete the stock presets.
+
+### Max Resolution
+
+Pro setting.
+
+Controls the maximum source image side used for generation.
+
+Higher max resolution:
+
+- can preserve tiny details
+- can improve sharp edges
+- can cost more time and memory
+
+Lower max resolution:
+
+- is faster
+- can smooth small details away
+
+### Random Samples
+
+Pro setting.
+
+Main search effort.
+
+Higher random samples means the generator tests more possible shapes per layer before choosing one.
+
+This is usually the first Pro setting to increase when accuracy is not good enough.
+
+### Mutated Samples
+
+Pro setting.
+
+Refinement around the best candidate.
+
+Higher mutated samples help improve placement/size/rotation after a promising shape is found.
+
+### 2x Sample Goblin
+
+Pro setting.
+
+Doubles random samples and mutated samples for the selected run.
+
+It does not increase template layers, output layers, max resolution, or finalized checkpoint counts.
 
 ### Luma Prep
 
@@ -415,26 +503,27 @@ If you close the app before finalization ends, some final JSONs/previews may be 
 
 ## Presets Explained
 
-### Flat Colors / Logos
+### Logo Decals
 
 Use for:
 
-- logos
-- flat decals
-- livery panels
-- clean mascot art
-- high-contrast borders
+- brand marks
+- text-like logos
+- emblems
+- clean decal art
+- sharp curves and hard edges
 
 Why:
 
-- uses edge-biased shape selection
-- uses Luma Prep by default
-- tries to preserve hard regions and crisp borders
+- prioritizes color fidelity
+- favors crisp borders and smooth logo curves
+- keeps Luma Prep off by default
+- uses logo edge prep to snap soft transparent edge pixels to clean opaque logo colors
 
 Possible downside:
 
-- can make soft gradients look stepped
-- may look too hard on skin/hair shading
+- not the best choice for soft skin/hair gradients
+- less broad-region-focused than Flat Colors
 
 ### Shaded Character Art
 
@@ -456,6 +545,27 @@ Why:
 
 This is the safest default if you do not know what to pick.
 
+### Flat Colors
+
+Use for:
+
+- flat decals
+- livery panels
+- clean mascot art
+- high-contrast borders
+- broad color islands
+
+Why:
+
+- uses edge-biased shape selection
+- uses Luma Prep by default
+- tries to preserve hard regions and crisp borders
+
+Possible downside:
+
+- can make soft gradients look stepped
+- may look too hard on skin/hair shading
+
 ### Smooth Gradients
 
 Use for:
@@ -473,66 +583,70 @@ Why:
 
 Possible downside:
 
-- hard logos may look less crisp than Flat Colors / Logos
+- hard logos may look less crisp than Logo Decals or Flat Colors
 
-## Tune This Run
+## Automatic Settings And Pro Settings
 
-Enable:
+The current default is automatic.
 
-```text
-Tune this run
-```
+Normal users should usually set only:
 
-Then edit fields.
+- `Template layers`
+- `Finalize at layers`
+- the preset
 
-### Template Layers
+The app calculates the hidden generation effort from the source and the preset.
 
-Target template layer count.
+### What The Automatic Math Tries To Do
 
-If your FH6 group has 2000 layers, use `2000`.
+The app estimates how hard the source is to draw by looking at:
 
-Default import uses the full template layer count. Border masks are off unless legacy mask mode is enabled in Settings.
+- source resolution
+- visible non-transparent area
+- alpha/cutout coverage
+- edge density
+- detail density
+- selected preset
+- target layer count
 
-### Max Resolution
+Then it fills in:
 
-Controls the maximum source image side used for generation.
+- max resolution
+- random samples
+- mutated samples
 
-Higher max resolution:
-
-- can preserve tiny details
-- can improve sharp edges
-- can cost more time and memory
-
-Lower max resolution:
-
-- is faster
-- can smooth small details away
-
-### Random Samples
-
-Main search effort.
-
-Higher random samples means the generator tests more possible shapes per layer before choosing one.
-
-This is usually the first setting to increase when accuracy is not good enough.
-
-### Mutated Samples
-
-Refinement around the best candidate.
-
-Higher mutated samples help improve placement/size/rotation after a promising shape is found.
-
-### Finalize At Layers
-
-Comma-separated checkpoint targets.
-
-Example:
+In simple terms:
 
 ```text
-500,1000,1500,2000
+bigger / more detailed source + more target layers = more internal resolution and more search effort
 ```
 
-The app will finalize those checkpoints so you can choose visually.
+### When To Enable Pro Settings
+
+Enable Pro settings when:
+
+- you are testing generator behavior
+- a source needs more search effort than automatic settings gave it
+- you want to compare resolutions/samples manually
+- you are saving a custom preset
+
+Leave Pro settings off when:
+
+- you want the app to pick sane settings from the source image
+- you are helping a new user
+- you do not know what a setting does yet
+
+### Pro Persistence
+
+The app remembers:
+
+- whether Pro settings are open
+- max resolution
+- random samples
+- mutated samples
+- custom preset values
+
+So if you are an advanced user, your workspace stays how you left it.
 
 ## Luma Prep
 
@@ -778,6 +892,26 @@ imgs/luma-bands/
 If the after image looks too posterized or soft, keep Luma Prep off for that source.
 
 If the after image has cleaner regions/borders, Luma Prep may help the generation.
+
+## Image Tools Tab
+
+Open:
+
+```text
+Image Tools
+```
+
+This tab is a simple launcher for useful browser tools that can improve source art before generation.
+
+Available links:
+
+| Tool | Use |
+| --- | --- |
+| `Background Remover` | Opens PhotoRoom's online background remover for transparent cutout PNGs. |
+| `2x / 4x Browser Upscaler` | Opens a browser-local upscaler for small images that need more source resolution before generation. |
+| `Browser Downscaler / Compressor` | Opens Squoosh for clean resizing, format conversion, and compression. |
+
+The app does not upload files through this tab. It only opens the selected web tool in your browser.
 
 ## Settings And Themes
 
@@ -1032,17 +1166,18 @@ Try:
 
 - turn Luma Prep off
 - use Shaded Character Art for anime/characters
-- use more random samples
+- enable Pro settings and use more random samples if automatic settings are not enough
 - use more layers
-- increase max resolution
+- increase max resolution in Pro settings if the source has real small detail
 - compare checkpoints manually
 
 ### Hard Edges Look Bad
 
 Try:
 
-- Flat Colors / Logos
-- Luma Prep on
+- Logo Decals for logos/text/emblems
+- Flat Colors for mascot/sticker art
+- Luma Prep on for flat art, off for clean logo curves if it posterizes too much
 - Edge Repair on
 - enough layers
 
@@ -1117,7 +1252,9 @@ Wrong count can cause:
 
 ### What Max Resolution Actually Does
 
-`Max resolution` controls the image size given to generation.
+`Max resolution` is a Pro setting. When Pro settings are closed, the app calculates it automatically.
+
+It controls the image size given to generation.
 
 It does not change FH6 canvas size directly.
 
@@ -1127,6 +1264,8 @@ Higher values can preserve detail but cost compute.
 
 ### What Random Samples Actually Do
 
+`Random samples` is a Pro setting. When Pro settings are closed, the app calculates it automatically.
+
 For every layer, the generator tries many candidate shapes.
 
 `Random samples` controls how many broad attempts it tests.
@@ -1134,6 +1273,8 @@ For every layer, the generator tries many candidate shapes.
 More samples means a higher chance of finding a better shape at each layer.
 
 ### What Mutated Samples Actually Do
+
+`Mutated samples` is a Pro setting. When Pro settings are closed, the app calculates it automatically.
 
 After finding a promising shape, the generator mutates/refines it.
 
