@@ -25,11 +25,12 @@ Use this with:
 14. [Import Final JSON](#import-final-json)
 15. [Luma Band Pass Tab](#luma-band-pass-tab)
 16. [Image Tools Tab](#image-tools-tab)
-17. [Settings And Themes](#settings-and-themes)
-18. [Files And Folders](#files-and-folders)
-19. [Updating](#updating)
-20. [Troubleshooting](#troubleshooting)
-21. [Deep Reference](#deep-reference)
+17. [Image Size Helper Tab](#image-size-helper-tab)
+18. [Settings And Themes](#settings-and-themes)
+19. [Files And Folders](#files-and-folders)
+20. [Updating](#updating)
+21. [Troubleshooting](#troubleshooting)
+22. [Deep Reference](#deep-reference)
 
 ## What The App Does
 
@@ -912,6 +913,32 @@ Available links:
 | `Browser Downscaler / Compressor` | Opens Squoosh for clean resizing, format conversion, and compression. |
 
 The app does not upload files through this tab. It only opens the selected web tool in your browser.
+
+## Image Size Helper Tab
+
+Open:
+
+```text
+Image Size Helper
+```
+
+Choose one image to see:
+
+- current width x height in pixels
+- current megapixels
+- resize targets from `1 MP` through `6 MP`
+- a quick preset MP cheat sheet
+
+The resize targets keep the original aspect ratio. Use this with the Image Tools links when deciding whether to upscale, downscale, or leave a source alone.
+
+Preset starting points:
+
+| Preset | Best MP | Use case |
+| --- | ---: | --- |
+| `Logo Decals` | `1-2 MP` | logos, text, emblems |
+| `Flat Colors` | `1.5-3 MP` | stickers, mascots, hard regions |
+| `Shaded Character Art` | `2-4 MP` | anime, faces, hair, eyes |
+| `Smooth Gradients` | `3-6 MP` | gloss, soft ramps, shading |
 
 ## Settings And Themes
 

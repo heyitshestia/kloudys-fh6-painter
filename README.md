@@ -255,6 +255,17 @@ The `Image Tools` tab collects external browser tools that are useful before gen
 
 These tools are links only. They do not upload anything through the app itself.
 
+## Image Size Helper Tab
+
+The `Image Size Helper` tab lets you choose one image and shows:
+
+- current width x height in pixels
+- current megapixels
+- same-aspect resize targets from `1 MP` through `6 MP`
+- quick recommended MP ranges for each stock preset
+
+Use it before upscaling/downscaling when you want a source size that fits the preset.
+
 ## Import / Export Handmade JSON
 
 The `Import Handmade JSON` tab is the experimental universal FH6 shape importer/exporter.

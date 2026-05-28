@@ -296,6 +296,8 @@ Open Image Tools when your source needs prep before generation:
 - 2x / 4x Browser Upscaler opens a browser-local upscaler.
 - Browser Downscaler / Compressor opens Squoosh.
 
+Open Image Size Helper to check the source resolution and see 1-6 MP resize targets for the same aspect ratio.
+
 Open Luma Band Pass when you want to preview luma banding before spending time on a full run.
 
 
@@ -1421,6 +1423,7 @@ class MainWindow(QMainWindow):
         self._build_game_export_tab()
         self._build_luma_tab()
         self._build_image_tools_tab()
+        self._build_image_size_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
         footer = QHBoxLayout()
@@ -1975,6 +1978,79 @@ class MainWindow(QMainWindow):
             1,
         )
         self.tabs.addTab(tab, "Image Tools")
+
+    def _build_image_size_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        controls = QGroupBox("Image Size Helper")
+        controls_layout = QVBoxLayout(controls)
+        controls_layout.addWidget(
+            QLabel(
+                "Choose one image to see its current pixel size, megapixels, and matching 1-6 MP resize targets. "
+                "The targets keep the same aspect ratio."
+            )
+        )
+        actions = QHBoxLayout()
+        choose = QPushButton("Choose image")
+        choose.setObjectName("primaryButton")
+        choose.clicked.connect(self.choose_size_helper_image)
+        actions.addWidget(choose)
+        actions.addStretch(1)
+        controls_layout.addLayout(actions)
+        self.size_helper_status = QLabel("No image selected.")
+        self.size_helper_status.setWordWrap(True)
+        controls_layout.addWidget(self.size_helper_status)
+        layout.addWidget(controls)
+
+        body = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.addWidget(QLabel("Source Preview"))
+        self.size_helper_preview = PreviewView("Choose an image to preview it here.")
+        left_layout.addWidget(self.size_helper_preview, 1)
+
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.addWidget(QLabel("Same-aspect resize targets"))
+        self.size_helper_table = QTreeWidget()
+        self.size_helper_table.setColumnCount(4)
+        self.size_helper_table.setHeaderLabels(["Target MP", "Width", "Height", "Actual MP"])
+        self.size_helper_table.setRootIsDecorated(False)
+        self.size_helper_table.setAlternatingRowColors(True)
+        self.size_helper_table.setMinimumWidth(420)
+        self.size_helper_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        for index, width in enumerate((110, 110, 110, 120)):
+            self.size_helper_table.setColumnWidth(index, width)
+        right_layout.addWidget(self.size_helper_table, 1)
+        right_layout.addWidget(QLabel("Preset MP cheat sheet"))
+        self.size_helper_preset_table = QTreeWidget()
+        self.size_helper_preset_table.setColumnCount(3)
+        self.size_helper_preset_table.setHeaderLabels(["Preset", "Best MP", "Use case"])
+        self.size_helper_preset_table.setRootIsDecorated(False)
+        self.size_helper_preset_table.setAlternatingRowColors(True)
+        self.size_helper_preset_table.setMaximumHeight(150)
+        for preset, mp_range, use_case in (
+            ("Logo Decals", "1-2 MP", "logos, text, emblems"),
+            ("Flat Colors", "1.5-3 MP", "stickers, mascots, hard regions"),
+            ("Shaded Character Art", "2-4 MP", "anime, faces, hair, eyes"),
+            ("Smooth Gradients", "3-6 MP", "gloss, soft ramps, shading"),
+        ):
+            item = QTreeWidgetItem([preset, mp_range, use_case])
+            item.setToolTip(0, f"{preset}: {mp_range}")
+            item.setToolTip(1, "Recommended source megapixel range before generation.")
+            item.setToolTip(2, use_case)
+            self.size_helper_preset_table.addTopLevelItem(item)
+        for index, width in enumerate((160, 90, 240)):
+            self.size_helper_preset_table.setColumnWidth(index, width)
+        right_layout.addWidget(self.size_helper_preset_table)
+
+        body.addWidget(left)
+        body.addWidget(right)
+        body.setStretchFactor(0, 2)
+        body.setStretchFactor(1, 1)
+        layout.addWidget(body, 1)
+        self.tabs.addTab(tab, "Image Size Helper")
 
     def _build_tutorial_tab(self):
         tab = QWidget()
@@ -2563,6 +2639,38 @@ class MainWindow(QMainWindow):
             os.startfile(LUMA_BANDS_ROOT)
         else:
             subprocess.Popen(["xdg-open", str(LUMA_BANDS_ROOT)])
+
+    def choose_size_helper_image(self):
+        USER_IMAGES_ROOT.mkdir(parents=True, exist_ok=True)
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose image for size helper", str(USER_IMAGES_ROOT), "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
+        if not file_name:
+            return
+        source = Path(file_name)
+        self.size_helper_preview.set_bytes(render_source_image(source) or b"")
+        image = decode_image_file(source)
+        if image is None:
+            self.size_helper_status.setText(f"Could not read image: {source}")
+            self.size_helper_table.clear()
+            return
+        height, width = image.shape[:2]
+        megapixels = (width * height) / 1_000_000.0
+        self.size_helper_status.setText(f"{source.name}: {width} x {height} px, {megapixels:.2f} MP")
+        self.size_helper_table.clear()
+        aspect = width / max(1, height)
+        for target_mp in range(1, 7):
+            target_pixels = target_mp * 1_000_000
+            target_width = max(1, int(round(math.sqrt(target_pixels * aspect))))
+            target_height = max(1, int(round(target_width / aspect)))
+            actual_mp = (target_width * target_height) / 1_000_000.0
+            self.size_helper_table.addTopLevelItem(
+                QTreeWidgetItem([
+                    f"{target_mp} MP",
+                    f"{target_width:,} px",
+                    f"{target_height:,} px",
+                    f"{actual_mp:.2f} MP",
+                ])
+            )
+        self.log_line(f"Image Size Helper: {source.name} is {width}x{height}, {megapixels:.2f} MP")
 
     def manual_add_json(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Choose finalized vinyl JSON", "", "Final vinyl JSON (*.json);;All files (*.*)")
