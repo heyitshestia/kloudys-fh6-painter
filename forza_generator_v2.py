@@ -336,6 +336,7 @@ def write_v2_settings(
         "maxThreads",
         "mutatedSamples",
         "forceOpaqueShapes",
+        "logoHardEdges",
         "posterizeLevels",
         "previewEvery",
         "randomSamples",
@@ -398,6 +399,29 @@ def apply_preprocess(rgba: np.ndarray, mode: str) -> np.ndarray:
 
     out = np.dstack([rgb_out, alpha]).astype(np.float32)
     return out
+
+
+def apply_logo_hard_edges(rgba: np.ndarray, alpha_threshold: int = 96) -> np.ndarray:
+    """Prepare transparent logo art for opaque vinyl shapes.
+
+    Anti-aliased transparent PNG edges often store blended edge RGB. If those
+    colors are imported as opaque FH shapes, they look like accidental
+    translucency on a different car color. For logo art, snap visible alpha to
+    opaque and borrow edge RGB from nearby solid pixels where possible.
+    """
+    rgb = np.clip(rgba[..., :3], 0, 255).astype(np.uint8)
+    alpha = np.clip(rgba[..., 3], 0, 255).astype(np.uint8)
+    visible = alpha >= int(alpha_threshold)
+    soft_visible = visible & (alpha < 245)
+    solid = alpha >= 245
+    rgb_out = rgb.copy()
+    if np.any(soft_visible) and np.any(solid):
+        repair_mask = soft_visible.astype(np.uint8) * 255
+        # Inpaint only the semi-transparent visible edge pixels from nearby
+        # solid logo colors; transparent background remains transparent.
+        rgb_out = cv2.inpaint(rgb_out, repair_mask, 3, cv2.INPAINT_TELEA)
+    alpha_out = np.where(visible, 255, 0).astype(np.uint8)
+    return np.dstack([rgb_out, alpha_out]).astype(np.float32)
 
 
 def source_art_profile(rgba: np.ndarray) -> dict:
@@ -2036,6 +2060,7 @@ def main() -> int:
     raw_stop = target_shapes + overshoot_extra
     shape_mode = str(base_settings.get("shapeMode", "")).strip().lower()
     force_opaque_shapes = parse_bool(base_settings.get("forceOpaqueShapes"), False)
+    logo_hard_edges = parse_bool(base_settings.get("logoHardEdges"), False)
     prefer_smooth_repair = (
         shape_mode in {"mixed_soft_detail", "mixed_character_art", "mixed_smart_detail"}
         and args.preprocess_mode == "none"
@@ -2048,11 +2073,17 @@ def main() -> int:
     max_resolution = int(base_settings.get("maxResolution", "0") or 0)
     source_rgba = resize_source_for_generation(image_path, max_resolution)
     art_profile = source_art_profile(source_rgba)
-    processed_rgba = apply_preprocess(source_rgba, args.preprocess_mode)
+    prepared_rgba = apply_logo_hard_edges(source_rgba) if logo_hard_edges else source_rgba
+    processed_rgba = apply_preprocess(prepared_rgba, args.preprocess_mode)
     generation_image_path = image_path
     preprocess_output_path = None
-    if args.preprocess_mode != "none":
-        preprocess_output_path = previews_dir / f"{stem}.luma-prep.png"
+    if logo_hard_edges or args.preprocess_mode != "none":
+        prep_parts = []
+        if logo_hard_edges:
+            prep_parts.append("logo-edges")
+        if args.preprocess_mode != "none":
+            prep_parts.append(args.preprocess_mode.replace("_", "-"))
+        preprocess_output_path = previews_dir / f"{stem}.{'-'.join(prep_parts)}.png"
         Image.fromarray(np.clip(processed_rgba, 0, 255).astype(np.uint8), mode="RGBA").save(preprocess_output_path)
         generation_image_path = preprocess_output_path
 
@@ -2068,6 +2099,7 @@ def main() -> int:
         print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Luma Prep mode:         {args.preprocess_mode}")
+    print(f"Logo edge prep:         {logo_hard_edges}")
     print(f"Force opaque shapes:   {force_opaque_shapes}")
     print(f"Live preview every:     {live_preview_every} layer(s)")
     print(f"Source profile:         {art_profile['category']}")

@@ -64,6 +64,7 @@ from game_profiles import PROFILES
 from generator_backend import (
     GENERATOR_EXE,
     GENERATED_ROOT,
+    auto_generation_values,
     best_geometry_jsons,
     build_generator_command,
     delete_user_preset,
@@ -162,12 +163,16 @@ Manual fallback files:
 
 Current stock presets are style-based:
 
+Logo Decals
+- Best for brand marks, text-like logos, emblems, and clean decal art.
+- Prioritizes color fidelity, sharp edges, and smooth curves. Luma Prep is off by default, and logo edge prep snaps soft transparent edge pixels to clean opaque logo colors.
+
 Shaded Character Art
 - Best default for anime, faces, eyes, hair, skin, and mixed linework.
 - Uses smart-detail weighting and leaves Luma Prep off to protect tiny detail.
 
-Flat Colors / Logos
-- Best for logos, decals, mascot art, hard borders, and clean color regions.
+Flat Colors
+- Best for mascot art, stickers, hard borders, and broad clean color regions.
 - Uses edge-biased shapes and Luma Prep by default.
 
 Smooth Gradients
@@ -1165,9 +1170,11 @@ class AnimatedThemeBackground(QWidget):
 
 
 class SparkleLinkPanel(QWidget):
-    def __init__(self, url: str):
+    def __init__(self, links):
         super().__init__()
-        self.url = url
+        if isinstance(links, str):
+            links = [("Background Remover", links, "Remove image backgrounds online.")]
+        self.links = list(links)
         self.phase = 0.0
         rng = random.Random(260526)
         self.sparkles = [
@@ -1189,14 +1196,36 @@ class SparkleLinkPanel(QWidget):
         layout.setContentsMargins(40, 40, 40, 40)
         layout.addStretch(1)
 
-        open_button = QPushButton(url)
-        open_button.setObjectName("backgroundRemoverButton")
-        open_button.setMinimumSize(560, 72)
-        open_button.setMaximumWidth(740)
-        open_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.url)))
-        open_button.setStyleSheet(
+        title = QLabel("Image Tools")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 22pt; font-weight: 950; color: #ffffff;")
+        layout.addWidget(title, 0, Qt.AlignmentFlag.AlignCenter)
+        subtitle = QLabel("Useful browser tools for source cleanup before generating a vinyl.")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("font-size: 11pt; color: #dbeafe;")
+        layout.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.link_buttons = []
+        for label, url, description in self.links:
+            button = QPushButton(label)
+            button.setObjectName("toolLinkButton")
+            button.setMinimumSize(560, 66)
+            button.setMaximumWidth(760)
+            button.setToolTip(f"{description}\n{url}")
+            button.clicked.connect(lambda _checked=False, link=url: QDesktopServices.openUrl(QUrl(link)))
+            self.link_buttons.append(button)
+            layout.addWidget(button, 0, Qt.AlignmentFlag.AlignCenter)
+            hint = QLabel(description)
+            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hint.setWordWrap(True)
+            hint.setMaximumWidth(760)
+            hint.setStyleSheet("color: #dbeafe; font-size: 10pt;")
+            layout.addWidget(hint, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.setStyleSheet(
             """
-            QPushButton#backgroundRemoverButton {
+            QPushButton#toolLinkButton {
                 color: #07101a;
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4fb8, stop:0.48 #ffd166, stop:1 #24e9ff);
                 border: 2px solid #ffffff;
@@ -1205,17 +1234,15 @@ class SparkleLinkPanel(QWidget):
                 font-weight: 950;
                 padding: 16px 24px;
             }
-            QPushButton#backgroundRemoverButton:hover {
+            QPushButton#toolLinkButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff80cf, stop:0.50 #ffe299, stop:1 #74f8ff);
             }
-            QPushButton#backgroundRemoverButton:pressed {
+            QPushButton#toolLinkButton:pressed {
                 background: #ffffff;
                 color: #07101a;
             }
             """
         )
-        self.link_button = open_button
-        layout.addWidget(open_button, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addStretch(1)
 
     def advance(self):
@@ -1241,7 +1268,11 @@ class SparkleLinkPanel(QWidget):
         painter.setBrush(QColor(36, 233, 255, glow_alpha))
         painter.drawEllipse(QRectF(rect.width() * 0.66, rect.height() * 0.52, rect.width() * 0.31, rect.height() * 0.34))
 
-        button_rect = QRectF(self.link_button.geometry()) if hasattr(self, "link_button") else QRectF()
+        button_rect = QRectF()
+        if getattr(self, "link_buttons", None):
+            first = self.link_buttons[0].geometry()
+            last = self.link_buttons[-1].geometry()
+            button_rect = QRectF(first).united(QRectF(last))
         if button_rect.isNull():
             button_rect = QRectF(rect.width() * 0.25, rect.height() * 0.46, rect.width() * 0.50, 72)
         center = button_rect.center()
@@ -1327,6 +1358,7 @@ class MainWindow(QMainWindow):
         self.render_lists()
         if self.images:
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
+            self.sync_auto_summary()
         self.start_update_check()
         self.update_check_timer.start()
 
@@ -1353,7 +1385,7 @@ class MainWindow(QMainWindow):
         self._build_handmade_import_tab()
         self._build_game_export_tab()
         self._build_luma_tab()
-        self._build_background_remover_tab()
+        self._build_image_tools_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
         footer = QHBoxLayout()
@@ -1454,10 +1486,6 @@ class MainWindow(QMainWindow):
 
         quality_group = QGroupBox("Step 2 - Vinyl Build Preset")
         quality_layout = QVBoxLayout(quality_group)
-        self.vroom = QCheckBox("2x Sample Goblin (slower)")
-        self.vroom.setToolTip("Doubles random and mutated samples for more search effort. Usually slower, sometimes cleaner.")
-        self.vroom.stateChanged.connect(self.update_setting_description)
-        quality_layout.addWidget(self.checkbox_with_help(self.vroom, "sample_goblin"))
         quality_layout.addWidget(self.label_with_help("Preset", "preset"))
         self.profile_combo = self.make_combo(max_visible=18, min_height=38)
         self.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
@@ -1465,8 +1493,14 @@ class MainWindow(QMainWindow):
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
         quality_layout.addWidget(self.setting_description)
-        self.custom_enabled = QCheckBox("Tune this run")
+        self.auto_summary_label = QLabel("Auto settings will be calculated from the source image when generation starts.")
+        self.auto_summary_label.setWordWrap(True)
+        quality_layout.addWidget(self.auto_summary_label)
+        self.custom_enabled = QCheckBox("Pro settings - manual samples/resolution")
+        self.custom_enabled.setToolTip("Default is automatic. Enable this only when you want to override resolution and sample counts yourself.")
+        self.custom_enabled.setChecked(settings_bool(self.app_settings.get("pro_generation_settings"), False))
         self.custom_enabled.stateChanged.connect(self.sync_custom_state)
+        self.custom_enabled.stateChanged.connect(self.save_pro_settings_state)
         quality_layout.addWidget(self.custom_enabled)
         form = QGridLayout()
         self.custom_layers = QLineEdit()
@@ -1484,8 +1518,32 @@ class MainWindow(QMainWindow):
         for row, (label, widget, help_key) in enumerate(fields):
             form.addWidget(self.label_with_help(label, help_key), row, 0)
             form.addWidget(widget, row, 1)
+        for widget in (self.custom_resolution, self.custom_random, self.custom_mutated):
             widget.textEdited.connect(self.enable_custom_tuning_from_edit)
+            widget.textEdited.connect(self.save_pro_field_values)
+        for widget in (self.custom_layers, self.custom_save_at):
+            widget.textEdited.connect(self.sync_auto_summary)
         quality_layout.addLayout(form)
+        self.pro_setting_widgets = [
+            self.custom_resolution,
+            self.custom_random,
+            self.custom_mutated,
+        ]
+        saved_pro_values = self.app_settings.get("generation_pro_values") if isinstance(self.app_settings.get("generation_pro_values"), dict) else {}
+        self.custom_resolution.setText(str(saved_pro_values.get("maxResolution", "")))
+        self.custom_random.setText(str(saved_pro_values.get("randomSamples", "")))
+        self.custom_mutated.setText(str(saved_pro_values.get("mutatedSamples", "")))
+        self.pro_setting_labels = []
+        for row in (1, 2, 3):
+            label_item = form.itemAtPosition(row, 0)
+            if label_item and label_item.widget():
+                self.pro_setting_labels.append(label_item.widget())
+        self.vroom = QCheckBox("2x Sample Goblin (slower)")
+        self.vroom.setToolTip("Doubles auto/manual random and mutated samples for more search effort. Usually slower, sometimes cleaner.")
+        self.vroom.stateChanged.connect(self.update_setting_description)
+        self.vroom.stateChanged.connect(self.sync_auto_summary)
+        self.vroom_row = self.checkbox_with_help(self.vroom, "sample_goblin")
+        quality_layout.addWidget(self.vroom_row)
         preset_actions = QHBoxLayout()
         save_preset = QPushButton("Save custom preset")
         save_preset.clicked.connect(self.save_current_custom_preset)
@@ -1494,14 +1552,20 @@ class MainWindow(QMainWindow):
         preset_actions.addWidget(save_preset)
         preset_actions.addWidget(delete_preset)
         quality_layout.addLayout(preset_actions)
+        self.pro_action_widgets = [self.vroom_row, save_preset, delete_preset]
         self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
         self.luma_enabled.setToolTip("Best for flat logos/liveries and hard color bands. Leave off for most anime, hair, skin, and smooth gradients.")
         self.luma_enabled.setChecked(False)
-        quality_layout.addWidget(self.checkbox_with_help(self.luma_enabled, "luma_prep"))
+        self.luma_enabled.stateChanged.connect(self.sync_auto_summary)
+        self.luma_row = self.checkbox_with_help(self.luma_enabled, "luma_prep")
+        quality_layout.addWidget(self.luma_row)
         self.repair_enabled = QCheckBox("Edge Repair - clean borders and transparent holes")
         self.repair_enabled.setToolTip("Final pass that tightens borders and transparent holes on the finalized checkpoints.")
         self.repair_enabled.setChecked(True)
-        quality_layout.addWidget(self.checkbox_with_help(self.repair_enabled, "edge_repair"))
+        self.repair_enabled.stateChanged.connect(self.sync_auto_summary)
+        self.repair_row = self.checkbox_with_help(self.repair_enabled, "edge_repair")
+        quality_layout.addWidget(self.repair_row)
+        self.pro_action_widgets.extend([self.luma_row, self.repair_row])
         left_layout.addWidget(quality_group)
 
         run_group = QGroupBox("Step 3 - Generate Final Vinyl")
@@ -1849,12 +1913,33 @@ class MainWindow(QMainWindow):
         layout.addLayout(preview_row, 1)
         self.tabs.addTab(tab, "Luma Band Pass")
 
-    def _build_background_remover_tab(self):
+    def _build_image_tools_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(SparkleLinkPanel("https://www.photoroom.com/tools/background-remover"), 1)
-        self.tabs.addTab(tab, "Background Remover")
+        layout.addWidget(
+            SparkleLinkPanel(
+                [
+                    (
+                        "Background Remover",
+                        "https://www.photoroom.com/tools/background-remover",
+                        "Photoroom background remover for cutting out source art before generation.",
+                    ),
+                    (
+                        "2x / 4x Browser Upscaler",
+                        "https://hcodx.com/tools/image-upscaler",
+                        "Free local-browser upscaler for enlarging small sources without app-side rate limits.",
+                    ),
+                    (
+                        "Browser Downscaler / Compressor",
+                        "https://squoosh.app",
+                        "Free local-browser image resize/compress tool for preparing sources before import.",
+                    ),
+                ]
+            ),
+            1,
+        )
+        self.tabs.addTab(tab, "Image Tools")
 
     def _build_tutorial_tab(self):
         tab = QWidget()
@@ -2143,16 +2228,33 @@ class MainWindow(QMainWindow):
         if hasattr(self, "custom_enabled") and self.custom_enabled.isChecked():
             self.custom_enabled.setChecked(False)
         self.update_setting_description()
+        self.sync_auto_summary()
 
     def current_custom_values(self):
-        return {
+        values = {
             "stopAt": self.custom_layers.text(),
-            "maxResolution": self.custom_resolution.text(),
-            "randomSamples": self.custom_random.text(),
-            "mutatedSamples": self.custom_mutated.text(),
             "saveAt": self.custom_save_at.text(),
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
             "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+        }
+        if self.custom_enabled.isChecked():
+            values.update({
+                "maxResolution": self.custom_resolution.text(),
+                "randomSamples": self.custom_random.text(),
+                "mutatedSamples": self.custom_mutated.text(),
+            })
+        return values
+
+    def pro_custom_values(self):
+        if not self.custom_enabled.isChecked():
+            return {}
+        return self.raw_pro_field_values()
+
+    def raw_pro_field_values(self):
+        return {
+            "maxResolution": self.custom_resolution.text(),
+            "randomSamples": self.custom_random.text(),
+            "mutatedSamples": self.custom_mutated.text(),
         }
 
     def save_current_custom_preset(self):
@@ -2227,20 +2329,41 @@ class MainWindow(QMainWindow):
         if item.get("is_user_preset"):
             description += "\nThis is a saved custom preset stored in runtime/user-presets."
         self.setting_description.setText(description)
+        self.custom_layers.setText(values.get("stopAt", "3000"))
+        self.custom_save_at.setText(values.get("saveAt", values.get("stopAt", "3000")))
+        self.luma_enabled.setChecked(str(values.get("v2PreprocessMode", "none")).strip().lower() == "luma_bands")
+        self.repair_enabled.setChecked(str(values.get("v2EnableRepair", "true")).strip().lower() in ("1", "true", "yes", "on"))
         if not self.custom_enabled.isChecked():
-            self.custom_layers.setText(values.get("stopAt", "3000"))
             self.custom_resolution.setText(values.get("maxResolution", "1200"))
             self.custom_random.setText(values.get("randomSamples", "3000"))
             self.custom_mutated.setText(values.get("mutatedSamples", "1000"))
-            self.custom_save_at.setText(values.get("saveAt", values.get("stopAt", "3000")))
-            self.luma_enabled.setChecked(str(values.get("v2PreprocessMode", "none")).strip().lower() == "luma_bands")
-            self.repair_enabled.setChecked(str(values.get("v2EnableRepair", "true")).strip().lower() in ("1", "true", "yes", "on"))
+        self.sync_auto_summary()
 
     def sync_custom_state(self):
-        for widget in (self.custom_layers, self.custom_resolution, self.custom_random, self.custom_mutated, self.custom_save_at):
-            # Keep fields editable so typing into any field can automatically
-            # enable Tune this run instead of silently ignoring the edit.
-            widget.setEnabled(True)
+        pro = self.custom_enabled.isChecked()
+        for widget in getattr(self, "pro_setting_widgets", []):
+            widget.setVisible(pro)
+            widget.setEnabled(pro)
+        for widget in getattr(self, "pro_setting_labels", []):
+            widget.setVisible(pro)
+        for widget in getattr(self, "pro_action_widgets", []):
+            widget.setVisible(pro)
+        self.custom_layers.setEnabled(True)
+        self.custom_save_at.setEnabled(True)
+        self.sync_auto_summary()
+
+    def save_pro_settings_state(self):
+        if not hasattr(self, "app_settings") or not hasattr(self, "custom_enabled"):
+            return
+        self.app_settings["pro_generation_settings"] = bool(self.custom_enabled.isChecked())
+        self.app_settings["generation_pro_values"] = self.raw_pro_field_values()
+        save_app_settings(self.app_settings)
+
+    def save_pro_field_values(self):
+        if not hasattr(self, "app_settings"):
+            return
+        self.app_settings["generation_pro_values"] = self.raw_pro_field_values()
+        save_app_settings(self.app_settings)
 
     def enable_custom_tuning_from_edit(self, _text=None):
         if not self.custom_enabled.isChecked():
@@ -2249,11 +2372,14 @@ class MainWindow(QMainWindow):
     def custom_fields_differ_from_setting(self, values):
         checks = (
             ("stopAt", self.custom_layers),
-            ("maxResolution", self.custom_resolution),
-            ("randomSamples", self.custom_random),
-            ("mutatedSamples", self.custom_mutated),
             ("saveAt", self.custom_save_at),
         )
+        if self.custom_enabled.isChecked():
+            checks += (
+                ("maxResolution", self.custom_resolution),
+                ("randomSamples", self.custom_random),
+                ("mutatedSamples", self.custom_mutated),
+            )
         for key, widget in checks:
             current = str(widget.text()).strip()
             if not current:
@@ -2275,37 +2401,78 @@ class MainWindow(QMainWindow):
     def vroom_boost_overrides(self, values):
         if not self.vroom.isChecked():
             return {}
-        excluded = {"description", "forceOpaqueShapes", "maxPreviewSize", "maxResolution", "saveAt", "shapeMode", "stopAt", "useWorkGroupEval", "v2EnableRepair", "v2PreprocessMode"}
         overrides = {}
-        for key, value in values.items():
+        for key in ("randomSamples", "mutatedSamples", "maxNoImproveRetries"):
+            value = values.get(key)
             text = str(value).strip()
-            if key not in excluded and re.fullmatch(r"-?\d+", text) and int(text) > 0:
+            if re.fullmatch(r"-?\d+", text) and int(text) > 0:
                 overrides[key] = str(int(text) * 2)
         return overrides
 
-    def effective_setting(self):
+    def effective_setting(self, image_path=None):
         setting = self.selected_setting()
         if not setting:
             return None
         setting_values = dict(setting.get("values", {}))
-        custom_active = self.custom_enabled.isChecked() or self.custom_fields_differ_from_setting(setting_values)
         overrides = {
+            "stopAt": self.custom_layers.text(),
+            "saveAt": self.custom_save_at.text(),
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
+            "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
         }
-        if custom_active:
-            overrides.update(self.current_custom_values())
         base_values = dict(setting_values)
         base_values.update({key: value for key, value in overrides.items() if str(value).strip()})
-        overrides.update(self.vroom_boost_overrides(base_values))
-        if (
-            custom_active
-            or self.vroom.isChecked()
-            or overrides["v2PreprocessMode"] != str(setting_values.get("v2PreprocessMode", "none")).strip().lower()
-        ):
-            boosted = write_custom_settings(setting, overrides)
-            boosted["label"] = setting.get("label", boosted.get("label"))
-            return boosted
-        return setting
+        if image_path is not None:
+            tuned_values, auto_summary = auto_generation_values(
+                image_path,
+                base_values,
+                pro_overrides=self.pro_custom_values(),
+                sample_boost=self.vroom.isChecked(),
+            )
+        else:
+            tuned_values = base_values
+            tuned_values.update(self.pro_custom_values())
+            tuned_values.update(self.vroom_boost_overrides(tuned_values))
+            auto_summary = None
+        boosted = write_custom_settings(setting, tuned_values)
+        boosted["label"] = setting.get("label", boosted.get("label"))
+        boosted["auto_tune"] = auto_summary
+        if self.vroom.isChecked():
+            boosted["vroom_boost"] = True
+        return boosted
+
+    def sync_auto_summary(self):
+        if not hasattr(self, "auto_summary_label"):
+            return
+        image_path = self.images[-1] if getattr(self, "images", None) else None
+        setting = self.selected_setting()
+        if not image_path or not setting:
+            self.auto_summary_label.setText("Auto settings will be calculated from the source image when generation starts.")
+            return
+        values = dict(setting.get("values", {}))
+        values.update({
+            "stopAt": self.custom_layers.text(),
+            "saveAt": self.custom_save_at.text(),
+            "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
+            "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+        })
+        try:
+            tuned, summary = auto_generation_values(
+                image_path,
+                values,
+                pro_overrides=self.pro_custom_values(),
+                sample_boost=self.vroom.isChecked(),
+            )
+            source = summary.get("source", {})
+            self.auto_summary_label.setText(
+                "Auto from source: "
+                f"{source.get('width', '?')}x{source.get('height', '?')}, "
+                f"{source.get('megapixels', '?')} MP, visible {source.get('alpha_coverage', '?')}. "
+                f"Using max res {tuned.get('maxResolution')}, random {tuned.get('randomSamples')}, "
+                f"mutated {tuned.get('mutatedSamples')}."
+            )
+        except Exception as exc:
+            self.auto_summary_label.setText(f"Auto settings preview unavailable: {type(exc).__name__}: {exc}")
 
     def add_image(self):
         USER_IMAGES_ROOT.mkdir(parents=True, exist_ok=True)
@@ -2316,6 +2483,7 @@ class MainWindow(QMainWindow):
         self.images = [path]
         self.render_lists()
         self.show_preview_bytes(render_source_image(path) or b"")
+        self.sync_auto_summary()
 
     def choose_luma_image(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Choose image for Luma Band Pass", "", "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
@@ -2468,6 +2636,7 @@ class MainWindow(QMainWindow):
         if 0 <= row < len(self.images):
             self.preview_request_id += 1
             self.show_preview_bytes(render_source_image(self.images[row]) or b"")
+            self.sync_auto_summary()
 
     def preview_json(self, path: Path):
         self.preview_request_id += 1
@@ -2626,7 +2795,7 @@ class MainWindow(QMainWindow):
         if not self.images:
             self.log_line("No image selected.")
             return
-        setting = self.effective_setting()
+        setting = self.selected_setting()
         if not setting:
             self.log_line("No Kloudy preset selected.")
             return
@@ -2661,14 +2830,14 @@ class MainWindow(QMainWindow):
     def generate_worker(self, setting, images, repair_enabled):
         try:
             self.bus.log.emit(f"Selected Kloudy preset: {setting.get('label') or setting['path'].name}")
-            values = setting.get("values", {})
-            self.bus.log.emit(f"Target template layers: {values.get('stopAt', 'n/a')}")
-            self.bus.log.emit(f"Finalize at layers: {values.get('saveAt', values.get('stopAt', 'n/a'))}")
-            self.bus.log.emit(f"Search effort: random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
-            self.bus.log.emit(f"Max resolution: {values.get('maxResolution', 'n/a')}")
-            self.bus.log.emit(f"Luma Prep: {values.get('v2PreprocessMode', 'none')}")
+            self.bus.log.emit("Auto settings: source-aware resolution and samples are calculated per image.")
             self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
             for image_path in images:
+                effective = self.effective_setting(image_path)
+                if not effective:
+                    self.bus.log.emit("Generator failed: no effective preset could be built.")
+                    return
+                values = effective.get("values", {})
                 self.reset_generation_eta()
                 run_dir = next_generator_output_dir(image_path)
                 before = {path.resolve() for path in self.run_json_files(run_dir)}
@@ -2676,11 +2845,25 @@ class MainWindow(QMainWindow):
                 self.active_generation_run_dirs[image_path] = run_dir
                 self.bus.log.emit(f"Generating final vinyl from: {image_path}")
                 self.bus.log.emit(f"Vinyl run folder: {run_dir}")
+                self.bus.log.emit(f"Target template layers: {values.get('stopAt', 'n/a')}")
+                self.bus.log.emit(f"Finalize at layers: {values.get('saveAt', values.get('stopAt', 'n/a'))}")
+                self.bus.log.emit(f"Auto effort: maxRes={values.get('maxResolution', 'n/a')} random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
+                auto_summary = effective.get("auto_tune") or {}
+                source_summary = auto_summary.get("source") or {}
+                if source_summary:
+                    self.bus.log.emit(
+                        "Source metrics: "
+                        f"{source_summary.get('width', '?')}x{source_summary.get('height', '?')}, "
+                        f"{source_summary.get('megapixels', '?')} MP, "
+                        f"visible={source_summary.get('alpha_coverage', '?')}, "
+                        f"edge={source_summary.get('edge_density', '?')}"
+                    )
+                self.bus.log.emit(f"Luma Prep: {values.get('v2PreprocessMode', 'none')}")
                 src = render_source_image(image_path)
                 if src:
                     self.bus.preview_bytes.emit(src)
-                cmd = build_generator_command(image_path, setting, enable_repair=repair_enabled, enable_overshoot=False, output_dir=run_dir)
-                self.bus.log.emit(f"Running patched vinyl builder with {setting['path'].name}")
+                cmd = build_generator_command(image_path, effective, enable_repair=repair_enabled, enable_overshoot=False, output_dir=run_dir)
+                self.bus.log.emit(f"Running patched vinyl builder with {effective['path'].name}")
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1, text=True, encoding="utf-8", errors="replace", creationflags=flags)
                 self.register_process(proc)
