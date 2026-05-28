@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter
 
+<p align="center">
+  <img src="docs/images/repo-banner.png" alt="Kloudy's FH6 Painter banner" width="100%">
+</p>
+
 [English](README.md) | [中文](README.zh-CN.md)
 
 Kloudy's FH6 Painter turns source art into finalized Forza Horizon 6 vinyl JSON, then imports that JSON into an open FH6 Vinyl Group Editor template.
