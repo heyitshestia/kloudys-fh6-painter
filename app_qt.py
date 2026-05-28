@@ -380,8 +380,8 @@ HELP_TEXT = {
     "export_template": (
         "Export Layer Count",
         "Enter the exact layer count of the currently open FH6 group.\n\n"
-        "Exporter is read-only and supports grouped or ungrouped groups. It reads the live layer table, records a "
-        "content fingerprint/summary, and saves a compatible handmade JSON."
+        "Exporter is read-only and only supports normal editable user-owned groups. It refuses groups that do not expose "
+        "a standard editable layer table, records a content fingerprint/summary, and saves a compatible handmade JSON."
     ),
     "luma_tab": (
         "Standalone Luma Band Pass",
@@ -1351,6 +1351,7 @@ class MainWindow(QMainWindow):
         self._build_generate_tab()
         self._build_import_tab()
         self._build_handmade_import_tab()
+        self._build_game_export_tab()
         self._build_luma_tab()
         self._build_background_remover_tab()
         self._build_tutorial_tab()
@@ -1742,7 +1743,8 @@ class MainWindow(QMainWindow):
 
         intro = QLabel(
             "Export the currently open FH6 vinyl group into a handmade-compatible JSON. "
-            "This is read-only: it only reads the live layer table and writes a JSON file."
+            "This is read-only and only works on normal editable user-owned groups. "
+            "Locked/community-highlight work is refused."
         )
         intro.setWordWrap(True)
         left_layout.addWidget(intro)
@@ -1760,10 +1762,13 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Current Open Group")
         template_layout = QGridLayout(template)
         self.export_template_count = QLineEdit("3000")
-        self.export_template_count.setToolTip("Enter the exact layer count of the currently open FH6 group. Export can read grouped or ungrouped groups.")
+        self.export_template_count.setToolTip("Enter the exact layer count of the currently open editable FH6 group.")
         template_layout.addWidget(self.label_with_help("Current group layer count", "export_template"), 0, 0)
         template_layout.addWidget(self.export_template_count, 0, 1)
-        template_help = QLabel("Keep the group open and do not switch FH6 menus while exporting. Grouped and ungrouped groups are both supported.")
+        template_help = QLabel(
+            "Keep the group open and do not switch FH6 menus while exporting. "
+            "The exporter validates the live editable layer table before writing any JSON."
+        )
         template_help.setWordWrap(True)
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
@@ -3820,15 +3825,50 @@ class MainWindow(QMainWindow):
         min_sample_ok = min(8, template_count)
         rejected = []
         selected = None
+        strong_candidates = []
         for index, candidate in enumerate(candidates, start=1):
             group = candidate.get("group")
             table = candidate.get("table")
             valid_ptrs = int(candidate.get("valid_ptrs") or 0)
             sample_ok = int(candidate.get("sample_ok_count") or 0)
             if group and table and valid_ptrs >= template_count and sample_ok >= min_sample_ok:
+                strong_candidates.append((index, candidate))
                 selected = (index, group, table, valid_ptrs, sample_ok)
                 break
             rejected.append(f"#{index}: valid_ptrs={valid_ptrs}, sample_ok={sample_ok}")
+        if purpose.startswith("export"):
+            strong_candidates = []
+            for index, candidate in enumerate(candidates, start=1):
+                group = candidate.get("group")
+                table = candidate.get("table")
+                valid_ptrs = int(candidate.get("valid_ptrs") or 0)
+                sample_ok = int(candidate.get("sample_ok_count") or 0)
+                if group and table and valid_ptrs >= template_count and sample_ok >= min_sample_ok:
+                    signature = (
+                        tuple(sorted((candidate.get("shape_id_counts_sample") or {}).items())),
+                        tuple(sorted((candidate.get("color_counts_sample") or {}).items())),
+                    )
+                    strong_candidates.append((index, candidate, signature, int(candidate.get("score") or 0)))
+            if strong_candidates:
+                best_score = max(score for _index, _candidate, _signature, score in strong_candidates)
+                score_floor = best_score - max(10, int(best_score * 0.02))
+                strong_candidates = [
+                    (index, candidate, signature, score)
+                    for index, candidate, signature, score in strong_candidates
+                    if score >= score_floor
+                ]
+            seen_signatures = {}
+            for index, candidate, signature, _score in strong_candidates:
+                previous = seen_signatures.get(signature)
+                if previous:
+                    prev_index, prev_candidate = previous
+                    raise RuntimeError(
+                        "export refused: FH6 exposed duplicate full-strength layer tables for this group. "
+                        "Kloudy's FH6 Painter only exports normal editable user-owned groups; the FH creator "
+                        "community does not condone copying or redistributing another creator's design without permission. "
+                        f"Duplicate candidates: #{prev_index} {prev_candidate.get('group')} and #{index} {candidate.get('group')}."
+                    )
+                seen_signatures[signature] = (index, candidate)
         if not selected:
             detail = "; ".join(rejected[:5]) if rejected else "no candidates"
             raise RuntimeError(f"located group did not validate strongly enough ({detail})")
@@ -3962,11 +4002,27 @@ class MainWindow(QMainWindow):
                 export_json,
                 "--report",
                 export_report,
+                "--probe-report",
+                run_dir / "fallback-export-template-probe.json",
             ]
             self.bus.log.emit("Reading current FH6 group into handmade JSON...")
             code = self.run_subprocess(export_cmd, timeout=240)
             if code != 0:
-                self.bus.log.emit("Universal export failed while reading layers.")
+                if export_report.exists():
+                    try:
+                        report = json.loads(export_report.read_text(encoding="utf-8"))
+                        refusal = report.get("refusal_reason")
+                        reasons = report.get("validation_reasons") or []
+                        if refusal:
+                            self.bus.log.emit(str(refusal))
+                            if reasons:
+                                self.bus.log.emit("Export validation: " + "; ".join(str(reason) for reason in reasons[:4]))
+                        else:
+                            self.bus.log.emit("Universal export failed while reading layers.")
+                    except Exception:
+                        self.bus.log.emit("Universal export failed while reading layers.")
+                else:
+                    self.bus.log.emit("Universal export failed while reading layers.")
                 self.bus.status.emit("Failed")
                 return
             report = json.loads(export_report.read_text(encoding="utf-8"))
