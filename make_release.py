@@ -58,6 +58,7 @@ PROJECT_ITEMS = [
     "make_release.py",
     "docs",
     "assets",
+    "data",
     "settings",
 ]
 

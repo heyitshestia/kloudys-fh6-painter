@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import re
 import struct
 import time
 from ctypes import wintypes
@@ -20,6 +21,8 @@ FULL_LAYER_SIZE = 0x140
 GROUPED_SAFE_LAYER_SIZE = 0xC0
 MIN_IMPORT_READ_SIZE = 0x7C
 CLEAR_REQUIRED_SIZE = 0x80
+ROOT = Path(__file__).resolve().parent
+FONT_REGISTRY_PATH = ROOT / "data" / "fh6_font_registry.json"
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.OpenProcess.restype = wintypes.HANDLE
@@ -170,6 +173,223 @@ SUPPORTED_PAGE1_CODES = {
 }
 
 
+def parse_numeric_int(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text, 0)
+        except ValueError:
+            return None
+    return None
+
+
+def load_font_registry():
+    if not FONT_REGISTRY_PATH.exists():
+        return {}
+    payload = json.loads(FONT_REGISTRY_PATH.read_text(encoding="utf-8"))
+    rows = payload.get("glyphs", payload if isinstance(payload, list) else [])
+    registry = {
+        "by_key": {},
+        "by_name": {},
+    }
+    for row in rows:
+        try:
+            font = int(row["font"])
+            block = normalize_font_block(row["block"])
+            glyph = normalize_font_glyph(row["glyph"], block)
+            word = int(row["fh6_shape_word"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        item = {
+            "font": font,
+            "block": block,
+            "glyph": glyph,
+            "shape_word": word & 0xFFFF,
+            "shape_byte": word & 0xFF,
+            "shape_name": row.get("shape_name") or f"Forza Font {font} {glyph}",
+            "source": "fh6_font_registry_v1",
+        }
+        registry["by_key"][(font, block, glyph)] = item
+        registry["by_name"][normalize_name(item["shape_name"])] = item
+    return registry
+
+
+def normalize_name(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def normalize_font_block(value):
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "uppercase": "upper",
+        "upper_case": "upper",
+        "capital": "upper",
+        "capitals": "upper",
+        "lowercase": "lower",
+        "lower_case": "lower",
+        "numbers": "number",
+        "numeric": "number",
+        "upper_symbols": "upper_symbol",
+        "upper_symbol": "upper_symbol",
+        "uppercase_symbol": "upper_symbol",
+        "uppercase_symbols": "upper_symbol",
+        "lower_symbols": "lower_symbol",
+        "lower_symbol": "lower_symbol",
+        "lowercase_symbol": "lower_symbol",
+        "lowercase_symbols": "lower_symbol",
+    }
+    return aliases.get(text, text)
+
+
+def normalize_font_glyph(value, block=None):
+    glyph = str(value if value is not None else "").strip()
+    named = {
+        "exclamation": "!",
+        "exclamation mark": "!",
+        "question": "?",
+        "question mark": "?",
+        "ampersand": "&",
+        "at": "@",
+        "at symbol": "@",
+        "hash": "#",
+        "pound": "£",
+        "pound sign": "£",
+        "yen": "¥",
+        "yen sign": "¥",
+        "euro": "€",
+        "euro sign": "€",
+        "dollar": "$",
+        "dollar sign": "$",
+        "percent": "%",
+        "percent sign": "%",
+        "colon": ":",
+        "semicolon": ";",
+        "slash": "/",
+        "caret": "^",
+        "caret symbol": "^",
+        "plus": "+",
+        "plus symbol": "+",
+        "eszett": "ß",
+        "eszett symbol": "ß",
+        "ae": "æ",
+    }
+    glyph = named.get(glyph.lower(), glyph)
+    if block == "upper" and len(glyph) == 1:
+        return glyph.upper()
+    if block == "lower" and len(glyph) == 1:
+        return glyph.lower()
+    return glyph
+
+
+def infer_font_block(glyph, explicit_block=None):
+    if explicit_block:
+        return normalize_font_block(explicit_block)
+    glyph = normalize_font_glyph(glyph)
+    if len(glyph) == 1 and glyph.isalpha():
+        return "upper" if glyph == glyph.upper() else "lower"
+    if str(glyph).isdigit():
+        return "number"
+    if glyph in ("!", "?", "&"):
+        return "upper_symbol"
+    return "lower_symbol"
+
+
+def resolve_font_from_name(value, registry):
+    name = normalize_name(value)
+    if not name:
+        return None
+    if name in registry.get("by_name", {}):
+        return registry["by_name"][name]
+    match = re.search(r"forza font\s+(\d+)\s+(.+)", name)
+    if not match:
+        return None
+    font = int(match.group(1))
+    tail = match.group(2).strip()
+    block = None
+    glyph_text = tail
+    for prefix, prefix_block in (
+        ("upper ", "upper"),
+        ("lower ", "lower"),
+        ("number ", "number"),
+    ):
+        if tail.startswith(prefix):
+            block = prefix_block
+            glyph_text = tail[len(prefix):]
+            break
+    symbol_names = {
+        "exclamation mark": ("upper_symbol", "!"),
+        "question mark": ("upper_symbol", "?"),
+        "ampersand": ("upper_symbol", "&"),
+        "at symbol": (block or "lower_symbol", "@"),
+        "percent sign": ("lower_symbol", "%"),
+        "colon": ("lower_symbol", ":"),
+        "semicolon": ("lower_symbol", ";"),
+        "slash": ("lower_symbol", "/"),
+        "dollar sign": ("lower_symbol", "$"),
+        "pound sign": ("lower_symbol", "£"),
+        "yen sign": ("lower_symbol", "¥"),
+        "euro sign": ("lower_symbol", "€"),
+        "ae": ("lower_symbol", "æ"),
+        "caret symbol": ("lower_symbol", "^"),
+        "eszett symbol": ("lower_symbol", "ß"),
+        "hash": ("lower_symbol", "#"),
+        "plus symbol": ("lower_symbol", "+"),
+    }
+    if tail in symbol_names:
+        block, glyph = symbol_names[tail]
+    else:
+        glyph = normalize_font_glyph(glyph_text, block)
+        block = infer_font_block(glyph, block)
+    return registry.get("by_key", {}).get((font, block, normalize_font_glyph(glyph, block)))
+
+
+def resolve_font_shape(shape, registry):
+    for key in ("font_shape", "fontShape", "shape_name", "shapeName", "name", "type"):
+        value = shape.get(key)
+        if isinstance(value, str) and parse_numeric_int(value) is None:
+            item = resolve_font_from_name(value, registry)
+            if item:
+                return item
+    font = None
+    for key in ("font", "font_index", "fontIndex", "forza_font", "forzaFont"):
+        if key in shape:
+            font = parse_numeric_int(shape.get(key))
+            break
+    glyph = None
+    for key in ("glyph", "char", "character", "text"):
+        if key in shape:
+            glyph = shape.get(key)
+            break
+    if font is None or glyph is None:
+        return None
+    block = infer_font_block(glyph, shape.get("block") or shape.get("font_block") or shape.get("fontBlock"))
+    glyph = normalize_font_glyph(glyph, block)
+    return registry.get("by_key", {}).get((int(font), block, glyph))
+
+
+def shape_type_fields(shape, font_registry):
+    explicit_word = parse_numeric_int(shape.get("shape_word", shape.get("shapeWord", shape.get("type_word", shape.get("typeWord")))))
+    if explicit_word is not None:
+        type_code = parse_numeric_int(shape.get("type")) or explicit_word
+        return type_code, explicit_word & 0xFFFF, None
+    type_code = parse_numeric_int(shape.get("type"))
+    if type_code is not None:
+        return type_code, type_code & 0xFFFF, None
+    font_item = resolve_font_shape(shape, font_registry)
+    if font_item:
+        word = int(font_item["shape_word"]) & 0xFFFF
+        return 0x100000 + word, word, font_item
+    raise ValueError(f"shape type is not numeric and does not resolve to a known font glyph: {shape.get('type')!r}")
+
+
 def load_shapes(path, allow_unknown_low_byte=False):
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     shapes = payload.get("shapes")
@@ -177,9 +397,10 @@ def load_shapes(path, allow_unknown_low_byte=False):
         raise ValueError("JSON must contain non-empty shapes list.")
     out = []
     skipped = []
+    font_registry = load_font_registry()
     for i, shape in enumerate(shapes):
-        code = int(shape["type"])
-        if code not in SUPPORTED_PAGE1_CODES and not allow_unknown_low_byte:
+        code, shape_word, font_item = shape_type_fields(shape, font_registry)
+        if code not in SUPPORTED_PAGE1_CODES and font_item is None and not allow_unknown_low_byte:
             skipped_item = {
                 "source_index": i,
                 "source_layer": i + 1,
@@ -196,9 +417,10 @@ def load_shapes(path, allow_unknown_low_byte=False):
         out.append({
             "index": i,
             "type_code": code,
-            "shape_byte": code & 0xFF,
-            "shape_word": code & 0xFFFF,
-            "page_byte": (code >> 8) & 0xFF,
+            "shape_byte": shape_word & 0xFF,
+            "shape_word": shape_word & 0xFFFF,
+            "page_byte": (shape_word >> 8) & 0xFF,
+            "font_shape": font_item,
             "x": float(data[0]),
             "y": float(data[1]),
             "sx": float(data[2]),

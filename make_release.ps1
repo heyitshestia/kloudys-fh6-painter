@@ -55,6 +55,7 @@ $ProjectItems = @(
     "make_release.py",
     "docs",
     "assets",
+    "data",
     "settings"
 )
 
