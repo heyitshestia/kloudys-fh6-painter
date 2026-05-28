@@ -1286,6 +1286,7 @@ class MainWindow(QMainWindow):
         self.active_generation_images: list[Path] = []
         self.active_generation_run_dirs: dict[Path, Path] = {}
         self.latest_generated_run_dir: Path | None = None
+        self.generation_eta_state = {"total": None, "ema_ms": None, "last_current": 0}
         self.auto_located_context: dict | None = None
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
@@ -2663,6 +2664,7 @@ class MainWindow(QMainWindow):
             self.bus.log.emit(f"Luma Prep: {values.get('v2PreprocessMode', 'none')}")
             self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
             for image_path in images:
+                self.reset_generation_eta()
                 run_dir = next_generator_output_dir(image_path)
                 before = {path.resolve() for path in self.run_json_files(run_dir)}
                 self.latest_generated_run_dir = run_dir
@@ -2775,7 +2777,7 @@ class MainWindow(QMainWindow):
                 return f"Updated preview {current}/{total}"
             step_done = re.match(r"Step completed in (\d+)ms", detail)
             if step_done:
-                return f"Step {current}/{total} completed in {step_done.group(1)}ms"
+                return self.format_step_progress_with_eta(int(current), int(total), int(step_done.group(1)))
             retrying = re.match(r"No improvement .* Retry (\d+)/(\d+)", detail)
             if retrying:
                 return f"Retry {retrying.group(1)}/{retrying.group(2)} at layer {current}/{total}"
@@ -2816,6 +2818,36 @@ class MainWindow(QMainWindow):
         if text.startswith(important) or any(word in text.lower() for word in ("error", "failed", "traceback", "panic")):
             return text
         return None
+
+    def reset_generation_eta(self):
+        self.generation_eta_state = {"total": None, "ema_ms": None, "last_current": 0}
+
+    def format_step_progress_with_eta(self, current: int, total: int, step_ms: int) -> str:
+        state = self.generation_eta_state
+        if state.get("total") != total or current <= 1 or current < int(state.get("last_current") or 0):
+            state["total"] = total
+            state["ema_ms"] = float(step_ms)
+        else:
+            previous = float(state.get("ema_ms") or step_ms)
+            state["ema_ms"] = previous * 0.88 + float(step_ms) * 0.12
+        state["last_current"] = current
+
+        remaining = max(total - current, 0)
+        if remaining <= 0:
+            return f"Step {current}/{total} completed in {step_ms}ms | ETA done"
+        eta_seconds = int(round((float(state["ema_ms"]) * remaining) / 1000.0))
+        return f"Step {current}/{total} completed in {step_ms}ms | ETA {self.format_eta_duration(eta_seconds)}"
+
+    @staticmethod
+    def format_eta_duration(seconds: int) -> str:
+        seconds = max(int(seconds), 0)
+        hours, remainder = divmod(seconds, 3600)
+        minutes, secs = divmod(remainder, 60)
+        if hours:
+            return f"{hours}h {minutes:02d}m {secs:02d}s"
+        if minutes:
+            return f"{minutes}m {secs:02d}s"
+        return f"{secs}s"
 
     def run_preview_files(self, image_path, run_dir):
         image_path = Path(image_path)
