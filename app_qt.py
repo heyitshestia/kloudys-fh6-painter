@@ -549,6 +549,23 @@ def compare_versions(local_value: str, remote_value: str) -> int:
     return 0
 
 
+def version_update_distance(local_value: str, remote_value: str) -> int:
+    local_parts = version_tuple(local_value)
+    remote_parts = version_tuple(remote_value)
+    if local_parts is None or remote_parts is None:
+        return 1 if str(local_value).strip() != str(remote_value).strip() else 0
+    width = max(3, len(local_parts), len(remote_parts))
+    local_parts = local_parts + (0,) * (width - len(local_parts))
+    remote_parts = remote_parts + (0,) * (width - len(remote_parts))
+    if remote_parts <= local_parts:
+        return 0
+    if remote_parts[:2] == local_parts[:2]:
+        return max(1, remote_parts[2] - local_parts[2])
+    if remote_parts[0] == local_parts[0]:
+        return max(2, min(8, (remote_parts[1] - local_parts[1]) * 2 + max(0, remote_parts[2])))
+    return 8
+
+
 def main_revision_has_bugfix(local_revision: str | None, remote_revision: str | None) -> bool:
     if not local_revision or not remote_revision:
         return False
@@ -1345,6 +1362,7 @@ class MainWindow(QMainWindow):
         self._theme_apply_pending = False
         self.update_alarm_state = "checking"
         self.update_alarm_text = "checking main build..."
+        self.update_alarm_scale = 1.0
         self.update_blink_on = False
         self.update_check_running = False
         self.update_blink_timer = QTimer(self)
@@ -1389,12 +1407,12 @@ class MainWindow(QMainWindow):
         self.phase_label.setWordWrap(True)
         self.phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self.phase_label)
-        self.update_alarm = QLabel("Main build: checking...")
+        self.update_alarm = QLabel("Main build: checking...", central)
         self.update_alarm.setObjectName("updateAlarm")
         self.update_alarm.setWordWrap(True)
         self.update_alarm.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.update_alarm.setMaximumHeight(30)
-        root.addWidget(self.update_alarm)
+        self.update_alarm.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.update_alarm.raise_()
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
         self._build_generate_tab()
@@ -2182,6 +2200,12 @@ class MainWindow(QMainWindow):
     def show_update_alert(self, state: str, text: str):
         self.update_alarm_state = state
         self.update_alarm_text = text
+        self.update_alarm_scale = 1.0
+        if state == "available":
+            match = re.search(r"main\s+([0-9][0-9A-Za-z_.-]*)", text)
+            remote_version = match.group(1) if match else ""
+            distance = version_update_distance(local_app_version(), remote_version)
+            self.update_alarm_scale = min(3.0, 1.25 ** max(0, distance))
         self.update_blink_on = state in ("available", "bugfix")
         if state in ("available", "bugfix"):
             if not self.update_blink_timer.isActive():
@@ -2200,7 +2224,10 @@ class MainWindow(QMainWindow):
         state = self.update_alarm_state
         text = self.update_alarm_text
         self.update_alarm.setText(text)
-        base_style = "QLabel#updateAlarm { background: transparent; border: none; padding: 0; font-weight: 900; font-size: 9pt; }"
+        font_size = 9
+        if state == "available":
+            font_size = max(9, int(round(9 * self.update_alarm_scale)))
+        base_style = f"QLabel#updateAlarm {{ background: transparent; border: none; padding: 0; font-weight: 900; font-size: {font_size}pt; }}"
         if state == "available":
             if self.update_blink_on:
                 style = "color: #ff2020;"
@@ -2218,6 +2245,23 @@ class MainWindow(QMainWindow):
         else:
             style = "color: #808080;"
         self.update_alarm.setStyleSheet(base_style.replace("}", f" {style} }}"))
+        self.position_update_alarm()
+
+    def position_update_alarm(self):
+        if not hasattr(self, "update_alarm") or not hasattr(self, "background_widget"):
+            return
+        parent = self.background_widget
+        width = max(1, parent.width())
+        font_height = max(18, int(24 * getattr(self, "update_alarm_scale", 1.0)))
+        y = 46
+        if hasattr(self, "phase_label"):
+            y = max(8, self.phase_label.geometry().bottom() - 8)
+        self.update_alarm.setGeometry(0, y, width, font_height)
+        self.update_alarm.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.position_update_alarm()
 
     def populate_profile_list(self, select_path: Path | None = None):
         if not hasattr(self, "profile_combo"):
