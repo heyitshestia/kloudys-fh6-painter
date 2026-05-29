@@ -23,6 +23,8 @@ REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 BRANCH = "main"
 GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/refs/heads/{BRANCH}/VERSION"
 GITHUB_CHANGELOG_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/refs/heads/{BRANCH}/CHANGELOG.md"
+GITHUB_VERSION_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/VERSION?ref={BRANCH}"
+GITHUB_CHANGELOG_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/CHANGELOG.md?ref={BRANCH}"
 LOCAL_CHANGELOG = ROOT / "CHANGELOG.md"
 PYTHON_SETUP = ROOT / "01_add_python312_to_path.bat"
 DEPENDENCY_SETUP = ROOT / "02_install_dependencies.bat"
@@ -136,8 +138,26 @@ def compare_versions(local_value: str, remote_value: str) -> int:
 
 
 def remote_version() -> tuple[str, str, str]:
+    version = fetch_github_text(GITHUB_VERSION_API, GITHUB_VERSION_RAW).strip()
+    return version, version, ""
+
+
+def fetch_github_text(api_url: str, raw_url: str) -> str:
+    headers = {
+        "Accept": "application/vnd.github.raw",
+        "Cache-Control": "no-cache",
+        "User-Agent": "KloudysFH6Painter",
+    }
+    try:
+        request = urllib.request.Request(api_url, headers=headers)
+        with urllib.request.urlopen(request, timeout=12) as response:
+            text = response.read().decode("utf-8", errors="replace")
+        if text.strip():
+            return text
+    except Exception:
+        pass
     request = urllib.request.Request(
-        f"{GITHUB_VERSION_RAW}?cache={int(datetime.now().timestamp())}",
+        f"{raw_url}?cache={int(datetime.now().timestamp())}",
         headers={
             "Accept": "text/plain",
             "Cache-Control": "no-cache",
@@ -145,8 +165,7 @@ def remote_version() -> tuple[str, str, str]:
         },
     )
     with urllib.request.urlopen(request, timeout=12) as response:
-        version = response.read().decode("utf-8", errors="replace").strip()
-    return version, version, ""
+        return response.read().decode("utf-8", errors="replace")
 
 
 def find_python312() -> list[str] | None:
@@ -304,16 +323,7 @@ class Launcher(QMainWindow):
 
     def _load_changelog_worker(self):
         try:
-            request = urllib.request.Request(
-                f"{GITHUB_CHANGELOG_RAW}?cache={int(datetime.now().timestamp())}",
-                headers={
-                    "Accept": "text/plain",
-                    "Cache-Control": "no-cache",
-                    "User-Agent": "KloudysFH6Painter",
-                },
-            )
-            with urllib.request.urlopen(request, timeout=12) as response:
-                text = response.read().decode("utf-8", errors="replace").strip()
+            text = fetch_github_text(GITHUB_CHANGELOG_API, GITHUB_CHANGELOG_RAW).strip()
             if text:
                 self.bus.changelog.emit(f"Source: GitHub main / CHANGELOG.md\n\n{text}")
                 return

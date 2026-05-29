@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.62
+
+- Launcher version and changelog checks now prefer GitHub contents/raw API responses, with raw file URLs as fallback.
+- This avoids stale raw-CDN version text immediately after pushes.
+
 ## 1.10.61
 
 - Launcher GitHub checks now read from `refs/heads/main` so version and changelog checks avoid stale raw `main` aliases.
