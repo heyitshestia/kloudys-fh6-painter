@@ -137,7 +137,7 @@ def compare_versions(local_value: str, remote_value: str) -> int:
 
 def remote_version() -> tuple[str, str, str]:
     request = urllib.request.Request(
-        GITHUB_VERSION_RAW,
+        f"{GITHUB_VERSION_RAW}?cache={int(datetime.now().timestamp())}",
         headers={
             "Accept": "text/plain",
             "Cache-Control": "no-cache",
@@ -305,7 +305,7 @@ class Launcher(QMainWindow):
     def _load_changelog_worker(self):
         try:
             request = urllib.request.Request(
-                GITHUB_CHANGELOG_RAW,
+                f"{GITHUB_CHANGELOG_RAW}?cache={int(datetime.now().timestamp())}",
                 headers={
                     "Accept": "text/plain",
                     "Cache-Control": "no-cache",

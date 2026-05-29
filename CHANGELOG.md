@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.60
+
+- GitHub version and changelog checks now use cache-busted raw URLs so the launcher sees fresh `main` updates more reliably.
+
 ## 1.10.59
 
 - Launcher changelog now loads update notes from GitHub `main` instead of reading local updater log files.
