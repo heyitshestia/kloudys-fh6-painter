@@ -369,6 +369,51 @@ def resize_source_for_generation(image_path: Path, max_resolution: int) -> np.nd
     return np.asarray(img, dtype=np.float32)
 
 
+def remove_alpha_fringe_noise(rgba: np.ndarray) -> tuple[np.ndarray, dict[str, int | float | bool]]:
+    """Remove low-alpha junk from imperfect background removers.
+
+    Background remover halos often leave thousands of almost-transparent pixels
+    far away from the real art. The generator still treats those pixels as work:
+    they create alpha edges, consume samples, and encourage faint spill shapes.
+    This keeps normal anti-aliased edges near opaque art while dropping isolated
+    low-alpha haze.
+    """
+    if rgba.ndim != 3 or rgba.shape[2] < 4:
+        return rgba, {"enabled": False, "changed": False, "removed_pixels": 0}
+
+    alpha = np.clip(rgba[..., 3], 0, 255).astype(np.uint8)
+    total = int(alpha.size)
+    if total == 0 or int(np.min(alpha)) >= 250:
+        return rgba, {"enabled": True, "changed": False, "removed_pixels": 0, "removed_fraction": 0.0}
+
+    hard_drop = alpha <= 16
+    core = alpha >= 96
+    if np.any(core):
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        near_core = cv2.dilate(core.astype(np.uint8), kernel, iterations=1).astype(bool)
+        soft_haze = (alpha < 48) & ~near_core
+        drop = hard_drop | soft_haze
+    else:
+        drop = hard_drop
+
+    removed = int(np.count_nonzero(drop & (alpha > 0)))
+    if removed <= 0:
+        return rgba, {"enabled": True, "changed": False, "removed_pixels": 0, "removed_fraction": 0.0}
+
+    cleaned = rgba.copy()
+    cleaned[drop, 3] = 0.0
+    cleaned[drop, :3] = 0.0
+    return cleaned, {
+        "enabled": True,
+        "changed": True,
+        "removed_pixels": removed,
+        "removed_fraction": round(removed / float(max(1, total)), 6),
+        "hard_threshold": 16,
+        "soft_threshold": 48,
+        "core_threshold": 96,
+    }
+
+
 def apply_preprocess(rgba: np.ndarray, mode: str) -> np.ndarray:
     if mode == "none":
         return rgba
@@ -2072,13 +2117,16 @@ def main() -> int:
 
     max_resolution = int(base_settings.get("maxResolution", "0") or 0)
     source_rgba = resize_source_for_generation(image_path, max_resolution)
+    source_rgba, alpha_cleanup = remove_alpha_fringe_noise(source_rgba)
     art_profile = source_art_profile(source_rgba)
     prepared_rgba = apply_logo_hard_edges(source_rgba) if logo_hard_edges else source_rgba
     processed_rgba = apply_preprocess(prepared_rgba, args.preprocess_mode)
     generation_image_path = image_path
     preprocess_output_path = None
-    if logo_hard_edges or args.preprocess_mode != "none":
+    if alpha_cleanup.get("changed") or logo_hard_edges or args.preprocess_mode != "none":
         prep_parts = []
+        if alpha_cleanup.get("changed"):
+            prep_parts.append("alpha-clean")
         if logo_hard_edges:
             prep_parts.append("logo-edges")
         if args.preprocess_mode != "none":
@@ -2099,6 +2147,15 @@ def main() -> int:
         print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Luma Prep mode:         {args.preprocess_mode}")
+    if alpha_cleanup.get("changed"):
+        print(
+            "Alpha cleanup:         removed "
+            f"{alpha_cleanup.get('removed_pixels')} low-alpha fringe pixel(s) "
+            f"({float(alpha_cleanup.get('removed_fraction') or 0.0) * 100.0:.3f}%)",
+            flush=True,
+        )
+    else:
+        print("Alpha cleanup:         no low-alpha fringe cleanup needed")
     print(f"Logo edge prep:         {logo_hard_edges}")
     print(f"Force opaque shapes:   {force_opaque_shapes}")
     print(f"Live preview every:     {live_preview_every} layer(s)")
@@ -2524,6 +2581,7 @@ def main() -> int:
         "preprocess": {
             "mode": args.preprocess_mode,
             "output": str(preprocess_output_path) if preprocess_output_path is not None else None,
+            "alpha_cleanup": sorted_mapping(alpha_cleanup),
         },
         "source_art_profile": sorted_mapping(art_profile),
         "preprocess_mode": args.preprocess_mode,
