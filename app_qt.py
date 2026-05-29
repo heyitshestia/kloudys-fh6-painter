@@ -88,6 +88,7 @@ REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-fh6-painter"
 BRANCH = "main"
 GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
+KOFI_URL = "https://ko-fi.com/O7O020EQNQ"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
@@ -1434,6 +1435,14 @@ class MainWindow(QMainWindow):
         footer.addSpacing(24)
         footer.addWidget(QLabel("Progress:"))
         footer.addWidget(self.progress_label, 1)
+        self.kofi_button = QPushButton("Ko-fi")
+        self.kofi_button.setObjectName("kofiButton")
+        self.kofi_button.setToolTip("Support Kloudy's FH6 Painter on Ko-fi")
+        self.kofi_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.kofi_button.setFixedHeight(24)
+        self.kofi_button.setMaximumWidth(90)
+        self.kofi_button.clicked.connect(self.open_kofi)
+        footer.addWidget(self.kofi_button)
         root.addLayout(footer)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -1448,6 +1457,9 @@ class MainWindow(QMainWindow):
             combo.addItems([str(item) for item in items])
         self._all_combos.append(combo)
         return combo
+
+    def open_kofi(self):
+        QDesktopServices.openUrl(QUrl(KOFI_URL))
 
     def help_button(self, key: str) -> QToolButton:
         title, body = HELP_TEXT[key]
@@ -2128,6 +2140,8 @@ class MainWindow(QMainWindow):
                 QPushButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; border-radius: 10px; padding: 8px 14px; font-weight: 700; min-height: 26px; }
                 QPushButton:hover { background: #f8d9e4; }
                 QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
+                QPushButton#kofiButton { background: #ffffff; color: #7f3d58; border: 1px solid #d65f89; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
+                QPushButton#kofiButton:hover { background: #fff0f6; color: #a83f67; border-color: #a83f67; }
                 QToolButton#helpButton { background: #7f3d58; color: #ffffff; border: 1px solid #fffafa; border-radius: 12px; font-weight: 900; }
                 QToolButton#helpButton:hover { background: #a83f67; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
@@ -2155,6 +2169,8 @@ class MainWindow(QMainWindow):
                 QPushButton:pressed { background: #050914; border-color: #ffffff; }
                 QPushButton#primaryButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.52 #ffb000, stop:1 #24e9ff); color: #07101a; border: 1px solid #ffffff; font-weight: 950; padding: 12px 16px; }
                 QPushButton#primaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff6b42, stop:0.50 #ffd166, stop:1 #6df6ff); color: #020407; }
+                QPushButton#kofiButton { background: rgba(36, 233, 255, 42); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 150); border-radius: 8px; padding: 2px 10px; font-weight: 950; min-height: 18px; max-height: 24px; }
+                QPushButton#kofiButton:hover { background: rgba(255, 74, 43, 130); color: #ffffff; border-color: #ffb000; }
                 QToolButton#helpButton { background: #24e9ff; color: #07101a; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
                 QToolButton#helpButton:hover { background: #ffb000; color: #020407; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: rgba(2, 7, 14, 238); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); border-radius: 9px; padding: 6px; selection-background-color: #ff4a2b; selection-color: #ffffff; }
@@ -2190,6 +2206,8 @@ class MainWindow(QMainWindow):
                 QPushButton:pressed { background: #000000; }
                 QPushButton#primaryButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; font-weight: 900; padding: 12px 14px; }
                 QPushButton#primaryButton:hover { background: #dedede; color: #000000; }
+                QPushButton#kofiButton { background: #000000; color: #dcdcdc; border: 1px solid #343434; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
+                QPushButton#kofiButton:hover { background: #101010; color: #ffffff; border-color: #777777; }
                 QToolButton#helpButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
                 QToolButton#helpButton:hover { background: #d0d0d0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
@@ -2220,6 +2238,8 @@ class MainWindow(QMainWindow):
                 QPushButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-radius: 10px; padding: 8px 14px; min-height: 26px; }
                 QPushButton:hover { background: #dfc9ff; }
                 QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
+                QPushButton#kofiButton { background: #fffdf8; color: #6c3fa0; border: 1px solid #c7a8ea; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
+                QPushButton#kofiButton:hover { background: #f7eefe; color: #9f6ad8; border-color: #9f6ad8; }
                 QToolButton#helpButton { background: #9f6ad8; color: white; border: 1px solid #ffffff; border-radius: 12px; font-weight: 900; }
                 QToolButton#helpButton:hover { background: #7b4eb0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }

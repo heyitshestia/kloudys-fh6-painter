@@ -12,7 +12,8 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, Signal, QTimer
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QTextCursor
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSplitter, QTabWidget, QTextEdit, QVBoxLayout, QWidget
 
 
 ROOT = Path(__file__).resolve().parent
@@ -35,6 +36,7 @@ class Bus(QObject):
     status = Signal(str, str)
     log = Signal(str)
     busy = Signal(bool)
+    reload_changelog = Signal()
 
 
 def run_command(cmd, cwd=ROOT, env_extra=None):
@@ -193,6 +195,7 @@ class Launcher(QMainWindow):
         self.bus.status.connect(self.set_status)
         self.bus.log.connect(self.log)
         self.bus.busy.connect(self.set_busy)
+        self.bus.reload_changelog.connect(self.load_changelog)
         self.update_available = False
         self.remote_full = None
         self._build()
@@ -242,8 +245,24 @@ class Launcher(QMainWindow):
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        layout.addWidget(self.log_box, 1)
+        self.log_box.setMinimumHeight(80)
+
+        self.changelog_box = QTextEdit()
+        self.changelog_box.setReadOnly(True)
+        self.changelog_box.setPlaceholderText("Update history will appear here after the updater has run.")
+
+        history_split = QSplitter(Qt.Orientation.Vertical)
+        history_split.addWidget(self.changelog_box)
+        history_split.addWidget(self.log_box)
+        history_split.setStretchFactor(0, 3)
+        history_split.setStretchFactor(1, 1)
+        history_split.setSizes([360, 120])
+
+        self.update_tabs = QTabWidget()
+        self.update_tabs.addTab(history_split, "Changelog / Logs")
+        layout.addWidget(self.update_tabs, 1)
         self.setCentralWidget(root)
+        self.load_changelog()
 
     def apply_theme(self):
         self.setStyleSheet(
@@ -257,6 +276,10 @@ class Launcher(QMainWindow):
             QPushButton:hover { background: #dfc9ff; }
             QPushButton#primaryButton { background: #42a85b; color: white; font-size: 13pt; }
             QPushButton#dangerButton { background: #dc2626; color: white; font-size: 13pt; }
+            QTabWidget::pane { background: #fffdf8; border: 1px solid #d8c2f0; border-radius: 12px; }
+            QTabBar::tab { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; border-bottom: none; border-top-left-radius: 10px; border-top-right-radius: 10px; padding: 8px 16px; font-weight: 700; }
+            QTabBar::tab:selected { background: #fffdf8; color: #6c3fa0; }
+            QSplitter::handle { background: #eadcff; border-radius: 4px; }
             QTextEdit { background: #fffdf8; border: 1px solid #d8c2f0; border-radius: 12px; padding: 8px; }
             """
         )
@@ -268,6 +291,27 @@ class Launcher(QMainWindow):
     def log(self, text: str):
         stamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.append(f"[{stamp}] {text}")
+
+    def load_changelog(self):
+        if not hasattr(self, "changelog_box"):
+            return
+        log_dir = ROOT / "runtime" / "update-logs"
+        entries: list[str] = []
+        if log_dir.exists():
+            logs = sorted(log_dir.glob("update-*.log"), key=lambda path: path.stat().st_mtime, reverse=True)[:12]
+            for log_path in logs:
+                try:
+                    text = log_path.read_text(encoding="utf-8", errors="replace").strip()
+                except OSError as exc:
+                    text = f"Could not read update log: {exc}"
+                entries.append(f"===== {log_path.name} =====\n{text}")
+        if not entries:
+            entries.append(
+                "No update logs found yet.\n\n"
+                "After you click Update, this tab keeps old updater output here so you can scroll back through previous updates."
+            )
+        self.changelog_box.setPlainText("\n\n".join(entries))
+        self.changelog_box.moveCursor(QTextCursor.MoveOperation.Start)
 
     def set_status(self, text: str, mode: str):
         self.status.setText(text)
@@ -359,6 +403,7 @@ class Launcher(QMainWindow):
                 if line:
                     self.bus.log.emit(line)
             self.bus.log.emit(f"Update exited with code {code}.")
+            self.bus.reload_changelog.emit()
         finally:
             self.bus.busy.emit(False)
             self.refresh_status()
@@ -372,6 +417,7 @@ class Launcher(QMainWindow):
                 if line:
                     self.bus.log.emit(line)
             self.bus.log.emit(f"Update exited with code {code}.")
+            self.bus.reload_changelog.emit()
         finally:
             self.bus.busy.emit(False)
             self.refresh_status()
