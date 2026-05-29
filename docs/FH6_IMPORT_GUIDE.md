@@ -8,10 +8,10 @@ The importer can only write correctly when FH6 is in the exact expected editor s
 
 1. Start FH6 on the same Windows PC as the app.
 2. Open Vinyl Group Editor.
-3. Load/create a template with enough simple layers.
-4. Ungroup the template.
+3. Load your saved 3000-layer plain white circle template.
+4. If you just created it, save it once, leave/reopen it, then ungroup it.
 5. Do not switch menus.
-6. Enter the exact template layer count in the app.
+6. Enter `3000` as the exact template layer count in the app unless you intentionally opened a different template.
 7. Pick a finalized JSON from `finals/`.
 8. Click `Auto-locate FH6 template` if needed.
 9. Click `Import Final JSON into FH6`.
@@ -94,10 +94,10 @@ Use a simple one-shape placeholder template.
 Common template:
 
 ```text
-2000 simple white circle layers
+3000 simple plain white circle layers
 ```
 
-or another simple shape template known to import correctly.
+Create this template once, save it, leave/reopen it before first use, then ungroup it before importing. The saved 3000-circle template is reusable; the importer writes into the open copy and trims the imported result to the JSON's used layer count.
 
 The exact placeholder art does not matter as much as:
 
@@ -105,6 +105,7 @@ The exact placeholder art does not matter as much as:
 - the layers are editable
 - the group is ungrouped
 - FH6 is in the right editor state
+- the template was saved/reopened once after creation
 
 ### Why A Template Is Needed
 

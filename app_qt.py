@@ -254,11 +254,12 @@ reports
 In Forza Horizon 6:
 
 1. Open Vinyl Group Editor.
-2. Load or create a simple-layer template.
-3. Ungroup the template.
-4. Stay in the Vinyl Group Editor.
-5. Do not switch menus after preparing the template.
-6. Remember the exact template layer count shown by FH6.
+2. Create or load a 3000-layer template made from simple plain white circle layers.
+3. Save that 3000-circle template once, then leave/reopen it before using it for imports.
+4. Reuse this same saved template for future imports. The importer writes into the open copy and trims the saved result; it does not overwrite your reusable template unless you save over it yourself.
+5. Open the template in Vinyl Group Editor and ungroup it so every circle layer is individually editable.
+6. Stay in the Vinyl Group Editor. Do not switch menus after preparing the template.
+7. Enter 3000 as the exact template layer count unless you intentionally opened a different template.
 
 Default import uses the full template for art layers.
 Finalize Checkpoints keeps transparent-source shapes inside the PNG canvas, so normal imports do not need FH border masks.
@@ -282,7 +283,7 @@ Open Import Final JSON.
 1. Pick the generated vinyl run.
 2. Pick the finalized checkpoint you want.
 3. Check the preview.
-4. Enter the exact FH6 template layer count.
+4. Enter the exact FH6 template layer count. Default/recommended is 3000.
 5. Click Auto-locate FH6 template if needed.
 6. Click Import Final JSON into FH6.
 
@@ -378,7 +379,8 @@ HELP_TEXT = {
     "import_template": (
         "Import Template Layer Count",
         "Enter the exact layer count of the open ungrouped FH6 template.\n\n"
-        "Normal imports now use all template layers for art and then cull to the JSON's used layer count. A 2000-shape JSON should use a 2000-layer template unless you intentionally use a larger one."
+        "Recommended default: use one saved 3000-layer template made from plain white circles. Save it once, reopen it before importing, ungroup it, and enter 3000.\n\n"
+        "Normal imports use all open template layers for art and then cull the saved result to the JSON's used layer count. The reusable 3000-circle template itself is not overwritten unless you save over that template manually."
     ),
     "final_json_browser": (
         "Final JSON Browser",
@@ -392,7 +394,8 @@ HELP_TEXT = {
     ),
     "handmade_template": (
         "Universal Import Template",
-        "Use a fresh 3000-layer circle template for universal handmade imports.\n\n"
+        "Use a saved/reopened 3000-layer plain white circle template for universal handmade imports.\n\n"
+        "Create the template once, save it, reopen it when needed, then ungroup it before importing. The importer trims the imported result, so the 3000-circle base template can be reused.\n\n"
         "Ungrouped templates are still the safest target. Grouped templates can be found and written in current testing, "
         "but treat grouped import as experimental until more save/reload cases are verified. The importer writes the "
         "requested shapes, then trims the group to the used layer count after writing."
@@ -1674,7 +1677,7 @@ class MainWindow(QMainWindow):
         self.layer_count = QLineEdit("3000")
         template_layout.addWidget(self.label_with_help("Exact template layer count", "import_template"), 0, 0)
         template_layout.addWidget(self.layer_count, 0, 1)
-        template_help = QLabel("Default workflow: use one 3000-layer template. Imports are culled to the JSON's drawable layer count after writing.")
+        template_help = QLabel("Default workflow: create one plain white 3000-circle template, save it, reopen it, ungroup it, and enter 3000. Reuse that same saved template for future imports.")
         template_help.setWordWrap(True)
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
@@ -1761,7 +1764,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([640, 640])
 
         intro = QLabel(
-            "Universal handmade importer. Import a handmade JSON into a fresh FH6 template."
+            "Universal handmade importer. Import a handmade JSON into a saved/reopened 3000 white-circle FH6 template."
         )
         intro.setWordWrap(True)
         left_layout.addWidget(intro)
@@ -1786,10 +1789,10 @@ class MainWindow(QMainWindow):
         template = QGroupBox("Step 2 - Base Template")
         template_layout = QGridLayout(template)
         self.handmade_template_count = QLineEdit("3000")
-        self.handmade_template_count.setToolTip("Use a fresh 3000-layer circle template for universal imports, then the app trims to the used layer count. Ungrouped is safest; grouped import is experimental.")
+        self.handmade_template_count.setToolTip("Use one saved/reopened 3000-layer plain white circle template. Ungroup it before importing; the app trims the imported result to the used layer count.")
         template_layout.addWidget(self.label_with_help("Loaded template layer count", "handmade_template"), 0, 0)
         template_layout.addWidget(self.handmade_template_count, 0, 1)
-        template_help = QLabel("Recommended: open a fresh 3000-layer template in FH6 Vinyl Group Editor and ungroup it before importing. Grouped targets can be written in current testing, but verify with save/reload.")
+        template_help = QLabel("Recommended: create the 3000 white-circle template once, save it, reopen it, then ungroup it before importing. It is reusable because imports write into the open copy and trim the result.")
         template_help.setWordWrap(True)
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
@@ -1835,8 +1838,8 @@ class MainWindow(QMainWindow):
             "- Trims FH6 group count and table end after import.\n\n"
             "Current best workflow:\n"
             "1. Open FH6 Vinyl Group Editor.\n"
-            "2. Load/prepare a fresh 3000-layer circle template.\n"
-            "3. Ungroup it when possible. Grouped import is experimental but possible in current testing.\n"
+            "2. Load your saved 3000-layer plain white circle template.\n"
+            "3. Reopen it if you just created/saved it, then ungroup it before importing.\n"
             "4. To import: choose a handmade JSON, import, then save/reload."
         )
         right_layout.addWidget(notes, 1)

@@ -73,11 +73,12 @@ If something is broken, run this from inside `KloudysFH6Painter/`:
 7. Set `Template layers` to the FH6 template size you plan to use.
 8. Click `Generate Final Vinyl`.
 9. Wait until the log says `FINALIZE CHECKPOINTS COMPLETE`.
-10. Open FH6 and prepare an ungrouped vinyl template with enough layers.
-11. Open `Import Final JSON`.
-12. Pick a finalized checkpoint.
-13. Enter the exact FH6 template layer count.
-14. Click `Import Final JSON into FH6`.
+10. Open FH6 and load your saved 3000-layer plain white circle template.
+11. If you just created that template, save it once, leave/reopen it, then ungroup it.
+12. Open `Import Final JSON`.
+13. Pick a finalized checkpoint.
+14. Enter `3000` as the exact FH6 template layer count.
+15. Click `Import Final JSON into FH6`.
 
 The important part: generation is not done when the GPU generator finishes. The final import files are ready only after Finalize Checkpoints finishes.
 
@@ -275,8 +276,8 @@ It is intended for handmade/exported JSONs that contain real FH shape type codes
 Current workflow:
 
 1. Open FH6 Vinyl Group Editor.
-2. Load a fresh 3000-layer template.
-3. Ungroup the template.
+2. Load your saved 3000-layer plain white circle template.
+3. If you just created it, save it once, leave/reopen it, then ungroup it.
 4. Choose the handmade JSON in the app.
 5. Import it.
 6. Save and reload the vinyl group before judging the final result.
@@ -286,7 +287,7 @@ Important WIP notes:
 - Save/reload is currently needed before the imported shapes display correctly.
 - A strange vinyl thumbnail in the FH6 menu is normal right now.
 - Both the live-editor display refresh and thumbnail behavior are still being worked on.
-- The importer trims the live group count after import, so one large template can be used and culled down to the final layer count.
+- The importer trims the live group count after import, so one saved 3000-circle template can be reused and culled down to the final layer count.
 - The exporter is read-only. It exports the currently loaded/open FH6 group into a compatible JSON using the live layer count you enter.
 
 ## Common Problems
@@ -340,7 +341,7 @@ Confirmed implementation details:
 - The importer writes only save-safe layer fields: position, scale, rotation, skew, color, mask flag, and shape word.
 - The exporter reads the same save-safe fields from the currently open FH6 group and writes them to a compatible JSON.
 - Volatile render/cache fields and resource pointers are intentionally not copied.
-- A 3000-layer template can be used as the base for imports.
+- A saved/reopened 3000-layer plain white circle template is the recommended reusable base for imports.
 - After import, the app trims the FH6 group count and table end so the saved vinyl uses only the actual layer count.
 - A 13-tab / 520-shape FH6 registry was built from confirmed tab anchors plus sheet-backed and inferred shape ordering.
 

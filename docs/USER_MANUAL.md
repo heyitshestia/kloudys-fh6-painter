@@ -39,7 +39,7 @@ Kloudy's FH6 Painter has two major jobs:
 1. Convert source art into finalized Forza vinyl JSON.
 2. Import a finalized JSON into an open Forza Horizon 6 Vinyl Group Editor template.
 
-The app does not magically edit a livery from outside the game. FH6 must be running, you must be in the correct editor screen, and you must provide a layer template with enough layers.
+The app does not magically edit a livery from outside the game. FH6 must be running, you must be in the correct editor screen, and the recommended reusable base is a saved/reopened 3000-layer plain white circle template.
 
 The normal flow is:
 
@@ -799,10 +799,11 @@ Short version:
 
 1. FH6 is running.
 2. You are in Vinyl Group Editor.
-3. The template group is open.
-4. The template is ungrouped.
-5. The exact layer count is entered.
-6. The selected JSON fits the usable layer budget.
+3. Your saved 3000-layer plain white circle template is open.
+4. If you just made the template, it was saved once and reopened.
+5. The template is ungrouped.
+6. The exact layer count is entered, normally `3000`.
+7. The selected JSON fits the usable layer budget.
 
 For the detailed FH6 setup, read [FH6_IMPORT_GUIDE.md](FH6_IMPORT_GUIDE.md).
 
@@ -825,10 +826,12 @@ If FH6 is not listed:
 
 `Exact template layer count` must match the actual group you prepared in FH6.
 
-If the group has 2000 layers, enter:
+Recommended default: create one 3000-layer plain white circle template, save it once, reopen it, ungroup it, and reuse it.
+
+If the group has 3000 layers, enter:
 
 ```text
-2000
+3000
 ```
 
 Do not guess. Wrong layer count can make auto-location fail or point to the wrong memory region.
