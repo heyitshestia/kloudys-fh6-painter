@@ -30,6 +30,7 @@ PROJECT_ITEMS = [
     "update_from_github.bat",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "VERSION",
     "LICENSE",
     "LICENSE.custom-importer",

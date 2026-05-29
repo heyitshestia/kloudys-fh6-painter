@@ -22,6 +22,8 @@ REPO_NAME = "kloudys-fh6-painter"
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 BRANCH = "main"
 GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
+GITHUB_CHANGELOG_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/CHANGELOG.md"
+LOCAL_CHANGELOG = ROOT / "CHANGELOG.md"
 PYTHON_SETUP = ROOT / "01_add_python312_to_path.bat"
 DEPENDENCY_SETUP = ROOT / "02_install_dependencies.bat"
 APP_ENTRY = ROOT / "app_qt.py"
@@ -37,6 +39,7 @@ class Bus(QObject):
     log = Signal(str)
     busy = Signal(bool)
     reload_changelog = Signal()
+    changelog = Signal(str)
 
 
 def run_command(cmd, cwd=ROOT, env_extra=None):
@@ -196,6 +199,7 @@ class Launcher(QMainWindow):
         self.bus.log.connect(self.log)
         self.bus.busy.connect(self.set_busy)
         self.bus.reload_changelog.connect(self.load_changelog)
+        self.bus.changelog.connect(self.set_changelog)
         self.update_available = False
         self.remote_full = None
         self._build()
@@ -249,7 +253,7 @@ class Launcher(QMainWindow):
 
         self.changelog_box = QTextEdit()
         self.changelog_box.setReadOnly(True)
-        self.changelog_box.setPlaceholderText("Update history will appear here after the updater has run.")
+        self.changelog_box.setPlaceholderText("GitHub changelog will appear here.")
 
         history_split = QSplitter(Qt.Orientation.Vertical)
         history_split.addWidget(self.changelog_box)
@@ -259,7 +263,7 @@ class Launcher(QMainWindow):
         history_split.setSizes([360, 120])
 
         self.update_tabs = QTabWidget()
-        self.update_tabs.addTab(history_split, "Changelog / Logs")
+        self.update_tabs.addTab(history_split, "GitHub Changelog")
         layout.addWidget(self.update_tabs, 1)
         self.setCentralWidget(root)
         self.load_changelog()
@@ -295,22 +299,43 @@ class Launcher(QMainWindow):
     def load_changelog(self):
         if not hasattr(self, "changelog_box"):
             return
-        log_dir = ROOT / "runtime" / "update-logs"
-        entries: list[str] = []
-        if log_dir.exists():
-            logs = sorted(log_dir.glob("update-*.log"), key=lambda path: path.stat().st_mtime, reverse=True)[:12]
-            for log_path in logs:
-                try:
-                    text = log_path.read_text(encoding="utf-8", errors="replace").strip()
-                except OSError as exc:
-                    text = f"Could not read update log: {exc}"
-                entries.append(f"===== {log_path.name} =====\n{text}")
-        if not entries:
-            entries.append(
-                "No update logs found yet.\n\n"
-                "After you click Update, this tab keeps old updater output here so you can scroll back through previous updates."
+        self.changelog_box.setPlainText("Loading GitHub changelog...")
+        threading.Thread(target=self._load_changelog_worker, daemon=True).start()
+
+    def _load_changelog_worker(self):
+        try:
+            request = urllib.request.Request(
+                GITHUB_CHANGELOG_RAW,
+                headers={
+                    "Accept": "text/plain",
+                    "Cache-Control": "no-cache",
+                    "User-Agent": "KloudysFH6Painter",
+                },
             )
-        self.changelog_box.setPlainText("\n\n".join(entries))
+            with urllib.request.urlopen(request, timeout=12) as response:
+                text = response.read().decode("utf-8", errors="replace").strip()
+            if text:
+                self.bus.changelog.emit(f"Source: GitHub main / CHANGELOG.md\n\n{text}")
+                return
+        except Exception as exc:
+            fallback_reason = str(exc)
+        else:
+            fallback_reason = "GitHub changelog was empty."
+        try:
+            text = LOCAL_CHANGELOG.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            text = (
+                "GitHub changelog could not be loaded, and no local CHANGELOG.md is available.\n\n"
+                f"Reason: {fallback_reason}"
+            )
+        else:
+            text = f"Source: local fallback CHANGELOG.md\nGitHub fetch failed: {fallback_reason}\n\n{text}"
+        self.bus.changelog.emit(text)
+
+    def set_changelog(self, text: str):
+        if not hasattr(self, "changelog_box"):
+            return
+        self.changelog_box.setPlainText(text)
         self.changelog_box.moveCursor(QTextCursor.MoveOperation.Start)
 
     def set_status(self, text: str, mode: str):

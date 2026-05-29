@@ -26,6 +26,7 @@ $ProjectItems = @(
     "99_clean_runtime_data.bat",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "VERSION",
     "LICENSE",
     "LICENSE.custom-importer",
