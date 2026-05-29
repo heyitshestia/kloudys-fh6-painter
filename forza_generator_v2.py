@@ -1126,6 +1126,7 @@ def prune_to_target(
         enforce_canvas_boundary=enforce_canvas_boundary,
         importance_map=importance_map,
         max_batch=96,
+        removal_limit=max(0, len(working) - target_count),
     )
     if len(working) <= target_count:
         _, _, _, _, _, total_error, scored_pixels = render_and_score(
@@ -1252,9 +1253,27 @@ def remove_fully_covered_layers(
     enforce_canvas_boundary: bool = False,
     importance_map: np.ndarray | None = None,
     max_batch: int = 64,
+    removal_limit: int | None = None,
 ) -> tuple[list[dict], float, dict]:
     if not shapes:
         return [], 0.0, {"removed": 0, "before": 0, "after": 0, "score_before": 0.0, "score_after": 0.0}
+    if removal_limit is not None and removal_limit <= 0:
+        current_error = score_shape_list(
+            background,
+            shapes,
+            target_rgba,
+            enforce_canvas_boundary=enforce_canvas_boundary,
+            importance_map=importance_map,
+        )
+        return list(shapes), current_error, {
+            "removed": 0,
+            "rejected": 0,
+            "before": len(shapes),
+            "after": len(shapes),
+            "score_before": current_error,
+            "score_after": current_error,
+            "skipped": "candidate is already at or under the target layer budget",
+        }
 
     working = list(shapes)
     initial_count = len(working)
@@ -1283,7 +1302,14 @@ def remove_fully_covered_layers(
 
         progress = False
         while hidden_indices:
-            batch = hidden_indices[: max(1, min(max_batch, len(hidden_indices)))]
+            remaining_allowed = None if removal_limit is None else max(0, int(removal_limit) - removed_total)
+            if remaining_allowed is not None and remaining_allowed <= 0:
+                hidden_indices = []
+                break
+            batch_size = max(1, min(max_batch, len(hidden_indices)))
+            if remaining_allowed is not None:
+                batch_size = min(batch_size, remaining_allowed)
+            batch = hidden_indices[:batch_size]
             remove_idx = set(batch)
             candidate = [shape for idx, shape in enumerate(working) if idx not in remove_idx]
             candidate_error = score_shape_list(
@@ -1400,6 +1426,89 @@ def force_opaque_drawables(shapes: list[dict]) -> list[dict]:
         fixed["color"] = color
         out.append(fixed)
     return out
+
+
+def stabilize_flat_region_colors(
+    shapes: list[dict],
+    target_rgba: np.ndarray,
+    force_opaque: bool = True,
+    min_pixels: int = 48,
+) -> tuple[list[dict], dict]:
+    """Snap large low-variance flat-art shapes to dominant source colors.
+
+    The raw generator can choose slightly different optimal colors for many
+    overlapping shapes in one flat field. That lowers numeric error locally but
+    reads as milky/noisy patches in FH. This pass is deliberately conservative:
+    only shapes whose local source pixels have a clear dominant color bin are
+    changed.
+    """
+    if not shapes:
+        return shapes, {"enabled": True, "changed": 0, "checked": 0, "skipped": 0}
+
+    height, width = target_rgba.shape[:2]
+    target = np.clip(target_rgba, 0, 255).astype(np.uint8)
+    stabilized: list[dict] = []
+    changed = 0
+    checked = 0
+    skipped = 0
+    for shape in shapes:
+        fixed = copy_shape(shape)
+        color = list(fixed.get("color", [0, 0, 0, 255]))
+        if len(color) < 4 or int(color[3]) <= 0:
+            stabilized.append(fixed)
+            skipped += 1
+            continue
+        bbox, mask = shape_mask(fixed, width, height)
+        x0, x1, y0, y1 = bbox
+        if x1 < x0 or y1 < y0 or not np.any(mask):
+            stabilized.append(fixed)
+            skipped += 1
+            continue
+        local = target[y0 : y1 + 1, x0 : x1 + 1]
+        visible = mask & (local[..., 3] > 32)
+        pixel_count = int(np.count_nonzero(visible))
+        if pixel_count < min_pixels:
+            stabilized.append(fixed)
+            skipped += 1
+            continue
+        checked += 1
+        rgb = local[..., :3][visible].astype(np.uint8)
+        channel_std = float(np.mean(np.std(rgb.astype(np.float32), axis=0))) if rgb.size else 999.0
+        bins = (rgb // 10).astype(np.uint16)
+        packed = (bins[:, 0] << 10) | (bins[:, 1] << 5) | bins[:, 2]
+        values, counts = np.unique(packed, return_counts=True)
+        if values.size == 0:
+            stabilized.append(fixed)
+            skipped += 1
+            continue
+        best = int(np.argmax(counts))
+        dominant_fraction = float(counts[best]) / float(max(1, pixel_count))
+        if dominant_fraction < 0.46 or (dominant_fraction < 0.62 and channel_std > 22.0):
+            stabilized.append(fixed)
+            skipped += 1
+            continue
+        dominant_rgb = rgb[packed == values[best]]
+        if dominant_rgb.size == 0:
+            stabilized.append(fixed)
+            skipped += 1
+            continue
+        new_rgb = [int(round(v)) for v in np.median(dominant_rgb, axis=0)]
+        old_rgb = [int(v) for v in color[:3]]
+        if sum(abs(a - b) for a, b in zip(old_rgb, new_rgb)) >= 3:
+            color[:3] = new_rgb
+            if force_opaque:
+                color[3] = 255
+            fixed["color"] = color
+            changed += 1
+        stabilized.append(fixed)
+
+    return stabilized, {
+        "enabled": True,
+        "changed": changed,
+        "checked": checked,
+        "skipped": skipped,
+        "min_pixels": min_pixels,
+    }
 
 
 def shape_visual_extents(shape: dict) -> tuple[float, float, float, float, float] | None:
@@ -2404,16 +2513,42 @@ def main() -> int:
             if force_opaque_shapes:
                 final_shapes = force_opaque_drawables(final_shapes)
             scaled_selected = [scale_shape(shape, sx, sy) for shape in final_shapes]
+            flat_color_summary = {"enabled": False, "skipped": "not a flat opaque preset"}
+            should_stabilize_flat_colors = bool(
+                force_opaque_shapes
+                and (
+                    args.preprocess_mode == "luma_bands"
+                    or any(token in shape_mode for token in ("flat", "edge", "logo", "livery"))
+                )
+            )
+            if should_stabilize_flat_colors:
+                stabilized_scaled, flat_color_summary = stabilize_flat_region_colors(
+                    scaled_selected,
+                    score_rgba,
+                    force_opaque=True,
+                )
+                if flat_color_summary.get("changed", 0):
+                    final_shapes = [unscale_shape(shape, sx, sy) for shape in stabilized_scaled]
+                    scaled_selected = stabilized_scaled
+                    print(
+                        f"Flat Color Stabilizer: snapped {flat_color_summary['changed']} layer color(s) "
+                        f"toward dominant source regions in {candidate_path.name}.",
+                        flush=True,
+                    )
+            refinement = dict(refinement)
+            refinement["flat_color_stabilization"] = flat_color_summary
+            cleanup_budget = max(0, len(final_shapes) - drawable_target_shapes)
             cleaned_scaled, cleaned_error, covered_cleanup = remove_fully_covered_layers(
                 scaled_bg,
                 scaled_selected,
                 score_rgba,
                 enforce_canvas_boundary=enforce_canvas_boundary,
                 importance_map=score_importance,
+                removal_limit=cleanup_budget,
             )
+            final_error = cleaned_error
             if covered_cleanup.get("removed", 0):
                 final_shapes = [unscale_shape(shape, sx, sy) for shape in cleaned_scaled]
-                final_error = cleaned_error
                 print(
                     f"Covered Layer Cleanup: removed {covered_cleanup['removed']} fully hidden layer(s) "
                     f"from {candidate_path.name}.",
@@ -2456,6 +2591,7 @@ def main() -> int:
                     score_rgba,
                     enforce_canvas_boundary=enforce_canvas_boundary,
                     importance_map=score_importance,
+                    removal_limit=0,
                 )
                 if post_cap_cleanup.get("removed", 0):
                     final_shapes = [unscale_shape(shape, sx, sy) for shape in cleaned_scaled]

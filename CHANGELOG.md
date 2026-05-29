@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.63
+
+- Finalization now preserves the requested layer budget when covered-layer cleanup has no excess layers to remove.
+- Flat opaque/luma runs now stabilize large single-color regions to reduce milky color variation in broad fields.
+
 ## 1.10.62
 
 - Launcher version and changelog checks now prefer GitHub contents/raw API responses, with raw file URLs as fallback.
