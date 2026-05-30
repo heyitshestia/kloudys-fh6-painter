@@ -144,11 +144,11 @@ exit /b 0
 :check_update_locks
 set "LOCK_REPORT=%TEMP%\kloudys-update-locks-%RANDOM%.txt"
 if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $locks=Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'KloudysGeneratorV6-Go.exe') -or ($_.Name -eq 'KloudysGeneratorV5.exe') -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 }; exit 0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $locks=Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'KloudysGeneratorV6-Go.exe') -or ($_.Name -eq 'KloudysGeneratorV5.exe') -or ($_.Name -eq 'ForzaVinylStudio.exe') -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 }; exit 0"
 if errorlevel 1 (
     call :log ""
     call :log "Update cannot continue because Kloudy's Painter is still running a generation, benchmark, or app window."
-    call :log "Close Generate Final Vinyl, stop any benchmark/generator process, then run this updater again."
+    call :log "Close the app, Forza Vinyl Studio, and any generator process, then run this updater again."
     if exist "!LOCK_REPORT!" (
         call :log "Running process details:"
         for /f "usebackq delims=" %%L in ("!LOCK_REPORT!") do call :log "%%L"

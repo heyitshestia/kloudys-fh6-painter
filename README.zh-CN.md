@@ -50,6 +50,8 @@
 
 `Image Tools` 标签页提供常用网页工具链接：背景移除、浏览器本地 2x/4x 放大、Squoosh 缩放/压缩。
 
+`Editor` 标签页会打开捆绑的 Forza Vinyl Studio 离线 JSON 编辑器。它用于手工创建/编辑 FH6 JSON，不会写入 FH6 内存。
+
 ## 更新
 
 推荐用启动器里的 `Update` 按钮。也可以在 app 文件夹里运行：
@@ -66,6 +68,7 @@
 
 - [LICENSE](LICENSE)
 - [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu)
+- [LICENSE.forza-vinyl-studio](LICENSE.forza-vinyl-studio)
 
 主要来源和贡献包括：
 
@@ -73,6 +76,7 @@
 | --- | --- | --- |
 | AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project and MIT-licensed import workflow. |
 | BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused upstream work. |
+| willn05 / Forza Vinyl Studio | https://github.com/willn05/forza-vinyl-studio | Original WPF vinyl editor project bundled here as a modified offline FH6 JSON editor. |
 | zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL generator lineage. |
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author. |

@@ -98,6 +98,7 @@ MEMORY_SNAPSHOT_LIMIT_MB = 2048
 UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
+VINYL_STUDIO_EXE = ROOT / "tools" / "forza-vinyl-studio" / "ForzaVinylStudio.exe"
 STANDALONE_APP_FOLDER_NAME = "KloudysFH6Painter"
 USER_IMAGES_ROOT = ROOT.parent / "Images" if ROOT.name.lower() == STANDALONE_APP_FOLDER_NAME.lower() else ROOT / "Images"
 THEMES = {
@@ -287,7 +288,7 @@ The highlighted finalized checkpoint is the one that imports.
 The best safe final is listed first, but you can pick a different finalized checkpoint yourself.
 
 
-8. Image Tools and Luma Band Pass
+8. Image Tools and Editor
 
 Open Image Tools when your source needs prep before generation:
 - Background Remover opens PhotoRoom's online cutout tool.
@@ -296,7 +297,8 @@ Open Image Tools when your source needs prep before generation:
 
 Open Image Size Helper to check the source resolution and see 1-6 MP resize targets for the same aspect ratio.
 
-Open Luma Band Pass when you want to preview luma banding before spending time on a full run.
+Open Editor to launch Forza Vinyl Studio, the bundled offline FH6 JSON editor.
+The editor is for manual JSON creation/export. It does not write to FH6 memory.
 
 
 9. If import does nothing or errors
@@ -407,9 +409,9 @@ HELP_TEXT = {
         "a standard editable layer table, records a content fingerprint/summary, and saves a compatible handmade JSON."
     ),
     "luma_tab": (
-        "Standalone Luma Band Pass",
-        "Creates a separate luma-banded PNG without running generation.\n\n"
-        "Use it to inspect whether Luma Prep helps a source before committing to a full run."
+        "Vinyl Studio Editor",
+        "Opens the bundled offline JSON editor.\n\n"
+        "Use it to create or edit FH6 JSON by hand. This first integration is launch-only; deeper launcher integration comes later."
     ),
     "legacy_masks": (
         "Legacy FH Border Masks",
@@ -1420,7 +1422,7 @@ class MainWindow(QMainWindow):
         self._build_import_tab()
         self._build_handmade_import_tab()
         self._build_game_export_tab()
-        self._build_luma_tab()
+        self._build_editor_tab()
         self._build_image_tools_tab()
         self._build_image_size_tab()
         self._build_tutorial_tab()
@@ -1433,12 +1435,17 @@ class MainWindow(QMainWindow):
         footer.addSpacing(24)
         footer.addWidget(QLabel("Progress:"))
         footer.addWidget(self.progress_label, 1)
-        self.kofi_button = QPushButton("Ko-fi")
+        optional_label = QLabel("optional ->")
+        optional_label.setObjectName("kofiOptionalLabel")
+        optional_label.setToolTip("Optional support link.")
+        footer.addWidget(optional_label)
+        self.kofi_button = QPushButton("Support on Ko-fi")
         self.kofi_button.setObjectName("kofiButton")
         self.kofi_button.setToolTip("Support Kloudy's FH6 Painter on Ko-fi")
         self.kofi_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.kofi_button.setFixedHeight(24)
-        self.kofi_button.setMaximumWidth(90)
+        self.kofi_button.setMinimumWidth(122)
+        self.kofi_button.setMaximumWidth(150)
         self.kofi_button.clicked.connect(self.open_kofi)
         footer.addWidget(self.kofi_button)
         root.addLayout(footer)
@@ -1458,6 +1465,31 @@ class MainWindow(QMainWindow):
 
     def open_kofi(self):
         QDesktopServices.openUrl(QUrl(KOFI_URL))
+
+    def open_vinyl_studio(self):
+        if os.name != "nt":
+            QMessageBox.information(
+                self,
+                "Windows only",
+                "Forza Vinyl Studio is a bundled WPF editor and currently runs on Windows only.",
+            )
+            return
+        if not VINYL_STUDIO_EXE.exists():
+            QMessageBox.warning(
+                self,
+                "Editor missing",
+                f"Forza Vinyl Studio was not found:\n{VINYL_STUDIO_EXE}\n\nRun the updater or reinstall the latest standalone release.",
+            )
+            return
+        try:
+            subprocess.Popen(
+                [str(VINYL_STUDIO_EXE)],
+                cwd=VINYL_STUDIO_EXE.parent,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            self.log_line("Opened Forza Vinyl Studio editor.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Editor failed to open", str(exc))
 
     def help_button(self, key: str) -> QToolButton:
         title, body = HELP_TEXT[key]
@@ -1926,40 +1958,31 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(note)
         self.tabs.addTab(tab, "Export Game JSON")
 
-    def _build_luma_tab(self):
+    def _build_editor_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        controls = QGroupBox("Standalone Luma Band Pass")
+        controls = QGroupBox("Forza Vinyl Studio")
         controls_layout = QVBoxLayout(controls)
-        controls_layout.addWidget(self.label_with_help("Choose one image. The app saves a luma-banded PNG into imgs/luma-bands and previews the before/after here.", "luma_tab"))
+        controls_layout.addWidget(self.label_with_help("Open the bundled offline editor for hand-made FH6 JSON creation and editing. This does not write to FH6 memory.", "luma_tab"))
+        description = QLabel(
+            "Forza Vinyl Studio is currently shipped as a separate editor window.\n"
+            "Use it to place, move, stretch, rotate, save project files, and create FH6 JSON."
+        )
+        description.setWordWrap(True)
+        controls_layout.addWidget(description)
         actions = QHBoxLayout()
-        choose = QPushButton("Choose image and run Luma Band Pass")
-        choose.setObjectName("primaryButton")
-        choose.clicked.connect(self.choose_luma_image)
-        open_folder = QPushButton("Open luma-band folder")
-        open_folder.clicked.connect(self.open_luma_folder)
-        actions.addWidget(choose, 2)
-        actions.addWidget(open_folder, 1)
+        open_editor = QPushButton("Open Forza Vinyl Studio")
+        open_editor.setObjectName("primaryButton")
+        open_editor.clicked.connect(self.open_vinyl_studio)
+        actions.addWidget(open_editor, 1)
         controls_layout.addLayout(actions)
-        self.luma_status_label = QLabel(f"Output folder: {LUMA_BANDS_ROOT}")
+        self.luma_status_label = QLabel(f"Editor path: {VINYL_STUDIO_EXE}")
         self.luma_status_label.setWordWrap(True)
         controls_layout.addWidget(self.luma_status_label)
         layout.addWidget(controls)
-
-        preview_row = QHBoxLayout()
-        before_col = QVBoxLayout()
-        after_col = QVBoxLayout()
-        before_col.addWidget(QLabel("Before"))
-        after_col.addWidget(QLabel("After Luma Band Pass"))
-        self.luma_before_preview = PreviewView("Choose an image to preview the source here.")
-        self.luma_after_preview = PreviewView("The luma-banded result will appear here.")
-        before_col.addWidget(self.luma_before_preview, 1)
-        after_col.addWidget(self.luma_after_preview, 1)
-        preview_row.addLayout(before_col, 1)
-        preview_row.addLayout(after_col, 1)
-        layout.addLayout(preview_row, 1)
-        self.tabs.addTab(tab, "Luma Band Pass")
+        layout.addStretch(1)
+        self.tabs.addTab(tab, "Editor")
 
     def _build_image_tools_tab(self):
         tab = QWidget()
@@ -2139,6 +2162,7 @@ class MainWindow(QMainWindow):
                 QPushButton#primaryButton { background: #a83f67; color: white; border: 1px solid #793047; font-weight: 800; padding: 12px 14px; }
                 QPushButton#kofiButton { background: #ffffff; color: #7f3d58; border: 1px solid #d65f89; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: #fff0f6; color: #a83f67; border-color: #a83f67; }
+                QLabel#kofiOptionalLabel { color: #7f3d58; font-size: 8pt; font-weight: 800; }
                 QToolButton#helpButton { background: #7f3d58; color: #ffffff; border: 1px solid #fffafa; border-radius: 12px; font-weight: 900; }
                 QToolButton#helpButton:hover { background: #a83f67; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
@@ -2168,6 +2192,7 @@ class MainWindow(QMainWindow):
                 QPushButton#primaryButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff6b42, stop:0.50 #ffd166, stop:1 #6df6ff); color: #020407; }
                 QPushButton#kofiButton { background: rgba(36, 233, 255, 42); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 150); border-radius: 8px; padding: 2px 10px; font-weight: 950; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: rgba(255, 74, 43, 130); color: #ffffff; border-color: #ffb000; }
+                QLabel#kofiOptionalLabel { color: #ffb000; font-size: 8pt; font-weight: 900; }
                 QToolButton#helpButton { background: #24e9ff; color: #07101a; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
                 QToolButton#helpButton:hover { background: #ffb000; color: #020407; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: rgba(2, 7, 14, 238); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); border-radius: 9px; padding: 6px; selection-background-color: #ff4a2b; selection-color: #ffffff; }
@@ -2205,6 +2230,7 @@ class MainWindow(QMainWindow):
                 QPushButton#primaryButton:hover { background: #dedede; color: #000000; }
                 QPushButton#kofiButton { background: #000000; color: #dcdcdc; border: 1px solid #343434; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: #101010; color: #ffffff; border-color: #777777; }
+                QLabel#kofiOptionalLabel { color: #bdbdbd; font-size: 8pt; font-weight: 800; }
                 QToolButton#helpButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
                 QToolButton#helpButton:hover { background: #d0d0d0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
@@ -2237,6 +2263,7 @@ class MainWindow(QMainWindow):
                 QPushButton#primaryButton { background: #9f6ad8; color: white; font-weight: 700; padding: 12px 14px; }
                 QPushButton#kofiButton { background: #fffdf8; color: #6c3fa0; border: 1px solid #c7a8ea; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: #f7eefe; color: #9f6ad8; border-color: #9f6ad8; }
+                QLabel#kofiOptionalLabel { color: #6c3fa0; font-size: 8pt; font-weight: 800; }
                 QToolButton#helpButton { background: #9f6ad8; color: white; border: 1px solid #ffffff; border-radius: 12px; font-weight: 900; }
                 QToolButton#helpButton:hover { background: #7b4eb0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }

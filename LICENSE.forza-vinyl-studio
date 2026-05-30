@@ -1,0 +1,43 @@
+Forza Vinyl Studio third-party notice
+
+Kloudy's FH6 Painter bundles a modified Windows build of Forza Vinyl Studio as
+an offline FH6 JSON editor.
+
+Original project:
+https://github.com/willn05/forza-vinyl-studio
+
+Original project credits from upstream documentation:
+- willn05: original Forza Vinyl Studio project.
+- A-Dawg#0001: original Forza Painter dependency credited by upstream.
+- D3FEKT#1337: Modelbin template script credited by upstream.
+
+Kloudy's FH6 Painter modifications:
+- FH6 JSON load/export path.
+- Full FH6 shape library wiring used by the editor.
+- Shape popout/sidebar, favorites, overlay image, project save/load, autosave,
+  undo/redo, duplicate, and FH-style move/scale/stretch/rotate controls.
+- Bundled self-contained Windows runtime for launcher use.
+
+Upstream license text, preserved as provided:
+
+MIT License
+
+Copyright (c) [year] [fullname]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

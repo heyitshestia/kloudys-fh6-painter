@@ -23,7 +23,7 @@ Use this with:
 12. [2x Sample Goblin](#2x-sample-goblin-slower)
 13. [Final JSON Browser](#final-json-browser)
 14. [Import Final JSON](#import-final-json)
-15. [Luma Band Pass Tab](#luma-band-pass-tab)
+15. [Editor Tab](#editor-tab)
 16. [Image Tools Tab](#image-tools-tab)
 17. [Image Size Helper Tab](#image-size-helper-tab)
 18. [Settings And Themes](#settings-and-themes)
@@ -38,6 +38,8 @@ Kloudy's FH6 Painter has two major jobs:
 
 1. Convert source art into finalized Forza vinyl JSON.
 2. Import a finalized JSON into an open Forza Horizon 6 Vinyl Group Editor template.
+
+It also bundles Forza Vinyl Studio as an optional offline editor for manual FH6 JSON creation/export.
 
 The app does not magically edit a livery from outside the game. FH6 must be running, you must be in the correct editor screen, and the recommended reusable base is a saved/reopened 3000-layer plain white circle template.
 
@@ -71,9 +73,10 @@ Kloudys Painter Standalone/
     05_check_environment.bat
     app_qt.py
     launcher_qt.py
-    KloudysGeneratorV5.exe
+    KloudysGeneratorV6-Go.exe
     python/
     settings/
+    tools/
 ```
 
 Important folders:
@@ -83,6 +86,7 @@ Important folders:
 | `Images/` | Put source images here. The source-image chooser opens this folder first. |
 | `KloudysFH6Painter/` | The app files. Do not randomly move individual files out of this folder. |
 | `KloudysFH6Painter/python/` | Bundled Python runtime in standalone releases. |
+| `KloudysFH6Painter/tools/forza-vinyl-studio/` | Bundled offline JSON editor opened from the Editor tab. |
 | `KloudysFH6Painter/imgs/generated/` | Generated runs. Created after using the app. |
 | `KloudysFH6Painter/runtime/` | Logs, cache, update backups, custom presets. Created by the app. |
 
@@ -640,7 +644,7 @@ It can hurt when the source has:
 - hair texture
 - subtle skin shading
 
-The standalone `Luma Band Pass` tab lets you preview this effect before doing a full generation.
+Luma Prep can still be enabled or disabled in Generate Final Vinyl. The old standalone preview tab has been replaced by the Editor tab.
 
 ## Edge Repair
 
@@ -841,32 +845,33 @@ During import:
 
 When it finishes, check FH6 visually before saving/applying.
 
-## Luma Band Pass Tab
+## Editor Tab
 
 Open:
 
 ```text
-Luma Band Pass
+Editor
 ```
 
-Use it to test Luma Prep without full generation.
+Use it to launch the bundled Forza Vinyl Studio editor.
 
-Controls:
+Current control:
 
-- `Choose image and run Luma Band Pass`
-- `Open luma-band folder`
-- before preview
-- after preview
+- `Open Forza Vinyl Studio`
 
-Output folder:
+What it does:
 
-```text
-imgs/luma-bands/
-```
+- Opens a separate Windows editor window.
+- Lets you place, select, move, stretch, rotate, and recolor shapes.
+- Lets you use an image overlay while building a vinyl.
+- Saves editor projects as `.fvsp`.
+- Exports FH6-compatible JSON.
 
-If the after image looks too posterized or soft, keep Luma Prep off for that source.
+What it does not do:
 
-If the after image has cleaner regions/borders, Luma Prep may help the generation.
+- It does not write to FH6 memory.
+- It does not replace the Import Final JSON workflow yet.
+- It is not required for normal image-to-vinyl generation.
 
 ## Image Tools Tab
 

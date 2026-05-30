@@ -1,5 +1,13 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.65
+
+- Added the bundled Forza Vinyl Studio editor as an `Editor` tab launcher.
+- Shipped the editor as a self-contained Windows runtime so users do not need to install .NET separately.
+- Added Forza Vinyl Studio credits and license notices.
+- Replaced the old standalone Luma Band Pass tab with the editor launcher.
+- Made the footer Ko-fi support button wider and marked it as optional.
+
 ## 1.10.64
 
 - Updated the bundled generator to `KloudysGeneratorV6-Go.exe`.

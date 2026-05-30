@@ -24,7 +24,8 @@ The standalone release contains:
 - `KloudysFH6Painter/`
 - bundled Python 3.12 runtime
 - bundled Python dependencies
-- bundled GPU generator: `KloudysGeneratorV5.exe`
+- bundled GPU generator: `KloudysGeneratorV6-Go.exe`
+- bundled offline JSON editor: `tools/forza-vinyl-studio/ForzaVinylStudio.exe`
 - `Images/` folder next to the launcher for your source art
 
 You should not need to install Python manually when using the standalone release. The setup buttons are still there as a fallback.
@@ -231,17 +232,17 @@ Inside it:
 
 Normal users import from `finals/`.
 
-## Luma Band Pass Tab
+## Editor Tab
 
-The standalone `Luma Band Pass` tab lets you choose one image and preview before/after luma banding without running a full generation.
+The `Editor` tab opens the bundled Forza Vinyl Studio JSON editor.
 
-Output goes here:
+Use it when you want to manually create or edit FH6 JSON instead of generating from an image.
+The first shipped integration is intentionally simple: it opens the editor as a separate window.
 
-```text
-imgs/luma-bands/
-```
+The editor can place shapes, move them, stretch them, rotate them, save `.fvsp` project files, and export FH6 JSON.
+It is offline/export-only and does not write to FH6 memory.
 
-This is useful for deciding whether Luma Prep helps or hurts a source image before spending time on a full run.
+The bundled editor includes its own license notice in [LICENSE.forza-vinyl-studio](LICENSE.forza-vinyl-studio).
 
 ## Image Tools Tab
 
@@ -321,6 +322,7 @@ This project is built on top of earlier Forza Painter work. License notices are 
 | --- | --- | --- |
 | AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project, MIT-licensed FH import workflow, memory-writing/import foundation, and geometry-to-vinyl approach. |
 | BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused desktop fork and upstream work for FH6 UI, importer/locator behavior, app packaging, and workflow ideas. |
+| willn05 / Forza Vinyl Studio | https://github.com/willn05/forza-vinyl-studio | Original WPF vinyl editor project. This fork bundles a modified offline JSON-editor build with FH6 JSON export, full shape library wiring, overlay, favorites, autosave, undo/redo, and FH-style transform controls. |
 | zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL geometrize generator lineage used by the bundled generator workflow. |
 | Community FH5 shape-code spreadsheet | https://docs.google.com/spreadsheets/d/1zmdme-c1ZqxTw8dd-ooYhJV8aOSYc1LkZlmIfELRbqo/edit#gid=0 | Shape-code ordering and names used as the starting point for FH6 universal-shape registry work. |
 | Frozander | Discord | Shared the practical page/offset observation that FH6 shape pages follow the FH5 ordering with offset/page changes, which helped guide the registry inference. |
@@ -363,3 +365,4 @@ A bit of technical literacy is a hard requirement for all of this, there will be
 
 This project is a derivative of the Forza Painter workflow and keeps the original MIT license notices in [LICENSE](LICENSE) and [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu).
 The custom handmade/universal importer is MIT-licensed with its own attribution notice in [LICENSE.custom-importer](LICENSE.custom-importer).
+The bundled Forza Vinyl Studio editor is covered by [LICENSE.forza-vinyl-studio](LICENSE.forza-vinyl-studio).

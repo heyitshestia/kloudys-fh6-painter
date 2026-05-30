@@ -35,6 +35,7 @@ PROJECT_ITEMS = [
     "LICENSE",
     "LICENSE.custom-importer",
     "LICENSE.geometrize-gpu",
+    "LICENSE.forza-vinyl-studio",
     "requirements.txt",
     "requirements-preview.txt",
     "app.py",
@@ -62,6 +63,7 @@ PROJECT_ITEMS = [
     "assets",
     "data",
     "settings",
+    "tools",
 ]
 
 OPTIONAL_ITEMS = ["python"]
@@ -130,6 +132,8 @@ def verify_stage() -> None:
         APP_DIR / "fh6_trim_group_count.py",
         APP_DIR / "assets" / "app" / "project-integrity.marker",
         APP_DIR / "settings" / "a.flat-colors.ini",
+        APP_DIR / "tools" / "forza-vinyl-studio" / "ForzaVinylStudio.exe",
+        APP_DIR / "tools" / "forza-vinyl-studio" / "LICENSE.forza-vinyl-studio.txt",
     ]
     for path in required:
         if not path.exists():
@@ -181,6 +185,8 @@ def zip_stage() -> None:
             "KloudysFH6Painter/fh6_trim_group_count.py",
             "KloudysFH6Painter/assets/app/project-integrity.marker",
             "KloudysFH6Painter/settings/a.flat-colors.ini",
+            "KloudysFH6Painter/tools/forza-vinyl-studio/ForzaVinylStudio.exe",
+            "KloudysFH6Painter/tools/forza-vinyl-studio/LICENSE.forza-vinyl-studio.txt",
         }
         missing = sorted(required - names)
         if missing:
