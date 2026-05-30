@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.67
+
+- Fixed FH6 imports reusing stale auto-locate session data after a previous import/save/reopen cycle.
+- Normal FH6 imports now force a fresh template scan before every write.
+- Added a final live group count/vector safety check inside the importer so stale tables abort before any layer is written.
+
 ## 1.10.66
 
 - Hardened FH6 template locating by rejecting stale layer tables whose group vector metadata does not match the active editor template.

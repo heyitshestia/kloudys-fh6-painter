@@ -4002,6 +4002,11 @@ class MainWindow(QMainWindow):
         threading.Thread(target=self.auto_locate_worker, args=(pid, layer_count, game), daemon=True).start()
 
     def auto_locate_worker(self, pid, layer_count, game, update_status=True):
+        scan_started = time.time()
+        try:
+            SESSION_PATH.unlink(missing_ok=True)
+        except OSError:
+            pass
         cmd = [
             helper_python(),
             ROOT / "fh6_probe.py",
@@ -4026,9 +4031,15 @@ class MainWindow(QMainWindow):
             "90",
         ]
         code = self.run_subprocess(cmd, timeout=220)
+        located_session = None
         if code == 0:
             session = load_session_location()
-            if session and str(session.get("layer_count", "")) == str(layer_count):
+            try:
+                session_created = float(session.get("created", 0)) if session else 0.0
+            except (TypeError, ValueError):
+                session_created = 0.0
+            if session and session_created >= scan_started - 2.0 and str(session.get("layer_count", "")) == str(layer_count):
+                located_session = session
                 self.bus.auto_located.emit(
                     "0x{:x}".format(int(session["count_address"])),
                     "0x{:x}".format(int(session["table_address"])),
@@ -4036,8 +4047,11 @@ class MainWindow(QMainWindow):
                     str(pid),
                     game,
                 )
+            elif session:
+                self.bus.log.emit("Ignoring stale FH6 auto-locate session from an earlier scan.")
         if update_status:
             self.bus.status.emit("Done" if code == 0 else "Failed")
+        return located_session
 
     def apply_auto_locate_result(self, count_address, table_address, layer_count, pid, game):
         self.auto_located_context = {
@@ -4076,10 +4090,8 @@ class MainWindow(QMainWindow):
             if not layer_count:
                 self.log_line("Template layer count is required for FH6 import.")
                 return
-            context = self.auto_located_context or {}
-            if self.auto_located_context_matches(context.get("count_address"), context.get("table_address"), layer_count, pid, game):
-                count_address = context.get("count_address")
-                table_address = context.get("table_address")
+            self.auto_located_context = None
+            self.log_line("FH6 import will re-locate the live template table before writing.")
         json_path = self.selected_import_json_path
         mask_mode, mask_budget = self.selected_import_mask_options()
         self.set_status("Importing")
@@ -4110,8 +4122,7 @@ class MainWindow(QMainWindow):
         if not count_address and not table_address and game == "fh6":
             if pid and layer_count:
                 self.bus.log.emit("Finding current FH6 template...")
-                self.auto_locate_worker(pid, layer_count, game, update_status=False)
-                session = load_session_location()
+                session = self.auto_locate_worker(pid, layer_count, game, update_status=False)
                 if session and str(session.get("layer_count", "")) == str(layer_count) and session_pid_is_live(session, game):
                     count_address = "0x{:x}".format(int(session["count_address"]))
                     table_address = "0x{:x}".format(int(session["table_address"]))

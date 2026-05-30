@@ -22,7 +22,9 @@ import colorsys
 import os
 
 FH6_DISCOVERED_TABLE_POINTER_DELTA = 0x1E
+FH6_GROUP_TABLE_BEGIN_OFFSET = 0x78
 FH6_GROUP_TABLE_END_OFFSET = 0x80
+FH6_GROUP_TABLE_CAPACITY_OFFSET = 0x88
 _CV2_CACHE = None
 _CV2_ERROR = None
 
@@ -532,6 +534,62 @@ def trim_fh6_group_count(pid, profile, group_address, table_address, old_count, 
     )
 
 
+def read_u16_le(pid, address):
+    raw = read_process_memory(pid, int(address), 2)
+    return int.from_bytes(raw, byteorder="little") if len(raw) == 2 else None
+
+
+def read_u64_le(pid, address):
+    raw = read_process_memory(pid, int(address), 8)
+    return int.from_bytes(raw, byteorder="little") if len(raw) == 8 else None
+
+
+def validate_fh6_live_group(pid, profile, group_address, table_address, expected_count=None):
+    if profile.key != "fh6":
+        return True, None
+    if not group_address or not table_address:
+        print("ERROR: Missing FH6 group/table address.")
+        return False, None
+    actual_count = read_u16_le(pid, int(group_address) + profile.livery_count_offset)
+    if actual_count is None:
+        print("ERROR: Could not read the live FH6 group layer count.")
+        return False, None
+    if expected_count is not None and int(expected_count) != int(actual_count):
+        print(
+            "ERROR: Located FH6 group count is {}, but the open template count was set to {}.".format(
+                actual_count,
+                expected_count,
+            )
+        )
+        print("This is a stale template address. Reload the saved/reopened template and import again.")
+        return False, None
+    table_begin = read_u64_le(pid, int(group_address) + FH6_GROUP_TABLE_BEGIN_OFFSET)
+    table_end = read_u64_le(pid, int(group_address) + FH6_GROUP_TABLE_END_OFFSET)
+    table_capacity = read_u64_le(pid, int(group_address) + FH6_GROUP_TABLE_CAPACITY_OFFSET)
+    expected_end = int(table_address) + int(actual_count) * 8
+    if table_begin != int(table_address):
+        print(
+            "ERROR: Located FH6 table does not match the active group table. group table=0x{:x}, located table=0x{:x}".format(
+                int(table_begin or 0),
+                int(table_address),
+            )
+        )
+        print("This is a stale or wrong editor table. No layers were written.")
+        return False, None
+    if table_end != expected_end or table_capacity is None or table_capacity < table_end:
+        print(
+            "ERROR: FH6 group vector metadata is not safe. begin=0x{:x}, end=0x{:x}, cap=0x{:x}, expected_end=0x{:x}".format(
+                int(table_begin or 0),
+                int(table_end or 0),
+                int(table_capacity or 0),
+                int(expected_end),
+            )
+        )
+        print("This is a stale or already-trimmed template table. No layers were written.")
+        return False, None
+    return True, actual_count
+
+
 def load_geometry(
     path,
     game_key=None,
@@ -649,13 +707,24 @@ def load_geometry(
     if layer_count_address:
         if profile.key == "fh6":
             cLiveryGroup = int(layer_count_address) - int(profile.livery_count_offset)
-        if layer_count_value:
+            actual_count = read_u16_le(pid, layer_count_address)
+            if actual_count is None:
+                print("ERROR: Could not read manual FH6 layer count address 0x{0:x}.".format(layer_count_address))
+                return
+            current_livery_count = int(actual_count)
+            print("Manual FH6 layer count address 0x{0:x} -> {1}".format(layer_count_address, current_livery_count))
+            if layer_count_value and int(layer_count_value) != current_livery_count:
+                print(
+                    "ERROR: Open FH6 template count is {}, but the importer expected {}.".format(
+                        current_livery_count,
+                        int(layer_count_value),
+                    )
+                )
+                print("The located count/table is stale. Reload a fresh ungrouped template and import again.")
+                return
+        elif layer_count_value:
             current_livery_count = int(layer_count_value)
             print("Manual layer count address 0x{0:x}; using template layer count {1}".format(layer_count_address, current_livery_count))
-        elif game_key == "fh6":
-            raw_count = read_process_memory(pid, layer_count_address, 2)
-            current_livery_count = int.from_bytes(raw_count, byteorder=sys.byteorder) if len(raw_count) == 2 else 0
-            print("Manual FH6 layer count address 0x{0:x} -> {1}".format(layer_count_address, current_livery_count))
         else:
             current_livery_count = read_int(pid, layer_count_address)
             print("Manual layer count address 0x{0:x} -> {1}".format(layer_count_address, current_livery_count))
@@ -664,6 +733,11 @@ def load_geometry(
             layer_table_address = dereference_pointer(pid, table_pointer_field)
             print("Manual table pointer field 0x{0:x} -> 0x{1:x}".format(table_pointer_field, layer_table_address))
         cLiveryLayerTable = layer_table_address
+        ok, live_count = validate_fh6_live_group(pid, profile, cLiveryGroup, cLiveryLayerTable, current_livery_count if profile.key == "fh6" else None)
+        if not ok:
+            return
+        if live_count is not None:
+            current_livery_count = live_count
     else:
         # Calculate the pointer chain to the cLiveryLayerTable
         cLivery = calculate_CLivery(pid, profile)
