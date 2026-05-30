@@ -14,8 +14,9 @@ ROOT = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT / "settings"
 ACTIVE_PRESET_DIR = SETTINGS_DIR
 GENERATOR_EXE = ROOT / "forza_generator_v2.py"
-RAW_GENERATOR_EXE_V5 = ROOT / "KloudysGeneratorV5.exe"
-RAW_GENERATOR_EXE = RAW_GENERATOR_EXE_V5
+RAW_GENERATOR_EXE_V6_GO = ROOT / "KloudysGeneratorV6-Go.exe"
+ARCHIVED_PYTHON_GENERATOR_V6 = ROOT / "runtime" / "archives" / "python-v6-structure-prototype-20260529" / "KloudysGeneratorV6.py"
+RAW_GENERATOR_EXE = RAW_GENERATOR_EXE_V6_GO if RAW_GENERATOR_EXE_V6_GO.exists() else ARCHIVED_PYTHON_GENERATOR_V6
 PREVIEW_DIR = ROOT / "runtime" / "previews"
 CUSTOM_SETTINGS_DIR = ROOT / "runtime" / "custom-settings"
 USER_PRESET_DIR = ROOT / "runtime" / "user-presets"
@@ -26,7 +27,6 @@ REPORTS_DIR_NAME = "reports"
 PREVIEWS_DIR_NAME = "previews"
 VERSION_FILE = ROOT / "VERSION"
 ACTIVE_PRESET_FILES = (
-    "a.logo-decals.ini",
     "b.shaded-art.ini",
     "a.flat-colors.ini",
     "c.gradients.ini",
@@ -42,7 +42,6 @@ SETTING_KEYS = (
     "mutatedSamples",
     "maxNoImproveRetries",
     "forceOpaqueShapes",
-    "logoHardEdges",
     "posterizeLevels",
     "previewEvery",
     "randomSamples",
@@ -51,6 +50,22 @@ SETTING_KEYS = (
     "shapeMode",
     "stopAt",
     "useWorkGroupEval",
+    "enableProgressiveSampling",
+    "errorGridSize",
+    "enableDetailWeightedSampling",
+    "detailSamplingStrength",
+    "detailSamplingStart",
+    "enableBoundaryAwareRadius",
+    "boundaryRadiusPadding",
+    "boundaryRadiusStart",
+    "enableAdaptiveWorkload",
+    "adaptiveWorkloadStart",
+    "adaptiveRandomMinScale",
+    "adaptiveMutatedMinScale",
+    "enableLateSmallCandidates",
+    "lateSmallCandidateShare",
+    "lateSmallCandidateStart",
+    "lateSmallCandidateRadiusFrac",
     "v2PreprocessMode",
     "v2EnableRepair",
 )
@@ -173,9 +188,7 @@ def preset_display_name(path, values):
         family = values.get("presetName") or Path(path).stem
         family = re.sub(r"[-_]+", " ", family).strip().title()
         return f"Custom: {family}"
-    if "logo-decals" in stem:
-        family = "Logo Decals"
-    elif "flat-colors" in stem:
+    if "flat-colors" in stem:
         family = "Flat Colors"
     elif "shaded-art" in stem:
         family = "Shaded Character Art"
@@ -190,10 +203,9 @@ def preset_display_name(path, values):
 def preset_sort_key(item):
     stem = item["path"].stem.lower()
     ladder_order = {
-        "logo-decals": 0,
+        "shaded-art": 0,
         "flat-colors": 1,
-        "shaded-art": 2,
-        "gradients": 3,
+        "gradients": 2,
     }
     preset_rank = 99
     for key, rank in ladder_order.items():
@@ -588,8 +600,6 @@ def source_image_metrics(image_path):
 def preset_auto_family(values):
     shape_mode = str(values.get("shapeMode", "")).strip().lower()
     description = str(values.get("description", "")).strip().lower()
-    if str(values.get("logoHardEdges", "")).strip().lower() in ("1", "true", "yes", "on") or "logo" in description:
-        return "logo"
     if "flat" in description or "edge_bias" in shape_mode or str(values.get("v2PreprocessMode", "")).strip().lower() == "luma_bands":
         return "flat"
     if "gradient" in shape_mode or "gradient" in description or "soft" in shape_mode:
@@ -597,111 +607,36 @@ def preset_auto_family(values):
     return "shaded"
 
 
-AUTO_FAMILY_CONFIG = {
-    "logo": {
-        "resolution_mp": 2.25,
-        "random": 760_000,
-        "mutated": 42_000,
-        "posterize": 192,
-        "min_res": 1200,
-        "max_res": 2800,
-    },
-    "flat": {
-        "resolution_mp": 1.85,
-        "random": 560_000,
-        "mutated": 26_000,
-        "posterize": 96,
-        "min_res": 1100,
-        "max_res": 2600,
-    },
-    "shaded": {
-        "resolution_mp": 2.15,
-        "random": 680_000,
-        "mutated": 34_000,
-        "posterize": 128,
-        "min_res": 1200,
-        "max_res": 3000,
-    },
-    "gradient": {
-        "resolution_mp": 2.35,
-        "random": 640_000,
-        "mutated": 32_000,
-        "posterize": 160,
-        "min_res": 1300,
-        "max_res": 3200,
-    },
-}
-
-
 def auto_generation_values(image_path, values, pro_overrides=None, sample_boost=False):
-    """Derive generation effort from the selected source image and preset family.
+    """Build effective settings from the selected preset and optional overrides.
 
-    Manual/pro values win only for the fields present in pro_overrides. Layer
-    count and final checkpoints should already be present in values.
+    V6 presets are intentionally fixed by default. Source metrics are reported
+    for context, but they no longer raise resolution or sample counts silently.
     """
     values = dict(values)
     pro_overrides = {k: str(v).strip() for k, v in (pro_overrides or {}).items() if str(v).strip()}
     metrics = source_image_metrics(image_path)
     family = preset_auto_family(values)
-    config = AUTO_FAMILY_CONFIG.get(family, AUTO_FAMILY_CONFIG["shaded"])
     target_layers = int(positive_int_text(values.get("stopAt", "2000"), 2000))
-    layer_factor = math.sqrt(target_layers / 2000.0)
-    alpha_coverage = float(metrics.get("alpha_coverage") or 1.0)
-    edge_density = float(metrics.get("edge_density") or 0.18)
-    source_mp = float(metrics.get("megapixels") or 1.0)
-    long_edge = int(metrics.get("long_edge") or 0)
-
-    coverage_factor = clamp_number(0.78 + alpha_coverage * 0.34, 0.72, 1.16)
-    edge_factor = clamp_number(0.90 + edge_density * 2.75, 0.90, 1.55)
-    source_factor = clamp_number(math.sqrt(max(0.2, source_mp) / 2.0), 0.62, 1.65)
-
-    desired_mp = config["resolution_mp"] * layer_factor * clamp_number(0.82 + edge_density * 1.75, 0.82, 1.32)
-    if family == "logo":
-        desired_mp *= clamp_number(0.92 + alpha_coverage * 0.30, 0.90, 1.18)
-    elif family == "gradient":
-        desired_mp *= 1.10
-    desired_mp = clamp_number(desired_mp, 0.8, min(max(source_mp, 0.8), 6.0))
-    if source_mp > 0 and long_edge > 0:
-        auto_resolution = int(round(long_edge * math.sqrt(desired_mp / source_mp)))
-    else:
-        auto_resolution = int(config["min_res"])
-    auto_resolution = int(clamp_number(auto_resolution, config["min_res"], min(max(long_edge, config["min_res"]), config["max_res"])))
-
-    resized_mp = source_mp
-    if long_edge > 0 and auto_resolution < long_edge:
-        scale = auto_resolution / float(long_edge)
-        resized_mp = source_mp * scale * scale
-    pixel_factor = clamp_number(math.sqrt(max(0.25, resized_mp) / 2.0), 0.70, 1.60)
-    random_samples = int(round(config["random"] * layer_factor * pixel_factor * coverage_factor * edge_factor / 10_000.0) * 10_000)
-    mutated_samples = int(round(config["mutated"] * layer_factor * pixel_factor * edge_factor / 1000.0) * 1000)
-    retries = int(round(max(10_000, mutated_samples * 0.45) / 1000.0) * 1000)
-
-    if sample_boost:
-        random_samples *= 2
-        mutated_samples *= 2
-        retries *= 2
-
-    auto_values = {
-        "maxResolution": str(auto_resolution),
-        "randomSamples": str(int(clamp_number(random_samples, 160_000, 2_400_000))),
-        "mutatedSamples": str(int(clamp_number(mutated_samples, 8_000, 140_000))),
-        "maxNoImproveRetries": str(int(clamp_number(retries, 10_000, 120_000))),
-        "posterizeLevels": str(int(config["posterize"])),
-        "previewEvery": "50",
-    }
-
     save_at = normalized_save_at_text(values.get("saveAt", ""), target_layers)
-    auto_values["saveAt"] = save_at
-    auto_values["saveEvery"] = checkpoint_step_from_save_at(save_at, target_layers)
+    values["saveAt"] = save_at
+    values["saveEvery"] = checkpoint_step_from_save_at(save_at, target_layers)
 
-    for key, value in auto_values.items():
-        values[key] = value
     for key in ("maxResolution", "randomSamples", "mutatedSamples", "maxNoImproveRetries", "posterizeLevels", "previewEvery", "saveEvery"):
         if key in pro_overrides:
             values[key] = pro_overrides[key]
 
+    if sample_boost:
+        random_samples = int(positive_int_text(values.get("randomSamples", "0"), 0)) * 2
+        mutated_samples = int(positive_int_text(values.get("mutatedSamples", "0"), 0)) * 2
+        retries = int(positive_int_text(values.get("maxNoImproveRetries", "0"), 0))
+        values["randomSamples"] = str(int(clamp_number(random_samples, 1, 2_400_000)))
+        values["mutatedSamples"] = str(int(clamp_number(mutated_samples, 1, 140_000)))
+        if retries:
+            values["maxNoImproveRetries"] = str(int(clamp_number(retries * 2, 1, 120_000)))
+
     summary = {
-        "mode": "auto_source_scaled",
+        "mode": "fixed_preset",
         "family": family,
         "source": metrics,
         "target_layers": target_layers,

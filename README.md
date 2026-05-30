@@ -100,7 +100,6 @@ Current stock presets are style-based, not the old fast/slow ladder:
 
 | Preset | Best for | Luma Prep default | Shape style |
 | --- | --- | --- | --- |
-| `Logo Decals` | brand marks, text-like logos, emblems, clean decals | off | sharp edges, smooth curves, logo color cleanup |
 | `Shaded Character Art` | anime, characters, skin, hair, eyes, mixed linework | off | character-art weighting |
 | `Flat Colors` | stickers, mascot art, hard borders, clean color regions | on | edge-biased |
 | `Smooth Gradients` | glossy shading, soft transitions, dark-to-light gradients | off | soft detail |
@@ -301,7 +300,7 @@ Important WIP notes:
 | Import says ungroup/template error | You are likely in the wrong FH6 menu, wrong group, wrong layer count, or the template is not ungrouped. |
 | Located table is stale/null | Re-open the correct vinyl group, remove duplicate groups/templates above it, and run auto-locate again. |
 | Output is soft | Use the right preset, more layers, Pro settings with more samples if needed, keep Luma Prep off for soft/character art, and pick the checkpoint visually. |
-| Borders have halos | Keep Edge Repair on; try Logo Decals or Flat Colors with Luma Prep for hard art. |
+| Borders have halos | Keep Edge Repair on; try Flat Colors with Luma Prep for hard flat art. |
 
 The deep troubleshooting section is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md#troubleshooting).
 

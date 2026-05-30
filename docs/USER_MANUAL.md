@@ -292,7 +292,6 @@ Chooses the starting settings family.
 
 The current stock presets are:
 
-- `Logo Decals`
 - `Shaded Character Art`
 - `Flat Colors`
 - `Smooth Gradients`
@@ -329,15 +328,9 @@ If the target layer count is larger than the last value, the app also keeps the 
 
 Default: off.
 
-When this is off, the app calculates max resolution, random samples, and mutated samples from:
+When this is off, max resolution, random samples, and mutated samples come directly from the selected preset. Source image metrics are shown for context only.
 
-- source image size
-- visible alpha area
-- edge/detail density
-- selected preset
-- template layer count
-
-Turn it on only when you want to override that automatic math yourself.
+Turn it on only when you want to override the preset values yourself.
 
 The app remembers whether Pro settings were open or closed across restarts. It also remembers your Pro field values.
 
@@ -504,28 +497,6 @@ If you close the app before finalization ends, some final JSONs/previews may be 
 
 ## Presets Explained
 
-### Logo Decals
-
-Use for:
-
-- brand marks
-- text-like logos
-- emblems
-- clean decal art
-- sharp curves and hard edges
-
-Why:
-
-- prioritizes color fidelity
-- favors crisp borders and smooth logo curves
-- keeps Luma Prep off by default
-- uses logo edge prep to snap soft transparent edge pixels to clean opaque logo colors
-
-Possible downside:
-
-- not the best choice for soft skin/hair gradients
-- less broad-region-focused than Flat Colors
-
 ### Shaded Character Art
 
 Use for:
@@ -584,7 +555,7 @@ Why:
 
 Possible downside:
 
-- hard logos may look less crisp than Logo Decals or Flat Colors
+- hard flat decals may look less crisp than Flat Colors
 
 ## Automatic Settings And Pro Settings
 
@@ -938,7 +909,6 @@ Preset starting points:
 
 | Preset | Best MP | Use case |
 | --- | ---: | --- |
-| `Logo Decals` | `1-2 MP` | logos, text, emblems |
 | `Flat Colors` | `1.5-3 MP` | stickers, mascots, hard regions |
 | `Shaded Character Art` | `2-4 MP` | anime, faces, hair, eyes |
 | `Smooth Gradients` | `3-6 MP` | gloss, soft ramps, shading |
@@ -1205,7 +1175,6 @@ Try:
 
 Try:
 
-- Logo Decals for logos/text/emblems
 - Flat Colors for mascot/sticker art
 - Luma Prep on for flat art, off for clean logo curves if it posterizes too much
 - Edge Repair on

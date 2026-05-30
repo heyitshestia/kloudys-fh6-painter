@@ -21,8 +21,9 @@ from version_info import get_version
 
 
 ROOT = Path(__file__).resolve().parent
+BUNDLED_WINDOWS_GENERATOR_V6_GO = ROOT / "KloudysGeneratorV6-Go.exe"
 BUNDLED_WINDOWS_GENERATOR_V5 = ROOT / "KloudysGeneratorV5.exe"
-BUNDLED_WINDOWS_GENERATOR = BUNDLED_WINDOWS_GENERATOR_V5
+BUNDLED_WINDOWS_GENERATOR = BUNDLED_WINDOWS_GENERATOR_V6_GO if BUNDLED_WINDOWS_GENERATOR_V6_GO.exists() else BUNDLED_WINDOWS_GENERATOR_V5
 LOCAL_LINUX_GENERATOR = Path("/home/hestia/.local/share/forza-painter-geometrize-gpu/forza-painter-geometrize-go-linux-arm64")
 GENERATOR_BIN = BUNDLED_WINDOWS_GENERATOR if os.name == "nt" else (LOCAL_LINUX_GENERATOR if LOCAL_LINUX_GENERATOR.is_file() else BUNDLED_WINDOWS_GENERATOR)
 LD_LIBRARY_PATH = f"/home/hestia/.local/lib:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":")
@@ -2321,6 +2322,8 @@ def main() -> int:
             payload = normalize_payload(candidate_path)
             background = background_shape(payload)
             drawables = drawable_shapes(payload)
+            raw_generator_name = str(payload.get("generator", "") or "")
+            is_v6_raw = raw_generator_name.lower().startswith("kloudysgeneratorv6")
             raw_count = len(drawables)
             checkpoint_number = raw_checkpoint_number(candidate_path, stem)
             checkpoint_tag = checkpoint_tag_for_candidate(candidate_path, stem)
@@ -2404,6 +2407,8 @@ def main() -> int:
                 "canvas_size": [full_w, full_h],
                 "scale": [sx, sy],
                 "checkpoint_tag": checkpoint_tag,
+                "raw_generator": raw_generator_name,
+                "v6_raw": is_v6_raw,
             }
         )
     if not candidate_records:
@@ -2451,7 +2456,10 @@ def main() -> int:
         }
         final_shapes = list(record["base_shapes"])
         final_error = record["base_error"]
-        repair_applied = repair_enabled and int(record["index"]) in repair_indices
+        repair_applied = repair_enabled and (not bool(record.get("v6_raw"))) and int(record["index"]) in repair_indices
+        if repair_enabled and bool(record.get("v6_raw")) and int(record["index"]) in repair_indices:
+            refinement = dict(refinement)
+            refinement["skipped"] = "V6 raw geometry has its own prediction/detail phases; legacy Edge Repair is disabled for V6 candidates."
         if repair_applied:
             try:
                 scaled_bg = dict(background)

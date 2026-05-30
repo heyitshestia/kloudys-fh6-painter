@@ -164,10 +164,6 @@ Manual fallback files:
 
 Current stock presets are style-based:
 
-Logo Decals
-- Best for brand marks, text-like logos, emblems, and clean decal art.
-- Prioritizes color fidelity, sharp edges, and smooth curves. Luma Prep is off by default, and logo edge prep snaps soft transparent edge pixels to clean opaque logo colors.
-
 Shaded Character Art
 - Best default for anime, faces, eyes, hair, skin, and mixed linework.
 - Uses smart-detail weighting and leaves Luma Prep off to protect tiny detail.
@@ -183,11 +179,11 @@ Smooth Gradients
 The 2x Sample Goblin (slower) switch doubles random samples and mutated samples.
 It does not double output layers or resolution, and it usually takes longer.
 
-Default settings are source-aware now:
+Default settings are preset-locked now:
 - Template layers controls the target vinyl layer budget.
 - Finalize at layers controls which checkpoints become import choices.
-- Max resolution, random samples, and mutated samples are calculated automatically from the source image, visible alpha area, detail/edge density, preset, and target layers.
-- Enable Pro settings only if you want to override the automatic math yourself.
+- Max resolution, random samples, and mutated samples come from the selected preset.
+- Enable Pro settings only if you want to override the preset values yourself.
 - Pro settings stay open/closed across app restarts.
 
 
@@ -323,7 +319,6 @@ HELP_TEXT = {
     "preset": (
         "Preset",
         "Pick the preset that matches the source style, not just the speed.\n\n"
-        "Logo Decals is for brand marks, text-like art, decals, sharp edges, and smooth curves.\n"
         "Flat Colors is for mascot art, stickers, hard borders, and broad color islands.\n"
         "Shaded Character Art is the best default for anime, skin, hair, eyes, and mixed linework.\n"
         "Smooth Gradients is for glossy shading, soft ramps, and painterly blends."
@@ -340,7 +335,7 @@ HELP_TEXT = {
     ),
     "max_resolution": (
         "Max Resolution",
-        "Pro setting. When Pro settings are closed, the app calculates this automatically per source image.\n\n"
+        "Pro setting. When Pro settings are closed, the selected preset controls this.\n\n"
         "The largest internal image size the generator scores.\n\n"
         "Higher values let it see smaller details, but only help if the layer count and samples can actually draw those details.\n\n"
         "Practical ranges:\n"
@@ -351,13 +346,13 @@ HELP_TEXT = {
     ),
     "random_samples": (
         "Random Samples",
-        "Pro setting. When Pro settings are closed, the app calculates this automatically per source image.\n\n"
+        "Pro setting. When Pro settings are closed, the selected preset controls this.\n\n"
         "Fresh shape guesses tried for each new layer.\n\n"
         "Higher values improve the odds of finding a strong starting shape, especially for small details and hard edges. This is one of the main quality/speed tradeoffs."
     ),
     "mutated_samples": (
         "Mutated Samples",
-        "Pro setting. When Pro settings are closed, the app calculates this automatically per source image.\n\n"
+        "Pro setting. When Pro settings are closed, the selected preset controls this.\n\n"
         "Local refinement tries after a promising candidate exists.\n\n"
         "This improves position, size, rotation, and fit. It is usually more useful once random samples are high enough to find good candidates."
     ),
@@ -1546,11 +1541,11 @@ class MainWindow(QMainWindow):
         self.setting_description = QLabel("")
         self.setting_description.setWordWrap(True)
         quality_layout.addWidget(self.setting_description)
-        self.auto_summary_label = QLabel("Auto settings will be calculated from the source image when generation starts.")
+        self.auto_summary_label = QLabel("Preset settings are fixed. Source image metrics are shown for context only.")
         self.auto_summary_label.setWordWrap(True)
         quality_layout.addWidget(self.auto_summary_label)
         self.custom_enabled = QCheckBox("Pro settings - manual samples/resolution")
-        self.custom_enabled.setToolTip("Default is automatic. Enable this only when you want to override resolution and sample counts yourself.")
+        self.custom_enabled.setToolTip("Default uses the selected preset exactly. Enable this only when you want to override resolution and sample counts yourself.")
         self.custom_enabled.setChecked(settings_bool(self.app_settings.get("pro_generation_settings"), False))
         self.custom_enabled.stateChanged.connect(self.sync_custom_state)
         self.custom_enabled.stateChanged.connect(self.save_pro_settings_state)
@@ -2046,7 +2041,6 @@ class MainWindow(QMainWindow):
         self.size_helper_preset_table.setAlternatingRowColors(True)
         self.size_helper_preset_table.setMaximumHeight(150)
         for preset, mp_range, use_case in (
-            ("Logo Decals", "1-2 MP", "logos, text, emblems"),
             ("Flat Colors", "1.5-3 MP", "stickers, mascots, hard regions"),
             ("Shaded Character Art", "2-4 MP", "anime, faces, hair, eyes"),
             ("Smooth Gradients", "3-6 MP", "gloss, soft ramps, shading"),
@@ -2599,7 +2593,7 @@ class MainWindow(QMainWindow):
         image_path = self.images[-1] if getattr(self, "images", None) else None
         setting = self.selected_setting()
         if not image_path or not setting:
-            self.auto_summary_label.setText("Auto settings will be calculated from the source image when generation starts.")
+            self.auto_summary_label.setText("Preset settings are fixed. Source image metrics are shown for context only.")
             return
         values = dict(setting.get("values", {}))
         values.update({
@@ -2617,14 +2611,14 @@ class MainWindow(QMainWindow):
             )
             source = summary.get("source", {})
             self.auto_summary_label.setText(
-                "Auto from source: "
+                "Preset effort: "
                 f"{source.get('width', '?')}x{source.get('height', '?')}, "
                 f"{source.get('megapixels', '?')} MP, visible {source.get('alpha_coverage', '?')}. "
                 f"Using max res {tuned.get('maxResolution')}, random {tuned.get('randomSamples')}, "
                 f"mutated {tuned.get('mutatedSamples')}."
             )
         except Exception as exc:
-            self.auto_summary_label.setText(f"Auto settings preview unavailable: {type(exc).__name__}: {exc}")
+            self.auto_summary_label.setText(f"Preset settings preview unavailable: {type(exc).__name__}: {exc}")
 
     def add_image(self):
         USER_IMAGES_ROOT.mkdir(parents=True, exist_ok=True)
@@ -3014,7 +3008,7 @@ class MainWindow(QMainWindow):
     def generate_worker(self, setting, images, repair_enabled):
         try:
             self.bus.log.emit(f"Selected Kloudy preset: {setting.get('label') or setting['path'].name}")
-            self.bus.log.emit("Auto settings: source-aware resolution and samples are calculated per image.")
+            self.bus.log.emit("Preset settings: resolution and samples are fixed by the selected preset unless Pro settings are enabled.")
             self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
             for image_path in images:
                 effective = self.effective_setting(image_path)
@@ -3031,7 +3025,7 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit(f"Vinyl run folder: {run_dir}")
                 self.bus.log.emit(f"Target template layers: {values.get('stopAt', 'n/a')}")
                 self.bus.log.emit(f"Finalize at layers: {values.get('saveAt', values.get('stopAt', 'n/a'))}")
-                self.bus.log.emit(f"Auto effort: maxRes={values.get('maxResolution', 'n/a')} random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
+                self.bus.log.emit(f"Preset effort: maxRes={values.get('maxResolution', 'n/a')} random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
                 auto_summary = effective.get("auto_tune") or {}
                 source_summary = auto_summary.get("source") or {}
                 if source_summary:

@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.64
+
+- Updated the bundled generator to `KloudysGeneratorV6-Go.exe`.
+- Reworked the stock presets to `Shaded Character Art`, `Flat Colors`, and `Smooth Gradients`.
+- Presets now keep their own resolution/sample settings by default; Pro settings are the only manual override.
+- Added adaptive late-layer workload controls to the shipped preset files.
+
 ## 1.10.63
 
 - Finalization now preserves the requested layer budget when covered-layer cleanup has no excess layers to remove.

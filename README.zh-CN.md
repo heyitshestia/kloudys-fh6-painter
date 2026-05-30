@@ -20,7 +20,6 @@
    - `Launch App`
 5. 在 `Generate Final Vinyl` 里选择一张图片。
 6. 选择适合图片类型的预设：
-   - `Logo Decals`：logo、文字类图案、徽章、清晰曲线和硬边。
    - `Shaded Character Art`：动漫、人物、头发、眼睛、皮肤、混合线稿。
    - `Flat Colors`：贴纸、吉祥物、硬边、平涂区域。
    - `Smooth Gradients`：柔和阴影、渐变、高光过渡。

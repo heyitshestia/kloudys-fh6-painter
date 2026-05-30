@@ -144,7 +144,7 @@ exit /b 0
 :check_update_locks
 set "LOCK_REPORT=%TEMP%\kloudys-update-locks-%RANDOM%.txt"
 if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $locks=Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'KloudysGeneratorV5.exe') -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 }; exit 0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $locks=Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'KloudysGeneratorV6-Go.exe') -or ($_.Name -eq 'KloudysGeneratorV5.exe') -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 }; exit 0"
 if errorlevel 1 (
     call :log ""
     call :log "Update cannot continue because Kloudy's Painter is still running a generation, benchmark, or app window."
@@ -256,6 +256,7 @@ for %%F in (
     "KloudysGeneratorV2Speed.exe"
     "KloudysGeneratorV4.exe"
     "KloudysGeneratorV5DetailLock.exe"
+    "KloudysGeneratorV5.exe"
     "kloudys-fh6-generator.exe"
     "forza-painter-geometrize-go.exe"
     "docs\GENERATOR_BENCHMARK_PLAN.md"
