@@ -172,6 +172,13 @@ SUPPORTED_PAGE1_CODES = {
     1048712,  # Ellipse
 }
 
+LEGACY_RECTANGLE_TYPES = {1, 2}
+LEGACY_ELLIPSE_TYPES = {8, 16}
+LEGACY_RECTANGLE_WORD = 0x0065
+LEGACY_ELLIPSE_WORD = 0x0066
+LEGACY_RECTANGLE_DIVISOR = 127.0
+LEGACY_ELLIPSE_DIVISOR = 63.0
+
 
 def parse_numeric_int(value):
     if isinstance(value, bool) or value is None:
@@ -390,6 +397,93 @@ def shape_type_fields(shape, font_registry):
     raise ValueError(f"shape type is not numeric and does not resolve to a known font glyph: {shape.get('type')!r}")
 
 
+def is_transparent_canvas_sentinel(index, shape):
+    if index != 0:
+        return False
+    type_code = parse_numeric_int(shape.get("type"))
+    if type_code != 1:
+        return False
+    data = shape.get("data")
+    if not isinstance(data, list) or len(data) != 4:
+        return False
+    try:
+        x, y, width, height = [float(v) for v in data]
+    except (TypeError, ValueError):
+        return False
+    if x != 0 or y != 0 or width <= 0 or height <= 0:
+        return False
+    try:
+        color = clamp_color(shape.get("color"))
+    except ValueError:
+        return False
+    return color[3] <= 0
+
+
+def legacy_geometry_shape(index, shape):
+    """Convert old generated geometry JSON into memory-ready FH6 shape fields.
+
+    The universal importer normally expects exported FH6 type-code JSON where
+    data is already memory-position/scale/rotation. Some shared "handmade" JSONs
+    are actually old generator geometry: type 1/2 rectangles and type 8/16
+    ellipses with pixel-space x,y,width,height,rotation. Supporting that format
+    here avoids aborting before import, while keeping the written memory model
+    identical to the normal importer.
+    """
+    if any(key in shape for key in ("shape_word", "shapeWord", "type_word", "typeWord", "font_shape", "fontShape")):
+        return None
+    type_code = parse_numeric_int(shape.get("type"))
+    if type_code not in LEGACY_RECTANGLE_TYPES and type_code not in LEGACY_ELLIPSE_TYPES:
+        return None
+    data = shape.get("data")
+    if not isinstance(data, list) or len(data) < 4:
+        return None
+    try:
+        x, y, width, height = [float(v) for v in data[:4]]
+        rotation = float(data[4]) if len(data) >= 5 else 0.0
+    except (TypeError, ValueError):
+        return None
+    color = list(clamp_color(shape.get("color")))
+    if color[3] <= 0:
+        return {
+            "skip": {
+                "source_index": index,
+                "source_layer": index + 1,
+                "type_code": type_code,
+                "hex": f"0x{type_code:x}",
+                "reason": "transparent legacy geometry shape",
+            }
+        }
+    if type_code in LEGACY_RECTANGLE_TYPES:
+        shape_word = LEGACY_RECTANGLE_WORD
+        divisor = LEGACY_RECTANGLE_DIVISOR
+        rotation = rotation if type_code == 2 else 0.0
+        full_code = 1048677
+    else:
+        shape_word = LEGACY_ELLIPSE_WORD
+        divisor = LEGACY_ELLIPSE_DIVISOR
+        rotation = rotation if type_code == 16 else 0.0
+        full_code = 1048678
+    return {
+        "index": index,
+        "type_code": full_code,
+        "shape_byte": shape_word & 0xFF,
+        "shape_word": shape_word & 0xFFFF,
+        "page_byte": (shape_word >> 8) & 0xFF,
+        "font_shape": None,
+        "x": float(x),
+        "y": float(-y),
+        "sx": float(width) / divisor,
+        "sy": float(height) / divisor,
+        "rotation": float((360.0 - rotation) % 360.0),
+        "skew": float(data[5]) if len(data) > 5 else 0.0,
+        "extra_data": list(data[5:]),
+        "color": color,
+        "mask": shape_mask_flag(shape, data),
+        "score": shape.get("score"),
+        "source_format": "legacy_geometry",
+    }
+
+
 def load_shapes(path, allow_unknown_low_byte=False):
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     shapes = payload.get("shapes")
@@ -399,6 +493,25 @@ def load_shapes(path, allow_unknown_low_byte=False):
     skipped = []
     font_registry = load_font_registry()
     for i, shape in enumerate(shapes):
+        if is_transparent_canvas_sentinel(i, shape):
+            skipped_item = {
+                "source_index": i,
+                "source_layer": i + 1,
+                "type_code": parse_numeric_int(shape.get("type")),
+                "hex": "0x1",
+                "reason": "transparent canvas/background sentinel",
+            }
+            skipped.append(skipped_item)
+            print("[skip] transparent canvas/background sentinel at source layer 1", flush=True)
+            continue
+        legacy_shape = legacy_geometry_shape(i, shape)
+        if isinstance(legacy_shape, dict) and "skip" in legacy_shape:
+            skipped.append(legacy_shape["skip"])
+            print(f"[skip] transparent legacy geometry shape at source layer {i + 1}", flush=True)
+            continue
+        if legacy_shape:
+            out.append(legacy_shape)
+            continue
         code, shape_word, font_item = shape_type_fields(shape, font_registry)
         if code not in SUPPORTED_PAGE1_CODES and font_item is None and not allow_unknown_low_byte:
             skipped_item = {
