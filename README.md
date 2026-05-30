@@ -24,7 +24,7 @@ The standalone release contains:
 - `KloudysFH6Painter/`
 - bundled Python 3.12 runtime
 - bundled Python dependencies
-- bundled GPU generator: `KloudysGeneratorV6-Go.exe`
+- bundled GPU generator: `KloudysGeneratorV6.exe`
 - bundled offline JSON editor: `tools/forza-vinyl-studio/ForzaVinylStudio.exe`
 - `Images/` folder next to the launcher for your source art
 

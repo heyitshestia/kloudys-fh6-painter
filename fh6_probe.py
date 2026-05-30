@@ -539,6 +539,48 @@ def read_u64(pid, address):
     return struct.unpack("<Q", raw)[0]
 
 
+def validate_group_vector(pid, profile, group_address, table_address, layer_count):
+    """Verify the CLiveryGroup vector begin/end/capacity matches the layer table."""
+    if not group_address or not table_address:
+        return False, {}
+    if not is_private_writable_address(pid, group_address):
+        return False, {}
+    table_end = read_u64(pid, group_address + profile.layer_table_offset + 8)
+    table_capacity = read_u64(pid, group_address + profile.layer_table_offset + 16)
+    if table_end is None or table_capacity is None:
+        return False, {}
+    expected_end = int(table_address) + int(layer_count) * 8
+    if table_end != expected_end:
+        return False, {
+            "table_end": table_end,
+            "table_capacity": table_capacity,
+            "vector_count": (table_end - table_address) // 8 if table_end >= table_address else None,
+        }
+    if table_capacity < table_end:
+        return False, {"table_end": table_end, "table_capacity": table_capacity}
+    if (table_end - table_address) % 8 or (table_capacity - table_address) % 8:
+        return False, {"table_end": table_end, "table_capacity": table_capacity}
+    if not is_private_writable_address(pid, table_end - 1) or not is_private_writable_address(pid, table_capacity - 1):
+        return False, {"table_end": table_end, "table_capacity": table_capacity}
+    vector_count = (table_end - table_address) // 8
+    capacity_count = (table_capacity - table_address) // 8
+    if vector_count != layer_count:
+        return False, {"table_end": table_end, "table_capacity": table_capacity, "vector_count": vector_count}
+    if capacity_count < layer_count or capacity_count > max(layer_count + 10000, layer_count * 16):
+        return False, {
+            "table_end": table_end,
+            "table_capacity": table_capacity,
+            "vector_count": vector_count,
+            "capacity_count": capacity_count,
+        }
+    return True, {
+        "table_end": table_end,
+        "table_capacity": table_capacity,
+        "vector_count": vector_count,
+        "capacity_count": capacity_count,
+    }
+
+
 def inspect_count_address(pid, profile, count_address, layer_count, radius, blob_size):
     print(f"Process: {psutil.Process(pid).name()} pid={pid}")
     print(f"Base: 0x{get_base_address(pid):x}")
@@ -651,17 +693,23 @@ def find_best_table_near_count_fast(pid, profile, count_address, layer_count, ra
 
 
 def find_table_at_known_group_delta(pid, profile, count_address, layer_count):
+    group_address = count_address - profile.livery_count_offset
     field_address = count_address + (profile.layer_table_offset - profile.livery_count_offset)
     table_address = read_pointer(pid, field_address)
     if not table_address or not is_user_pointer(table_address):
         return None
     if not is_private_writable_address(pid, table_address):
         return None
+    if profile.key == "fh6":
+        vector_ok, _vector = validate_group_vector(pid, profile, group_address, table_address, layer_count)
+        if not vector_ok:
+            return None
     score, samples = score_table(pid, profile, table_address, min(layer_count, 64))
     if score <= 0:
         return None
     return {
         "score": score + 40,
+        "group_address": group_address,
         "count_address": count_address,
         "table_pointer_field": field_address,
         "table_address": table_address,
@@ -836,6 +884,14 @@ def locate_clivery_groups_by_rtti(pid, profile, layer_count):
                     continue
                 if not is_private_writable_address(pid, table_address):
                     continue
+                vector_ok, vector = validate_group_vector(pid, profile, group_address, table_address, layer_count)
+                if not vector_ok:
+                    print(
+                        f"rejected RTTI group=0x{group_address:x} table=0x{table_address:x} "
+                        "because vector metadata did not match the requested layer count",
+                        flush=True,
+                    )
+                    continue
                 score, samples = score_table(pid, profile, table_address, min(layer_count, 64))
                 if score <= 0:
                     continue
@@ -858,6 +914,8 @@ def locate_clivery_groups_by_rtti(pid, profile, layer_count):
                     "current_u32": current_count,
                     "samples": samples,
                     "validated_entries": valid_entries,
+                    "vector_count": vector.get("vector_count"),
+                    "capacity_count": vector.get("capacity_count"),
                     "vtable": vtable,
                 })
     groups.sort(key=lambda item: item["score"], reverse=True)
@@ -901,6 +959,9 @@ def locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds
                 continue
             if not is_private_writable_address(pid, table_address):
                 continue
+            vector_ok, vector = validate_group_vector(pid, profile, group_address, table_address, layer_count)
+            if not vector_ok:
+                continue
             score, samples = score_table(pid, profile, table_address, min(layer_count, 64))
             if score <= 0:
                 continue
@@ -918,6 +979,8 @@ def locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds
                 "current_u32": layer_count,
                 "samples": samples,
                 "validated_entries": valid_entries,
+                "vector_count": vector.get("vector_count"),
+                "capacity_count": vector.get("capacity_count"),
             })
             print(
                 f"layout candidate group=0x{group_address:x} count=0x{count_address:x} "
@@ -983,6 +1046,8 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
             "table_address": winner["table_address"],
             "score": winner["score"],
             "locator": winner["count_kind"],
+            "vector_count": winner.get("vector_count"),
+            "capacity_count": winner.get("capacity_count"),
             "samples": serialize_samples(winner["samples"]),
         }
         if output_path:
@@ -1051,6 +1116,20 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
     rejected = 0
     best_rejected_strict = 0
     for table in quick:
+        group_address = table.get("group_address") or (table["count_address"] - profile.livery_count_offset)
+        if profile.key == "fh6":
+            vector_ok, vector = validate_group_vector(pid, profile, group_address, table["table_address"], layer_count)
+            if not vector_ok:
+                rejected += 1
+                print(
+                    f"rejected candidate score={table['score']} count=0x{table['count_address']:x} "
+                    f"table=0x{table['table_address']:x} because vector metadata did not match the active group",
+                    flush=True,
+                )
+                continue
+            table["group_address"] = group_address
+            table["vector_count"] = vector.get("vector_count")
+            table["capacity_count"] = vector.get("capacity_count")
         ok, checked, valid_entries = validate_table_layer_coverage(pid, profile, table["table_address"], layer_count)
         if not ok:
             rejected += 1
@@ -1095,10 +1174,13 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
         "process": psutil.Process(pid).name(),
         "layer_count": layer_count,
         "created": time.time(),
+        "group_address": winner.get("group_address"),
         "count_address": winner["count_address"],
         "table_pointer_field": winner["table_pointer_field"],
         "table_address": winner["table_address"],
         "score": winner["score"],
+        "vector_count": winner.get("vector_count"),
+        "capacity_count": winner.get("capacity_count"),
         "samples": serialize_samples(winner["samples"]),
     }
     if output_path:

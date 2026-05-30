@@ -1526,9 +1526,9 @@ class MainWindow(QMainWindow):
         button.setText("?")
         button.setObjectName("helpButton")
         button.setCursor(Qt.CursorShape.WhatsThisCursor)
-        button.setToolTip(title)
+        button.setToolTip(f"{title}\n\n{body}")
+        button.setToolTipDuration(30000)
         button.setFixedSize(24, 24)
-        button.clicked.connect(lambda _checked=False, t=title, b=body: self.show_help(t, b))
         return button
 
     def label_with_help(self, text: str, help_key: str) -> QWidget:
@@ -4266,6 +4266,33 @@ class MainWindow(QMainWindow):
         if not candidates:
             raise RuntimeError("no matching loaded FH6 group was found")
         min_sample_ok = min(8, template_count)
+        requires_fresh_circle_template = purpose.startswith("import")
+        min_circle_count = int(template_count * 0.90) if requires_fresh_circle_template else 0
+
+        def shape_count(candidate, shape_byte):
+            counts = candidate.get("shape_id_counts_all") or {}
+            return int(counts.get(str(shape_byte)) or counts.get(shape_byte) or 0)
+
+        def candidate_rejection(candidate, valid_ptrs, sample_ok):
+            vector_ok = candidate.get("vector_ok")
+            vector_count = candidate.get("vector_count")
+            capacity_count = candidate.get("capacity_count")
+            if vector_ok is False:
+                return "vector metadata invalid"
+            if vector_count is not None and int(vector_count) != int(template_count):
+                return f"vector_count={vector_count}"
+            if capacity_count is not None and int(capacity_count) < int(template_count):
+                return f"capacity_count={capacity_count}"
+            if valid_ptrs < template_count:
+                return f"valid_ptrs={valid_ptrs}"
+            if sample_ok < min_sample_ok:
+                return f"sample_ok={sample_ok}"
+            if requires_fresh_circle_template:
+                circle_count = shape_count(candidate, 102)
+                if circle_count < min_circle_count:
+                    return f"circle_template_check={circle_count}/{template_count}"
+            return ""
+
         rejected = []
         selected = None
         strong_candidates = []
@@ -4274,11 +4301,12 @@ class MainWindow(QMainWindow):
             table = candidate.get("table")
             valid_ptrs = int(candidate.get("valid_ptrs") or 0)
             sample_ok = int(candidate.get("sample_ok_count") or 0)
-            if group and table and valid_ptrs >= template_count and sample_ok >= min_sample_ok:
+            rejection = candidate_rejection(candidate, valid_ptrs, sample_ok)
+            if group and table and not rejection:
                 strong_candidates.append((index, candidate))
-                selected = (index, group, table, valid_ptrs, sample_ok)
+                selected = (index, group, table, valid_ptrs, sample_ok, shape_count(candidate, 102))
                 break
-            rejected.append(f"#{index}: valid_ptrs={valid_ptrs}, sample_ok={sample_ok}")
+            rejected.append(f"#{index}: {rejection or 'missing group/table'}")
         if purpose.startswith("export"):
             strong_candidates = []
             for index, candidate in enumerate(candidates, start=1):
@@ -4286,7 +4314,8 @@ class MainWindow(QMainWindow):
                 table = candidate.get("table")
                 valid_ptrs = int(candidate.get("valid_ptrs") or 0)
                 sample_ok = int(candidate.get("sample_ok_count") or 0)
-                if group and table and valid_ptrs >= template_count and sample_ok >= min_sample_ok:
+                rejection = candidate_rejection(candidate, valid_ptrs, sample_ok)
+                if group and table and not rejection:
                     signature = (
                         tuple(sorted((candidate.get("shape_id_counts_sample") or {}).items())),
                         tuple(sorted((candidate.get("color_counts_sample") or {}).items())),
@@ -4314,11 +4343,17 @@ class MainWindow(QMainWindow):
                 seen_signatures[signature] = (index, candidate)
         if not selected:
             detail = "; ".join(rejected[:5]) if rejected else "no candidates"
+            if requires_fresh_circle_template:
+                raise RuntimeError(
+                    "no safe fresh FH6 import template was found. Load the saved/reopened 3000-layer plain white "
+                    f"circle template, stay in the Vinyl Group Editor, and import only once per fresh template ({detail})"
+                )
             raise RuntimeError(f"located group did not validate strongly enough ({detail})")
-        index, group, table, valid_ptrs, sample_ok = selected
+        index, group, table, valid_ptrs, sample_ok, circle_count = selected
         if index > 1:
             self.bus.log.emit(f"Skipped {index - 1} weaker fallback candidate(s): {'; '.join(rejected[:3])}")
-        self.bus.log.emit(f"FH6 group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}")
+        circle_suffix = f", circle_template={circle_count}/{template_count}" if requires_fresh_circle_template else ""
+        self.bus.log.emit(f"FH6 group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
         return group, table
 
     def handmade_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):

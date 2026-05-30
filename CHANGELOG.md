@@ -1,5 +1,13 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.66
+
+- Hardened FH6 template locating by rejecting stale layer tables whose group vector metadata does not match the active editor template.
+- Handmade import now requires a fresh saved/reopened plain white circle template before writing, preventing second-import writes into already-trimmed groups.
+- Renamed the bundled V6 generator executable to `KloudysGeneratorV6.exe` and made the updater remove the old filename.
+- Converted in-app `?` help buttons to hover tooltips.
+- Added generator V6 follow-up notes for future tuning work.
+
 ## 1.10.65
 
 - Added the bundled Forza Vinyl Studio editor as an `Editor` tab launcher.
@@ -10,7 +18,7 @@
 
 ## 1.10.64
 
-- Updated the bundled generator to `KloudysGeneratorV6-Go.exe`.
+- Updated the bundled generator to `KloudysGeneratorV6.exe`.
 - Reworked the stock presets to `Shaded Character Art`, `Flat Colors`, and `Smooth Gradients`.
 - Presets now keep their own resolution/sample settings by default; Pro settings are the only manual override.
 - Added adaptive late-layer workload controls to the shipped preset files.

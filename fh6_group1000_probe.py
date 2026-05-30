@@ -27,6 +27,8 @@ RW_MASK = 0xCC
 
 GROUP_COUNT_OFF = 0x5A
 GROUP_TABLE_OFF = 0x78
+GROUP_TABLE_END_OFF = 0x80
+GROUP_TABLE_CAPACITY_OFF = 0x88
 LAYER_SIZE = 0xC0
 
 
@@ -186,7 +188,26 @@ def layer_summary(handle, ptr, index):
 
 
 def validate_candidate(handle, contains, group, table, count, report_layers):
+    if not contains(group):
+        return None
     if not contains(table):
+        return None
+    table_end = read_u64(handle, group + GROUP_TABLE_END_OFF)
+    table_capacity = read_u64(handle, group + GROUP_TABLE_CAPACITY_OFF)
+    expected_end = int(table) + int(count) * 8
+    if table_end != expected_end:
+        return None
+    if table_capacity < table_end:
+        return None
+    if (table_end - table) % 8 != 0 or (table_capacity - table) % 8 != 0:
+        return None
+    if not contains(table_end - 1) or not contains(table_capacity - 1):
+        return None
+    vector_count = (table_end - table) // 8
+    capacity_count = (table_capacity - table) // 8
+    if vector_count != count:
+        return None
+    if capacity_count < count or capacity_count > max(count + 10000, count * 16):
         return None
     ptr_raw = read_memory(handle, table, count * 8)
     if len(ptr_raw) != count * 8:
@@ -227,7 +248,12 @@ def validate_candidate(handle, contains, group, table, count, report_layers):
         "score": score,
         "group": hx(group),
         "table": hx(table),
+        "table_end": hx(table_end),
+        "table_capacity": hx(table_capacity),
         "count": count,
+        "vector_count": vector_count,
+        "capacity_count": capacity_count,
+        "vector_ok": True,
         "valid_ptrs": len(valid_ptrs),
         "sample_ok_count": ok_count,
         "shape_id_counts_sample": dict(shape_counts.most_common(24)),
