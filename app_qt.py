@@ -1374,6 +1374,10 @@ class MainWindow(QMainWindow):
         self.update_check_timer = QTimer(self)
         self.update_check_timer.setInterval(5 * 60 * 1000)
         self.update_check_timer.timeout.connect(self.start_update_check)
+        self.editor_wip_blink_on = True
+        self.editor_wip_timer = QTimer(self)
+        self.editor_wip_timer.setInterval(520)
+        self.editor_wip_timer.timeout.connect(self.toggle_editor_wip_blink)
         self.bus = UiBus()
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
@@ -1390,6 +1394,8 @@ class MainWindow(QMainWindow):
         self.bus.ui_call.connect(lambda fn: fn())
         self._build()
         self.apply_theme()
+        self.apply_editor_wip_style()
+        self.editor_wip_timer.start()
         self.set_phase("ready", "Choose a source image or select a finalized JSON to import.")
         self.refresh_processes()
         self.refresh_generated_browser()
@@ -1490,6 +1496,29 @@ class MainWindow(QMainWindow):
             self.log_line("Opened Forza Vinyl Studio editor.")
         except Exception as exc:
             QMessageBox.critical(self, "Editor failed to open", str(exc))
+
+    def toggle_editor_wip_blink(self):
+        if not hasattr(self, "editor_wip_label"):
+            return
+        self.editor_wip_blink_on = not self.editor_wip_blink_on
+        self.apply_editor_wip_style()
+
+    def apply_editor_wip_style(self):
+        if not hasattr(self, "editor_wip_label"):
+            return
+        color = "#ff1010" if self.editor_wip_blink_on else "rgba(255, 16, 16, 48)"
+        self.editor_wip_label.setStyleSheet(
+            f"""
+            QLabel#editorWipLabel {{
+                color: {color};
+                background: transparent;
+                border: none;
+                font-size: 92pt;
+                font-weight: 900;
+                padding: 18px;
+            }}
+            """
+        )
 
     def help_button(self, key: str) -> QToolButton:
         title, body = HELP_TEXT[key]
@@ -1981,7 +2010,25 @@ class MainWindow(QMainWindow):
         self.luma_status_label.setWordWrap(True)
         controls_layout.addWidget(self.luma_status_label)
         layout.addWidget(controls)
-        layout.addStretch(1)
+
+        warning_panel = QFrame()
+        warning_panel.setObjectName("editorWipPanel")
+        warning_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        warning_layout = QVBoxLayout(warning_panel)
+        warning_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.editor_wip_label = QLabel("W I P")
+        self.editor_wip_label.setObjectName("editorWipLabel")
+        self.editor_wip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        warning_layout.addWidget(self.editor_wip_label)
+        editor_warning = QLabel(
+            "This editor integration is not fully tested yet.\n"
+            "Document every bug, broken workflow, missing feature, and anything that needs fixing or changing."
+        )
+        editor_warning.setObjectName("editorWipText")
+        editor_warning.setWordWrap(True)
+        editor_warning.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        warning_layout.addWidget(editor_warning)
+        layout.addWidget(warning_panel, 1)
         self.tabs.addTab(tab, "Editor")
 
     def _build_image_tools_tab(self):
@@ -2163,6 +2210,8 @@ class MainWindow(QMainWindow):
                 QPushButton#kofiButton { background: #ffffff; color: #7f3d58; border: 1px solid #d65f89; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: #fff0f6; color: #a83f67; border-color: #a83f67; }
                 QLabel#kofiOptionalLabel { color: #7f3d58; font-size: 8pt; font-weight: 800; }
+                QFrame#editorWipPanel { background: rgba(255, 240, 246, 180); border: 3px dashed #ff1010; border-radius: 18px; }
+                QLabel#editorWipText { color: #7f1720; font-size: 14pt; font-weight: 900; padding: 8px 28px 28px 28px; }
                 QToolButton#helpButton { background: #7f3d58; color: #ffffff; border: 1px solid #fffafa; border-radius: 12px; font-weight: 900; }
                 QToolButton#helpButton:hover { background: #a83f67; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdfd; color: #332534; border: 2px solid #b77b8f; border-radius: 9px; padding: 6px; selection-background-color: #d65f89; selection-color: white; }
@@ -2193,6 +2242,8 @@ class MainWindow(QMainWindow):
                 QPushButton#kofiButton { background: rgba(36, 233, 255, 42); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 150); border-radius: 8px; padding: 2px 10px; font-weight: 950; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: rgba(255, 74, 43, 130); color: #ffffff; border-color: #ffb000; }
                 QLabel#kofiOptionalLabel { color: #ffb000; font-size: 8pt; font-weight: 900; }
+                QFrame#editorWipPanel { background: rgba(40, 0, 0, 150); border: 3px dashed #ff1010; border-radius: 18px; }
+                QLabel#editorWipText { color: #ffd1d1; font-size: 14pt; font-weight: 900; padding: 8px 28px 28px 28px; }
                 QToolButton#helpButton { background: #24e9ff; color: #07101a; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
                 QToolButton#helpButton:hover { background: #ffb000; color: #020407; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: rgba(2, 7, 14, 238); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); border-radius: 9px; padding: 6px; selection-background-color: #ff4a2b; selection-color: #ffffff; }
@@ -2231,6 +2282,8 @@ class MainWindow(QMainWindow):
                 QPushButton#kofiButton { background: #000000; color: #dcdcdc; border: 1px solid #343434; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: #101010; color: #ffffff; border-color: #777777; }
                 QLabel#kofiOptionalLabel { color: #bdbdbd; font-size: 8pt; font-weight: 800; }
+                QFrame#editorWipPanel { background: #050000; border: 3px dashed #ff1010; border-radius: 18px; }
+                QLabel#editorWipText { color: #ffbdbd; font-size: 14pt; font-weight: 900; padding: 8px 28px 28px 28px; }
                 QToolButton#helpButton { background: #ffffff; color: #000000; border: 1px solid #ffffff; border-radius: 12px; font-weight: 950; }
                 QToolButton#helpButton:hover { background: #d0d0d0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #000000; color: #f4f4f4; border: 1px solid #2b2b2b; border-radius: 8px; padding: 6px; selection-background-color: #ffffff; selection-color: #000000; }
@@ -2264,6 +2317,8 @@ class MainWindow(QMainWindow):
                 QPushButton#kofiButton { background: #fffdf8; color: #6c3fa0; border: 1px solid #c7a8ea; border-radius: 8px; padding: 2px 10px; font-weight: 900; min-height: 18px; max-height: 24px; }
                 QPushButton#kofiButton:hover { background: #f7eefe; color: #9f6ad8; border-color: #9f6ad8; }
                 QLabel#kofiOptionalLabel { color: #6c3fa0; font-size: 8pt; font-weight: 800; }
+                QFrame#editorWipPanel { background: #fff8fb; border: 3px dashed #ff1010; border-radius: 18px; }
+                QLabel#editorWipText { color: #7f1720; font-size: 14pt; font-weight: 900; padding: 8px 28px 28px 28px; }
                 QToolButton#helpButton { background: #9f6ad8; color: white; border: 1px solid #ffffff; border-radius: 12px; font-weight: 900; }
                 QToolButton#helpButton:hover { background: #7b4eb0; }
                 QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget { background: #fffdf8; color: #3b244d; border: 1px solid #d8c2f0; border-radius: 8px; padding: 6px; selection-background-color: #cfa8ff; }
