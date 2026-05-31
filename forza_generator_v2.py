@@ -1457,7 +1457,11 @@ def stabilize_flat_region_colors(
     changed = 0
     checked = 0
     skipped = 0
-    for shape in shapes:
+    protected_large_underpaint = 0
+    protected_extreme_snap = 0
+    canvas_pixels = max(1, width * height)
+    total_shapes = max(1, len(shapes))
+    for shape_index, shape in enumerate(shapes):
         fixed = copy_shape(shape)
         color = list(fixed.get("color", [0, 0, 0, 255]))
         if len(color) < 4 or int(color[3]) <= 0:
@@ -1478,6 +1482,8 @@ def stabilize_flat_region_colors(
             skipped += 1
             continue
         checked += 1
+        layer_fraction = float(shape_index) / float(max(1, total_shapes - 1))
+        pixel_fraction = float(pixel_count) / float(canvas_pixels)
         rgb = local[..., :3][visible].astype(np.uint8)
         channel_std = float(np.mean(np.std(rgb.astype(np.float32), axis=0))) if rgb.size else 999.0
         bins = (rgb // 10).astype(np.uint16)
@@ -1500,7 +1506,40 @@ def stabilize_flat_region_colors(
             continue
         new_rgb = [int(round(v)) for v in np.median(dominant_rgb, axis=0)]
         old_rgb = [int(v) for v in color[:3]]
-        if sum(abs(a - b) for a, b in zip(old_rgb, new_rgb)) >= 3:
+        old_luma = sum(old_rgb) / 3.0
+        new_luma = sum(new_rgb) / 3.0
+        snap_delta = sum(abs(a - b) for a, b in zip(old_rgb, new_rgb))
+        snaps_to_extreme = new_luma <= 18.0 or new_luma >= 237.0
+        old_was_mid = 48.0 < old_luma < 207.0
+
+        # Large early layers are often broad underpaint. Snapping them to hard
+        # black/white can look like V2 added new blobs in corners/edges even
+        # though it only changed an existing layer color. Require much stronger
+        # evidence before touching these foundation shapes.
+        if pixel_fraction >= 0.010 and layer_fraction <= 0.12:
+            if dominant_fraction < 0.88 or channel_std > 8.0:
+                stabilized.append(fixed)
+                skipped += 1
+                protected_large_underpaint += 1
+                continue
+        elif pixel_fraction >= 0.004 and layer_fraction <= 0.22:
+            if dominant_fraction < 0.78 or channel_std > 14.0:
+                stabilized.append(fixed)
+                skipped += 1
+                protected_large_underpaint += 1
+                continue
+
+        # A mid-gray ellipse that suddenly becomes pure white/black is exactly
+        # the visible bleeding failure mode on flat logos. Allow it only when
+        # the local source is overwhelmingly one flat color.
+        if snaps_to_extreme and old_was_mid and snap_delta >= 90:
+            if dominant_fraction < 0.82 or channel_std > 10.0:
+                stabilized.append(fixed)
+                skipped += 1
+                protected_extreme_snap += 1
+                continue
+
+        if snap_delta >= 3:
             color[:3] = new_rgb
             if force_opaque:
                 color[3] = 255
@@ -1514,6 +1553,8 @@ def stabilize_flat_region_colors(
         "checked": checked,
         "skipped": skipped,
         "min_pixels": min_pixels,
+        "protected_large_underpaint": protected_large_underpaint,
+        "protected_extreme_snap": protected_extreme_snap,
     }
 
 
