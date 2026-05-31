@@ -144,11 +144,11 @@ exit /b 0
 :check_update_locks
 set "LOCK_REPORT=%TEMP%\kloudys-update-locks-%RANDOM%.txt"
 if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $locks=Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'KloudysGeneratorV7.exe') -or ($_.Name -eq 'KloudysGeneratorV6.exe') -or ($_.Name -eq 'KloudysGeneratorV5.exe') -or ($_.Name -eq 'ForzaVinylStudio.exe') -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 }; exit 0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $names=@('KloudysGeneratorV7.exe','KloudysGeneratorV6.exe','KloudysGeneratorV6-Go.exe','KloudysGeneratorV5.exe','KloudysGeneratorV5DetailLock.exe','KloudysGeneratorV4.exe','KloudysGeneratorV2.exe','KloudysGeneratorV2Fast.exe','KloudysGeneratorV2Speed.exe','ForzaVinylStudio.exe'); $match={ ($names -contains $_.Name) -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; $locks=Get-CimInstance Win32_Process | Where-Object $match; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 800; $remaining=Get-CimInstance Win32_Process | Where-Object $match; if($remaining){ 'Still running after termination attempt:' | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $remaining | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 } }; exit 0"
 if errorlevel 1 (
     call :log ""
-    call :log "Update cannot continue because Kloudy's Painter is still running a generation, benchmark, or app window."
-    call :log "Close the app, Forza Vinyl Studio, and any generator process, then run this updater again."
+    call :log "Update tried to stop Kloudy's Painter processes, but Windows reports that one is still running."
+    call :log "Close the listed process manually or restart Windows, then run this updater again."
     if exist "!LOCK_REPORT!" (
         call :log "Running process details:"
         for /f "usebackq delims=" %%L in ("!LOCK_REPORT!") do call :log "%%L"
@@ -156,7 +156,12 @@ if errorlevel 1 (
     )
     exit /b 1
 )
-if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
+if exist "!LOCK_REPORT!" (
+    call :log ""
+    call :log "Stopped running Kloudy's Painter processes before updating:"
+    for /f "usebackq delims=" %%L in ("!LOCK_REPORT!") do call :log "%%L"
+    del /f /q "!LOCK_REPORT!" >nul 2>nul
+)
 exit /b 0
 
 :write_build_commit

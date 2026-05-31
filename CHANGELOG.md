@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.73
+
+- Updated the GitHub updater to stop stale Kloudy's Painter generator/editor/app subprocesses automatically before syncing.
+- The updater now logs which known process IDs it stopped and only fails if Windows refuses to terminate one.
+
 ## 1.10.72
 
 - Replaced the Editor tab launcher with the bundled Fabric FH6 editor.
