@@ -10,6 +10,12 @@ Kloudy's FH6 Painter turns source art into finalized Forza Horizon 6 vinyl JSON,
 
 This README is the readable start-here guide. The full detailed manual is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md). The very detailed FH6 group/import guide is in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
 
+## Community Contributions
+
+A very, very big thank you to LanceMuscles for insights into the deep and almost forgotten lore of Forza Horizon image-to-vinyl generation.
+
+Many more thanks to River, Elu, Wolfie, WKD_Will, Big Nut, Korinthian, Catinus, Soypoka, Slasher, Melon, Eddie, Frozander, Kanyeshine, slaigh., Asayunon, and Astral_Cat for amazing suggestions, tips, and solutions.
+
 ## What You Download
 
 For normal users, download the latest release zip:
