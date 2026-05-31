@@ -98,7 +98,7 @@ MEMORY_SNAPSHOT_LIMIT_MB = 2048
 UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
-VINYL_STUDIO_EXE = ROOT / "tools" / "forza-vinyl-studio" / "ForzaVinylStudio.exe"
+FABRIC_EDITOR_SCRIPT = ROOT / "tools" / "fabric-editor" / "start_fabric_editor.py"
 STANDALONE_APP_FOLDER_NAME = "KloudysFH6Painter"
 USER_IMAGES_ROOT = ROOT.parent / "Images" if ROOT.name.lower() == STANDALONE_APP_FOLDER_NAME.lower() else ROOT / "Images"
 THEMES = {
@@ -297,7 +297,7 @@ Open Image Tools when your source needs prep before generation:
 
 Open Image Size Helper to check the source resolution and see 1-6 MP resize targets for the same aspect ratio.
 
-Open Editor to launch Forza Vinyl Studio, the bundled offline FH6 JSON editor.
+Open Editor to launch the Fabric FH6 Editor, the bundled local-browser FH6 JSON editor.
 The editor is for manual JSON creation/export. It does not write to FH6 memory.
 
 
@@ -409,9 +409,9 @@ HELP_TEXT = {
         "a standard editable layer table, records a content fingerprint/summary, and saves a compatible handmade JSON."
     ),
     "luma_tab": (
-        "Vinyl Studio Editor",
-        "Opens the bundled offline JSON editor.\n\n"
-        "Use it to create or edit FH6 JSON by hand. This first integration is launch-only; deeper launcher integration comes later."
+        "Fabric FH6 Editor",
+        "Opens the bundled local-browser JSON editor.\n\n"
+        "Use it to create or clean FH6 JSON by hand, trace over an overlay image, search/favorite shapes, and export FH6-compatible JSON."
     ),
     "legacy_masks": (
         "Legacy FH Border Masks",
@@ -1472,28 +1472,28 @@ class MainWindow(QMainWindow):
     def open_kofi(self):
         QDesktopServices.openUrl(QUrl(KOFI_URL))
 
-    def open_vinyl_studio(self):
+    def open_fabric_editor(self):
         if os.name != "nt":
             QMessageBox.information(
                 self,
                 "Windows only",
-                "Forza Vinyl Studio is a bundled WPF editor and currently runs on Windows only.",
+                "The Fabric FH6 editor is bundled with the standalone Windows app.",
             )
             return
-        if not VINYL_STUDIO_EXE.exists():
+        if not FABRIC_EDITOR_SCRIPT.exists():
             QMessageBox.warning(
                 self,
                 "Editor missing",
-                f"Forza Vinyl Studio was not found:\n{VINYL_STUDIO_EXE}\n\nRun the updater or reinstall the latest standalone release.",
+                f"Fabric FH6 Editor was not found:\n{FABRIC_EDITOR_SCRIPT}\n\nRun the updater or reinstall the latest standalone release.",
             )
             return
         try:
             subprocess.Popen(
-                [str(VINYL_STUDIO_EXE)],
-                cwd=VINYL_STUDIO_EXE.parent,
+                [str(EMBEDDED_PYTHON if EMBEDDED_PYTHON.exists() else sys.executable), str(FABRIC_EDITOR_SCRIPT)],
+                cwd=ROOT,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
-            self.log_line("Opened Forza Vinyl Studio editor.")
+            self.log_line("Opened Fabric FH6 editor.")
         except Exception as exc:
             QMessageBox.critical(self, "Editor failed to open", str(exc))
 
@@ -1991,22 +1991,22 @@ class MainWindow(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        controls = QGroupBox("Forza Vinyl Studio")
+        controls = QGroupBox("Fabric FH6 Editor")
         controls_layout = QVBoxLayout(controls)
-        controls_layout.addWidget(self.label_with_help("Open the bundled offline editor for hand-made FH6 JSON creation and editing. This does not write to FH6 memory.", "luma_tab"))
+        controls_layout.addWidget(self.label_with_help("Open the bundled browser-based FH6 JSON editor. This does not write to FH6 memory.", "luma_tab"))
         description = QLabel(
-            "Forza Vinyl Studio is currently shipped as a separate editor window.\n"
-            "Use it to place, move, stretch, rotate, save project files, and create FH6 JSON."
+            "Fabric FH6 Editor opens as a local browser editor window.\n"
+            "Use it to place, move, stretch, rotate, save project files, and export FH6 JSON."
         )
         description.setWordWrap(True)
         controls_layout.addWidget(description)
         actions = QHBoxLayout()
-        open_editor = QPushButton("Open Forza Vinyl Studio")
+        open_editor = QPushButton("Open Fabric FH6 Editor")
         open_editor.setObjectName("primaryButton")
-        open_editor.clicked.connect(self.open_vinyl_studio)
+        open_editor.clicked.connect(self.open_fabric_editor)
         actions.addWidget(open_editor, 1)
         controls_layout.addLayout(actions)
-        self.luma_status_label = QLabel(f"Editor path: {VINYL_STUDIO_EXE}")
+        self.luma_status_label = QLabel(f"Editor script: {FABRIC_EDITOR_SCRIPT}")
         self.luma_status_label.setWordWrap(True)
         controls_layout.addWidget(self.luma_status_label)
         layout.addWidget(controls)

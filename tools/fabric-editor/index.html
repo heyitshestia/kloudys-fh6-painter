@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kloudy's FH6 Fabric Editor Prototype</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/fabric.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Kloudy's FH6 Fabric Editor</h1>
+      <p>Prototype: FH6 canvas bounds, full shape library, JSON import/export.</p>
+    </div>
+    <div class="toolbar">
+      <label class="fileButton">
+        Import JSON
+        <input id="jsonInput" type="file" accept=".json,application/json">
+      </label>
+      <button id="exportJson" title="Full FH6 shape export. Use with the Handmade Importer.">Export FH6 JSON</button>
+      <button id="exportLegacyJson" title="Fast normal-import export for generated rectangle/ellipse JSONs only.">Export Normal Import JSON</button>
+      <button id="saveProject" title="Save this editor state so you can keep editing later.">Save Project</button>
+      <label class="fileButton">
+        Load Project
+        <input id="projectInput" type="file" accept=".json,application/json">
+      </label>
+      <label class="toolbarToggle" title="Selection prefers visible pixels instead of full bounding boxes.">
+        <input id="boxVisibleOnly" type="checkbox" checked> Visible-only select
+      </label>
+      <button id="fitView" title="Zoom to the loaded design.">Fit Design</button>
+      <button id="resetView" title="Reset to full FH6 bounds.">Reset View</button>
+      <button id="undoBtn" title="Undo the last editor change.">Undo</button>
+      <button id="redoBtn" title="Redo the last undone editor change.">Redo</button>
+      <button id="helpBtn">Help / How To</button>
+    </div>
+  </header>
+  <div id="busyBanner" hidden>
+    <div class="spinner"></div>
+    <span id="busyText">Working...</span>
+  </div>
+
+  <main>
+    <aside class="leftPanel">
+      <section>
+        <h2>Layers</h2>
+        <div id="layerInfo">No JSON loaded.</div>
+        <div class="smallTools">
+          <button id="deleteLayer" title="Remove the selected layer(s).">Delete</button>
+          <button id="duplicateLayer" title="Copy the selected layer(s).">Duplicate</button>
+          <button id="bringForward" title="Move selected layer(s) one step toward the top/front.">Forward</button>
+          <button id="sendBackward" title="Move selected layer(s) one step toward the bottom/back.">Back</button>
+        </div>
+        <p class="hint">Delete removes selected layers. Duplicate copies them. Forward/Back changes layer order. Top layers draw over lower layers.</p>
+        <label class="inline"><input id="pixelSelect" type="checkbox" checked> Select only visible pixels</label>
+        <label>Nudge <input id="nudgeStep" type="number" step="0.1" value="1"></label>
+        <ol id="layers"></ol>
+      </section>
+      <section>
+        <h2>Reference Overlay</h2>
+        <label class="fileButton wide">
+          Add Overlay Image
+          <input id="overlayInput" type="file" accept="image/*">
+        </label>
+        <label>Opacity <input id="overlayOpacity" type="range" min="0" max="100" value="45"></label>
+        <label>Size % <input id="overlayScale" type="range" min="10" max="400" value="100"></label>
+        <label class="inline"><input id="autoOverlayColor" type="checkbox"> Live auto color from overlay</label>
+        <div class="smallTools">
+          <button id="sampleOverlayColor" title="Set selected layer color from the dominant overlay color under its current bounds.">Sample Color</button>
+          <button id="toggleOverlay">Hide/Show</button>
+          <button id="removeOverlay">Remove</button>
+        </div>
+      </section>
+      <section>
+        <h2>Selected</h2>
+        <label>Color <input id="colorPicker" type="color" value="#ffffff"></label>
+        <label>Opacity <input id="opacitySlider" type="range" min="0" max="255" value="255"></label>
+        <label>X <input id="xInput" type="number" step="0.01"></label>
+        <label>Y <input id="yInput" type="number" step="0.01"></label>
+        <label>Scale X <input id="sxInput" type="number" step="0.001"></label>
+        <label>Scale Y <input id="syInput" type="number" step="0.001"></label>
+        <label>Rotation <input id="rotInput" type="number" step="0.01"></label>
+        <label>Skew <input id="skewInput" type="number" step="0.001"></label>
+        <label class="inline"><input id="maskInput" type="checkbox"> Mask layer</label>
+        <button id="applyFields">Apply Selected Values</button>
+      </section>
+    </aside>
+
+    <section class="canvasWrap">
+      <canvas id="canvas" width="1280" height="860"></canvas>
+      <div class="status" id="status">Ready. Mouse wheel zooms, middle/right drag pans.</div>
+    </section>
+
+    <aside class="shapePanel">
+      <section>
+        <h2>Shape Library</h2>
+        <select id="shapeFamily"></select>
+        <input id="shapeSearch" placeholder="Search name, number, family, or type code">
+        <div class="smallTools">
+          <button id="showFavorites">Favorites</button>
+          <button id="showAllShapes">All</button>
+        </div>
+        <div id="shapeGrid"></div>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="helpDialog">
+    <div class="helpHeader">
+      <h2>Fabric FH6 Editor Help</h2>
+      <button id="closeHelp">Close</button>
+    </div>
+    <div class="helpBody">
+      <section>
+        <h3>What This Does</h3>
+        <p>This prototype is for manual cleanup of generated or handmade FH6 JSONs. It loads the JSON as editable FH6 vinyl layers, lets you move/delete/duplicate/reorder shapes, then exports an FH6 type-code JSON for the handmade importer.</p>
+      </section>
+      <section>
+        <h3>Basic Workflow</h3>
+        <ol>
+          <li>Click <b>Import JSON</b> and choose a generated final JSON or handmade/exported FH6 JSON.</li>
+          <li>Click visible parts of the design to select the top visible layer.</li>
+          <li>Drag selected layers to move them, or drag a box to select multiple layers.</li>
+          <li>Use Delete, Duplicate, Forward, Back, or arrow nudges to clean up visible mistakes.</li>
+          <li>Click <b>Export FH6 JSON</b> for the handmade importer, or <b>Export Normal Import JSON</b> when the design still only uses generated rectangles/ellipses.</li>
+        </ol>
+      </section>
+      <section>
+        <h3>Top Buttons</h3>
+        <ul>
+          <li><b>Import JSON</b>: Loads generated legacy JSON or handmade/exported FH6 JSON.</li>
+          <li><b>Export FH6 JSON</b>: Saves the current editable layer stack as FH6 type-code JSON. Use the handmade importer. Supports the full shape library.</li>
+          <li><b>Export Normal Import JSON</b>: Saves a normal generated-style JSON for the fast normal importer. This only works when every layer is compatible with generated rectangles/ellipses.</li>
+          <li><b>Save Project</b>: Saves the current editor state for later editing.</li>
+          <li><b>Load Project</b>: Reopens a saved editor project.</li>
+          <li><b>Visible-only select</b>: Makes clicks prefer actual visible pixels instead of a shape's full bounding box.</li>
+          <li><b>Fit Design</b>: Zooms to the loaded layer stack.</li>
+          <li><b>Reset View</b>: Recenters and zooms the canvas back to the FH6 bounds.</li>
+          <li><b>Undo / Redo</b>: Steps backward or forward through editor changes.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Layer Editing</h3>
+        <ul>
+          <li><b>Select only visible pixels</b>: Clicks the actual visible shape area instead of the whole bounding box.</li>
+          <li><b>Nudge</b>: Sets arrow-key movement amount. Hold Shift for a bigger nudge.</li>
+          <li><b>Delete</b>: Removes selected layer(s).</li>
+          <li><b>Duplicate</b>: Copies selected layer(s).</li>
+          <li><b>Forward / Back</b>: Changes layer order.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Shape Library</h3>
+        <ul>
+          <li>Pick a category, then click a shape tile to add it to the canvas.</li>
+          <li>Click the small corner star to add a favorite. In Favorites view, the same corner button removes it.</li>
+          <li>Search accepts shape names, category names, numbers, and type codes.</li>
+          <li>New shapes use the last manually selected color. Enable overlay color sampling to color new or edited shapes from the reference image.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Reference Overlay</h3>
+        <p>Add a source image as a non-exported overlay. Adjust opacity and size to compare your edited shapes against the intended artwork. The overlay is never written into the FH6 JSON.</p>
+      </section>
+      <section>
+        <h3>Shortcuts</h3>
+        <ul>
+          <li><b>Mouse wheel</b>: Zoom.</li>
+          <li><b>Middle/right drag</b>: Pan.</li>
+          <li><b>Delete / Backspace</b>: Delete selected layers.</li>
+          <li><b>Ctrl+D</b>: Duplicate selected layers.</li>
+          <li><b>Ctrl+Z / Ctrl+Y</b>: Undo / redo.</li>
+          <li><b>Arrow keys</b>: Nudge selection.</li>
+          <li><b>Shift + Arrow keys</b>: Larger nudge.</li>
+          <li><b>[ / ]</b>: Move layer order backward / forward.</li>
+        </ul>
+      </section>
+      <section class="warning">
+        <h3>Important Limits</h3>
+        <p>This is not an arbitrary SVG/path converter. It edits FH6 layers and exports FH6 JSON. If a shape type exists in FH6, it is preserved by type code. Arbitrary freehand SVG paths are not supported.</p>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="editor.js"></script>
+</body>
+</html>

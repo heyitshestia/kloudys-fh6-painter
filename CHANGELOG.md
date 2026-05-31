@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.72
+
+- Replaced the Editor tab launcher with the bundled Fabric FH6 editor.
+- Added the Fabric editor shape library with searchable shape names, explicit favorite buttons, remembered shape color, viewport-centered shape placement, and live overlay color sampling.
+- Removed the editor canvas guide frame from the default view for cleaner manual placement.
+
 ## 1.10.68
 
 - Promoted the tested prototype generator to `KloudysGeneratorV7.exe`.
