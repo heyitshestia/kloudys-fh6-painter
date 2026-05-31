@@ -14,9 +14,14 @@ ROOT = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT / "settings"
 ACTIVE_PRESET_DIR = SETTINGS_DIR
 GENERATOR_EXE = ROOT / "forza_generator_v2.py"
+RAW_GENERATOR_EXE_V7 = ROOT / "KloudysGeneratorV7.exe"
 RAW_GENERATOR_EXE_V6 = ROOT / "KloudysGeneratorV6.exe"
 ARCHIVED_PYTHON_GENERATOR_V6 = ROOT / "runtime" / "archives" / "python-v6-structure-prototype-20260529" / "KloudysGeneratorV6.py"
-RAW_GENERATOR_EXE = RAW_GENERATOR_EXE_V6 if RAW_GENERATOR_EXE_V6.exists() else ARCHIVED_PYTHON_GENERATOR_V6
+RAW_GENERATOR_EXE = (
+    RAW_GENERATOR_EXE_V7
+    if RAW_GENERATOR_EXE_V7.exists()
+    else (RAW_GENERATOR_EXE_V6 if RAW_GENERATOR_EXE_V6.exists() else ARCHIVED_PYTHON_GENERATOR_V6)
+)
 PREVIEW_DIR = ROOT / "runtime" / "previews"
 CUSTOM_SETTINGS_DIR = ROOT / "runtime" / "custom-settings"
 USER_PRESET_DIR = ROOT / "runtime" / "user-presets"
@@ -54,6 +59,7 @@ SETTING_KEYS = (
     "errorGridSize",
     "enableDetailWeightedSampling",
     "detailSamplingStrength",
+    "detailSamplingFloor",
     "detailSamplingStart",
     "enableBoundaryAwareRadius",
     "boundaryRadiusPadding",
@@ -66,6 +72,9 @@ SETTING_KEYS = (
     "lateSmallCandidateShare",
     "lateSmallCandidateStart",
     "lateSmallCandidateRadiusFrac",
+    "minUsefulDelta",
+    "rectangleCandidateShare",
+    "rectangleCandidateStart",
     "v2PreprocessMode",
     "v2EnableRepair",
 )
@@ -610,7 +619,7 @@ def preset_auto_family(values):
 def auto_generation_values(image_path, values, pro_overrides=None, sample_boost=False):
     """Build effective settings from the selected preset and optional overrides.
 
-    V6 presets are intentionally fixed by default. Source metrics are reported
+    V7 presets are intentionally fixed by default. Source metrics are reported
     for context, but they no longer raise resolution or sample counts silently.
     """
     values = dict(values)

@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.68
+
+- Promoted the tested prototype generator to `KloudysGeneratorV7.exe`.
+- Updated the shipped presets for V7 raw-first output: sharper shaded-character defaults, lower rectangle pressure on faces/gradients, and legacy Edge Repair disabled by default.
+- Updated the app, release packager, and updater cleanup rules to use V7 and retire old V6 generator binaries during updates.
+- Added generator V7 notes so future tuning work stays documented instead of living only in test folders.
+
 ## 1.10.67
 
 - Fixed FH6 imports reusing stale auto-locate session data after a previous import/save/reopen cycle.
