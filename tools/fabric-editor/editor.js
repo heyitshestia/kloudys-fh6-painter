@@ -303,19 +303,10 @@ async function makeFabricObject(shape, name = null) {
   const d = await loadResourcePath(typeCode);
   const color = normalizeColor(shape.color);
   const data = shape.data || [0, 0, 1, 1, 0, 0, 0];
-  const scaleX = signedScaleToFabric(data[2]);
-  const scaleY = signedScaleToFabric(data[3]);
   const object = new fabric.Path(d, {
     originX: "center",
     originY: "center",
-    left: Number(data[0]) || 0,
-    top: -(Number(data[1]) || 0),
-    scaleX: scaleX.scale,
-    scaleY: scaleY.scale,
-    flipX: scaleX.flip,
-    flipY: scaleY.flip,
-    angle: -(Number(data[4]) || 0),
-    skewX: radiansToDegrees(Math.atan(Number(data[5]) || 0)),
+    ...fabricPropsFromFh6Data(data),
     fill: colorToHex(color),
     opacity: color[3] / 255,
     stroke: shape.mask ? "#ff5572" : null,
@@ -338,6 +329,10 @@ async function makeFabricObject(shape, name = null) {
     score: Number(shape.score) || 0,
     extra: data.slice(5),
     mask: Boolean(shape.mask || data[6]),
+    scaleSigns: {
+      x: (Number(data[2]) || 1) < 0 ? -1 : 1,
+      y: (Number(data[3]) || 1) < 0 ? -1 : 1,
+    },
   };
   return object;
 }
@@ -415,18 +410,105 @@ function signedScaleToFabric(value) {
   return { scale: Math.abs(safe), flip: safe < 0 };
 }
 
+function multiplyMatrix(a, b) {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
+function translationMatrix(x, y) {
+  return [1, 0, 0, 1, x, y];
+}
+
+function scaleMatrix(sx, sy) {
+  return [sx, 0, 0, sy, 0, 0];
+}
+
+function rotationMatrix(degrees) {
+  const radians = degrees * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return [cos, sin, -sin, cos, 0, 0];
+}
+
+function skewXMatrix(value) {
+  return [1, 0, value, 1, 0, 0];
+}
+
+function fh6MatrixFromData(data = []) {
+  const x = Number(data[0]) || 0;
+  const y = Number(data[1]) || 0;
+  const sx = Number(data[2]) || 1;
+  const sy = Number(data[3]) || 1;
+  const rotation = Number(data[4]) || 0;
+  const skew = Number(data[5]) || 0;
+  return [
+    translationMatrix(x, -y),
+    rotationMatrix(-rotation),
+    skewXMatrix(-skew),
+    scaleMatrix(sx, sy),
+  ].reduce(multiplyMatrix, [1, 0, 0, 1, 0, 0]);
+}
+
+function fabricPropsFromFh6Data(data = []) {
+  const x = Number(data[0]) || 0;
+  const y = Number(data[1]) || 0;
+  const sx = Number(data[2]) || 1;
+  const sy = Number(data[3]) || 1;
+  const rotation = Number(data[4]) || 0;
+  const skew = Number(data[5]) || 0;
+  const fabricSkew = sx ? (-skew * sy / sx) : 0;
+  return {
+    left: x,
+    top: -y,
+    scaleX: Math.abs(sx),
+    scaleY: Math.abs(sy),
+    flipX: sx < 0,
+    flipY: sy < 0,
+    angle: -rotation,
+    skewX: radiansToDegrees(Math.atan(fabricSkew)),
+    skewY: 0,
+  };
+}
+
+function fh6DataFromObject(object, preferredSigns = null) {
+  const matrix = object.calcTransformMatrix();
+  const a = matrix[0];
+  const b = matrix[1];
+  const c = matrix[2];
+  const d = matrix[3];
+  const x = matrix[4];
+  const y = -matrix[5];
+  const signX = preferredSigns?.x < 0 ? -1 : 1;
+  const sx = signX * (Math.hypot(a, b) || 1);
+  const theta = Math.atan2(b / sx, a / sx);
+  const det = a * d - b * c;
+  const sy = det / sx || 1;
+  const cos = Math.cos(-theta);
+  const sin = Math.sin(-theta);
+  const localC = cos * c - sin * d;
+  const skew = sy ? -(localC / sy) : 0;
+  const rotation = ((-theta * 180 / Math.PI) % 360 + 360) % 360;
+  return [x, y, sx, sy, rotation, skew];
+}
+
 function objectToShape(object) {
   const meta = object.kloudy || {};
   const color = hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
   const extra = Array.isArray(meta.extra) ? meta.extra.slice() : [];
-  const skew = degreesToTan(object.skewX || 0);
+  const decoded = fh6DataFromObject(object, meta.scaleSigns);
   const data = [
-    round(object.left || 0),
-    round(-(object.top || 0)),
-    round(signedScaleX(object)),
-    round(signedScaleY(object)),
-    round((-(object.angle || 0) + 360) % 360),
-    round(skew),
+    round(decoded[0]),
+    round(decoded[1]),
+    round(decoded[2]),
+    round(decoded[3]),
+    round(decoded[4]),
+    round(decoded[5]),
     meta.mask ? 1 : 0,
   ];
   if (extra.length > 2) data.push(...extra.slice(2));
@@ -455,17 +537,18 @@ function objectToLegacyShape(object) {
   }
   const offset = Array.isArray(meta.legacy_offset) ? meta.legacy_offset : [0, 0];
   const divisor = Number(meta.legacy_divisor) || (isRect ? RECTANGLE_DIVISOR : ELLIPSE_DIVISOR);
-  const fh6Rotation = (-(object.angle || 0) + 360) % 360;
+  const decoded = fh6DataFromObject(object, meta.scaleSigns);
+  const fh6Rotation = decoded[4];
   const rotation = round((360 - fh6Rotation) % 360);
   return {
     type: isRect && Math.abs(rotation) < 0.000001 ? 1 : (isRect ? 2 : 16),
     data: [
-      round((object.left || 0) + (Number(offset[0]) || 0)),
-      round((object.top || 0) + (Number(offset[1]) || 0)),
-      round(signedScaleX(object) * divisor),
-      round(signedScaleY(object) * divisor),
+      round(decoded[0] + (Number(offset[0]) || 0)),
+      round(-decoded[1] + (Number(offset[1]) || 0)),
+      round(decoded[2] * divisor),
+      round(decoded[3] * divisor),
       rotation,
-      round(degreesToTan(object.skewX || 0)),
+      round(decoded[5]),
     ],
     color,
     score: Number(meta.score) || 0,
@@ -845,12 +928,13 @@ function updateSelectionPanel() {
   $("selectedColorSwatch").style.setProperty("--swatch", obj.fill || "#ffffff");
   $("colorPicker").value = obj.fill || "#ffffff";
   $("opacitySlider").value = Math.round((obj.opacity ?? 1) * 255);
-  $("xInput").value = round(obj.left || 0);
-  $("yInput").value = round(-(obj.top || 0));
-  $("sxInput").value = round(signedScaleX(obj));
-  $("syInput").value = round(signedScaleY(obj));
-  $("rotInput").value = round((-(obj.angle || 0) + 360) % 360);
-  $("skewInput").value = round(degreesToTan(obj.skewX || 0));
+  const decoded = fh6DataFromObject(obj);
+  $("xInput").value = round(decoded[0]);
+  $("yInput").value = round(decoded[1]);
+  $("sxInput").value = round(decoded[2]);
+  $("syInput").value = round(decoded[3]);
+  $("rotInput").value = round(decoded[4]);
+  $("skewInput").value = round(decoded[5]);
   $("maskInput").checked = Boolean(obj.kloudy.mask);
   refreshLayers();
 }
@@ -859,20 +943,19 @@ function applySelectionFields() {
   const obj = selectedVinylObjects()[0];
   if (!obj || !obj.kloudy) return;
   const color = hexToRgb($("colorPicker").value, $("opacitySlider").value);
-  const scaleX = signedScaleToFabric($("sxInput").value);
-  const scaleY = signedScaleToFabric($("syInput").value);
   rememberColor(color);
+  const transformProps = fabricPropsFromFh6Data([
+    Number($("xInput").value) || 0,
+    Number($("yInput").value) || 0,
+    Number($("sxInput").value) || 1,
+    Number($("syInput").value) || 1,
+    Number($("rotInput").value) || 0,
+    Number($("skewInput").value) || 0,
+  ]);
   obj.set({
     fill: colorToHex(color),
     opacity: color[3] / 255,
-    left: Number($("xInput").value) || 0,
-    top: -(Number($("yInput").value) || 0),
-    scaleX: scaleX.scale,
-    scaleY: scaleY.scale,
-    flipX: scaleX.flip,
-    flipY: scaleY.flip,
-    angle: -(Number($("rotInput").value) || 0),
-    skewX: radiansToDegrees(Math.atan(Number($("skewInput").value) || 0)),
+    ...transformProps,
   });
   obj.kloudy.mask = $("maskInput").checked;
   obj.set({ stroke: obj.kloudy.mask ? "#ff5572" : null, strokeWidth: obj.kloudy.mask ? 3 : 0 });
