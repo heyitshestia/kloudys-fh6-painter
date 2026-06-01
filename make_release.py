@@ -132,8 +132,9 @@ def verify_stage() -> None:
         APP_DIR / "fh6_trim_group_count.py",
         APP_DIR / "assets" / "app" / "project-integrity.marker",
         APP_DIR / "settings" / "a.flat-colors.ini",
-        APP_DIR / "tools" / "forza-vinyl-studio" / "ForzaVinylStudio.exe",
-        APP_DIR / "tools" / "forza-vinyl-studio" / "LICENSE.forza-vinyl-studio.txt",
+        APP_DIR / "tools" / "fabric-editor" / "index.html",
+        APP_DIR / "tools" / "fabric-editor" / "editor.js",
+        APP_DIR / "tools" / "fabric-editor" / "vendor" / "fabric.min.js",
     ]
     for path in required:
         if not path.exists():
@@ -185,8 +186,9 @@ def zip_stage() -> None:
             "KloudysFH6Painter/fh6_trim_group_count.py",
             "KloudysFH6Painter/assets/app/project-integrity.marker",
             "KloudysFH6Painter/settings/a.flat-colors.ini",
-            "KloudysFH6Painter/tools/forza-vinyl-studio/ForzaVinylStudio.exe",
-            "KloudysFH6Painter/tools/forza-vinyl-studio/LICENSE.forza-vinyl-studio.txt",
+            "KloudysFH6Painter/tools/fabric-editor/index.html",
+            "KloudysFH6Painter/tools/fabric-editor/editor.js",
+            "KloudysFH6Painter/tools/fabric-editor/vendor/fabric.min.js",
         }
         missing = sorted(required - names)
         if missing:

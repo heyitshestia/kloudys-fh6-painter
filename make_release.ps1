@@ -31,7 +31,6 @@ $ProjectItems = @(
     "LICENSE",
     "LICENSE.custom-importer",
     "LICENSE.geometrize-gpu",
-    "LICENSE.forza-vinyl-studio",
     "requirements.txt",
     "requirements-preview.txt",
     "app.py",
@@ -150,8 +149,9 @@ try {
         "KloudysFH6Painter/fh6_import_typecode_json.py",
         "KloudysFH6Painter/fh6_trim_group_count.py",
         "KloudysFH6Painter/settings/a.flat-colors.ini",
-        "KloudysFH6Painter/tools/forza-vinyl-studio/ForzaVinylStudio.exe",
-        "KloudysFH6Painter/tools/forza-vinyl-studio/LICENSE.forza-vinyl-studio.txt"
+        "KloudysFH6Painter/tools/fabric-editor/index.html",
+        "KloudysFH6Painter/tools/fabric-editor/editor.js",
+        "KloudysFH6Painter/tools/fabric-editor/vendor/fabric.min.js"
     )
     foreach ($RequiredName in $Required) {
         if ($Names -notcontains $RequiredName) {
