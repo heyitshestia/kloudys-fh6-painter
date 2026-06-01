@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.75
+
+- Fixed late-generation stalls where the generator kept retrying after the detail gate was mostly satisfied while the visible layer timer still looked fast.
+- Generator logs now show accepted-layer wall time and retry count, making slow late layers visible instead of hidden.
+- Presets now use bounded no-improvement retry counts and less aggressive late weak-shape gating.
+- Added a permanent app-folder verification check to the bundled generator executable.
+
 ## 1.10.74
 
 - Updated the V7 presets from prototype quality testing.

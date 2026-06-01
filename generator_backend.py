@@ -653,7 +653,7 @@ def auto_generation_values(image_path, values, pro_overrides=None, sample_boost=
         values["randomSamples"] = str(int(clamp_number(random_samples, 1, 2_400_000)))
         values["mutatedSamples"] = str(int(clamp_number(mutated_samples, 1, 140_000)))
         if retries:
-            values["maxNoImproveRetries"] = str(int(clamp_number(retries * 2, 1, 120_000)))
+            values["maxNoImproveRetries"] = str(int(clamp_number(retries * 2, 1, 96)))
 
     summary = {
         "mode": "fixed_preset",
