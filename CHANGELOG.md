@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.74
+
+- Updated the V7 presets from prototype quality testing.
+- Flat Colors now uses stronger edge-detail sampling with guarded rectangle use.
+- Shaded Character Art now uses stricter late weak-shape gating and finer late-detail sampling.
+- Smooth Gradients now uses a lower sample count with tuned soft-detail weighting for similar quality at better speed.
+
 ## 1.10.73
 
 - Updated the GitHub updater to stop stale Kloudy's Painter generator/editor/app subprocesses automatically before syncing.
