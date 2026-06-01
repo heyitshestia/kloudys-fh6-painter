@@ -35,7 +35,6 @@ PROJECT_ITEMS = [
     "LICENSE",
     "LICENSE.custom-importer",
     "LICENSE.geometrize-gpu",
-    "LICENSE.forza-vinyl-studio",
     "requirements.txt",
     "requirements-preview.txt",
     "app.py",
