@@ -303,13 +303,17 @@ async function makeFabricObject(shape, name = null) {
   const d = await loadResourcePath(typeCode);
   const color = normalizeColor(shape.color);
   const data = shape.data || [0, 0, 1, 1, 0, 0, 0];
+  const scaleX = signedScaleToFabric(data[2]);
+  const scaleY = signedScaleToFabric(data[3]);
   const object = new fabric.Path(d, {
     originX: "center",
     originY: "center",
     left: Number(data[0]) || 0,
     top: -(Number(data[1]) || 0),
-    scaleX: Number(data[2]) || 1,
-    scaleY: Number(data[3]) || 1,
+    scaleX: scaleX.scale,
+    scaleY: scaleY.scale,
+    flipX: scaleX.flip,
+    flipY: scaleY.flip,
     angle: -(Number(data[4]) || 0),
     skewX: radiansToDegrees(Math.atan(Number(data[5]) || 0)),
     fill: colorToHex(color),
@@ -395,6 +399,22 @@ function rememberColor(color) {
   if (swatch) swatch.style.setProperty("--swatch", colorToHex(rememberedColor));
 }
 
+function signedScaleX(object) {
+  const scale = Number(object.scaleX) || 1;
+  return (object.flipX ? -1 : 1) * scale;
+}
+
+function signedScaleY(object) {
+  const scale = Number(object.scaleY) || 1;
+  return (object.flipY ? -1 : 1) * scale;
+}
+
+function signedScaleToFabric(value) {
+  const numeric = Number(value);
+  const safe = Number.isFinite(numeric) && numeric !== 0 ? numeric : 1;
+  return { scale: Math.abs(safe), flip: safe < 0 };
+}
+
 function objectToShape(object) {
   const meta = object.kloudy || {};
   const color = hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
@@ -403,8 +423,8 @@ function objectToShape(object) {
   const data = [
     round(object.left || 0),
     round(-(object.top || 0)),
-    round(object.scaleX || 1),
-    round(object.scaleY || 1),
+    round(signedScaleX(object)),
+    round(signedScaleY(object)),
     round((-(object.angle || 0) + 360) % 360),
     round(skew),
     meta.mask ? 1 : 0,
@@ -442,8 +462,8 @@ function objectToLegacyShape(object) {
     data: [
       round((object.left || 0) + (Number(offset[0]) || 0)),
       round((object.top || 0) + (Number(offset[1]) || 0)),
-      round((object.scaleX || 1) * divisor),
-      round((object.scaleY || 1) * divisor),
+      round(signedScaleX(object) * divisor),
+      round(signedScaleY(object) * divisor),
       rotation,
       round(degreesToTan(object.skewX || 0)),
     ],
@@ -827,8 +847,8 @@ function updateSelectionPanel() {
   $("opacitySlider").value = Math.round((obj.opacity ?? 1) * 255);
   $("xInput").value = round(obj.left || 0);
   $("yInput").value = round(-(obj.top || 0));
-  $("sxInput").value = round(obj.scaleX || 1);
-  $("syInput").value = round(obj.scaleY || 1);
+  $("sxInput").value = round(signedScaleX(obj));
+  $("syInput").value = round(signedScaleY(obj));
   $("rotInput").value = round((-(obj.angle || 0) + 360) % 360);
   $("skewInput").value = round(degreesToTan(obj.skewX || 0));
   $("maskInput").checked = Boolean(obj.kloudy.mask);
@@ -839,14 +859,18 @@ function applySelectionFields() {
   const obj = selectedVinylObjects()[0];
   if (!obj || !obj.kloudy) return;
   const color = hexToRgb($("colorPicker").value, $("opacitySlider").value);
+  const scaleX = signedScaleToFabric($("sxInput").value);
+  const scaleY = signedScaleToFabric($("syInput").value);
   rememberColor(color);
   obj.set({
     fill: colorToHex(color),
     opacity: color[3] / 255,
     left: Number($("xInput").value) || 0,
     top: -(Number($("yInput").value) || 0),
-    scaleX: Number($("sxInput").value) || 1,
-    scaleY: Number($("syInput").value) || 1,
+    scaleX: scaleX.scale,
+    scaleY: scaleY.scale,
+    flipX: scaleX.flip,
+    flipY: scaleY.flip,
     angle: -(Number($("rotInput").value) || 0),
     skewX: radiansToDegrees(Math.atan(Number($("skewInput").value) || 0)),
   });
