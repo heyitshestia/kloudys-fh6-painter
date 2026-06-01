@@ -6,6 +6,10 @@ const LEGACY_RECTANGLE_TYPES = new Set([1, 2]);
 const LEGACY_ELLIPSE_TYPES = new Set([8, 16]);
 const RECTANGLE_DIVISOR = 127.0;
 const ELLIPSE_DIVISOR = 63.0;
+const VINYL_RESOURCE_BASES = [
+  "/tools/fabric-editor/Resources/Vinyls",
+  "/tools/forza-vinyl-studio/Resources/Vinyls",
+];
 
 const VINYL_TYPE_BASES = {
   Primitives: 1048677,
@@ -61,6 +65,7 @@ let shapeNames = { families: {} };
 let rememberedColor = [255, 255, 255, 255];
 let overlaySampler = null;
 let liveOverlayColorFrame = null;
+let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -75,6 +80,27 @@ function $(id) {
 
 function setStatus(message) {
   $("status").textContent = message;
+}
+
+function updateHud(pointer = null) {
+  if (!canvas || !$("zoomValue")) return;
+  const selected = selectedVinylObjects().length;
+  const objects = vinylObjects();
+  $("selectedCount").textContent = String(selected);
+  $("visibleCount").textContent = String(objects.filter((obj) => obj.visible !== false && (obj.opacity ?? 1) > 0).length);
+  $("zoomValue").textContent = `${Math.round((canvas.getZoom() || 1) * 100)}%`;
+  $("hudLayers").textContent = `${objects.length} layer${objects.length === 1 ? "" : "s"}`;
+  $("hudMode").textContent = selected ? "Edit selected" : "Select / place";
+  if (pointer) $("hudCoords").textContent = `x ${round(pointer.x)}, y ${round(-pointer.y)}`;
+}
+
+function setHoverHud(target) {
+  if (!$("hudHover")) return;
+  if (target?.kloudy) {
+    $("hudHover").textContent = `over ${target.kloudy.name || typeLabel(target.kloudy.type)}`;
+  } else {
+    $("hudHover").textContent = "over nothing";
+  }
 }
 
 function setBusy(message) {
@@ -136,7 +162,7 @@ async function loadResourcePath(typeCode) {
   if (resourceCache.has(typeCode)) return resourceCache.get(typeCode);
   const resolved = typeCodeToResource(typeCode);
   if (!resolved) throw new Error(`Unsupported FH6 type code: ${typeCode}`);
-  const url = `/tools/fabric-editor/Resources/Vinyls/${resolved.family}/${resolved.index}`;
+  const url = await resolveVinylResourceUrl(resolved.family, resolved.index, "");
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Missing shape resource: ${url}`);
   const payload = await response.json();
@@ -153,6 +179,33 @@ async function loadResourcePath(typeCode) {
   const d = chunks.join(" ");
   resourceCache.set(typeCode, d);
   return d;
+}
+
+async function resolveVinylResourceUrl(family, index, suffix = "") {
+  const orderedBases = resolvedResourceBase
+    ? [resolvedResourceBase, ...VINYL_RESOURCE_BASES.filter((base) => base !== resolvedResourceBase)]
+    : VINYL_RESOURCE_BASES;
+  let lastUrl = "";
+  for (const base of orderedBases) {
+    const url = `${base}/${family}/${index}${suffix}`;
+    lastUrl = url;
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      if (response.ok) {
+        resolvedResourceBase = base;
+        localStorage.setItem("kloudyFabricResourceBase", base);
+        return url;
+      }
+    } catch (_err) {
+      // Try the next bundled resource location.
+    }
+  }
+  return lastUrl;
+}
+
+function vinylResourceUrl(family, index, suffix = "") {
+  const base = resolvedResourceBase || VINYL_RESOURCE_BASES[0];
+  return `${base}/${family}/${index}${suffix}`;
 }
 
 function fmt(value) {
@@ -338,6 +391,8 @@ async function loadShapeNames() {
 function rememberColor(color) {
   rememberedColor = normalizeColor(color);
   localStorage.setItem("kloudyFabricLastColor", JSON.stringify(rememberedColor));
+  const swatch = $("selectedColorSwatch");
+  if (swatch) swatch.style.setProperty("--swatch", colorToHex(rememberedColor));
 }
 
 function objectToShape(object) {
@@ -488,6 +543,7 @@ function initCanvas() {
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.04), 8);
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+    updateHud(canvas.getPointer(opt.e));
     opt.e.preventDefault();
     opt.e.stopPropagation();
   });
@@ -505,10 +561,19 @@ function initCanvas() {
     vpt[5] += opt.e.clientY - lastPan.y;
     canvas.requestRenderAll();
     lastPan = { x: opt.e.clientX, y: opt.e.clientY };
+    updateHud(canvas.getPointer(opt.e));
+    setHoverHud(opt.target);
+  });
+  canvas.on("mouse:move", (opt) => {
+    if (!isPanning && opt?.e) {
+      updateHud(canvas.getPointer(opt.e));
+      setHoverHud(opt.target);
+    }
   });
   canvas.on("mouse:up", () => {
     isPanning = false;
     canvas.selection = true;
+    updateHud();
   });
 }
 
@@ -517,6 +582,7 @@ function resizeCanvas() {
   const rect = wrap.getBoundingClientRect();
   canvas.setDimensions({ width: rect.width, height: rect.height });
   canvas.requestRenderAll();
+  updateHud();
 }
 
 /*
@@ -563,6 +629,7 @@ function resetView() {
   const zoom = Math.min(canvas.width / 2400, canvas.height / 2400);
   canvas.setViewportTransform([zoom, 0, 0, zoom, canvas.width / 2, canvas.height / 2]);
   canvas.requestRenderAll();
+  updateHud();
 }
 
 function fitDesignView() {
@@ -598,6 +665,52 @@ function fitDesignView() {
     canvas.height / 2 - centerY * zoom,
   ]);
   canvas.requestRenderAll();
+  updateHud();
+}
+
+function fitObjectsView(objects) {
+  if (!objects.length) {
+    fitDesignView();
+    return;
+  }
+  let bounds = null;
+  objects.forEach((obj) => {
+    obj.setCoords();
+    const rect = obj.getBoundingRect(true, true);
+    bounds = bounds ? {
+      left: Math.min(bounds.left, rect.left),
+      top: Math.min(bounds.top, rect.top),
+      right: Math.max(bounds.right, rect.left + rect.width),
+      bottom: Math.max(bounds.bottom, rect.top + rect.height),
+    } : {
+      left: rect.left,
+      top: rect.top,
+      right: rect.left + rect.width,
+      bottom: rect.top + rect.height,
+    };
+  });
+  const width = Math.max(1, bounds.right - bounds.left);
+  const height = Math.max(1, bounds.bottom - bounds.top);
+  const centerX = bounds.left + width / 2;
+  const centerY = bounds.top + height / 2;
+  const zoom = Math.min(canvas.width / (width * 2.2), canvas.height / (height * 2.2), 6);
+  canvas.setViewportTransform([
+    zoom, 0, 0, zoom,
+    canvas.width / 2 - centerX * zoom,
+    canvas.height / 2 - centerY * zoom,
+  ]);
+  canvas.requestRenderAll();
+  updateHud();
+}
+
+function fitSelectedView() {
+  const objects = selectedVinylObjects();
+  if (!objects.length) {
+    setStatus("Select a layer before using Fit Selected.");
+    return;
+  }
+  fitObjectsView(objects);
+  setStatus(`Fit view to ${objects.length} selected layer(s).`);
 }
 
 async function loadJsonFile(file) {
@@ -667,13 +780,17 @@ function refreshLayers() {
   list.innerHTML = "";
   const objects = vinylObjects();
   const activeSet = new Set(selectedVinylObjects());
+  const filter = ($("layerSearch")?.value || "").trim().toLowerCase();
   $("layerInfo").textContent = activeSet.size > 1
     ? `${activeSet.size} selected / ${objects.length} editable layer(s). Drag selection to move together.`
     : `${objects.length} editable layer(s). Export writes bottom-to-top order.`;
   objects.slice().reverse().forEach((obj, reverseIndex) => {
     const actualIndex = objects.length - reverseIndex;
+    const label = `${actualIndex}. ${obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0)}`;
+    const searchText = `${label} ${obj.kloudy?.type || ""} ${obj.kloudy?.type_word || ""}`.toLowerCase();
+    if (filter && !searchText.includes(filter)) return;
     const li = document.createElement("li");
-    li.textContent = `${actualIndex}. ${obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0)}`;
+    li.textContent = label;
     if (activeSet.has(obj)) li.classList.add("active");
     li.addEventListener("click", () => {
       canvas.setActiveObject(obj);
@@ -683,6 +800,7 @@ function refreshLayers() {
     });
     list.appendChild(li);
   });
+  updateHud();
 }
 
 function updateSelectionPanel() {
@@ -692,6 +810,9 @@ function updateSelectionPanel() {
     $(id).disabled = !enabled;
   });
   if (!enabled) {
+    $("selectedShapeName").textContent = selected.length > 1 ? `${selected.length} layers selected` : "No layer selected";
+    $("selectedShapeCode").textContent = selected.length > 1 ? "Use layer tools or drag the selection." : "Click a layer or a shape tile.";
+    $("selectedColorSwatch").style.setProperty("--swatch", colorToHex(rememberedColor));
     if (selected.length > 1) {
       $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together.`;
     }
@@ -699,6 +820,9 @@ function updateSelectionPanel() {
     return;
   }
   const obj = selected[0];
+  $("selectedShapeName").textContent = obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0);
+  $("selectedShapeCode").textContent = `Type ${obj.kloudy?.type || "unknown"}${obj.kloudy?.mask ? " / mask" : ""}`;
+  $("selectedColorSwatch").style.setProperty("--swatch", obj.fill || "#ffffff");
   $("colorPicker").value = obj.fill || "#ffffff";
   $("opacitySlider").value = Math.round((obj.opacity ?? 1) * 255);
   $("xInput").value = round(obj.left || 0);
@@ -856,7 +980,7 @@ function renderShapeGrid() {
     tile.title = `${name}\n${family.replaceAll("_", " ")} #${index}\nType ${typeCode}`;
     tile.innerHTML = `
       <button class="favButton" type="button" title="${isFavorite ? "Remove favorite" : "Add favorite"}">${isFavorite ? "x" : "+"}</button>
-      <img alt="" src="/tools/fabric-editor/Resources/Vinyls/${family}/${index}.png">
+      <img alt="" src="${vinylResourceUrl(family, index, ".png")}">
       <span class="shapeName">${escapeHtml(name)}</span>
       <span class="shapeMeta">${family.replaceAll("_", " ")} #${index}</span>
     `;
@@ -871,6 +995,16 @@ function renderShapeGrid() {
       event.stopPropagation();
       toggleFavorite(family, index);
     });
+    const img = tile.querySelector("img");
+    img.addEventListener("error", async () => {
+      const fallback = await resolveVinylResourceUrl(family, index, ".png");
+      if (img.getAttribute("src") === fallback) {
+        img.classList.add("missingThumb");
+        img.removeAttribute("src");
+      } else {
+        img.src = fallback;
+      }
+    }, { once: true });
     grid.appendChild(tile);
   }
 }
@@ -940,6 +1074,44 @@ function moveSelected(direction) {
   pushHistory("layer order");
 }
 
+function selectObjects(objects, reason) {
+  if (!objects.length) {
+    setStatus(`No layers found for ${reason}.`);
+    return;
+  }
+  if (objects.length === 1) canvas.setActiveObject(objects[0]);
+  else canvas.setActiveObject(new fabric.ActiveSelection(objects, { canvas }));
+  canvas.requestRenderAll();
+  updateSelectionPanel();
+  refreshLayers();
+  setStatus(`Selected ${objects.length} layer(s) by ${reason}.`);
+}
+
+function selectSameShape() {
+  const selected = selectedVinylObjects()[0];
+  if (!selected?.kloudy) {
+    setStatus("Select one layer before selecting same shape.");
+    return;
+  }
+  const type = Number(selected.kloudy.type);
+  selectObjects(vinylObjects().filter((obj) => Number(obj.kloudy?.type) === type), "same shape");
+}
+
+function selectSameColor() {
+  const selected = selectedVinylObjects()[0];
+  if (!selected) {
+    setStatus("Select one layer before selecting same color.");
+    return;
+  }
+  const color = colorToHex(hexToRgb(selected.fill || "#ffffff", (selected.opacity ?? 1) * 255));
+  const alpha = Math.round((selected.opacity ?? 1) * 255);
+  selectObjects(vinylObjects().filter((obj) => {
+    const objColor = colorToHex(hexToRgb(obj.fill || "#ffffff", (obj.opacity ?? 1) * 255));
+    const objAlpha = Math.round((obj.opacity ?? 1) * 255);
+    return objColor === color && objAlpha === alpha;
+  }), "same color");
+}
+
 function nudgeSelected(dx, dy) {
   const objects = selectedVinylObjects();
   if (!objects.length) return;
@@ -992,13 +1164,16 @@ function dominantOverlayColorForObject(obj) {
   if (!obj || !overlaySampler) return null;
   obj.setCoords();
   const rect = obj.getBoundingRect(true, true);
-  const stepsX = Math.max(5, Math.min(27, Math.ceil(rect.width / 65)));
-  const stepsY = Math.max(5, Math.min(27, Math.ceil(rect.height / 65)));
+  const stepsX = Math.max(7, Math.min(44, Math.ceil(rect.width / 42)));
+  const stepsY = Math.max(7, Math.min(44, Math.ceil(rect.height / 42)));
   const bins = new Map();
+  const average = { count: 0, r: 0, g: 0, b: 0, a: 0 };
   for (let iy = 0; iy < stepsY; iy++) {
     const y = rect.top + rect.height * ((iy + 0.5) / stepsY);
     for (let ix = 0; ix < stepsX; ix++) {
       const x = rect.left + rect.width * ((ix + 0.5) / stepsX);
+      const point = new fabric.Point(x, y);
+      if (typeof obj.containsPoint === "function" && !obj.containsPoint(point)) continue;
       const pixel = canvasPointToOverlayPixel(x, y);
       if (!pixel) continue;
       const pos = (pixel.y * overlaySampler.width + pixel.x) * 4;
@@ -1007,6 +1182,11 @@ function dominantOverlayColorForObject(obj) {
       const b = overlaySampler.data[pos + 2];
       const a = overlaySampler.data[pos + 3];
       if (a < 24) continue;
+      average.count++;
+      average.r += r;
+      average.g += g;
+      average.b += b;
+      average.a += a;
       const key = `${r >> 4},${g >> 4},${b >> 4}`;
       const bin = bins.get(key) || { count: 0, r: 0, g: 0, b: 0, a: 0 };
       bin.count++;
@@ -1016,6 +1196,14 @@ function dominantOverlayColorForObject(obj) {
       bin.a += a;
       bins.set(key, bin);
     }
+  }
+  if ($("overlaySampleMode")?.value === "average" && average.count) {
+    return [
+      Math.round(average.r / average.count),
+      Math.round(average.g / average.count),
+      Math.round(average.b / average.count),
+      255,
+    ];
   }
   let best = null;
   for (const bin of bins.values()) {
@@ -1045,6 +1233,7 @@ function applyOverlayColorToObject(obj, options = {}) {
     $("opacitySlider").value = alpha;
   }
   obj.setCoords();
+  if (!options.silent) setStatus(`Sampled ${$("overlaySampleMode")?.value || "dominant"} overlay color ${colorToHex(applied)}.`);
   return true;
 }
 
@@ -1111,6 +1300,7 @@ function addOverlayFile(file) {
       bringGuidesToBack();
       canvas.requestRenderAll();
       setStatus(`Overlay loaded: ${file.name}`);
+      updateHud();
     };
     img.src = reader.result;
   };
@@ -1174,8 +1364,12 @@ function bindUi() {
   $("duplicateLayer").addEventListener("click", duplicateSelected);
   $("bringForward").addEventListener("click", () => moveSelected(1));
   $("sendBackward").addEventListener("click", () => moveSelected(-1));
+  $("fitSelected").addEventListener("click", fitSelectedView);
+  $("selectSameShape").addEventListener("click", selectSameShape);
+  $("selectSameColor").addEventListener("click", selectSameColor);
   $("colorPicker").addEventListener("input", applySelectionFields);
   $("opacitySlider").addEventListener("input", applySelectionFields);
+  $("layerSearch").addEventListener("input", refreshLayers);
   $("pixelSelect").addEventListener("change", () => setPixelSelection($("pixelSelect").checked));
   $("boxVisibleOnly").addEventListener("change", () => setPixelSelection($("boxVisibleOnly").checked));
   $("overlayInput").addEventListener("change", (event) => {
@@ -1184,6 +1378,9 @@ function bindUi() {
   });
   $("overlayOpacity").addEventListener("input", updateOverlay);
   $("overlayScale").addEventListener("input", updateOverlay);
+  $("overlaySampleMode").addEventListener("change", () => {
+    if ($("autoOverlayColor")?.checked) sampleOverlayColorForSelected();
+  });
   $("sampleOverlayColor").addEventListener("click", sampleOverlayColorForSelected);
   $("toggleOverlay").addEventListener("click", toggleOverlay);
   $("removeOverlay").addEventListener("click", removeOverlay);
@@ -1244,6 +1441,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initCanvas();
   buildShapeLibrary();
   bindUi();
+  rememberColor(rememberedColor);
   updateSelectionPanel();
   const autosave = localStorage.getItem("kloudyFabricAutosave");
   if (autosave && window.confirm("Recover the last autosaved Fabric editor project?")) {

@@ -2,10 +2,14 @@
   --bg: #111319;
   --panel: #1b1f29;
   --panel2: #222837;
+  --panel3: #121722;
   --text: #edf0ff;
   --muted: #9aa3bd;
   --line: #343b4f;
   --accent: #6ee7ff;
+  --accent2: #b799ff;
+  --good: #7df7b2;
+  --warn: #ffd36e;
   --danger: #ff5572;
 }
 
@@ -15,7 +19,10 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top left, #24324a, var(--bg) 42rem);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(110, 231, 255, 0.18), transparent 28rem),
+    radial-gradient(circle at 92% 14%, rgba(183, 153, 255, 0.16), transparent 32rem),
+    linear-gradient(135deg, #0c0f16, var(--bg));
   color: var(--text);
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
   overflow: hidden;
@@ -82,7 +89,7 @@ h2 {
   color: var(--accent);
 }
 
-p, #layerInfo, .status {
+p, #layerInfo, .status, small {
   color: var(--muted);
   font-size: 12px;
 }
@@ -90,7 +97,7 @@ p, #layerInfo, .status {
 main {
   height: calc(100vh - 66px);
   display: grid;
-  grid-template-columns: 250px minmax(760px, 1fr) 228px;
+  grid-template-columns: 286px minmax(720px, 1fr) 284px;
   min-height: 0;
 }
 
@@ -141,6 +148,16 @@ button, .fileButton {
 
 button:hover, .fileButton:hover {
   border-color: var(--accent);
+}
+
+button:disabled, input:disabled, select:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+button.primary {
+  border-color: rgba(110, 231, 255, 0.55);
+  background: linear-gradient(135deg, rgba(110, 231, 255, 0.18), rgba(183, 153, 255, 0.12));
 }
 
 .fileButton input {
@@ -211,6 +228,26 @@ input[type="color"] {
   cursor: default;
 }
 
+.canvasHud {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.canvasHud span {
+  padding: 7px 10px;
+  border: 1px solid rgba(110, 231, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(6, 8, 14, 0.72);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+}
+
 .status {
   position: absolute;
   left: 14px;
@@ -219,6 +256,76 @@ input[type="color"] {
   background: rgba(0, 0, 0, 0.62);
   border: 1px solid var(--line);
   border-radius: 10px;
+}
+
+.quickStart {
+  background:
+    linear-gradient(135deg, rgba(110, 231, 255, 0.08), rgba(183, 153, 255, 0.07)),
+    var(--panel);
+}
+
+.quickStart ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  margin: 10px 0;
+  padding: 9px;
+  border: 1px solid rgba(110, 231, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(12, 16, 24, 0.72);
+  font-size: 12px;
+}
+
+.statsGrid span {
+  color: var(--muted);
+}
+
+.statsGrid b {
+  color: var(--text);
+}
+
+.colorPreview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(110, 231, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(12, 16, 24, 0.72);
+}
+
+#selectedColorSwatch {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background:
+    linear-gradient(45deg, #777 25%, transparent 25%),
+    linear-gradient(-45deg, #777 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #777 75%),
+    linear-gradient(-45deg, transparent 75%, #777 75%),
+    #fff;
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+  box-shadow: inset 0 0 0 999px var(--swatch, #ffffff);
+}
+
+#selectedShapeName {
+  display: block;
+  max-width: 188px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #layers {
@@ -257,20 +364,27 @@ input[type="color"] {
   margin-bottom: 10px;
 }
 
+#layerSearch {
+  width: 100%;
+  margin: 10px 0 0;
+}
+
 #shapeGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-  padding-right: 6px;
+  gap: 9px;
+  padding-right: 12px;
 }
 
 .shapeTile {
   position: relative;
-  min-height: 82px;
-  padding: 24px 6px 7px;
+  min-height: 96px;
+  padding: 25px 7px 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #151923;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(110, 231, 255, 0.08), transparent 3rem),
+    #151923;
   cursor: pointer;
   text-align: center;
   font-size: 11px;
@@ -278,31 +392,31 @@ input[type="color"] {
 }
 
 .shapeTile.favorite {
-  border-color: #ffd36e;
+  border-color: var(--warn);
   box-shadow: 0 0 0 1px rgba(255, 211, 110, 0.32);
 }
 
 .shapeTile .favButton {
   position: absolute;
-  right: 6px;
-  top: 4px;
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
+  right: 5px;
+  top: 5px;
+  width: 23px;
+  height: 23px;
+  min-width: 23px;
   padding: 0;
   display: grid;
   place-items: center;
   border-radius: 999px;
   border-color: rgba(255, 211, 110, 0.52);
   background: rgba(0, 0, 0, 0.42);
-  color: #ffd36e;
+  color: var(--warn);
   font-size: 13px;
   line-height: 1;
   z-index: 2;
 }
 
 .shapeTile .favButton:hover {
-  border-color: #ffd36e;
+  border-color: var(--warn);
   background: rgba(255, 211, 110, 0.16);
 }
 
@@ -328,12 +442,17 @@ input[type="color"] {
 }
 
 .shapeTile img {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
   display: block;
   margin: 0 auto 4px;
   filter: drop-shadow(0 0 6px rgba(255,255,255,0.16));
+}
+
+.shapeTile img.missingThumb {
+  opacity: 0.7;
+  filter: none;
 }
 
 dialog {

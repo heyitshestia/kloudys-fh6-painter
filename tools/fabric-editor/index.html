@@ -42,14 +42,30 @@
 
   <main>
     <aside class="leftPanel">
+      <section class="quickStart">
+        <h2>Fast Cleanup Flow</h2>
+        <ol>
+          <li>Import a final JSON.</li>
+          <li>Add an overlay source image if needed.</li>
+          <li>Click bad top layers, delete or recolor them.</li>
+          <li>Export FH6 JSON for the handmade importer.</li>
+        </ol>
+      </section>
       <section>
         <h2>Layers</h2>
         <div id="layerInfo">No JSON loaded.</div>
+        <input id="layerSearch" placeholder="Filter layers by name, type, or number">
+        <div class="statsGrid">
+          <span>Selected</span><b id="selectedCount">0</b>
+          <span>Visible</span><b id="visibleCount">0</b>
+          <span>Zoom</span><b id="zoomValue">100%</b>
+        </div>
         <div class="smallTools">
           <button id="deleteLayer" title="Remove the selected layer(s).">Delete</button>
           <button id="duplicateLayer" title="Copy the selected layer(s).">Duplicate</button>
           <button id="bringForward" title="Move selected layer(s) one step toward the top/front.">Forward</button>
           <button id="sendBackward" title="Move selected layer(s) one step toward the bottom/back.">Back</button>
+          <button id="fitSelected" title="Zoom to selected layer(s).">Fit Selected</button>
         </div>
         <p class="hint">Delete removes selected layers. Duplicate copies them. Forward/Back changes layer order. Top layers draw over lower layers.</p>
         <label class="inline"><input id="pixelSelect" type="checkbox" checked> Select only visible pixels</label>
@@ -64,6 +80,12 @@
         </label>
         <label>Opacity <input id="overlayOpacity" type="range" min="0" max="100" value="45"></label>
         <label>Size % <input id="overlayScale" type="range" min="10" max="400" value="100"></label>
+        <label>Sampler
+          <select id="overlaySampleMode">
+            <option value="dominant" selected>Dominant color under shape</option>
+            <option value="average">Average color under shape</option>
+          </select>
+        </label>
         <label class="inline"><input id="autoOverlayColor" type="checkbox"> Live auto color from overlay</label>
         <div class="smallTools">
           <button id="sampleOverlayColor" title="Set selected layer color from the dominant overlay color under its current bounds.">Sample Color</button>
@@ -73,6 +95,13 @@
       </section>
       <section>
         <h2>Selected</h2>
+        <div class="colorPreview">
+          <span id="selectedColorSwatch"></span>
+          <div>
+            <b id="selectedShapeName">No layer selected</b>
+            <small id="selectedShapeCode">Click a layer or a shape tile.</small>
+          </div>
+        </div>
         <label>Color <input id="colorPicker" type="color" value="#ffffff"></label>
         <label>Opacity <input id="opacitySlider" type="range" min="0" max="255" value="255"></label>
         <label>X <input id="xInput" type="number" step="0.01"></label>
@@ -82,12 +111,22 @@
         <label>Rotation <input id="rotInput" type="number" step="0.01"></label>
         <label>Skew <input id="skewInput" type="number" step="0.001"></label>
         <label class="inline"><input id="maskInput" type="checkbox"> Mask layer</label>
+        <div class="smallTools">
+          <button id="selectSameShape" title="Select every layer using the same FH6 shape type.">Same Shape</button>
+          <button id="selectSameColor" title="Select every layer with the same color and opacity.">Same Color</button>
+        </div>
         <button id="applyFields">Apply Selected Values</button>
       </section>
     </aside>
 
     <section class="canvasWrap">
       <canvas id="canvas" width="1280" height="860"></canvas>
+      <div class="canvasHud" id="canvasHud">
+        <span id="hudMode">Select / edit</span>
+        <span id="hudCoords">x 0, y 0</span>
+        <span id="hudLayers">0 layers</span>
+        <span id="hudHover">over nothing</span>
+      </div>
       <div class="status" id="status">Ready. Mouse wheel zooms, middle/right drag pans.</div>
     </section>
 
@@ -100,6 +139,7 @@
           <button id="showFavorites">Favorites</button>
           <button id="showAllShapes">All</button>
         </div>
+        <p class="hint">Click a tile to place it in the current viewport. Use the corner star to favorite. New shapes use your last color unless overlay auto color is enabled.</p>
         <div id="shapeGrid"></div>
       </section>
     </aside>
