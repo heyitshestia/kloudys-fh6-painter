@@ -3774,7 +3774,7 @@ class MainWindow(QMainWindow):
             if preview_path:
                 preview.set_file(str(preview_path))
             else:
-                data = render_geometry_preview(entry["path"])
+                data = render_geometry_json(entry["path"])
                 if data:
                     preview.set_bytes(data)
             layout.addWidget(label, 0, column)
