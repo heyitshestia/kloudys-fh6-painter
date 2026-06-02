@@ -23,6 +23,12 @@ This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.
 | `Image Size Helper` | Reads an image, reports resolution/megapixels, and gives same-aspect resize targets from 1 MP to 6 MP. |
 | `Launcher + Updater` | Starts the app, checks Python/dependencies, checks GitHub `main`, and syncs updates without manually dragging files around. |
 
+## Optional Ko-fi
+
+KFPS is free, and support is completely optional. If the suite saved you time and you feel like leaving a tiny tip, it would make me very happy and helps with testing time, assets, and maybe someday a proper little logo or mascot.
+
+https://ko-fi.com/O7O020EQNQ
+
 ## Why It Is Useful
 
 - One standalone folder can handle setup, updates, generation, previews, imports, and manual JSON editing.
@@ -400,14 +406,6 @@ KFPS includes multiple visual themes for the app.
 <p align="center">
   <img src="docs/images/kfps-theme-showcase.gif" alt="Animated KFPS theme showcase" width="900">
 </p>
-
-## Optional Ko-fi
-
-If KFPS saved you time and you feel like helping a little, the tip button is here:
-
-https://ko-fi.com/O7O020EQNQ
-
-No pressure. It mostly helps cover time, testing, assets, and maybe eventually a proper logo or mascot.
 
 ## Discord
 
