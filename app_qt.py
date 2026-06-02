@@ -308,6 +308,8 @@ THEME_TOKEN_STYLES = {
         "select_fg": "#e8ebf0",
         "button_active_fg": "#e8ebf0",
         "button_fg": "#e8ebf0",
+        "accent_fg": "#040405",
+        "accent_hover_fg": "#ffffff",
         "frame_light": "#353a44",
         "frame_dark": "#0c0e12",
         "sash": "#181b22",
@@ -360,6 +362,8 @@ THEME_TOKEN_STYLES = {
         "select_fg": "#020304",
         "button_active_fg": "#7fefff",
         "button_fg": "#c8dce8",
+        "accent_fg": "#020304",
+        "accent_hover_fg": "#c8dce8",
         "frame_light": "#3a6878",
         "frame_dark": "#040810",
         "sash": "#142028",
@@ -491,6 +495,8 @@ THEME_TOKEN_STYLES = {
         "select_fg": "#0000aa",
         "button_active_fg": "#ffffff",
         "button_fg": "#ffffff",
+        "accent_fg": "#0000aa",
+        "accent_hover_fg": "#0000aa",
         "frame_light": "#ffffff",
         "frame_dark": "#000088",
         "sash": "#000088",
@@ -519,6 +525,8 @@ THEME_TOKEN_STYLES = {
         "select_fg": "#000000",
         "button_active_fg": "#d9ffd9",
         "button_fg": "#b7ffb7",
+        "accent_fg": "#000000",
+        "accent_hover_fg": "#000000",
         "frame_light": "#00ff41",
         "frame_dark": "#001f08",
         "sash": "#063b14",
@@ -531,6 +539,8 @@ THEME_TOKEN_STYLES = {
 def token_theme_stylesheet(tokens: dict[str, str]) -> str:
     font_family = tokens.get("font", "\"Segoe UI Variable\", \"Segoe UI\"")
     font_size = tokens.get("font_size", "10pt")
+    accent_fg = tokens.get("accent_fg", tokens["button_active_fg"])
+    accent_hover_fg = tokens.get("accent_hover_fg", accent_fg)
     return f"""
         QMainWindow, QWidget {{
             background: {tokens["bg"]};
@@ -602,14 +612,14 @@ def token_theme_stylesheet(tokens: dict[str, str]) -> str:
         }}
         QPushButton#primaryButton {{
             background: {tokens["accent"]};
-            color: {tokens["button_active_fg"]};
+            color: {accent_fg};
             border: 1px solid {tokens["frame_light"]};
             font-weight: 950;
             padding: 12px 16px;
         }}
         QPushButton#primaryButton:hover {{
             background: {tokens["accent_dark"]};
-            color: {tokens["button_active_fg"]};
+            color: {accent_hover_fg};
         }}
         QPushButton#kofiButton {{
             background: {tokens["panel"]};
@@ -644,13 +654,14 @@ def token_theme_stylesheet(tokens: dict[str, str]) -> str:
         }}
         QToolButton#helpButton {{
             background: {tokens["accent"]};
-            color: {tokens["button_active_fg"]};
+            color: {accent_fg};
             border: 1px solid {tokens["frame_light"]};
             border-radius: 12px;
             font-weight: 950;
         }}
         QToolButton#helpButton:hover {{
             background: {tokens["accent_dark"]};
+            color: {accent_hover_fg};
         }}
         QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget {{
             background: {tokens["input"]};
