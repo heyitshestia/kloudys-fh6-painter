@@ -2527,7 +2527,27 @@ class MainWindow(QMainWindow):
         editor_layout.addWidget(editor_button, 2, 1, Qt.AlignmentFlag.AlignBottom)
         editor_layout.setColumnStretch(0, 3)
         editor_layout.setColumnStretch(1, 1)
-        layout.addWidget(editor_ad, 1)
+        layout.addWidget(editor_ad)
+
+        kofi_ad = QFrame()
+        kofi_ad.setObjectName("dashboardCard")
+        kofi_layout = QVBoxLayout(kofi_ad)
+        kofi_layout.setSpacing(10)
+        kofi_title = QLabel("tiny optional ko-fi note")
+        kofi_title.setObjectName("dashboardCardTitle")
+        kofi_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        kofi_body = QLabel(
+            "hi, tiny ko-fi note: this is completely optional, but if the app helped you and you want to throw a little support my way, "
+            "it would help me commission a proper logo/mascot someday instead of making everything myself badly lol\n\n"
+            "tip button is in the bottom right."
+        )
+        kofi_body.setObjectName("dashboardCardText")
+        kofi_body.setWordWrap(True)
+        kofi_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        kofi_layout.addWidget(kofi_title)
+        kofi_layout.addWidget(kofi_body)
+        layout.addWidget(kofi_ad)
+        layout.addStretch(1)
         self.tabs.addTab(tab, "Dashboard")
 
     def _build_generate_tab(self):
