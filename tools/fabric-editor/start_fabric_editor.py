@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the Fabric FH6 editor prototype from the local prototype folder."""
+"""Serve the local KFPS Fabric editor."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def main() -> int:
     port = find_port()
     with socketserver.TCPServer(("127.0.0.1", port), Handler) as httpd:
         url = f"http://127.0.0.1:{port}/tools/fabric-editor/index.html"
-        print("Kloudy's Fabric FH6 editor prototype")
+        print("KFPS Fabric editor")
         print(f"Serving: {ROOT}")
         print(f"Open:    {url}")
         threading.Timer(0.35, lambda: webbrowser.open(url)).start()

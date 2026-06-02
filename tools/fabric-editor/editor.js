@@ -50,6 +50,7 @@ const VINYL_TYPE_BASES = {
 };
 
 const FAMILY_ORDER = Object.keys(VINYL_TYPE_BASES);
+const FAVORITE_COLOR_SLOTS = 16;
 const resourceCache = new Map();
 let canvas;
 let isPanning = false;
@@ -61,16 +62,27 @@ let historyIndex = -1;
 let historyLocked = false;
 let protectedHistoryIndex = -1;
 let showFavoritesOnly = false;
-let favorites = new Set(JSON.parse(localStorage.getItem("kloudyFabricFavorites") || "[]"));
+let favorites = loadFavoriteShapes();
 let shapeNames = { families: {} };
 let shapeWords = { families: {} };
 let rememberedColor = [255, 255, 255, 255];
 let favoriteColors = loadFavoriteColors();
 let selectedFavoriteColorSlot = 0;
 let shapeEyedropperActive = false;
+let activeToolMode = "select";
 let overlaySampler = null;
 let liveOverlayColorFrame = null;
 let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
+let collapsedLayerGroups = new Set();
+let lastLayerListObject = null;
+let dropperPreservedActiveObject = null;
+let guideState = defaultGuideState();
+let guideDraft = null;
+let selectedGuideId = null;
+let guideRenderQueued = false;
+let lastSnapMessageAt = 0;
+let snapOverlayObjects = [];
+let transformAnchorSnapshot = null;
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -83,20 +95,104 @@ function $(id) {
   return document.getElementById(id);
 }
 
+function setText(id, value) {
+  const el = $(id);
+  if (el) el.textContent = value;
+}
+
+function setHidden(id, hidden) {
+  const el = $(id);
+  if (el) el.hidden = hidden;
+}
+
+function defaultGuideState() {
+  return {
+    gridEnabled: false,
+    gridSize: 50,
+    gridOpacity: 20,
+    guidesVisible: true,
+    snapGuides: true,
+    snapGrid: true,
+    snapCtrlOnly: true,
+    snapThreshold: 12,
+    guideConstraint: "free",
+    snapGuideAnchor: true,
+    snapGuideEnd: false,
+    guides: [],
+  };
+}
+
+function normalizeTheme(theme) {
+  return theme === "dark" ? "dark" : "pastel";
+}
+
+function applyEditorTheme(theme) {
+  const safeTheme = normalizeTheme(theme);
+  document.documentElement.dataset.editorTheme = safeTheme;
+  localStorage.setItem("kloudyFabricTheme", safeTheme);
+  if ($("editorThemeSelect")) $("editorThemeSelect").value = safeTheme;
+  if (canvas) {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
+    canvas.set("backgroundColor", bg);
+    canvas.requestRenderAll();
+  }
+}
+
+function cssColorVar(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function colorWithAlpha(color, alpha) {
+  const safeAlpha = Math.max(0, Math.min(1, Number(alpha)));
+  const rgba = String(color || "").match(/^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i);
+  if (rgba) {
+    return `rgba(${Number(rgba[1])}, ${Number(rgba[2])}, ${Number(rgba[3])}, ${safeAlpha})`;
+  }
+  const hex = String(color || "").trim().match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    const raw = hex[1];
+    return `rgba(${parseInt(raw.slice(0, 2), 16)}, ${parseInt(raw.slice(2, 4), 16)}, ${parseInt(raw.slice(4, 6), 16)}, ${safeAlpha})`;
+  }
+  return color || `rgba(0, 0, 0, ${safeAlpha})`;
+}
+
 function setStatus(message) {
-  $("status").textContent = message;
+  setText("status", message);
 }
 
 function updateHud(pointer = null) {
-  if (!canvas || !$("zoomValue")) return;
+  if (!canvas) return;
   const selected = selectedVinylObjects().length;
   const objects = vinylObjects();
-  $("selectedCount").textContent = String(selected);
-  $("visibleCount").textContent = String(objects.filter((obj) => obj.visible !== false && (obj.opacity ?? 1) > 0).length);
-  $("zoomValue").textContent = `${Math.round((canvas.getZoom() || 1) * 100)}%`;
-  $("hudLayers").textContent = `${objects.length} layer${objects.length === 1 ? "" : "s"}`;
-  $("hudMode").textContent = selected ? "Edit selected" : "Select / place";
-  if (pointer) $("hudCoords").textContent = `x ${round(pointer.x)}, y ${round(-pointer.y)}`;
+  const visible = objects.filter((obj) => obj.visible !== false && (obj.opacity ?? 1) > 0).length;
+  const zoom = `${Math.round((canvas.getZoom() || 1) * 100)}%`;
+  const layerText = `${objects.length} layer${objects.length === 1 ? "" : "s"}`;
+  const selectionText = selected ? `${selected} selected` : "No layer selected";
+  setText("selectedCount", String(selected));
+  setText("visibleCount", String(visible));
+  setText("zoomValue", zoom);
+  setText("hudLayers", layerText);
+  setText("hudMode", currentHudMode(selected));
+  setText("bottomZoom", zoom);
+  setText("bottomLayers", layerText);
+  setText("contextSelection", selectionText);
+  setText("exportLayerCount", String(objects.length));
+  setText("layerLimitMeter", `${objects.length} / template`);
+  setHidden("emptyCanvasHint", objects.length > 0 || Boolean(overlayImage));
+  if (pointer) {
+    const coords = `x ${round(pointer.x)}, y ${round(-pointer.y)}`;
+    setText("hudCoords", coords);
+    setText("bottomCoords", coords);
+  }
+}
+
+function currentHudMode(selectedCount = 0) {
+  if (shapeEyedropperActive || activeToolMode === "dropper") return "Eyedropper";
+  if (activeToolMode === "guides") return selectedGuideId ? "Guide selected" : "Draw guides";
+  if (activeToolMode === "shapeLibrary") return "Place from library";
+  if (activeToolMode === "overlay") return "Overlay controls";
+  return selectedCount ? "Edit selected" : "Select / box-select";
 }
 
 function setHoverHud(target) {
@@ -143,11 +239,12 @@ function normalizeColor(color) {
 
 function hexToRgb(hex, alpha) {
   const clean = hex.replace("#", "");
+  const parsedAlpha = Number(alpha);
   return [
     parseInt(clean.slice(0, 2), 16),
     parseInt(clean.slice(2, 4), 16),
     parseInt(clean.slice(4, 6), 16),
-    Math.max(0, Math.min(255, Math.round(Number(alpha) || 255))),
+    Math.max(0, Math.min(255, Math.round(Number.isFinite(parsedAlpha) ? parsedAlpha : 255))),
   ];
 }
 
@@ -155,14 +252,78 @@ function loadFavoriteColors() {
   try {
     const saved = JSON.parse(localStorage.getItem("kloudyFabricFavoriteColors") || "[]");
     if (!Array.isArray(saved)) return [];
-    return saved.map((color) => color ? normalizeColor(color) : null).slice(0, 8);
+    return saved.map((color) => color ? normalizeColor(color) : null).slice(0, FAVORITE_COLOR_SLOTS);
   } catch (_err) {
     return [];
   }
 }
 
+function loadFavoriteShapes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("kloudyFabricFavorites") || "[]");
+    return new Set(Array.isArray(saved) ? saved.map(String) : []);
+  } catch (_err) {
+    return new Set();
+  }
+}
+
 function saveFavoriteColors() {
   localStorage.setItem("kloudyFabricFavoriteColors", JSON.stringify(favoriteColors));
+}
+
+function activateDockPanel(panelId) {
+  const button = document.querySelector(`.dockTab[data-panel="${panelId}"]`);
+  if (!button) return;
+  const group = button.closest(".dockGroup");
+  if (!group) return;
+  group.querySelectorAll(".dockTab").forEach((tab) => tab.classList.toggle("active", tab === button));
+  group.querySelectorAll(".dockPane").forEach((pane) => {
+    const active = pane.id === panelId;
+    pane.classList.toggle("active", active);
+    pane.hidden = !active;
+  });
+}
+
+function setToolRailMode(mode, label = null) {
+  activeToolMode = mode || "select";
+  document.querySelectorAll(".toolButton").forEach((tool) => tool.classList.toggle("active", tool.dataset.toolMode === activeToolMode));
+  const activeButton = document.querySelector(`.toolButton[data-tool-mode="${activeToolMode}"]`);
+  label = label || activeButton?.dataset.tool || "Select / Move";
+  setText("activeToolLabel", label);
+  setText("hudMode", currentHudMode(selectedVinylObjects().length));
+  updateGuideInteractivity();
+}
+
+function setActiveTool(button) {
+  if (!button) return;
+  const mode = button.dataset.toolMode || "select";
+  const label = button.dataset.tool || button.textContent.trim();
+  setToolRailMode(mode, label);
+  if (mode === "dropper") {
+    setShapeEyedropper(true, { keepTool: true });
+  } else {
+    setShapeEyedropper(false, { keepTool: true, silent: true });
+  }
+  if (mode === "guides") {
+    canvas?.discardActiveObject();
+  } else if (selectedGuideId) {
+    selectedGuideId = null;
+    renderGuideObjects();
+  }
+  if (button.dataset.focusPanel) activateDockPanel(button.dataset.focusPanel);
+  if (mode === "select") setStatus("Select mode. Drag empty canvas to box-select; mouse wheel zooms; middle/right drag pans.");
+  if (mode === "shapeLibrary") setStatus("Shape Library open. Click a shape tile to place it in the current viewport.");
+  if (mode === "guides") setStatus("Guides mode. Drag on the canvas to create editor-only guide lines. Hold Control while moving vinyl layers to snap.");
+  if (mode === "overlay") setStatus("Overlay controls open. Overlay images are reference-only and never exported.");
+}
+
+function leaveGuideModeForLayerEdit() {
+  if (activeToolMode !== "guides") return;
+  guideDraft = null;
+  selectedGuideId = null;
+  setToolRailMode("select", "Select / Move");
+  renderGuideObjects();
+  setStatus("Guide drawing disengaged. Select mode is active while editing shapes.");
 }
 
 function typeCodeToResource(typeCode) {
@@ -180,9 +341,15 @@ function typeCodeToResource(typeCode) {
     }
   }
   for (const [family, base] of Object.entries(VINYL_TYPE_BASES)) {
-    if (family.includes("Letters")) continue;
     const baseWord = base & 0xffff;
     const delta = word - baseWord;
+    if (delta >= 0) {
+      const compactIndex = delta + 1;
+      if (compactIndex >= 1 && compactIndex <= 40) {
+        return { family, index: compactIndex, typeCode: 0x100000 + word, shapeWord: word };
+      }
+    }
+    if (family.includes("Letters")) continue;
     if (delta >= 0 && delta % 4 === 0) {
       const index = delta / 4 + 1;
       if (index >= 1 && index <= 40) return { family, index, typeCode: 0x100000 + word, shapeWord: word };
@@ -197,12 +364,10 @@ function resourceToTypeCode(family, index) {
 
 function resourceToShapeWord(family, index) {
   if (family === "Primitives") return (100 + Number(index)) & 0xffff;
-  const explicit = shapeWords?.families?.[family]?.[String(index)];
-  if (explicit !== undefined) return Number(explicit) & 0xffff;
   const base = VINYL_TYPE_BASES[family];
   if (!base) throw new Error(`Unknown shape family: ${family}`);
   if (family.includes("Letters")) return (base + Number(index) - 1) & 0xffff;
-  return ((base & 0xffff) + (Number(index) - 1) * 4) & 0xffff;
+  return ((base & 0xffff) + Number(index) - 1) & 0xffff;
 }
 
 async function loadResourcePath(typeCode) {
@@ -391,11 +556,16 @@ async function makeFabricObject(shape, name = null) {
     score: Number(shape.score) || 0,
     extra: data.slice(5),
     mask: Boolean(shape.mask || data[6]),
+    locked: Boolean(shape.editor_locked),
+    group_id: shape.editor_group_id ? String(shape.editor_group_id) : null,
+    group_name: shape.editor_group_name ? String(shape.editor_group_name) : null,
     scaleSigns: {
       x: (Number(data[2]) || 1) < 0 ? -1 : 1,
       y: (Number(data[3]) || 1) < 0 ? -1 : 1,
     },
   };
+  if (shape.editor_hidden) object.visible = false;
+  if (object.kloudy.locked) setObjectLocked(object, true);
   return object;
 }
 
@@ -479,6 +649,8 @@ function refreshColorUi() {
   const activeHex = colorToHex(active);
   const swatch = $("colorSwatchButton");
   if (swatch) swatch.style.setProperty("--swatch", activeHex);
+  if ($("colorPanelSwatch")) $("colorPanelSwatch").style.setProperty("--swatch", activeHex);
+  if ($("colorPanelLabel")) $("colorPanelLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
   if ($("activeColorLarge")) $("activeColorLarge").style.setProperty("--swatch", activeHex);
   if ($("activeColorLabel")) $("activeColorLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
   if ($("dialogColorPicker")) $("dialogColorPicker").value = activeHex;
@@ -491,7 +663,7 @@ function renderFavoriteColors() {
   if (!grid) return;
   const activeHex = colorToHex(currentPanelColor());
   grid.innerHTML = "";
-  for (let index = 0; index < 8; index++) {
+  for (let index = 0; index < FAVORITE_COLOR_SLOTS; index++) {
     const color = favoriteColors[index] || null;
     const button = document.createElement("button");
     button.type = "button";
@@ -515,9 +687,14 @@ function renderFavoriteColors() {
 
 function applyEditorColor(color, reason = "color") {
   const normalized = normalizeColor(color);
-  rememberColor(normalized);
   const selected = selectedVinylObjects();
   if (selected.length === 1) {
+    if (selected[0].kloudy?.locked) {
+      updateSelectionPanel();
+      setStatus("Selected layer is locked. Unlock it before changing color.");
+      return;
+    }
+    rememberColor(normalized);
     selected[0].set({ fill: colorToHex(normalized), opacity: normalized[3] / 255 });
     selected[0].setCoords();
     canvas.requestRenderAll();
@@ -525,10 +702,21 @@ function applyEditorColor(color, reason = "color") {
     pushHistory(reason);
     return;
   }
+  rememberColor(normalized);
   if ($("colorPicker")) $("colorPicker").value = colorToHex(normalized);
   if ($("opacitySlider")) $("opacitySlider").value = normalized[3];
   updateSelectionPanel();
   setStatus(`Active color set to ${colorToHex(normalized).toUpperCase()}.`);
+}
+
+function alphaForObject(object) {
+  return Math.round((object?.opacity ?? 1) * 255);
+}
+
+function sharedSelectedAlpha(selected = selectedVinylObjects()) {
+  if (!selected.length) return null;
+  const first = alphaForObject(selected[0]);
+  return selected.every((object) => alphaForObject(object) === first) ? first : null;
 }
 
 function openColorDialog() {
@@ -539,22 +727,22 @@ function openColorDialog() {
 function saveCurrentFavoriteColor() {
   const color = normalizeColor(currentPanelColor());
   const hex = colorToHex(color);
-  if (selectedFavoriteColorSlot < 0 || selectedFavoriteColorSlot > 7) {
+  if (selectedFavoriteColorSlot < 0 || selectedFavoriteColorSlot >= FAVORITE_COLOR_SLOTS) {
     selectedFavoriteColorSlot = Math.max(0, favoriteColors.findIndex((item) => !item));
   }
   if (selectedFavoriteColorSlot < 0) selectedFavoriteColorSlot = 0;
-  while (favoriteColors.length < 8) favoriteColors.push(null);
+  while (favoriteColors.length < FAVORITE_COLOR_SLOTS) favoriteColors.push(null);
   favoriteColors[selectedFavoriteColorSlot] = color;
-  favoriteColors = favoriteColors.slice(0, 8);
+  favoriteColors = favoriteColors.slice(0, FAVORITE_COLOR_SLOTS);
   saveFavoriteColors();
   renderFavoriteColors();
   setStatus(`Saved ${hex.toUpperCase()} to color slot ${selectedFavoriteColorSlot + 1}.`);
 }
 
 function removeCurrentFavoriteColor() {
-  const slot = Math.max(0, Math.min(7, selectedFavoriteColorSlot));
+  const slot = Math.max(0, Math.min(FAVORITE_COLOR_SLOTS - 1, selectedFavoriteColorSlot));
   const hadColor = Boolean(favoriteColors[slot]);
-  while (favoriteColors.length < 8) favoriteColors.push(null);
+  while (favoriteColors.length < FAVORITE_COLOR_SLOTS) favoriteColors.push(null);
   favoriteColors[slot] = null;
   saveFavoriteColors();
   renderFavoriteColors();
@@ -562,41 +750,81 @@ function removeCurrentFavoriteColor() {
 }
 
 function clearFavoriteColors() {
-  favoriteColors = Array(8).fill(null);
+  favoriteColors = Array(FAVORITE_COLOR_SLOTS).fill(null);
   saveFavoriteColors();
   renderFavoriteColors();
   setStatus("Cleared saved colors.");
 }
 
-function setShapeEyedropper(active) {
+function setShapeEyedropper(active, options = {}) {
   shapeEyedropperActive = active;
+  if (active && !dropperPreservedActiveObject) {
+    dropperPreservedActiveObject = canvas?.getActiveObject() || null;
+  }
+  if (!active) {
+    dropperPreservedActiveObject = null;
+  }
   $("colorEyedropper")?.classList.toggle("active", active);
   document.body.classList.toggle("eyedropperMode", active);
-  const mode = $("eyedropperMode")?.value === "source" ? "source overlay" : "shape";
-  setStatus(active ? `Eyedropper active. Click the canvas to pick from ${mode}.` : "Eyedropper off.");
+  if (canvas) {
+    canvas.skipTargetFind = false;
+    canvas.selection = !active;
+  }
+  if (!options.keepTool) {
+    setToolRailMode(active ? "dropper" : "select");
+  }
+  if (!options.silent) {
+    setStatus(active
+      ? "Eyedropper active. Click a vinyl layer to copy its color, or click empty/source overlay space to sample the overlay."
+      : "Eyedropper off.");
+  }
+  updateHud();
+}
+
+function restoreDropperSelection() {
+  if (!shapeEyedropperActive || !canvas) return;
+  const active = dropperPreservedActiveObject;
+  if (active && canvas.getObjects().includes(active)) {
+    canvas.setActiveObject(active);
+  } else {
+    canvas.discardActiveObject();
+  }
+  canvas.requestRenderAll();
+  updateSelectionPanel();
+  refreshLayers();
+}
+
+function vinylObjectAtCanvasPoint(x, y) {
+  const point = new fabric.Point(x, y);
+  const objects = vinylObjects();
+  for (let index = objects.length - 1; index >= 0; index--) {
+    const object = objects[index];
+    if (object.visible === false || object.evented === false) continue;
+    object.setCoords();
+    if (object.containsPoint(point)) return object;
+  }
+  return null;
 }
 
 function pickShapeColorFromEvent(opt) {
-  const mode = $("eyedropperMode")?.value || "shape";
-  if (mode === "source") {
-    const pointer = canvas.getPointer(opt.e);
-    const color = overlayColorAtCanvasPoint(pointer.x, pointer.y);
-    setShapeEyedropper(false);
-    if (!color) {
-      setStatus("No source overlay pixel under the eyedropper.");
-      return;
-    }
-    applyEditorColor(color, "source eyedropper");
+  const pointer = canvas.getPointer(opt.e);
+  const target = (opt.target?.kloudy ? opt.target : null) || vinylObjectAtCanvasPoint(pointer.x, pointer.y);
+  restoreDropperSelection();
+  if (target) {
+    const color = hexToRgb(target.fill || "#ffffff", (target.opacity ?? 1) * 255);
+    applyEditorColor(color, "shape eyedropper");
+    restoreDropperSelection();
+    setStatus(`Picked layer color ${colorToHex(color).toUpperCase()} without changing selection.`);
     return;
   }
-  const target = opt.target?.kloudy ? opt.target : null;
-  setShapeEyedropper(false);
-  if (!target) {
-    setStatus("No vinyl layer under the eyedropper.");
+  const color = overlayColorAtCanvasPoint(pointer.x, pointer.y);
+  if (!color) {
+    setStatus("No vinyl layer or source overlay pixel under the eyedropper.");
     return;
   }
-  const color = hexToRgb(target.fill || "#ffffff", (target.opacity ?? 1) * 255);
-  applyEditorColor(color, "shape eyedropper");
+  applyEditorColor(color, "source eyedropper");
+  restoreDropperSelection();
+  setStatus(`Picked source overlay color ${colorToHex(color).toUpperCase()}.`);
 }
 
 function signedScaleX(object) {
@@ -613,6 +841,11 @@ function signedScaleToFabric(value) {
   const numeric = Number(value);
   const safe = Number.isFinite(numeric) && numeric !== 0 ? numeric : 1;
   return { scale: Math.abs(safe), flip: safe < 0 };
+}
+
+function fh6SkewFromFabricDegrees(degrees, sx, sy) {
+  const safeSy = Number(sy) || 1;
+  return -(Math.tan((Number(degrees) || 0) * Math.PI / 180) * (Number(sx) || 1) / safeSy);
 }
 
 function multiplyMatrix(a, b) {
@@ -702,7 +935,8 @@ function fh6DataFromObject(object, preferredSigns = null) {
   return [x, y, sx, sy, rotation, skew];
 }
 
-function objectToShape(object) {
+function objectToShape(object, options = {}) {
+  const includeEditorMeta = options.includeEditorMeta !== false;
   const meta = object.kloudy || {};
   const color = hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
   const extra = Array.isArray(meta.extra) ? meta.extra.slice() : [];
@@ -717,7 +951,7 @@ function objectToShape(object) {
     meta.mask ? 1 : 0,
   ];
   if (extra.length > 2) data.push(...extra.slice(2));
-  return {
+  const shape = {
     type: Number(meta.type),
     type_word: Number(meta.type_word ?? (Number(meta.type) & 0xffff)),
     data,
@@ -732,6 +966,13 @@ function objectToShape(object) {
     legacy_divisor: meta.legacy_divisor ?? null,
     legacy_offset: Array.isArray(meta.legacy_offset) ? meta.legacy_offset.slice(0, 2) : null,
   };
+  if (includeEditorMeta) {
+    shape.editor_hidden = object.visible === false;
+    shape.editor_locked = Boolean(meta.locked);
+    shape.editor_group_id = meta.group_id || null;
+    shape.editor_group_name = meta.group_name || null;
+  }
+  return shape;
 }
 
 function objectToLegacyShape(object) {
@@ -765,7 +1006,7 @@ function objectToLegacyShape(object) {
 }
 
 function snapshotShapes() {
-  return vinylObjects().map(objectToShape);
+  return vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true }));
 }
 
 async function restoreShapes(shapes) {
@@ -798,12 +1039,19 @@ function pushHistory(reason = "change") {
     if (protectedHistoryIndex >= 0) protectedHistoryIndex = Math.max(0, protectedHistoryIndex - 1);
   }
   historyIndex = history.length - 1;
-  localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
-    name: loadedName,
-    created: new Date().toISOString(),
-    shapes: JSON.parse(snapshot),
-  }));
-  setStatus(`Saved ${reason}. Autosave updated.`);
+  let autosaveOk = true;
+  try {
+    localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
+      name: loadedName,
+      created: new Date().toISOString(),
+      shapes: JSON.parse(snapshot),
+      editor_guides: savedGuideState(),
+    }));
+  } catch (err) {
+    autosaveOk = false;
+    console.warn("Autosave skipped.", err);
+  }
+  setStatus(`Saved ${reason}.${autosaveOk ? " Autosave updated." : " Autosave skipped because browser storage is full."}`);
 }
 
 async function undo() {
@@ -830,13 +1078,14 @@ function round(value) {
 }
 
 function initCanvas() {
+  const canvasBg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
   canvas = new fabric.Canvas("canvas", {
     preserveObjectStacking: true,
     selection: true,
     selectionKey: "shiftKey",
     fireRightClick: true,
     stopContextMenu: true,
-    backgroundColor: "#0b0d12",
+    backgroundColor: canvasBg,
     perPixelTargetFind: true,
     targetFindTolerance: 3,
     defaultCursor: "default",
@@ -849,8 +1098,13 @@ function initCanvas() {
   resetView();
   canvas.on("selection:created", updateSelectionPanel);
   canvas.on("selection:updated", updateSelectionPanel);
-  canvas.on("selection:cleared", updateSelectionPanel);
+  canvas.on("selection:cleared", () => {
+    clearSnapOverlay();
+    updateSelectionPanel();
+  });
   canvas.on("object:modified", () => {
+    transformAnchorSnapshot = null;
+    clearSnapOverlay();
     if ($("autoOverlayColor")?.checked) {
       selectedVinylObjects().forEach((obj) => applyOverlayColorToObject(obj, { remember: true, silent: true }));
     }
@@ -858,8 +1112,23 @@ function initCanvas() {
     refreshLayers();
     pushHistory("object edit");
   });
-  ["object:moving", "object:scaling", "object:rotating", "object:skewing"].forEach((eventName) => {
-    canvas.on(eventName, (event) => scheduleLiveOverlayColor(event.target));
+  canvas.on("object:moving", (event) => {
+    leaveGuideModeForLayerEdit();
+    snapTargetToGuides(event.target, { ...event, kloudyTransformAction: "move" });
+    scheduleLiveOverlayColor(event.target);
+  });
+  ["object:scaling", "object:skewing"].forEach((eventName) => {
+    canvas.on(eventName, (event) => {
+      leaveGuideModeForLayerEdit();
+      snapTargetToGuides(event.target, { ...event, kloudyTransformAction: eventName === "object:scaling" ? "scale" : "skew" });
+      scheduleLiveOverlayColor(event.target);
+    });
+  });
+  canvas.on("object:rotating", (event) => {
+    leaveGuideModeForLayerEdit();
+    snapRotationToNotches(event.target, event);
+    renderRotationNotchOverlay(event.target, event);
+    scheduleLiveOverlayColor(event.target);
   });
   canvas.on("mouse:wheel", (opt) => {
     const delta = opt.e.deltaY;
@@ -867,11 +1136,29 @@ function initCanvas() {
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.04), 8);
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+    queueGuideRender();
     updateHud(canvas.getPointer(opt.e));
     opt.e.preventDefault();
     opt.e.stopPropagation();
   });
   canvas.on("mouse:down", (opt) => {
+    if (activeToolMode === "guides") {
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+      cancelFabricGroupSelection();
+      if (opt.e.button === 1 || opt.e.button === 2) {
+        guideDraft = null;
+        isPanning = true;
+        lastPan = { x: opt.e.clientX, y: opt.e.clientY };
+        canvas.selection = false;
+        transformAnchorSnapshot = null;
+        setGuideStatus("Guide mode: panning canvas. Left-drag still draws guide lines.");
+        return;
+      }
+      if (selectGuideObject(opt.target)) return;
+      beginGuideDraft(opt);
+      return;
+    }
     if (shapeEyedropperActive) {
       opt.e.preventDefault();
       opt.e.stopPropagation();
@@ -882,17 +1169,34 @@ function initCanvas() {
       isPanning = true;
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
       canvas.selection = false;
+      transformAnchorSnapshot = null;
+    } else if (opt.target?.kloudy || opt.target?.type === "activeSelection" || opt.target?.type === "activeselection") {
+      captureTransformAnchorSnapshot(opt.target, opt);
+    } else {
+      transformAnchorSnapshot = null;
     }
   });
   canvas.on("mouse:move", (opt) => {
-    if (!isPanning || !lastPan) return;
-    const vpt = canvas.viewportTransform;
-    vpt[4] += opt.e.clientX - lastPan.x;
-    vpt[5] += opt.e.clientY - lastPan.y;
-    canvas.requestRenderAll();
-    lastPan = { x: opt.e.clientX, y: opt.e.clientY };
-    updateHud(canvas.getPointer(opt.e));
-    setHoverHud(opt.target);
+    if (isPanning && lastPan) {
+      const vpt = canvas.viewportTransform;
+      vpt[4] += opt.e.clientX - lastPan.x;
+      vpt[5] += opt.e.clientY - lastPan.y;
+      queueGuideRender();
+      canvas.requestRenderAll();
+      lastPan = { x: opt.e.clientX, y: opt.e.clientY };
+      updateHud(canvas.getPointer(opt.e));
+      setHoverHud(opt.target);
+      return;
+    }
+    if (guideDraft && activeToolMode === "guides") {
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+      canvas.selection = false;
+      canvas._groupSelector = null;
+      updateGuideDraft(opt);
+      updateHud(canvas.getPointer(opt.e));
+      return;
+    }
   });
   canvas.on("mouse:move", (opt) => {
     if (!isPanning && opt?.e) {
@@ -901,16 +1205,24 @@ function initCanvas() {
     }
   });
   canvas.on("mouse:up", () => {
+    if (guideDraft && activeToolMode === "guides") {
+      finishGuideDraft();
+    }
+    if (activeToolMode === "guides") canvas._groupSelector = null;
+    transformAnchorSnapshot = null;
+    clearSnapOverlay();
     isPanning = false;
-    canvas.selection = true;
+    canvas.selection = !shapeEyedropperActive && activeToolMode !== "guides";
     updateHud();
   });
 }
 
 function resizeCanvas() {
-  const wrap = document.querySelector(".canvasWrap");
+  const wrap = document.querySelector(".canvasStage") || document.querySelector(".canvasWrap");
+  if (!wrap || !canvas) return;
   const rect = wrap.getBoundingClientRect();
   canvas.setDimensions({ width: rect.width, height: rect.height });
+  queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
 }
@@ -955,10 +1267,1199 @@ function drawBounds() {
   });
 }
 
+function editorGuideObjects() {
+  return canvas ? canvas.getObjects().filter((obj) => obj.kloudyGuide) : [];
+}
+
+function clampGuideSize(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 50;
+  return Math.max(5, Math.min(500, numeric));
+}
+
+function cloneGuidesForSave() {
+  return guideState.guides.map((guide) => ({
+    id: String(guide.id),
+    x1: round(guide.x1),
+    y1: round(guide.y1),
+    x2: round(guide.x2),
+    y2: round(guide.y2),
+    constraint: ["free", "horizontal", "vertical"].includes(guide.constraint) ? guide.constraint : "free",
+  }));
+}
+
+function savedGuideState() {
+  return {
+    version: 1,
+    gridEnabled: Boolean(guideState.gridEnabled),
+    gridSize: clampGuideSize(guideState.gridSize),
+    gridOpacity: Math.max(5, Math.min(65, Number(guideState.gridOpacity) || 20)),
+    guidesVisible: Boolean(guideState.guidesVisible),
+    snapGuides: Boolean(guideState.snapGuides),
+    snapGrid: Boolean(guideState.snapGrid),
+    snapCtrlOnly: Boolean(guideState.snapCtrlOnly),
+    snapThreshold: Math.max(4, Math.min(28, Number(guideState.snapThreshold) || 12)),
+    guideConstraint: guideState.guideConstraint || "free",
+    snapGuideAnchor: Boolean(guideState.snapGuideAnchor),
+    snapGuideEnd: Boolean(guideState.snapGuideEnd),
+    guides: cloneGuidesForSave(),
+  };
+}
+
+function applySavedGuideState(saved = null) {
+  const next = defaultGuideState();
+  if (saved && typeof saved === "object") {
+    next.gridEnabled = Boolean(saved.gridEnabled);
+    next.gridSize = clampGuideSize(saved.gridSize);
+    next.gridOpacity = Math.max(5, Math.min(65, Number(saved.gridOpacity) || next.gridOpacity));
+    next.guidesVisible = saved.guidesVisible !== false;
+    next.snapGuides = saved.snapGuides !== false;
+    next.snapGrid = saved.snapGrid !== false;
+    next.snapCtrlOnly = saved.snapCtrlOnly !== false;
+    next.snapThreshold = Math.max(4, Math.min(28, Number(saved.snapThreshold) || next.snapThreshold));
+    next.guideConstraint = ["free", "horizontal", "vertical"].includes(saved.guideConstraint) ? saved.guideConstraint : next.guideConstraint;
+    next.snapGuideAnchor = saved.snapGuideAnchor !== false;
+    next.snapGuideEnd = Boolean(saved.snapGuideEnd);
+    next.guides = Array.isArray(saved.guides)
+      ? saved.guides.map((guide) => ({
+        id: String(guide.id || `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`),
+        x1: Number(guide.x1) || 0,
+        y1: Number(guide.y1) || 0,
+        x2: Number(guide.x2) || 0,
+        y2: Number(guide.y2) || 0,
+        constraint: ["free", "horizontal", "vertical"].includes(guide.constraint) ? guide.constraint : "free",
+      })).filter((guide) => Math.hypot(guide.x2 - guide.x1, guide.y2 - guide.y1) > 0.001)
+      : [];
+  }
+  guideState = next;
+  selectedGuideId = null;
+  applyGuideStateToUi();
+  renderGuideObjects();
+}
+
+function guideLineStyle(guide, extra = {}) {
+  const selected = guide.id && guide.id === selectedGuideId;
+  const manual = !guide.grid;
+  const gridOpacity = Math.max(0.08, Math.min(0.85, guideState.gridOpacity / 100));
+  const gridColor = cssColorVar("--editor-grid-line", "rgba(80, 72, 92, 0.42)").replace(/,\s*[0-9.]+\)$/, `, ${gridOpacity})`);
+  const axisColor = cssColorVar("--editor-grid-axis", "rgba(40, 36, 48, 0.62)");
+  return {
+    stroke: selected
+      ? cssColorVar("--editor-guide-selected", "rgba(40, 32, 44, 0.98)")
+      : (manual ? cssColorVar("--editor-guide-line", "rgba(94, 52, 72, 0.92)") : (guide.axisGuide ? axisColor : gridColor)),
+    strokeWidth: selected ? 3 : (manual ? 2 : 1),
+    strokeDashArray: manual ? (selected ? [8, 5] : [6, 5]) : null,
+    strokeUniform: true,
+    selectable: manual && activeToolMode === "guides",
+    evented: manual && activeToolMode === "guides",
+    hasControls: false,
+    hasBorders: false,
+    lockMovementX: true,
+    lockMovementY: true,
+    hoverCursor: manual ? "pointer" : "default",
+    objectCaching: false,
+    excludeFromExport: true,
+    ...extra,
+  };
+}
+
+function makeGuideLine(guide, extra = {}) {
+  const line = new fabric.Line([guide.x1, guide.y1, guide.x2, guide.y2], guideLineStyle(guide, extra));
+  line.kloudyGuide = true;
+  line.kloudyGuideManual = !guide.grid;
+  line.kloudyGridLine = Boolean(guide.grid);
+  line.axisGuide = Boolean(guide.axisGuide);
+  line.kloudyGuideId = guide.id || null;
+  return line;
+}
+
+function visibleCanvasBounds(pad = 80) {
+  const inverse = fabric.util.invertTransform(canvas.viewportTransform);
+  const corners = [
+    fabric.util.transformPoint(new fabric.Point(0, 0), inverse),
+    fabric.util.transformPoint(new fabric.Point(canvas.width, 0), inverse),
+    fabric.util.transformPoint(new fabric.Point(0, canvas.height), inverse),
+    fabric.util.transformPoint(new fabric.Point(canvas.width, canvas.height), inverse),
+  ];
+  return {
+    minX: Math.min(...corners.map((p) => p.x)) - pad,
+    maxX: Math.max(...corners.map((p) => p.x)) + pad,
+    minY: Math.min(...corners.map((p) => p.y)) - pad,
+    maxY: Math.max(...corners.map((p) => p.y)) + pad,
+  };
+}
+
+function renderGuideObjects() {
+  if (!canvas) return;
+  canvas.getObjects().filter((obj) => obj.kloudyGuide).forEach((obj) => canvas.remove(obj));
+  snapOverlayObjects = [];
+  const objects = [];
+  if (guideState.gridEnabled) {
+    const bounds = visibleCanvasBounds(160);
+    const zoom = Math.max(canvas.getZoom() || 1, 0.001);
+    let step = clampGuideSize(guideState.gridSize);
+    while (step * zoom < 10) step *= 2;
+    const startX = Math.floor(bounds.minX / step) * step;
+    const startY = Math.floor(bounds.minY / step) * step;
+    const maxLines = 260;
+    let xCount = 0;
+    for (let x = startX; x <= bounds.maxX && xCount < maxLines; x += step, xCount++) {
+      objects.push(makeGuideLine({ grid: true, axisGuide: Math.abs(x) < 0.0001, x1: x, y1: bounds.minY, x2: x, y2: bounds.maxY }, { strokeWidth: Math.abs(x) < 0.0001 ? 2 : 1 }));
+    }
+    let yCount = 0;
+    for (let y = startY; y <= bounds.maxY && yCount < maxLines; y += step, yCount++) {
+      objects.push(makeGuideLine({ grid: true, axisGuide: Math.abs(y) < 0.0001, x1: bounds.minX, y1: y, x2: bounds.maxX, y2: y }, { strokeWidth: Math.abs(y) < 0.0001 ? 2 : 1 }));
+    }
+  }
+  if (guideState.guidesVisible) {
+    guideState.guides.forEach((guide) => objects.push(makeGuideLine(guide)));
+  }
+  if (guideDraft) {
+    objects.push(makeGuideLine({ ...guideDraft, id: "__draft__" }, {
+      stroke: cssColorVar("--editor-guide-draft", "rgba(42, 26, 36, 0.96)"),
+      strokeWidth: 2,
+      strokeDashArray: [3, 3],
+      selectable: false,
+      evented: false,
+    }));
+  }
+  objects.forEach((obj) => canvas.add(obj));
+  layerEditorHelpers();
+  updateGuideUi();
+  canvas.requestRenderAll();
+}
+
+function queueGuideRender() {
+  if (guideRenderQueued) return;
+  guideRenderQueued = true;
+  requestAnimationFrame(() => {
+    guideRenderQueued = false;
+    renderGuideObjects();
+  });
+}
+
+function layerEditorHelpers() {
+  if (overlayImage && canvas.getObjects().includes(overlayImage)) overlayImage.sendToBack();
+  editorGuideObjects().forEach((obj) => obj.bringToFront());
+}
+
+function bringGuidesToBack() {
+  layerEditorHelpers();
+}
+
+function cancelFabricGroupSelection() {
+  if (!canvas) return;
+  canvas.selection = false;
+  canvas._groupSelector = null;
+  canvas.discardActiveObject();
+}
+
+function updateGuideInteractivity() {
+  const inGuideMode = activeToolMode === "guides";
+  document.body.classList.toggle("guideMode", inGuideMode);
+  if (canvas) {
+    editorGuideObjects().forEach((obj) => {
+      if (!obj.kloudyGuideManual) return;
+      obj.set({
+        selectable: inGuideMode,
+        evented: inGuideMode,
+        hoverCursor: inGuideMode ? "pointer" : "default",
+      });
+    });
+    canvas.selection = !shapeEyedropperActive && !inGuideMode;
+    if (inGuideMode) canvas._groupSelector = null;
+    canvas.requestRenderAll();
+  }
+  updateGuideUi();
+}
+
+function updateGuideUi() {
+  setText("guideCountBadge", `${guideState.guides.length} guide${guideState.guides.length === 1 ? "" : "s"}`);
+  setText("guideModeLabel", activeToolMode === "guides"
+    ? (selectedGuideId ? "Guide selected. Delete it or draw another line." : "Drag on canvas to draw a guide.")
+    : "Select the Guides tool to draw lines.");
+}
+
+function setGuideStatus(message) {
+  setText("guideStatus", message);
+  setStatus(message);
+}
+
+function snapValueToGrid(value) {
+  const size = clampGuideSize(guideState.gridSize);
+  return Math.round((Number(value) || 0) / size) * size;
+}
+
+function snapPointToGrid(point) {
+  return { x: snapValueToGrid(point.x), y: snapValueToGrid(point.y) };
+}
+
+function constrainedGuideEnd(anchor, pointer, event = null) {
+  let constraint = guideState.guideConstraint;
+  if (event?.shiftKey && constraint === "free") {
+    constraint = Math.abs(pointer.x - anchor.x) >= Math.abs(pointer.y - anchor.y) ? "horizontal" : "vertical";
+  }
+  const end = { ...pointer };
+  if (guideState.snapGuideEnd) {
+    const snapped = snapPointToGrid(end);
+    end.x = snapped.x;
+    end.y = snapped.y;
+  }
+  if (constraint === "horizontal") end.y = anchor.y;
+  if (constraint === "vertical") end.x = anchor.x;
+  return end;
+}
+
+function beginGuideDraft(opt) {
+  const pointer = canvas.getPointer(opt.e);
+  const anchor = guideState.snapGuideAnchor ? snapPointToGrid(pointer) : pointer;
+  guideDraft = {
+    id: "__draft__",
+    x1: anchor.x,
+    y1: anchor.y,
+    x2: anchor.x,
+    y2: anchor.y,
+    constraint: guideState.guideConstraint,
+  };
+  selectedGuideId = null;
+  renderGuideObjects();
+}
+
+function updateGuideDraft(opt) {
+  if (!guideDraft) return;
+  const pointer = canvas.getPointer(opt.e);
+  const end = constrainedGuideEnd({ x: guideDraft.x1, y: guideDraft.y1 }, pointer, opt.e);
+  guideDraft.x2 = end.x;
+  guideDraft.y2 = end.y;
+  renderGuideObjects();
+}
+
+function finishGuideDraft() {
+  if (!guideDraft) return;
+  const zoom = Math.max(canvas.getZoom() || 1, 0.001);
+  const length = Math.hypot(guideDraft.x2 - guideDraft.x1, guideDraft.y2 - guideDraft.y1);
+  if (length < 8 / zoom) {
+    guideDraft = null;
+    renderGuideObjects();
+    setGuideStatus("Guide was too short and was discarded.");
+    return;
+  }
+  const guide = {
+    id: `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    x1: guideDraft.x1,
+    y1: guideDraft.y1,
+    x2: guideDraft.x2,
+    y2: guideDraft.y2,
+    constraint: guideDraft.constraint,
+  };
+  guideState.guides.push(guide);
+  selectedGuideId = guide.id;
+  guideDraft = null;
+  renderGuideObjects();
+  saveGuideAutosave();
+  setGuideStatus(`Added ${guide.constraint === "free" ? "free" : guide.constraint} guide. Hold Control while moving shapes to snap.`);
+}
+
+function selectGuideObject(object) {
+  if (!object?.kloudyGuideManual) return false;
+  selectedGuideId = object.kloudyGuideId;
+  canvas.discardActiveObject();
+  renderGuideObjects();
+  setGuideStatus("Guide selected. Use Delete Selected Guide to remove it.");
+  return true;
+}
+
+function deleteSelectedGuide() {
+  if (!selectedGuideId) {
+    setGuideStatus("No guide selected. Switch to Guides and click a guide line first.");
+    return;
+  }
+  const before = guideState.guides.length;
+  guideState.guides = guideState.guides.filter((guide) => guide.id !== selectedGuideId);
+  selectedGuideId = null;
+  renderGuideObjects();
+  saveGuideAutosave();
+  setGuideStatus(before === guideState.guides.length ? "Selected guide was already gone." : "Deleted selected guide.");
+}
+
+function clearGuides() {
+  guideState.guides = [];
+  guideDraft = null;
+  selectedGuideId = null;
+  renderGuideObjects();
+  saveGuideAutosave();
+  setGuideStatus("Cleared guide lines. Grid settings were kept.");
+}
+
+function syncGuideStateFromUi() {
+  guideState.gridEnabled = Boolean($("gridEnabled")?.checked);
+  guideState.gridSize = clampGuideSize($("gridSize")?.value);
+  guideState.gridOpacity = Math.max(5, Math.min(65, Number($("gridOpacity")?.value) || 20));
+  guideState.guidesVisible = $("guidesVisible")?.checked !== false;
+  guideState.snapGuides = $("snapGuides")?.checked !== false;
+  guideState.snapGrid = $("snapGrid")?.checked !== false;
+  guideState.snapCtrlOnly = $("snapCtrlOnly")?.checked !== false;
+  guideState.snapThreshold = Math.max(4, Math.min(28, Number($("snapThreshold")?.value) || 12));
+  guideState.guideConstraint = $("guideConstraint")?.value || "free";
+  guideState.snapGuideAnchor = $("snapGuideAnchor")?.checked !== false;
+  guideState.snapGuideEnd = Boolean($("snapGuideEnd")?.checked);
+  renderGuideObjects();
+  saveGuideAutosave();
+}
+
+function applyGuideStateToUi() {
+  if ($("gridEnabled")) $("gridEnabled").checked = guideState.gridEnabled;
+  if ($("gridSize")) $("gridSize").value = clampGuideSize(guideState.gridSize);
+  if ($("gridOpacity")) $("gridOpacity").value = guideState.gridOpacity;
+  if ($("guidesVisible")) $("guidesVisible").checked = guideState.guidesVisible;
+  if ($("snapGuides")) $("snapGuides").checked = guideState.snapGuides;
+  if ($("snapGrid")) $("snapGrid").checked = guideState.snapGrid;
+  if ($("snapCtrlOnly")) $("snapCtrlOnly").checked = guideState.snapCtrlOnly;
+  if ($("snapThreshold")) $("snapThreshold").value = guideState.snapThreshold;
+  if ($("guideConstraint")) $("guideConstraint").value = guideState.guideConstraint;
+  if ($("snapGuideAnchor")) $("snapGuideAnchor").checked = guideState.snapGuideAnchor;
+  if ($("snapGuideEnd")) $("snapGuideEnd").checked = guideState.snapGuideEnd;
+  updateGuideUi();
+}
+
+function saveGuideAutosave() {
+  try {
+    const current = JSON.parse(localStorage.getItem("kloudyFabricAutosave") || "{}");
+    localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
+      ...current,
+      name: loadedName,
+      created: current.created || new Date().toISOString(),
+      shapes: current.shapes || snapshotShapes(),
+      editor_guides: savedGuideState(),
+    }));
+  } catch (err) {
+    console.warn("Guide autosave skipped.", err);
+  }
+}
+
+function normalizeDegrees(value) {
+  const numeric = Number(value) || 0;
+  return ((numeric % 360) + 360) % 360;
+}
+
+function guideLineAngleDegrees(line) {
+  return normalizeDegrees(Math.atan2(line.y2 - line.y1, line.x2 - line.x1) * 180 / Math.PI);
+}
+
+function projectPointToSegment(point, line) {
+  const dx = line.x2 - line.x1;
+  const dy = line.y2 - line.y1;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq <= 0.000001) return null;
+  const rawT = ((point.x - line.x1) * dx + (point.y - line.y1) * dy) / lengthSq;
+  const t = Math.max(0, Math.min(1, rawT));
+  return {
+    x: line.x1 + dx * t,
+    y: line.y1 + dy * t,
+    t,
+  };
+}
+
+function guideSnapLines() {
+  const lines = [];
+  const bounds = visibleCanvasBounds(300);
+  if (guideState.snapGuides && guideState.guidesVisible) {
+    guideState.guides.forEach((guide) => {
+      const dx = Math.abs(guide.x2 - guide.x1);
+      const dy = Math.abs(guide.y2 - guide.y1);
+      if (dx < 0.001) lines.push({ axis: "x", value: guide.x1, source: "guide", x1: guide.x1, y1: guide.y1, x2: guide.x2, y2: guide.y2, angle: 90 });
+      else if (dy < 0.001) lines.push({ axis: "y", value: guide.y1, source: "guide", x1: guide.x1, y1: guide.y1, x2: guide.x2, y2: guide.y2, angle: 0 });
+      else lines.push({
+        axis: "line",
+        source: "guide",
+        x1: guide.x1,
+        y1: guide.y1,
+        x2: guide.x2,
+        y2: guide.y2,
+        angle: guideLineAngleDegrees(guide),
+      });
+    });
+  }
+  if (guideState.gridEnabled && guideState.snapGrid) {
+    const step = clampGuideSize(guideState.gridSize);
+    const startX = Math.floor(bounds.minX / step) * step;
+    const startY = Math.floor(bounds.minY / step) * step;
+    for (let x = startX, count = 0; x <= bounds.maxX && count < 600; x += step, count++) {
+      lines.push({ axis: "x", value: x, source: "grid", x1: x, y1: bounds.minY, x2: x, y2: bounds.maxY, angle: 90 });
+    }
+    for (let y = startY, count = 0; y <= bounds.maxY && count < 600; y += step, count++) {
+      lines.push({ axis: "y", value: y, source: "grid", x1: bounds.minX, y1: y, x2: bounds.maxX, y2: y, angle: 0 });
+    }
+  }
+  return lines;
+}
+
+function domEventFromFabricEvent(event = null) {
+  return event?.e || event || null;
+}
+
+function eventHasSnapModifier(event = null) {
+  const domEvent = domEventFromFabricEvent(event);
+  return Boolean(event?.ctrlKey || event?.metaKey || domEvent?.ctrlKey || domEvent?.metaKey);
+}
+
+function transformActionFromEvent(event = null) {
+  const explicit = event?.kloudyTransformAction;
+  if (explicit) return String(explicit);
+  const action = String(event?.transform?.action || event?.transform?.actionPerformed || "").toLowerCase();
+  if (action.includes("skew")) return "skew";
+  if (action.includes("scale") || action.includes("resize")) return "scale";
+  if (action.includes("rotate")) return "rotate";
+  return "move";
+}
+
+function canvasPointFromEvent(event = null) {
+  const domEvent = domEventFromFabricEvent(event);
+  const customPoint = event?.__kloudyPointer || domEvent?.__kloudyPointer;
+  if (customPoint && Number.isFinite(Number(customPoint.x)) && Number.isFinite(Number(customPoint.y))) {
+    return { x: Number(customPoint.x), y: Number(customPoint.y) };
+  }
+  if (!canvas || !domEvent) return null;
+  const hasPointerCoordinates = ["clientX", "pageX", "offsetX", "x"].some((key) => Number.isFinite(Number(domEvent[key])));
+  if (!hasPointerCoordinates) return null;
+  try {
+    return canvas.getPointer(domEvent);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function objectCornerCoords(target) {
+  target.setCoords();
+  const coords = target.aCoords || target.oCoords;
+  if (coords?.tl && coords?.tr && coords?.bl && coords?.br) {
+    const tl = { x: coords.tl.x, y: coords.tl.y };
+    const tr = { x: coords.tr.x, y: coords.tr.y };
+    const bl = { x: coords.bl.x, y: coords.bl.y };
+    const br = { x: coords.br.x, y: coords.br.y };
+    const center = midpoint(tl, br);
+    return {
+      tl,
+      tr,
+      bl,
+      br,
+      center,
+      left: midpoint(tl, bl),
+      right: midpoint(tr, br),
+      top: midpoint(tl, tr),
+      bottom: midpoint(bl, br),
+    };
+  }
+  const rect = target.getBoundingRect(true, true);
+  return {
+    tl: { x: rect.left, y: rect.top },
+    tr: { x: rect.left + rect.width, y: rect.top },
+    bl: { x: rect.left, y: rect.top + rect.height },
+    br: { x: rect.left + rect.width, y: rect.top + rect.height },
+    center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    left: { x: rect.left, y: rect.top + rect.height / 2 },
+    right: { x: rect.left + rect.width, y: rect.top + rect.height / 2 },
+    top: { x: rect.left + rect.width / 2, y: rect.top },
+    bottom: { x: rect.left + rect.width / 2, y: rect.top + rect.height },
+  };
+}
+
+function guideContactSegment(coords, kind) {
+  if (kind === "left") return [coords.tl, coords.bl];
+  if (kind === "right") return [coords.tr, coords.br];
+  if (kind === "top") return [coords.tl, coords.tr];
+  if (kind === "bottom") return [coords.bl, coords.br];
+  if (kind === "tl") return [coords.tl, coords.tl];
+  if (kind === "tr") return [coords.tr, coords.tr];
+  if (kind === "bl") return [coords.bl, coords.bl];
+  if (kind === "br") return [coords.br, coords.br];
+  return null;
+}
+
+function guideContactPointForKind(coords, kind) {
+  return coords[kind] || coords.center;
+}
+
+function transformControlKind(event = null) {
+  const transform = event?.transform || null;
+  const raw = transform?.corner || transform?.cornerName || transform?.control || transform?.action || event?.corner || null;
+  const value = raw ? String(raw).toLowerCase() : "";
+  if (["ml", "left", "scalex-left", "scalex"].includes(value)) return "left";
+  if (["mr", "right", "scalex-right"].includes(value)) return "right";
+  if (["mt", "top", "scaley-top", "scaley"].includes(value)) return "top";
+  if (["mb", "bottom", "scaley-bottom"].includes(value)) return "bottom";
+  if (["tl", "tr", "bl", "br"].includes(value)) return value;
+  if (value.includes("left")) return "left";
+  if (value.includes("right")) return "right";
+  if (value.includes("top")) return "top";
+  if (value.includes("bottom")) return "bottom";
+  return null;
+}
+
+function pointerLocalToObject(target, point) {
+  if (!target || !point) return null;
+  try {
+    const inverse = fabric.util.invertTransform(target.calcTransformMatrix());
+    return fabric.util.transformPoint(new fabric.Point(point.x, point.y), inverse);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function quadrantFromLocalPoint(local) {
+  if (!local) return null;
+  return `${local.y >= 0 ? "bottom" : "top"}-${local.x >= 0 ? "right" : "left"}`;
+}
+
+function sideFromLocalPoint(target, local) {
+  if (!local) return "center";
+  const width = Math.max(Math.abs(Number(target.width) || 1), 1);
+  const height = Math.max(Math.abs(Number(target.height) || 1), 1);
+  const nx = local.x / (width / 2);
+  const ny = local.y / (height / 2);
+  return Math.abs(nx) >= Math.abs(ny)
+    ? (nx >= 0 ? "right" : "left")
+    : (ny >= 0 ? "bottom" : "top");
+}
+
+function guideContactForTarget(target, event = null, preferredKind = null) {
+  if (!target) return null;
+  const coords = objectCornerCoords(target);
+  const controlKind = preferredKind || transformControlKind(event);
+  if (controlKind && controlKind !== "center") {
+    return {
+      kind: controlKind,
+      point: guideContactPointForKind(coords, controlKind),
+      segment: guideContactSegment(coords, controlKind),
+      quadrant: controlKind.length === 2 ? controlKind.replace("t", "top-").replace("b", "bottom-").replace("l", "left").replace("r", "right") : null,
+      source: preferredKind ? "preserved" : "control",
+    };
+  }
+  const pointer = canvasPointFromEvent(event);
+  const local = pointerLocalToObject(target, pointer);
+  const inferredKind = sideFromLocalPoint(target, local);
+  if (inferredKind && inferredKind !== "center") {
+    return {
+      kind: inferredKind,
+      point: guideContactPointForKind(coords, inferredKind),
+      segment: guideContactSegment(coords, inferredKind),
+      quadrant: quadrantFromLocalPoint(local),
+      source: "pointer",
+    };
+  }
+  return {
+    kind: "center",
+    point: coords.center,
+    segment: null,
+    quadrant: null,
+    source: "center",
+  };
+}
+
+function refreshedGuideContact(target, contact) {
+  return guideContactForTarget(target, null, contact?.kind || "center");
+}
+
+function oppositeContactKind(kind) {
+  const map = {
+    left: "right",
+    right: "left",
+    top: "bottom",
+    bottom: "top",
+    tl: "br",
+    tr: "bl",
+    bl: "tr",
+    br: "tl",
+  };
+  return map[kind] || "center";
+}
+
+function captureTransformAnchorSnapshot(target, event = null) {
+  if (!target || target.kloudyGuide || target.kloudyOverlay) {
+    transformAnchorSnapshot = null;
+    return null;
+  }
+  const initialContact = guideContactForTarget(target, event);
+  transformAnchorSnapshot = {
+    target,
+    contactKind: initialContact?.kind && initialContact.kind !== "center" ? initialContact.kind : null,
+    coords: objectCornerCoords(target),
+    left: Number(target.left) || 0,
+    top: Number(target.top) || 0,
+    angle: Number(target.angle) || 0,
+    scaleX: Number(target.scaleX) || 1,
+    scaleY: Number(target.scaleY) || 1,
+    skewX: Number(target.skewX) || 0,
+    skewY: Number(target.skewY) || 0,
+  };
+  return transformAnchorSnapshot;
+}
+
+function ensureTransformAnchorSnapshot(target) {
+  if (transformAnchorSnapshot?.target === target) return transformAnchorSnapshot;
+  return null;
+}
+
+function stabilizeOppositeTransformAnchor(target, contact, transformAction) {
+  if (transformAction !== "scale" && transformAction !== "skew") return null;
+  if (!target || !contact || contact.kind === "center") return null;
+  const snapshot = ensureTransformAnchorSnapshot(target);
+  if (!snapshot || snapshot.target !== target) return null;
+  const anchorKind = oppositeContactKind(contact.kind);
+  const originalAnchor = guideContactPointForKind(snapshot.coords, anchorKind);
+  if (!originalAnchor) return null;
+  const currentCoords = objectCornerCoords(target);
+  const currentAnchor = guideContactPointForKind(currentCoords, anchorKind);
+  if (!currentAnchor) return null;
+  const deltaX = originalAnchor.x - currentAnchor.x;
+  const deltaY = originalAnchor.y - currentAnchor.y;
+  if (Math.hypot(deltaX, deltaY) > 0.000001) {
+    target.set({
+      left: (target.left || 0) + deltaX,
+      top: (target.top || 0) + deltaY,
+    });
+    target.setCoords();
+  }
+  return {
+    anchorKind,
+    originalAnchor,
+    currentAnchor,
+    deltaX,
+    deltaY,
+  };
+}
+
+function lineObjectForSnap(line) {
+  if (!line) return null;
+  if (line.axis === "line") return line;
+  if (Number.isFinite(Number(line.x1)) && Number.isFinite(Number(line.y1)) && Number.isFinite(Number(line.x2)) && Number.isFinite(Number(line.y2))) return line;
+  const bounds = visibleCanvasBounds(300);
+  if (line.axis === "x") return { ...line, x1: line.value, y1: bounds.minY, x2: line.value, y2: bounds.maxY, angle: 90 };
+  if (line.axis === "y") return { ...line, x1: bounds.minX, y1: line.value, x2: bounds.maxX, y2: line.value, angle: 0 };
+  return null;
+}
+
+function distancePointToSnapLine(point, line) {
+  if (!point || !line) return Infinity;
+  if (line.axis === "x") return Math.abs(point.x - line.value);
+  if (line.axis === "y") return Math.abs(point.y - line.value);
+  const projected = projectPointToSegment(point, line);
+  if (!projected) return Infinity;
+  return Math.hypot(projected.x - point.x, projected.y - point.y);
+}
+
+function lineIntersection(a, b) {
+  if (!a || !b) return null;
+  const x1 = a.x1;
+  const y1 = a.y1;
+  const x2 = a.x2;
+  const y2 = a.y2;
+  const x3 = b.x1;
+  const y3 = b.y1;
+  const x4 = b.x2;
+  const y4 = b.y2;
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 0.000001) return null;
+  return {
+    x: ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom,
+    y: ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom,
+  };
+}
+
+function contactScaleAxis(contactKind) {
+  if (contactKind === "left" || contactKind === "right") return "x";
+  if (contactKind === "top" || contactKind === "bottom") return "y";
+  return null;
+}
+
+function snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold) {
+  if (!target || !contact || !anchorResult || contact.kind === "center") return null;
+  const scaleAxis = contactScaleAxis(contact.kind);
+  if (!scaleAxis) return null;
+  const active = refreshedGuideContact(target, contact);
+  const anchor = anchorResult.originalAnchor;
+  if (!active?.point || !anchor) return null;
+  let best = null;
+  guideSnapLines().forEach((candidate) => {
+    const line = lineObjectForSnap(candidate);
+    if (!line) return;
+    const distance = distancePointToSnapLine(active.point, line);
+    if (distance > threshold) return;
+    if (!best || distance < best.distance) best = { line, distance };
+  });
+  if (!best) return null;
+  const axisVector = {
+    x: active.point.x - anchor.x,
+    y: active.point.y - anchor.y,
+  };
+  const axisLength = Math.hypot(axisVector.x, axisVector.y);
+  if (axisLength < 0.000001) return null;
+  const axisLine = {
+    x1: anchor.x,
+    y1: anchor.y,
+    x2: anchor.x + axisVector.x * 10000,
+    y2: anchor.y + axisVector.y * 10000,
+  };
+  const intersection = lineIntersection(axisLine, best.line);
+  if (!intersection) return null;
+  const currentDistance = axisLength;
+  const desiredVector = { x: intersection.x - anchor.x, y: intersection.y - anchor.y };
+  const desiredDistance = (desiredVector.x * axisVector.x + desiredVector.y * axisVector.y) / axisLength;
+  if (!Number.isFinite(desiredDistance) || desiredDistance <= 0.01) return null;
+  const factor = desiredDistance / currentDistance;
+  if (!Number.isFinite(factor) || Math.abs(factor) < 0.02 || Math.abs(factor) > 50) return null;
+  if (scaleAxis === "x") target.set({ scaleX: (Number(target.scaleX) || 1) * factor });
+  else target.set({ scaleY: (Number(target.scaleY) || 1) * factor });
+  target.setCoords();
+  const correctedAnchor = stabilizeOppositeTransformAnchor(target, contact, "scale");
+  const correctedContact = refreshedGuideContact(target, contact);
+  return {
+    line: best.line,
+    projection: correctedContact.point,
+    from: active.point,
+    contact: correctedContact,
+    anchorKind: correctedAnchor?.anchorKind || anchorResult.anchorKind,
+    distance: distancePointToSnapLine(correctedContact.point, best.line),
+    scaleAxis,
+  };
+}
+
+function guideAngleForContact(line, target, contact = null) {
+  let angle = normalizeDegrees(line.angle);
+  if (contact?.kind === "left" || contact?.kind === "right") {
+    angle = normalizeDegrees(angle - 90);
+  }
+  const current = normalizeDegrees(target?.angle || 0);
+  const flipped = normalizeDegrees(angle + 180);
+  const angleDistance = Math.abs(((angle - current + 540) % 360) - 180);
+  const flippedDistance = Math.abs(((flipped - current + 540) % 360) - 180);
+  return flippedDistance < angleDistance ? flipped : angle;
+}
+
+function snapOverlayStyle(extra = {}) {
+  return {
+    selectable: false,
+    evented: false,
+    excludeFromExport: true,
+    strokeUniform: true,
+    objectCaching: false,
+    ...extra,
+  };
+}
+
+function trackSnapOverlay(object) {
+  object.kloudyGuide = true;
+  object.kloudySnapOverlay = true;
+  snapOverlayObjects.push(object);
+  canvas.add(object);
+  return object;
+}
+
+function clearSnapOverlay() {
+  if (!canvas) {
+    snapOverlayObjects = [];
+    return;
+  }
+  const stale = new Set(snapOverlayObjects);
+  canvas.getObjects().forEach((obj) => {
+    if (obj.kloudySnapOverlay || stale.has(obj)) canvas.remove(obj);
+  });
+  snapOverlayObjects = [];
+}
+
+function renderSnapOverlayForTarget(target, contact = null, snapResult = null) {
+  if (!canvas) return;
+  clearSnapOverlay();
+  if (!target || target.kloudyGuide || target.kloudyOverlay) {
+    canvas.requestRenderAll();
+    return;
+  }
+  const coords = objectCornerCoords(target);
+  const center = coords.center;
+  const horizontal = [coords.left, coords.right];
+  const vertical = [coords.top, coords.bottom];
+  const activeContact = contact || guideContactForTarget(target, null);
+  const quadrantMap = {
+    "top-left": [coords.tl, coords.top, center, coords.left],
+    "top-right": [coords.top, coords.tr, coords.right, center],
+    "bottom-left": [coords.left, center, coords.bottom, coords.bl],
+    "bottom-right": [center, coords.right, coords.br, coords.bottom],
+  };
+  const activePolygon = quadrantMap[activeContact?.quadrant || ""];
+  if (activePolygon) {
+    trackSnapOverlay(new fabric.Polygon(activePolygon, snapOverlayStyle({
+      fill: "rgba(114, 164, 242, 0.10)",
+      stroke: "rgba(114, 164, 242, 0.30)",
+      strokeWidth: 1,
+    })));
+  }
+  trackSnapOverlay(new fabric.Line([horizontal[0].x, horizontal[0].y, horizontal[1].x, horizontal[1].y], snapOverlayStyle({
+    stroke: "rgba(114, 164, 242, 0.78)",
+    strokeWidth: 1.5,
+    strokeDashArray: [5, 5],
+  })));
+  trackSnapOverlay(new fabric.Line([vertical[0].x, vertical[0].y, vertical[1].x, vertical[1].y], snapOverlayStyle({
+    stroke: "rgba(114, 164, 242, 0.78)",
+    strokeWidth: 1.5,
+    strokeDashArray: [5, 5],
+  })));
+  const segment = activeContact?.segment;
+  if (segment) {
+    trackSnapOverlay(new fabric.Line([segment[0].x, segment[0].y, segment[1].x, segment[1].y], snapOverlayStyle({
+      stroke: "rgba(255, 211, 110, 0.98)",
+      strokeWidth: 3,
+    })));
+  }
+  if (activeContact?.point) {
+    trackSnapOverlay(new fabric.Circle(snapOverlayStyle({
+      left: activeContact.point.x,
+      top: activeContact.point.y,
+      radius: 5 / Math.max(canvas.getZoom() || 1, 0.001),
+      originX: "center",
+      originY: "center",
+      fill: "rgba(255, 211, 110, 0.98)",
+      stroke: "rgba(36, 24, 38, 0.72)",
+      strokeWidth: 1,
+    })));
+  }
+  if (snapResult?.projection && snapResult?.from) {
+    trackSnapOverlay(new fabric.Line([snapResult.from.x, snapResult.from.y, snapResult.projection.x, snapResult.projection.y], snapOverlayStyle({
+      stroke: "rgba(255, 88, 132, 0.92)",
+      strokeWidth: 2,
+      strokeDashArray: [3, 3],
+    })));
+    trackSnapOverlay(new fabric.Circle(snapOverlayStyle({
+      left: snapResult.projection.x,
+      top: snapResult.projection.y,
+      radius: 4 / Math.max(canvas.getZoom() || 1, 0.001),
+      originX: "center",
+      originY: "center",
+      fill: "rgba(255, 88, 132, 0.95)",
+    })));
+  }
+  layerEditorHelpers();
+  canvas.requestRenderAll();
+}
+
+function signedAngleDistance(a, b) {
+  return ((normalizeDegrees(a) - normalizeDegrees(b) + 540) % 360) - 180;
+}
+
+function nearestRotationNotch(angle, step = 45) {
+  const normalized = normalizeDegrees(angle);
+  return normalizeDegrees(Math.round(normalized / step) * step);
+}
+
+function rotationNotchMetrics(target) {
+  if (!target || !canvas) return null;
+  const coords = objectCornerCoords(target);
+  const center = coords.center;
+  const zoom = Math.max(canvas.getZoom() || 1, 0.001);
+  const corners = [coords.tl, coords.tr, coords.bl, coords.br];
+  const baseRadius = Math.max(...corners.map((point) => Math.hypot(point.x - center.x, point.y - center.y)));
+  const zoomWeight = Math.max(0, Math.min(1, (zoom - 0.35) / 2.25));
+  return {
+    center,
+    zoom,
+    zoomWeight,
+    radius: baseRadius + (24 + zoomWeight * 28) / zoom,
+    tickMinor: (12 + zoomWeight * 9) / zoom,
+    tickMajor: (18 + zoomWeight * 14) / zoom,
+    pointerReach: (18 + zoomWeight * 12) / zoom,
+    alpha: 0.42 + zoomWeight * 0.46,
+  };
+}
+
+function pointerNearRotationNotchRing(target, event = null, metrics = null) {
+  const pointer = canvasPointFromEvent(event);
+  const ring = metrics || rotationNotchMetrics(target);
+  if (!pointer || !ring) return false;
+  const distance = Math.hypot(pointer.x - ring.center.x, pointer.y - ring.center.y);
+  return Math.abs(distance - ring.radius) <= ring.pointerReach;
+}
+
+function snapRotationToNotches(target, event = null) {
+  if (!target || target.kloudyGuide || target.kloudyOverlay || target.kloudy?.locked) return null;
+  const metrics = rotationNotchMetrics(target);
+  if (!pointerNearRotationNotchRing(target, event, metrics)) return null;
+  const zoom = Math.max(canvas?.getZoom() || 1, 0.001);
+  const threshold = Math.max(1.5, 4 / Math.sqrt(zoom));
+  const angle = normalizeDegrees(target.angle || 0);
+  const notch = nearestRotationNotch(angle);
+  const delta = signedAngleDistance(angle, notch);
+  if (Math.abs(delta) <= threshold) {
+    target.set({ angle: notch });
+    target.setCoords();
+    setText("guideStatus", `Rotation notch: ${round(notch)} deg.`);
+    return { snapped: true, notch, delta };
+  }
+  return { snapped: false, notch, delta };
+}
+
+function renderRotationNotchOverlay(target, event = null) {
+  if (!canvas) return;
+  clearSnapOverlay();
+  if (!target || target.kloudyGuide || target.kloudyOverlay) return;
+  const ring = rotationNotchMetrics(target);
+  if (!ring) return;
+  const { center, zoom, radius } = ring;
+  const nearRing = pointerNearRotationNotchRing(target, event, ring);
+  const notchLine = cssColorVar("--editor-notch-line", "rgba(18, 16, 18, 0.92)");
+  const notchMuted = cssColorVar("--editor-notch-muted", "rgba(18, 16, 18, 0.48)");
+  const notchActive = cssColorVar("--editor-notch-active", "rgba(236, 111, 164, 0.98)");
+  const ringAlpha = nearRing ? ring.alpha : Math.max(0.22, ring.alpha * 0.62);
+  const tickAlpha = nearRing ? ring.alpha : Math.max(0.28, ring.alpha * 0.66);
+  trackSnapOverlay(new fabric.Circle(snapOverlayStyle({
+    left: center.x,
+    top: center.y,
+    radius,
+    originX: "center",
+    originY: "center",
+    fill: "rgba(0,0,0,0)",
+    stroke: colorWithAlpha(nearRing ? notchLine : notchMuted, ringAlpha),
+    strokeWidth: nearRing ? 2.4 : 1.6,
+    strokeDashArray: [4, 5],
+  })));
+  const activeAngle = normalizeDegrees(target.angle || 0);
+  for (let angle = 0; angle < 360; angle += 45) {
+    const radians = angle * Math.PI / 180;
+    const major = angle % 90 === 0;
+    const length = major ? ring.tickMajor : ring.tickMinor;
+    const outer = {
+      x: center.x + Math.cos(radians) * radius,
+      y: center.y + Math.sin(radians) * radius,
+    };
+    const inner = {
+      x: center.x + Math.cos(radians) * (radius - length),
+      y: center.y + Math.sin(radians) * (radius - length),
+    };
+    const active = Math.abs(signedAngleDistance(activeAngle, angle)) < 0.75;
+    trackSnapOverlay(new fabric.Line([inner.x, inner.y, outer.x, outer.y], snapOverlayStyle({
+      stroke: active ? colorWithAlpha(notchActive, nearRing ? 0.98 : 0.62) : colorWithAlpha(nearRing ? notchLine : notchMuted, tickAlpha),
+      strokeWidth: active ? (nearRing ? 4.4 : 3.2) : (major ? 2.8 : 2.1),
+    })));
+  }
+  const pointerRadians = activeAngle * Math.PI / 180;
+  trackSnapOverlay(new fabric.Line([
+    center.x,
+    center.y,
+    center.x + Math.cos(pointerRadians) * (radius + 8 / zoom),
+    center.y + Math.sin(pointerRadians) * (radius + 8 / zoom),
+  ], snapOverlayStyle({
+    stroke: colorWithAlpha(nearRing ? notchActive : notchMuted, nearRing ? 0.96 : 0.56),
+    strokeWidth: nearRing ? 2.8 : 1.8,
+  })));
+  layerEditorHelpers();
+  canvas.requestRenderAll();
+}
+
+function axisSnapPoints(rect, contact = null) {
+  const allX = [
+    { kind: "left", value: rect.left },
+    { kind: "center", value: rect.left + rect.width / 2 },
+    { kind: "right", value: rect.left + rect.width },
+  ];
+  const allY = [
+    { kind: "top", value: rect.top },
+    { kind: "middle", value: rect.top + rect.height / 2 },
+    { kind: "bottom", value: rect.top + rect.height },
+  ];
+  if (contact?.source !== "control" && contact?.source !== "preserved") {
+    return { xPoints: allX, yPoints: allY };
+  }
+  const kind = contact.kind || "";
+  const xPoints = kind.includes("l") || kind === "left"
+    ? [allX[0]]
+    : (kind.includes("r") || kind === "right" ? [allX[2]] : [allX[1]]);
+  const yPoints = kind.includes("t") || kind === "top"
+    ? [allY[0]]
+    : (kind.includes("b") || kind === "bottom" ? [allY[2]] : [allY[1]]);
+  return { xPoints, yPoints };
+}
+
+function axisSnapPointsForLine(rect, contact, line) {
+  if (line?.source === "grid") {
+    return {
+      xPoints: [
+        { kind: "left", value: rect.left },
+        { kind: "right", value: rect.left + rect.width },
+      ],
+      yPoints: [
+        { kind: "top", value: rect.top },
+        { kind: "bottom", value: rect.top + rect.height },
+      ],
+    };
+  }
+  return axisSnapPoints(rect, contact);
+}
+
+function applyAngledGuideSnap(target, contact, line, options = {}) {
+  const allowRotation = options.allowRotation !== false;
+  const isSingleVinylShape = Boolean(target.kloudy) && target.type !== "activeSelection" && target.type !== "activeselection";
+  let activeContact = refreshedGuideContact(target, contact);
+  if (allowRotation && isSingleVinylShape && Number.isFinite(line.angle)) {
+    target.set({ angle: guideAngleForContact(line, target, contact) });
+    target.setCoords();
+    activeContact = refreshedGuideContact(target, contact);
+  }
+  const projection = projectPointToSegment(activeContact.point, line);
+  if (!projection) return null;
+  const deltaX = projection.x - activeContact.point.x;
+  const deltaY = projection.y - activeContact.point.y;
+  target.set({
+    left: (target.left || 0) + deltaX,
+    top: (target.top || 0) + deltaY,
+  });
+  target.setCoords();
+  return {
+    projection,
+    from: activeContact.point,
+    contact: refreshedGuideContact(target, contact),
+    angle: isSingleVinylShape ? target.angle : null,
+  };
+}
+
+function snapTargetToGuides(target, event = null) {
+  if (!target || target.kloudyGuide || target.kloudyOverlay) return false;
+  const selected = selectedVinylObjects();
+  if (selected.length && unlockedObjects(selected).length !== selected.length) return false;
+  if (target.kloudy?.locked) return false;
+  const transformAction = transformActionFromEvent(event);
+  const frozenContactKind = transformAction === "move" && transformAnchorSnapshot?.target === target
+    ? transformAnchorSnapshot.contactKind
+    : null;
+  const contact = guideContactForTarget(target, event, frozenContactKind);
+  const allowAngledRotation = transformAction === "move";
+  const snapAllowed = !guideState.snapCtrlOnly || eventHasSnapModifier(event);
+  const pointer = canvasPointFromEvent(event);
+  target.setCoords();
+  const zoom = Math.max(canvas.getZoom() || 1, 0.001);
+  const threshold = guideState.snapThreshold / zoom;
+  const cursorThreshold = (guideState.snapThreshold * 1.45) / zoom;
+  const anchorResult = stabilizeOppositeTransformAnchor(target, contact, transformAction);
+  const anchoredResize = transformAction === "scale" || transformAction === "skew";
+  if (anchoredResize) {
+    const sideSnap = transformAction === "scale" && snapAllowed
+      ? snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold)
+      : null;
+    const overlayContact = sideSnap?.contact || refreshedGuideContact(target, contact);
+    renderSnapOverlayForTarget(target, overlayContact, sideSnap || (anchorResult ? {
+      from: anchorResult.currentAnchor,
+      projection: anchorResult.originalAnchor,
+    } : null));
+    const now = Date.now();
+    if (now - lastSnapMessageAt > 350) {
+      lastSnapMessageAt = now;
+      setText("guideStatus", sideSnap
+        ? `Resize anchored: ${sideSnap.anchorKind || "opposite"} side stays fixed; pulled ${contact.kind} side snapped to ${sideSnap.line.source || "guide"}.`
+        : `${transformAction === "skew" ? "Skew" : "Resize"} anchored: ${anchorResult?.anchorKind || "opposite"} side stays fixed while the pulled ${contact.kind} side changes.`);
+    }
+    return false;
+  }
+  if (!guideState.snapGuides && !(guideState.gridEnabled && guideState.snapGrid)) {
+    renderSnapOverlayForTarget(target, contact, null);
+    return false;
+  }
+  if (!snapAllowed) {
+    renderSnapOverlayForTarget(target, contact, null);
+    return false;
+  }
+  const rect = target.getBoundingRect(true, true);
+  let bestX = null;
+  let bestY = null;
+  let bestLine = null;
+  guideSnapLines().forEach((line) => {
+    if (line.axis === "line") {
+      if (pointer && distancePointToSnapLine(pointer, line) > cursorThreshold) return;
+      const projected = projectPointToSegment(contact.point, line);
+      if (!projected) return;
+      const dx = projected.x - contact.point.x;
+      const dy = projected.y - contact.point.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > threshold) return;
+      if (!bestLine || distance < bestLine.abs) {
+        bestLine = { line, deltaX: dx, deltaY: dy, abs: distance, source: line.source, point: contact.kind, angle: line.angle, projection: projected };
+      }
+      return;
+    }
+    const { xPoints, yPoints } = axisSnapPointsForLine(rect, contact, line);
+    const points = line.axis === "x" ? xPoints : yPoints;
+    points.forEach((point) => {
+      const delta = line.value - point.value;
+      const abs = Math.abs(delta);
+      if (abs > threshold) return;
+      const current = line.axis === "x" ? bestX : bestY;
+      if (!current || abs < current.abs) {
+        const hit = { delta, abs, source: line.source, point: point.kind, line };
+        if (line.axis === "x") bestX = hit;
+        else bestY = hit;
+      }
+    });
+  });
+  if (!bestX && !bestY && !bestLine) {
+    renderSnapOverlayForTarget(target, contact, null);
+    return false;
+  }
+  const activeEdgeSnap = contact?.kind && contact.kind !== "center";
+  const shouldUseLine = Boolean(bestLine) && (
+    activeEdgeSnap ||
+    ((!bestX || bestLine.abs <= bestX.abs) && (!bestY || bestLine.abs <= bestY.abs))
+  );
+  const isSingleVinylShape = Boolean(target.kloudy) && target.type !== "activeSelection" && target.type !== "activeselection";
+  let overlayResult = null;
+  let overlayContact = contact;
+  if (shouldUseLine) {
+    overlayResult = applyAngledGuideSnap(target, contact, bestLine.line, { allowRotation: allowAngledRotation });
+    overlayContact = overlayResult?.contact || refreshedGuideContact(target, contact);
+  } else {
+    let axisRotated = false;
+    if (transformAction === "move" && activeEdgeSnap && isSingleVinylShape) {
+      const rotationLine = bestX && (!bestY || bestX.abs <= bestY.abs) ? bestX.line : bestY?.line;
+      const cursorNearAxisGuide = pointer && rotationLine?.source === "guide"
+        ? distancePointToSnapLine(pointer, rotationLine) <= cursorThreshold
+        : false;
+      if (rotationLine && rotationLine.source === "guide" && cursorNearAxisGuide && Number.isFinite(rotationLine.angle)) {
+        target.set({ angle: guideAngleForContact(rotationLine, target, contact) });
+        target.setCoords();
+        const rotatedContact = refreshedGuideContact(target, contact);
+        target.set({
+          left: (target.left || 0) + (bestX ? bestX.line.value - rotatedContact.point.x : 0),
+          top: (target.top || 0) + (bestY ? bestY.line.value - rotatedContact.point.y : 0),
+        });
+        axisRotated = true;
+      }
+    }
+    if (!axisRotated) {
+      target.set({
+        left: (target.left || 0) + (bestX?.delta || 0),
+        top: (target.top || 0) + (bestY?.delta || 0),
+      });
+    }
+    target.setCoords();
+    overlayContact = refreshedGuideContact(target, contact);
+  }
+  renderSnapOverlayForTarget(target, overlayContact, overlayResult);
+  const now = Date.now();
+  if (now - lastSnapMessageAt > 350) {
+    lastSnapMessageAt = now;
+    if (shouldUseLine) {
+      setText("guideStatus", `Snapped ${contact.kind} edge to angled guide${allowAngledRotation && isSingleVinylShape ? ` and rotated to ${round(target.angle || 0)} deg` : " without rotating during resize/skew"}.`);
+    } else {
+      setText("guideStatus", `Snapped ${bestX ? bestX.point : ""}${bestX && bestY ? " + " : ""}${bestY ? bestY.point : ""} to ${bestX?.source || bestY?.source}.`);
+    }
+  }
+  return true;
+}
+
 function resetView() {
   const zoom = Math.min(canvas.width / 2400, canvas.height / 2400);
   canvas.setViewportTransform([zoom, 0, 0, zoom, canvas.width / 2, canvas.height / 2]);
   canvas.requestRenderAll();
+  queueGuideRender();
   updateHud();
 }
 
@@ -994,6 +2495,7 @@ function fitDesignView() {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
+  queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
 }
@@ -1029,6 +2531,7 @@ function fitObjectsView(objects) {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
+  queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
 }
@@ -1048,46 +2551,60 @@ async function loadJsonFile(file) {
   await nextFrame();
   const text = await file.text();
   const payload = JSON.parse(text);
-  loadedName = file.name.replace(/\.json$/i, "");
-  await loadPayload(payload);
+  const previousName = loadedName;
+  loadedName = cleanProjectBaseName(file.name, "vinyl");
+  try {
+    await loadPayload(payload);
+  } catch (err) {
+    loadedName = previousName;
+    throw err;
+  }
 }
 
 async function loadPayload(payload) {
   const shapes = Array.isArray(payload.shapes) ? payload.shapes : null;
   if (!shapes) throw new Error("JSON must contain a shapes list.");
-  clearVinylObjects();
-  resetHistory();
+  if (!shapes.length) throw new Error("JSON shapes list is empty.");
   const hasLegacyGeometry = shapes.some((shape) => LEGACY_RECTANGLE_TYPES.has(Number(shape.type)) || LEGACY_ELLIPSE_TYPES.has(Number(shape.type)));
   const legacyOffset = hasLegacyGeometry ? computeLegacyOffset(shapes) : { x: 0, y: 0 };
   const normalized = shapes.map((shape, index) => normalizeInputShape(shape, index, legacyOffset)).filter(Boolean);
+  if (!normalized.length) throw new Error("JSON did not contain any usable FH6 vinyl layers.");
   setBusy(`Building ${normalized.length} editable layer(s)...`);
   await nextFrame();
-  let loaded = 0;
+  const builtObjects = [];
   let failed = 0;
   for (const shape of normalized) {
     try {
       const object = await makeFabricObject(shape);
-      canvas.add(object);
-      loaded++;
+      builtObjects.push(object);
     } catch (err) {
       failed++;
       console.warn(err);
     }
-    if (loaded % 100 === 0) {
-      setBusy(`Building layers: ${loaded}/${normalized.length}`);
+    if ((builtObjects.length + failed) % 100 === 0) {
+      setBusy(`Building layers: ${builtObjects.length}/${normalized.length}`);
       await nextFrame();
     }
   }
+  if (!builtObjects.length) {
+    throw new Error(`JSON did not contain any loadable FH6 vinyl layers. Failed to build ${failed}/${normalized.length}. Current canvas was left unchanged.`);
+  }
+  clearVinylObjects();
+  resetHistory();
+  builtObjects.forEach((object) => canvas.add(object));
   bringGuidesToBack();
   refreshLayers();
   fitDesignView();
   pushHistory("import");
   protectedHistoryIndex = historyIndex;
-  clearBusy(`Loaded ${loaded}/${normalized.length} editable FH6 layer(s).${failed ? ` Failed: ${failed}.` : ""}`);
+  clearBusy(`Loaded ${builtObjects.length}/${normalized.length} editable FH6 layer(s).${failed ? ` Failed: ${failed}.` : ""}`);
 }
 
 function clearVinylObjects() {
-  canvas.getObjects().filter((obj) => !obj.kloudyGuide).forEach((obj) => canvas.remove(obj));
+  vinylObjects().forEach((obj) => canvas.remove(obj));
+  collapsedLayerGroups.clear();
+  lastLayerListObject = null;
+  dropperPreservedActiveObject = null;
 }
 
 function vinylObjects() {
@@ -1103,8 +2620,65 @@ function selectedVinylObjects() {
   return active.kloudy && !active.kloudyGuide ? [active] : [];
 }
 
-function bringGuidesToBack() {
-  canvas.getObjects().filter((obj) => obj.kloudyGuide).forEach((obj) => obj.sendToBack());
+function unlockedObjects(objects) {
+  return objects.filter((obj) => !obj.kloudy?.locked);
+}
+
+function setObjectLocked(object, locked) {
+  if (!object?.kloudy) return;
+  object.kloudy.locked = Boolean(locked);
+  object.set({
+    lockMovementX: Boolean(locked),
+    lockMovementY: Boolean(locked),
+    lockScalingX: Boolean(locked),
+    lockScalingY: Boolean(locked),
+    lockRotation: Boolean(locked),
+    hasControls: !locked,
+  });
+}
+
+function groupNameForObject(object) {
+  return object?.kloudy?.group_name || "Layer Group";
+}
+
+function selectedGroupIds() {
+  return [...new Set(selectedVinylObjects()
+    .map((obj) => obj.kloudy?.group_id)
+    .filter(Boolean))];
+}
+
+function membersForGroupIds(groupIds) {
+  const ids = new Set(groupIds.filter(Boolean));
+  if (!ids.size) return [];
+  return vinylObjects().filter((obj) => ids.has(obj.kloudy?.group_id));
+}
+
+function selectedGroupMembers() {
+  return membersForGroupIds(selectedGroupIds());
+}
+
+function selectGroupForObject(object) {
+  const groupId = object?.kloudy?.group_id;
+  if (!groupId) return false;
+  selectObjects(membersForGroupIds([groupId]), groupNameForObject(object));
+  return true;
+}
+
+function setCollapsedGroup(groupId, collapsed) {
+  if (!groupId) return;
+  if (collapsed) collapsedLayerGroups.add(groupId);
+  else collapsedLayerGroups.delete(groupId);
+  refreshLayers();
+}
+
+function selectLayerListRange(displayObjects, fromObject, toObject) {
+  const from = displayObjects.indexOf(fromObject);
+  const to = displayObjects.indexOf(toObject);
+  if (from < 0 || to < 0) return false;
+  const start = Math.min(from, to);
+  const end = Math.max(from, to);
+  selectObjects(displayObjects.slice(start, end + 1), "layer range");
+  return true;
 }
 
 function refreshLayers() {
@@ -1113,18 +2687,115 @@ function refreshLayers() {
   const objects = vinylObjects();
   const activeSet = new Set(selectedVinylObjects());
   const filter = ($("layerSearch")?.value || "").trim().toLowerCase();
+  const groupCounts = new Map();
+  const groupNames = new Map();
+  const groupVisibility = new Map();
+  const groupLocks = new Map();
+  objects.forEach((obj) => {
+    const groupId = obj.kloudy?.group_id;
+    if (!groupId) return;
+    groupCounts.set(groupId, (groupCounts.get(groupId) || 0) + 1);
+    groupNames.set(groupId, groupNameForObject(obj));
+    const visibility = groupVisibility.get(groupId) || { visible: 0, hidden: 0 };
+    if (obj.visible === false) visibility.hidden += 1;
+    else visibility.visible += 1;
+    groupVisibility.set(groupId, visibility);
+    const locks = groupLocks.get(groupId) || { locked: 0, unlocked: 0 };
+    if (obj.kloudy?.locked) locks.locked += 1;
+    else locks.unlocked += 1;
+    groupLocks.set(groupId, locks);
+  });
   $("layerInfo").textContent = activeSet.size > 1
     ? `${activeSet.size} selected / ${objects.length} editable layer(s). Drag selection to move together.`
     : `${objects.length} editable layer(s). Export writes bottom-to-top order.`;
-  objects.slice().reverse().forEach((obj, reverseIndex) => {
+  const displayObjects = objects.slice().reverse();
+  const renderedGroups = new Set();
+  displayObjects.forEach((obj, reverseIndex) => {
     const actualIndex = objects.length - reverseIndex;
     const label = `${actualIndex}. ${obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0)}`;
-    const searchText = `${label} ${obj.kloudy?.type || ""} ${obj.kloudy?.type_word || ""}`.toLowerCase();
+    const groupId = obj.kloudy?.group_id || null;
+    const groupName = groupId ? groupNames.get(groupId) || groupNameForObject(obj) : "";
+    const searchText = `${label} ${groupName} ${obj.kloudy?.type || ""} ${obj.kloudy?.type_word || ""}`.toLowerCase();
     if (filter && !searchText.includes(filter)) return;
+    if (groupId && !renderedGroups.has(groupId)) {
+      renderedGroups.add(groupId);
+      const groupMembers = membersForGroupIds([groupId]);
+      const groupActive = groupMembers.some((member) => activeSet.has(member));
+      const visibility = groupVisibility.get(groupId) || { visible: 0, hidden: 0 };
+      const locks = groupLocks.get(groupId) || { locked: 0, unlocked: 0 };
+      const collapsed = collapsedLayerGroups.has(groupId);
+      const groupLi = document.createElement("li");
+      groupLi.className = `layerGroupRow${groupActive ? " active" : ""}${collapsed ? " collapsed" : ""}`;
+      groupLi.innerHTML = `
+        <button class="layerGroupTwist" type="button" title="${collapsed ? "Expand group" : "Collapse group"}">${collapsed ? "+" : "-"}</button>
+        <span class="layerGroupTitle">${escapeHtml(groupName)}</span>
+        <span class="layerGroupMeta">${groupMembers.length} layers | ${visibility.hidden ? `${visibility.hidden} hidden` : "visible"} | ${locks.locked ? `${locks.locked} locked` : "unlocked"}</span>
+        <button class="layerIcon layerGroupVisibility" type="button" title="Hide/show this group">${visibility.visible ? "V" : "H"}</button>
+        <button class="layerIcon layerGroupLock" type="button" title="Lock/unlock this group">${locks.unlocked ? "U" : "L"}</button>
+      `;
+      groupLi.querySelector(".layerGroupTwist").addEventListener("click", (event) => {
+        event.stopPropagation();
+        setCollapsedGroup(groupId, !collapsed);
+      });
+      groupLi.querySelector(".layerGroupVisibility").addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectObjects(groupMembers, groupName);
+        toggleSelectedGroupVisibility();
+      });
+      groupLi.querySelector(".layerGroupLock").addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectObjects(groupMembers, groupName);
+        toggleSelectedGroupLock();
+      });
+      groupLi.addEventListener("click", () => selectObjects(groupMembers, groupName));
+      list.appendChild(groupLi);
+    }
+    if (groupId && collapsedLayerGroups.has(groupId)) return;
     const li = document.createElement("li");
-    li.textContent = label;
+    li.className = "layerRow";
+    if (groupId) li.classList.add("groupedLayer");
     if (activeSet.has(obj)) li.classList.add("active");
-    li.addEventListener("click", () => {
+    if (obj.visible === false) li.classList.add("hiddenLayer");
+    if (obj.kloudy?.locked) li.classList.add("lockedLayer");
+    const color = hexToRgb(obj.fill || "#ffffff", (obj.opacity ?? 1) * 255);
+    const groupBadge = obj.kloudy?.group_id
+      ? `<button class="layerGroupBadge" type="button" title="Select all layers in ${escapeHtml(groupNameForObject(obj))}.">${escapeHtml(groupNameForObject(obj))} (${groupCounts.get(obj.kloudy.group_id) || 1})</button>`
+      : "";
+    li.innerHTML = `
+      <button class="layerIcon layerVisibility" type="button" title="${obj.visible === false ? "Show layer" : "Hide layer"}">${obj.visible === false ? "H" : "V"}</button>
+      <button class="layerIcon layerLock" type="button" title="${obj.kloudy?.locked ? "Unlock layer" : "Lock layer"}">${obj.kloudy?.locked ? "L" : "U"}</button>
+      <span class="layerColorChip" style="--swatch:${colorToHex(color)}"></span>
+      <span class="layerMain">
+        <b>${escapeHtml(label)}</b>
+        <small>${groupBadge} Type ${escapeHtml(obj.kloudy?.type || "unknown")} | X ${round(fh6DataFromObject(obj)[0])} Y ${round(fh6DataFromObject(obj)[1])}</small>
+      </span>
+    `;
+    li.querySelector(".layerGroupBadge")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectGroupForObject(obj);
+    });
+    li.querySelector(".layerVisibility").addEventListener("click", (event) => {
+      event.stopPropagation();
+      obj.visible = obj.visible === false;
+      canvas.requestRenderAll();
+      refreshLayers();
+      pushHistory("layer visibility");
+    });
+    li.querySelector(".layerLock").addEventListener("click", (event) => {
+      event.stopPropagation();
+      const locked = !obj.kloudy?.locked;
+      setObjectLocked(obj, locked);
+      canvas.requestRenderAll();
+      refreshLayers();
+      updateSelectionPanel();
+      pushHistory("layer lock");
+    });
+    li.addEventListener("click", (event) => {
+      if (event.shiftKey && lastLayerListObject && selectLayerListRange(displayObjects, lastLayerListObject, obj)) {
+        lastLayerListObject = obj;
+        return;
+      }
+      lastLayerListObject = obj;
       canvas.setActiveObject(obj);
       canvas.requestRenderAll();
       updateSelectionPanel();
@@ -1132,18 +2803,29 @@ function refreshLayers() {
     });
     list.appendChild(li);
   });
+  setText("exportWarningCount", "0");
+  setText("normalExportStatus", objects.every((obj) => Number(obj.kloudy?.type) === 1048677 || Number(obj.kloudy?.type) === 1048678 || obj.kloudy?.source_format === "legacy_geometry")
+    ? "Compatible"
+    : "FH6 JSON only");
+  setText("exportReadyChip", objects.length ? "Ready" : "No JSON");
   updateHud();
 }
 
 function updateSelectionPanel() {
   const selected = selectedVinylObjects();
   const enabled = selected.length === 1;
-  ["colorPicker", "opacitySlider", "xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "maskInput", "applyFields"].forEach((id) => {
+  ["colorPicker", "xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "maskInput", "applyFields"].forEach((id) => {
     $(id).disabled = !enabled;
   });
+  const sharedAlpha = sharedSelectedAlpha(selected);
+  $("opacitySlider").disabled = !(enabled || (selected.length > 1 && sharedAlpha !== null));
+  $("equalizeAlpha").disabled = selected.length < 2;
   if (!enabled) {
     $("selectedShapeName").textContent = selected.length > 1 ? `${selected.length} layers selected` : "No layer selected";
-    $("selectedShapeCode").textContent = selected.length > 1 ? "Use layer tools or drag the selection." : "Click a layer or a shape tile.";
+    $("selectedShapeCode").textContent = selected.length > 1
+      ? (sharedAlpha === null ? "Mixed alpha. Click Equalize Alpha before batch alpha edits." : `Shared alpha ${sharedAlpha}. Alpha slider edits all selected layers.`)
+      : "Click a layer or a shape tile.";
+    if (selected.length > 1 && sharedAlpha !== null) $("opacitySlider").value = sharedAlpha;
     if (selected.length > 1) {
       $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together.`;
     }
@@ -1155,22 +2837,56 @@ function updateSelectionPanel() {
   $("selectedShapeName").textContent = obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0);
   $("selectedShapeCode").textContent = `Type ${obj.kloudy?.type || "unknown"}${obj.kloudy?.mask ? " / mask" : ""}`;
   $("colorPicker").value = obj.fill || "#ffffff";
-  $("opacitySlider").value = Math.round((obj.opacity ?? 1) * 255);
+  $("opacitySlider").value = alphaForObject(obj);
   const decoded = fh6DataFromObject(obj);
   $("xInput").value = round(decoded[0]);
   $("yInput").value = round(decoded[1]);
   $("sxInput").value = round(decoded[2]);
   $("syInput").value = round(decoded[3]);
   $("rotInput").value = round(decoded[4]);
-  $("skewInput").value = round(decoded[5]);
+  $("skewInput").value = round(obj.skewX || 0);
   $("maskInput").checked = Boolean(obj.kloudy.mask);
   refreshColorUi();
   refreshLayers();
 }
 
 function applySelectionFields() {
-  const obj = selectedVinylObjects()[0];
+  const selected = selectedVinylObjects();
+  if (selected.length > 1) {
+    const editable = unlockedObjects(selected);
+    if (!editable.length) {
+      setStatus("Selected layers are locked. Unlock them before editing alpha.");
+      updateSelectionPanel();
+      return;
+    }
+    if (editable.length !== selected.length) {
+      setStatus(`Skipped ${selected.length - editable.length} locked layer(s). Unlock them before batch editing.`);
+    }
+    const sharedAlpha = sharedSelectedAlpha(editable);
+    if (sharedAlpha === null) {
+      setStatus("Selected layers have mixed alpha. Click Equalize Alpha before batch alpha edits.");
+      updateSelectionPanel();
+      return;
+    }
+    const alpha = Math.max(0, Math.min(255, Math.round(Number($("opacitySlider").value) || 0)));
+    editable.forEach((obj) => {
+      obj.set({ opacity: alpha / 255 });
+      obj.setCoords();
+    });
+    rememberColor([rememberedColor[0], rememberedColor[1], rememberedColor[2], alpha]);
+    canvas.requestRenderAll();
+    updateSelectionPanel();
+    pushHistory("batch alpha edit");
+    setStatus(`Set alpha ${alpha} on ${editable.length} selected layer(s).`);
+    return;
+  }
+  const obj = selected[0];
   if (!obj || !obj.kloudy) return;
+  if (obj.kloudy.locked) {
+    setStatus("Selected layer is locked. Unlock it before editing.");
+    updateSelectionPanel();
+    return;
+  }
   const color = hexToRgb($("colorPicker").value, $("opacitySlider").value);
   rememberColor(color);
   const transformProps = fabricPropsFromFh6Data([
@@ -1179,7 +2895,11 @@ function applySelectionFields() {
     Number($("sxInput").value) || 1,
     Number($("syInput").value) || 1,
     Number($("rotInput").value) || 0,
-    Number($("skewInput").value) || 0,
+    fh6SkewFromFabricDegrees(
+      Number($("skewInput").value) || 0,
+      Number($("sxInput").value) || 1,
+      Number($("syInput").value) || 1
+    ),
   ]);
   obj.set({
     fill: colorToHex(color),
@@ -1195,50 +2915,126 @@ function applySelectionFields() {
   pushHistory("field edit");
 }
 
+function equalizeSelectedAlpha() {
+  const selected = selectedVinylObjects();
+  if (selected.length < 2) {
+    setStatus("Select two or more layers before equalizing alpha.");
+    return;
+  }
+  const editable = unlockedObjects(selected);
+  if (!editable.length) {
+    setStatus("Selected layers are locked. Unlock them before equalizing alpha.");
+    return;
+  }
+  const alpha = alphaForObject(editable[0]);
+  editable.forEach((obj) => {
+    obj.set({ opacity: alpha / 255 });
+    obj.setCoords();
+  });
+  $("opacitySlider").value = alpha;
+  rememberColor([rememberedColor[0], rememberedColor[1], rememberedColor[2], alpha]);
+  canvas.requestRenderAll();
+  updateSelectionPanel();
+  pushHistory("equalize alpha");
+  setStatus(`Equalized ${editable.length} selected layer(s) to alpha ${alpha}.${editable.length !== selected.length ? " Locked layers were skipped." : ""}`);
+}
+
 function downloadText(filename, text) {
   const blob = new Blob([text], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function cleanProjectBaseName(name, fallback = "vinyl") {
+  let base = String(name || fallback)
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    .trim();
+  base = base
+    .replace(/\.json$/i, "")
+    .replace(/\.fabric-project$/i, "")
+    .replace(/\.fabric-export$/i, "")
+    .replace(/\.normal-import$/i, "");
+  base = base.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/\s+/g, " ").trim();
+  return base || fallback;
+}
+
+function filenameWithSuffix(baseName, suffix) {
+  return `${cleanProjectBaseName(baseName)}.${suffix}.json`;
 }
 
 function exportJson() {
-  const shapes = vinylObjects().map(objectToShape);
-  downloadText(`${loadedName || "vinyl"}.fabric-export.json`, JSON.stringify({ shapes }, null, 2));
-  setStatus(`Exported ${shapes.length} FH6 JSON layer(s).`);
+  const shapes = vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: false }));
+  if (!shapes.length) {
+    setStatus("Nothing to export. Import a JSON or add at least one shape first.");
+    return;
+  }
+  downloadText(filenameWithSuffix(loadedName, "fabric-export"), JSON.stringify({ shapes }, null, 2));
+  setStatus(`Exported ${shapes.length} layer(s) for Handmade Importer.`);
 }
 
 function exportLegacyJson() {
   try {
     const shapes = vinylObjects().map(objectToLegacyShape);
-    downloadText(`${loadedName || "vinyl"}.normal-import.json`, JSON.stringify({ shapes }, null, 2));
-    setStatus(`Exported ${shapes.length} normal-import compatible rectangle/ellipse layer(s).`);
+    if (!shapes.length) {
+      setStatus("Nothing to export. Import a generated JSON or add supported rectangle/ellipse shapes first.");
+      return;
+    }
+    downloadText(filenameWithSuffix(loadedName, "normal-import"), JSON.stringify({ shapes }, null, 2));
+    setStatus(`Exported ${shapes.length} layer(s) for Generated Importer.`);
   } catch (err) {
     showError("Normal import export failed", new Error(
-      `${err.message}\n\nNormal importer export only supports generated rectangle/ellipse layers. ` +
-      "Use Export FH6 JSON and the handmade importer for full shape-library designs."
+      `${err.message}\n\nExport for Generated only supports generated rectangle/ellipse layers. ` +
+      "Use Export for Handmade for full shape-library designs."
     ));
   }
 }
 
 function saveProject() {
+  if (!vinylObjects().length) {
+    setStatus("Nothing to save. Import a JSON or add at least one shape first.");
+    return;
+  }
+  const defaultName = cleanProjectBaseName(loadedName, "vinyl");
+  const requestedName = window.prompt("Project name", defaultName);
+  if (requestedName === null) {
+    setStatus("Project save cancelled.");
+    return;
+  }
+  const projectName = cleanProjectBaseName(requestedName, defaultName);
+  loadedName = projectName;
   const payload = {
     format: "kloudy_fabric_editor_project_v1",
-    name: loadedName,
-    shapes: vinylObjects().map(objectToShape),
+    name: projectName,
+    shapes: vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true })),
+    editor_guides: savedGuideState(),
   };
-  downloadText(`${loadedName || "vinyl"}.fabric-project.json`, JSON.stringify(payload, null, 2));
+  downloadText(filenameWithSuffix(projectName, "fabric-project"), JSON.stringify(payload, null, 2));
+  setStatus(`Saved project: ${projectName}`);
 }
 
 async function loadProjectFile(file) {
   setBusy(`Loading project: ${file.name}`);
   await nextFrame();
   const payload = JSON.parse(await file.text());
-  loadedName = file.name.replace(/\.json$/i, "");
-  await loadPayload({ shapes: payload.shapes || [] });
+  if (!Array.isArray(payload.shapes)) throw new Error("Project JSON must contain a shapes list.");
+  const previousName = loadedName;
+  loadedName = cleanProjectBaseName(file.name, "project");
+  try {
+    await loadPayload({ shapes: payload.shapes });
+    applySavedGuideState(payload.editor_guides || null);
+  } catch (err) {
+    loadedName = previousName;
+    throw err;
+  }
 }
 
 function viewportCenterPoint() {
@@ -1326,11 +3122,11 @@ function renderShapeGrid() {
       <span class="shapeName">${escapeHtml(name)}</span>
       <span class="shapeMeta">${family.replaceAll("_", " ")} #${index}</span>
     `;
-    tile.addEventListener("click", () => addShape(family, index));
+    tile.addEventListener("click", () => addShape(family, index).catch((err) => showError("Shape add failed", err)));
     tile.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        addShape(family, index);
+        addShape(family, index).catch((err) => showError("Shape add failed", err));
       }
     });
     tile.querySelector(".favButton").addEventListener("click", (event) => {
@@ -1369,12 +3165,42 @@ function toggleFavorite(family, index) {
 }
 
 function duplicateSelected() {
-  const objects = selectedVinylObjects();
-  if (!objects.length) return;
+  const selected = selectedVinylObjects();
+  const objects = unlockedObjects(selected);
+  if (!selected.length) return;
+  if (!objects.length) {
+    setStatus("Selected layers are locked. Unlock them before duplicating.");
+    return;
+  }
+  if (objects.length !== selected.length) {
+    setStatus(`Duplicating ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
+  }
+  const selectedSet = new Set(objects);
+  const duplicateGroupMap = new Map();
+  const duplicateGroupNameMap = new Map();
+  objects.forEach((obj) => {
+    const groupId = obj.kloudy?.group_id;
+    if (!groupId || duplicateGroupMap.has(groupId)) return;
+    const members = membersForGroupIds([groupId]);
+    const completeGroupSelection = members.length > 1 && members.every((member) => selectedSet.has(member));
+    if (completeGroupSelection) {
+      duplicateGroupMap.set(groupId, `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+      duplicateGroupNameMap.set(groupId, nextLayerGroupName());
+    } else {
+      duplicateGroupMap.set(groupId, null);
+      duplicateGroupNameMap.set(groupId, null);
+    }
+  });
   Promise.all(objects.map((obj) => new Promise((resolve) => {
     obj.clone((clone) => {
       clone.set({ left: (obj.left || 0) + 30, top: (obj.top || 0) + 30 });
       clone.kloudy = JSON.parse(JSON.stringify(obj.kloudy));
+      if (clone.kloudy?.group_id) {
+        const newGroupId = duplicateGroupMap.get(clone.kloudy.group_id);
+        clone.kloudy.group_id = newGroupId;
+        clone.kloudy.group_name = newGroupId ? duplicateGroupNameMap.get(obj.kloudy.group_id) : null;
+      }
+      if (clone.kloudy?.locked) setObjectLocked(clone, false);
       clone.perPixelTargetFind = $("pixelSelect").checked;
       clone.targetFindTolerance = $("pixelSelect").checked ? 3 : 0;
       clone.hoverCursor = "pointer";
@@ -1395,18 +3221,29 @@ function duplicateSelected() {
 }
 
 function deleteSelected() {
-  const objects = selectedVinylObjects();
-  if (!objects.length) return;
+  const selected = selectedVinylObjects();
+  const objects = unlockedObjects(selected);
+  if (!selected.length) return;
+  if (!objects.length) {
+    setStatus("Selected layers are locked. Unlock them before deleting.");
+    return;
+  }
   objects.forEach((obj) => canvas.remove(obj));
   canvas.discardActiveObject();
   canvas.requestRenderAll();
   refreshLayers();
   pushHistory("delete");
+  setStatus(`Deleted ${objects.length} layer(s).${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
 }
 
 function moveSelected(direction) {
-  const objects = selectedVinylObjects();
-  if (!objects.length) return;
+  const selected = selectedVinylObjects();
+  const objects = unlockedObjects(selected);
+  if (!selected.length) return;
+  if (!objects.length) {
+    setStatus("Selected layers are locked. Unlock them before changing layer order.");
+    return;
+  }
   objects.forEach((obj) => {
     if (direction > 0) obj.bringForward();
     else obj.sendBackwards();
@@ -1414,6 +3251,7 @@ function moveSelected(direction) {
   bringGuidesToBack();
   refreshLayers();
   pushHistory("layer order");
+  if (objects.length !== selected.length) setStatus(`Moved ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
 }
 
 function selectObjects(objects, reason) {
@@ -1429,34 +3267,92 @@ function selectObjects(objects, reason) {
   setStatus(`Selected ${objects.length} layer(s) by ${reason}.`);
 }
 
-function selectSameShape() {
-  const selected = selectedVinylObjects()[0];
-  if (!selected?.kloudy) {
-    setStatus("Select one layer before selecting same shape.");
-    return;
+function nextLayerGroupName() {
+  const names = new Set(vinylObjects().map((obj) => obj.kloudy?.group_name).filter(Boolean));
+  for (let i = 1; i < 10000; i++) {
+    const name = `Group ${i}`;
+    if (!names.has(name)) return name;
   }
-  const type = Number(selected.kloudy.type);
-  selectObjects(vinylObjects().filter((obj) => Number(obj.kloudy?.type) === type), "same shape");
+  return `Group ${Date.now().toString(36)}`;
 }
 
-function selectSameColor() {
-  const selected = selectedVinylObjects()[0];
-  if (!selected) {
-    setStatus("Select one layer before selecting same color.");
+function groupSelectedLayers() {
+  const selected = selectedVinylObjects();
+  if (selected.length < 2) {
+    setStatus("Select two or more layers before creating a group.");
     return;
   }
-  const color = colorToHex(hexToRgb(selected.fill || "#ffffff", (selected.opacity ?? 1) * 255));
-  const alpha = Math.round((selected.opacity ?? 1) * 255);
-  selectObjects(vinylObjects().filter((obj) => {
-    const objColor = colorToHex(hexToRgb(obj.fill || "#ffffff", (obj.opacity ?? 1) * 255));
-    const objAlpha = Math.round((obj.opacity ?? 1) * 255);
-    return objColor === color && objAlpha === alpha;
-  }), "same color");
+  const groupId = `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const groupName = nextLayerGroupName();
+  selected.forEach((obj) => {
+    obj.kloudy.group_id = groupId;
+    obj.kloudy.group_name = groupName;
+  });
+  collapsedLayerGroups.delete(groupId);
+  refreshLayers();
+  updateSelectionPanel();
+  pushHistory("group layers");
+  setStatus(`${groupName}: grouped ${selected.length} layer(s). Export remains flat.`);
+}
+
+function ungroupSelectedLayers() {
+  const selected = selectedVinylObjects();
+  const groupIds = selectedGroupIds();
+  const targets = groupIds.length ? membersForGroupIds(groupIds) : selected.filter((obj) => obj.kloudy?.group_id);
+  if (!targets.length) {
+    setStatus("Select a grouped layer before ungrouping.");
+    return;
+  }
+  targets.forEach((obj) => {
+    if (obj.kloudy.group_id) collapsedLayerGroups.delete(obj.kloudy.group_id);
+    obj.kloudy.group_id = null;
+    obj.kloudy.group_name = null;
+  });
+  refreshLayers();
+  updateSelectionPanel();
+  pushHistory("ungroup layers");
+  setStatus(`Removed editor grouping from ${targets.length} layer(s).`);
+}
+
+function toggleSelectedGroupVisibility() {
+  const targets = selectedGroupMembers();
+  if (!targets.length) {
+    setStatus("Select a grouped layer before hiding/showing a group.");
+    return;
+  }
+  const shouldHide = targets.some((obj) => obj.visible !== false);
+  targets.forEach((obj) => {
+    obj.visible = !shouldHide;
+  });
+  canvas.requestRenderAll();
+  refreshLayers();
+  pushHistory(shouldHide ? "hide group" : "show group");
+  setStatus(`${shouldHide ? "Hid" : "Showed"} ${targets.length} layer(s) in selected group.`);
+}
+
+function toggleSelectedGroupLock() {
+  const targets = selectedGroupMembers();
+  if (!targets.length) {
+    setStatus("Select a grouped layer before locking/unlocking a group.");
+    return;
+  }
+  const shouldLock = targets.some((obj) => !obj.kloudy?.locked);
+  targets.forEach((obj) => setObjectLocked(obj, shouldLock));
+  canvas.requestRenderAll();
+  refreshLayers();
+  updateSelectionPanel();
+  pushHistory(shouldLock ? "lock group" : "unlock group");
+  setStatus(`${shouldLock ? "Locked" : "Unlocked"} ${targets.length} layer(s) in selected group.`);
 }
 
 function nudgeSelected(dx, dy) {
-  const objects = selectedVinylObjects();
-  if (!objects.length) return;
+  const selected = selectedVinylObjects();
+  const objects = unlockedObjects(selected);
+  if (!selected.length) return;
+  if (!objects.length) {
+    setStatus("Selected layers are locked. Unlock them before nudging.");
+    return;
+  }
   objects.forEach((obj) => {
     obj.set({ left: (obj.left || 0) + dx, top: (obj.top || 0) + dy });
     obj.setCoords();
@@ -1465,6 +3361,7 @@ function nudgeSelected(dx, dy) {
   canvas.requestRenderAll();
   updateSelectionPanel();
   pushHistory("nudge");
+  if (objects.length !== selected.length) setStatus(`Nudged ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
 }
 
 function setPixelSelection(enabled) {
@@ -1574,6 +3471,10 @@ function dominantOverlayColorForObject(obj) {
 }
 
 function applyOverlayColorToObject(obj, options = {}) {
+  if (obj?.kloudy?.locked) {
+    if (!options.silent) setStatus("Selected layer is locked. Unlock it before sampling overlay color.");
+    return false;
+  }
   const color = dominantOverlayColorForObject(obj);
   if (!color) {
     if (!options.silent) setStatus("No overlay color found under the selected layer.");
@@ -1595,7 +3496,7 @@ function applyOverlayColorToObject(obj, options = {}) {
 function applyLiveOverlayColor(target = null) {
   if (!$("autoOverlayColor")?.checked || !overlaySampler) return false;
   const selected = selectedVinylObjects();
-  const targets = selected.length ? selected : (target?.kloudy ? [target] : []);
+  const targets = unlockedObjects(selected.length ? selected : (target?.kloudy ? [target] : []));
   let changed = false;
   targets.forEach((obj) => {
     if (applyOverlayColorToObject(obj, { remember: true, silent: true })) changed = true;
@@ -1622,15 +3523,20 @@ function sampleOverlayColorForSelected() {
     setStatus("Select one or more layers before sampling overlay color.");
     return;
   }
+  const editable = unlockedObjects(objects);
+  if (!editable.length) {
+    setStatus("Selected layers are locked. Unlock them before sampling overlay color.");
+    return;
+  }
   let changed = 0;
-  objects.forEach((obj) => {
+  editable.forEach((obj) => {
     if (applyOverlayColorToObject(obj, { remember: true, silent: true })) changed++;
   });
   canvas.requestRenderAll();
   updateSelectionPanel();
   if (changed) {
     pushHistory("overlay color sample");
-    setStatus(`Sampled overlay color for ${changed} selected layer(s).`);
+    setStatus(`Sampled overlay color for ${changed} selected layer(s).${editable.length !== objects.length ? ` Skipped ${objects.length - editable.length} locked layer(s).` : ""}`);
   } else {
     setStatus("No overlay pixels found under the selected layer(s).");
   }
@@ -1638,6 +3544,7 @@ function sampleOverlayColorForSelected() {
 
 function addOverlayFile(file) {
   const reader = new FileReader();
+  reader.onerror = () => setStatus(`Overlay load failed: could not read ${file.name}.`);
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
@@ -1663,6 +3570,7 @@ function addOverlayFile(file) {
       setStatus(`Overlay loaded: ${file.name}`);
       updateHud();
     };
+    img.onerror = () => setStatus(`Overlay load failed: ${file.name} is not a usable image.`);
     img.src = reader.result;
   };
   reader.readAsDataURL(file);
@@ -1681,20 +3589,31 @@ function updateOverlay() {
 }
 
 function toggleOverlay() {
-  if (!overlayImage) return;
+  if (!overlayImage) {
+    setStatus("No overlay loaded. Add a source overlay first.");
+    return;
+  }
   overlayImage.visible = !overlayImage.visible;
   canvas.requestRenderAll();
+  setStatus(overlayImage.visible ? "Overlay shown." : "Overlay hidden.");
 }
 
 function removeOverlay() {
-  if (!overlayImage) return;
+  if (!overlayImage) {
+    setStatus("No overlay loaded to remove.");
+    return;
+  }
   canvas.remove(overlayImage);
   overlayImage = null;
   overlaySampler = null;
   canvas.requestRenderAll();
+  updateHud();
+  setStatus("Overlay removed.");
 }
 
 function bindUi() {
+  applyEditorTheme(localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme);
+  $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
   $("jsonInput").addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1721,6 +3640,7 @@ function bindUi() {
   $("helpBtn").addEventListener("click", () => $("helpDialog").showModal());
   $("closeHelp").addEventListener("click", () => $("helpDialog").close());
   $("colorSwatchButton").addEventListener("click", openColorDialog);
+  $("colorPanelSwatch").addEventListener("click", openColorDialog);
   $("closeColorDialog").addEventListener("click", () => $("colorDialog").close());
   $("saveFavoriteColor").addEventListener("click", saveCurrentFavoriteColor);
   $("removeFavoriteColor").addEventListener("click", removeCurrentFavoriteColor);
@@ -1739,16 +3659,20 @@ function bindUi() {
   $("bringForward").addEventListener("click", () => moveSelected(1));
   $("sendBackward").addEventListener("click", () => moveSelected(-1));
   $("fitSelected").addEventListener("click", fitSelectedView);
-  $("selectSameShape").addEventListener("click", selectSameShape);
-  $("selectSameColor").addEventListener("click", selectSameColor);
+  $("groupSelected").addEventListener("click", groupSelectedLayers);
+  $("hideSelectedGroup").addEventListener("click", toggleSelectedGroupVisibility);
+  $("lockSelectedGroup").addEventListener("click", toggleSelectedGroupLock);
+  $("ungroupSelected").addEventListener("click", ungroupSelectedLayers);
   $("colorPicker").addEventListener("input", applySelectionFields);
   $("opacitySlider").addEventListener("input", applySelectionFields);
+  $("equalizeAlpha").addEventListener("click", equalizeSelectedAlpha);
   $("layerSearch").addEventListener("input", refreshLayers);
   $("pixelSelect").addEventListener("change", () => setPixelSelection($("pixelSelect").checked));
   $("boxVisibleOnly").addEventListener("change", () => setPixelSelection($("boxVisibleOnly").checked));
   $("overlayInput").addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     if (file) addOverlayFile(file);
+    event.target.value = "";
   });
   $("overlayOpacity").addEventListener("input", updateOverlay);
   $("overlayScale").addEventListener("input", updateOverlay);
@@ -1759,6 +3683,26 @@ function bindUi() {
     if ($("autoOverlayColor").checked) applyLiveOverlayColor();
   });
   $("sampleOverlayColor").addEventListener("click", sampleOverlayColorForSelected);
+  [
+    "gridEnabled",
+    "gridSize",
+    "gridOpacity",
+    "guidesVisible",
+    "snapGuides",
+    "snapGrid",
+    "snapCtrlOnly",
+    "snapThreshold",
+    "guideConstraint",
+    "snapGuideAnchor",
+    "snapGuideEnd",
+  ].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", syncGuideStateFromUi);
+    el.addEventListener("change", syncGuideStateFromUi);
+  });
+  $("deleteGuide")?.addEventListener("click", deleteSelectedGuide);
+  $("clearGuides")?.addEventListener("click", clearGuides);
   $("toggleOverlay").addEventListener("click", toggleOverlay);
   $("removeOverlay").addEventListener("click", removeOverlay);
   $("showFavorites").addEventListener("click", () => {
@@ -1769,10 +3713,24 @@ function bindUi() {
     showFavoritesOnly = false;
     renderShapeGrid();
   });
+  document.querySelectorAll(".dockTab").forEach((button) => {
+    button.addEventListener("click", () => activateDockPanel(button.dataset.panel));
+  });
+  document.querySelectorAll(".toolButton").forEach((button) => {
+    button.addEventListener("click", () => setActiveTool(button));
+  });
   document.addEventListener("keydown", (event) => {
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
+      if (activeToolMode === "guides" && selectedGuideId && !selectedVinylObjects().length) {
+        deleteSelectedGuide();
+        return;
+      }
+      if (activeToolMode === "guides") {
+        setGuideStatus("No guide selected. Vinyl layers are protected while the Guides tool is active.");
+        return;
+      }
       deleteSelected();
       return;
     }
@@ -1819,13 +3777,18 @@ document.addEventListener("DOMContentLoaded", () => {
   buildShapeLibrary();
   bindUi();
   rememberColor(rememberedColor);
+  applyGuideStateToUi();
+  renderGuideObjects();
   updateSelectionPanel();
   const autosave = localStorage.getItem("kloudyFabricAutosave");
   if (autosave && window.confirm("Recover the last autosaved Fabric editor project?")) {
     try {
       const payload = JSON.parse(autosave);
-      loadedName = payload.name || "autosave";
-      loadPayload({ shapes: payload.shapes || [] }).catch((err) => setStatus(`Autosave recovery failed: ${err.message}`));
+      if (!Array.isArray(payload.shapes)) throw new Error("Autosave did not contain a shapes list.");
+      loadedName = cleanProjectBaseName(payload.name, "autosave");
+      loadPayload({ shapes: payload.shapes })
+        .then(() => applySavedGuideState(payload.editor_guides || null))
+        .catch((err) => setStatus(`Autosave recovery failed: ${err.message}`));
     } catch (err) {
       setStatus(`Autosave recovery failed: ${err.message}`);
     }

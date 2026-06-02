@@ -2609,6 +2609,29 @@ class MainWindow(QMainWindow):
         for widget in (self.custom_layers, self.custom_save_at):
             widget.textEdited.connect(self.sync_auto_summary)
         quality_layout.addLayout(form)
+        tuning_form = QGridLayout()
+        self.custom_resolution = QLineEdit()
+        self.custom_random = QLineEdit()
+        self.custom_mutated = QLineEdit()
+        tuning_fields = [
+            ("Max resolution", self.custom_resolution, "max_resolution"),
+            ("Random samples", self.custom_random, "random_samples"),
+            ("Mutated samples", self.custom_mutated, "mutated_samples"),
+        ]
+        self.pro_setting_labels = []
+        for row, (label, widget, help_key) in enumerate(tuning_fields):
+            label_widget = self.label_with_help(label, help_key)
+            self.pro_setting_labels.append(label_widget)
+            tuning_form.addWidget(label_widget, row, 0)
+            tuning_form.addWidget(widget, row, 1)
+            widget.textEdited.connect(self.enable_custom_tuning_from_edit)
+            widget.textEdited.connect(self.save_pro_field_values)
+        quality_layout.addLayout(tuning_form)
+        saved_pro_values = self.app_settings.get("generation_pro_values") if isinstance(self.app_settings.get("generation_pro_values"), dict) else {}
+        self.custom_resolution.setText(str(saved_pro_values.get("maxResolution", "")))
+        self.custom_random.setText(str(saved_pro_values.get("randomSamples", "")))
+        self.custom_mutated.setText(str(saved_pro_values.get("mutatedSamples", "")))
+        self.pro_setting_widgets = [self.custom_resolution, self.custom_random, self.custom_mutated]
         self.vroom = QCheckBox("2x Sample Goblin (slower)")
         self.vroom.setToolTip("Doubles auto/manual random and mutated samples for more search effort. Usually slower, sometimes cleaner.")
         self.vroom.stateChanged.connect(self.update_setting_description)
@@ -2642,7 +2665,7 @@ class MainWindow(QMainWindow):
         generate = QPushButton("Generate Final Vinyl")
         generate.setObjectName("primaryButton")
         generate.clicked.connect(self.start_generate)
-        stop = QPushButton("Stop after next saved point")
+        stop = QPushButton("Stop")
         stop.clicked.connect(self.stop_generate)
         run_layout.addWidget(generate, 2)
         run_layout.addWidget(stop, 1)
@@ -3211,29 +3234,6 @@ class MainWindow(QMainWindow):
         self.custom_enabled.stateChanged.connect(self.sync_custom_state)
         self.custom_enabled.stateChanged.connect(self.save_pro_settings_state)
         generator_layout.addWidget(self.custom_enabled)
-        pro_form = QGridLayout()
-        self.custom_resolution = QLineEdit()
-        self.custom_random = QLineEdit()
-        self.custom_mutated = QLineEdit()
-        pro_fields = [
-            ("Max resolution", self.custom_resolution, "max_resolution"),
-            ("Random samples", self.custom_random, "random_samples"),
-            ("Mutated samples", self.custom_mutated, "mutated_samples"),
-        ]
-        self.pro_setting_labels = []
-        for row, (label, widget, help_key) in enumerate(pro_fields):
-            label_widget = self.label_with_help(label, help_key)
-            self.pro_setting_labels.append(label_widget)
-            pro_form.addWidget(label_widget, row, 0)
-            pro_form.addWidget(widget, row, 1)
-            widget.textEdited.connect(self.enable_custom_tuning_from_edit)
-            widget.textEdited.connect(self.save_pro_field_values)
-        generator_layout.addLayout(pro_form)
-        saved_pro_values = self.app_settings.get("generation_pro_values") if isinstance(self.app_settings.get("generation_pro_values"), dict) else {}
-        self.custom_resolution.setText(str(saved_pro_values.get("maxResolution", "")))
-        self.custom_random.setText(str(saved_pro_values.get("randomSamples", "")))
-        self.custom_mutated.setText(str(saved_pro_values.get("mutatedSamples", "")))
-        self.pro_setting_widgets = [self.custom_resolution, self.custom_random, self.custom_mutated]
         self.blue_terminal_dialup_enabled = QCheckBox("Blue Terminal 90s: play dial-up sound while generating")
         self.blue_terminal_dialup_enabled.setToolTip("Only affects the Blue Terminal 90s theme. The generated modem-like sound loops while generation is running and stops when it finishes.")
         self.blue_terminal_dialup_enabled.setChecked(settings_bool(self.app_settings.get("blue_terminal_dialup_sound"), False))
