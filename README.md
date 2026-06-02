@@ -156,6 +156,18 @@ Normal users usually only need:
 
 Pro settings expose resolution, random samples, mutated samples, source prep, and repair options. Use them when you want manual control, not for normal first runs.
 
+### Source Size Prep
+
+Before generating, use `Image Size Helper` when you are unsure whether the source is too small or unnecessarily huge.
+
+Source size matters:
+
+- Very small images can lose detail before the generator ever sees it.
+- Extremely large images can waste time, blur the useful search budget, and make runs slower without improving the final vinyl.
+- The best source is usually clean, correctly cropped, transparent where possible, and sized for the preset/layer target.
+
+The helper shows the current pixel size, megapixels, and same-aspect 1 MP through 6 MP resize targets. If the image is too small, use the `2x / 4x Browser Upscaler` link in `Image Tools`. If it is too large, use the `Browser Downscaler / Compressor` link to resize it before generating.
+
 ## Final JSON Browser
 
 The importer browser is organized around generated run folders.
@@ -257,7 +269,7 @@ The app links to these tools. It does not upload images through KFPS itself.
 
 ## Image Size Helper
 
-Use this before generation when you want a cleaner source size.
+Use this before generation when you want a cleaner source size or when a result looks soft, slow, or under-detailed for the layer count.
 
 The helper shows:
 
@@ -265,6 +277,8 @@ The helper shows:
 - megapixels
 - same-aspect resize targets from 1 MP through 6 MP
 - short preset guidance
+
+If the source is too small, upscale it from `Image Tools`. If it is way too large, downscale it from `Image Tools`, then generate again from the cleaned size.
 
 <p align="center">
   <img src="docs/screenshots/08-image-size-helper.png" alt="Image Size Helper tab" width="820">
@@ -386,6 +400,14 @@ KFPS includes multiple visual themes for the app.
 <p align="center">
   <img src="docs/images/kfps-theme-showcase.gif" alt="Animated KFPS theme showcase" width="900">
 </p>
+
+## Optional Ko-fi
+
+If KFPS saved you time and you feel like helping a little, the tip button is here:
+
+https://ko-fi.com/O7O020EQNQ
+
+No pressure. It mostly helps cover time, testing, assets, and maybe eventually a proper logo or mascot.
 
 ## Discord
 
