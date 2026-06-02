@@ -222,7 +222,7 @@ def dependencies_ok() -> tuple[bool, str]:
 class Launcher(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Kloudy's Painter Launcher")
+        self.setWindowTitle("KFPS Launcher")
         self.resize(920, 620)
         self.launcher_migration_messages = sync_standalone_launcher_exe()
         self.bus = Bus()
@@ -242,7 +242,7 @@ class Launcher(QMainWindow):
     def _build(self):
         root = QWidget()
         layout = QVBoxLayout(root)
-        title = QLabel("Kloudy's Painter Launcher")
+        title = QLabel("KFPS Launcher")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)

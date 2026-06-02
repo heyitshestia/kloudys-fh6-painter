@@ -8,7 +8,7 @@ set "BRANCH=main"
 call :init_update_log
 call :capture_current_version OLD_VERSION
 
-call :log "Kloudy's Painter Launcher updater"
+call :log "KFPS Launcher updater"
 call :log ""
 call :log "Use this batch file exclusively for updates."
 call :log "Close the app before continuing."
@@ -96,7 +96,7 @@ for /f "delims=" %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyM
 set "UPDATE_LOG_DIR=%CD%\runtime\update-logs"
 if not exist "%UPDATE_LOG_DIR%" mkdir "%UPDATE_LOG_DIR%" >nul 2>nul
 set "UPDATE_LOG=%UPDATE_LOG_DIR%\update-%UPDATE_STAMP%.log"
-> "%UPDATE_LOG%" echo Kloudy's Painter Launcher update log
+> "%UPDATE_LOG%" echo KFPS Launcher update log
 set "BACKUP_ROOT=%LOCALAPPDATA%\KloudysFH6Painter\update-backups"
 if "%LOCALAPPDATA%"=="" set "BACKUP_ROOT=%TEMP%\KloudysFH6Painter\update-backups"
 set "BACKUP_DIR=%BACKUP_ROOT%\%UPDATE_STAMP%"
@@ -147,7 +147,7 @@ if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $names=@('KloudysGeneratorV7.exe','KloudysGeneratorV6.exe','KloudysGeneratorV6-Go.exe','KloudysGeneratorV5.exe','KloudysGeneratorV5DetailLock.exe','KloudysGeneratorV4.exe','KloudysGeneratorV2.exe','KloudysGeneratorV2Fast.exe','KloudysGeneratorV2Speed.exe','ForzaVinylStudio.exe'); $match={ ($names -contains $_.Name) -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; $locks=Get-CimInstance Win32_Process | Where-Object $match; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 800; $remaining=Get-CimInstance Win32_Process | Where-Object $match; if($remaining){ 'Still running after termination attempt:' | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $remaining | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 } }; exit 0"
 if errorlevel 1 (
     call :log ""
-    call :log "Update tried to stop Kloudy's Painter processes, but Windows reports that one is still running."
+    call :log "Update tried to stop KFPS processes, but Windows reports that one is still running."
     call :log "Close the listed process manually or restart Windows, then run this updater again."
     if exist "!LOCK_REPORT!" (
         call :log "Running process details:"
@@ -158,7 +158,7 @@ if errorlevel 1 (
 )
 if exist "!LOCK_REPORT!" (
     call :log ""
-    call :log "Stopped running Kloudy's Painter processes before updating:"
+    call :log "Stopped running KFPS processes before updating:"
     for /f "usebackq delims=" %%L in ("!LOCK_REPORT!") do call :log "%%L"
     del /f /q "!LOCK_REPORT!" >nul 2>nul
 )

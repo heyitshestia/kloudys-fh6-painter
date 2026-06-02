@@ -773,7 +773,7 @@ def handmade_shape_count(path: Path) -> int:
 
 
 TEXT = {
-    "tutorial": """Kloudy's FH6 Painter tutorial
+    "tutorial": """KFPS tutorial
 
 1. First-time setup
 
@@ -1218,7 +1218,7 @@ def main_revision_has_bugfix(local_revision: str | None, remote_revision: str | 
 def require_project_presence() -> None:
     # Remove this function call and constant to disable the launch presence check.
     if not PROJECT_PRESENCE_ASSET.is_file():
-        raise RuntimeError("Required project files are missing. Launch from the full Kloudy's FH6 Painter folder.")
+        raise RuntimeError("Required project files are missing. Launch from the full KFPS folder.")
 
 
 def show_startup_dependency_error(exc: BaseException) -> None:
@@ -1226,7 +1226,7 @@ def show_startup_dependency_error(exc: BaseException) -> None:
     QMessageBox.critical(
         None,
         "Dependencies missing",
-        "Kloudy's FH6 Painter cannot start because a required dependency is missing.\n\n"
+        "KFPS cannot start because a required dependency is missing.\n\n"
         f"{type(exc).__name__}: {exc}\n\n"
         "Close this message, then run:\n"
         "01_add_python312_to_path.bat\n"
@@ -2203,7 +2203,7 @@ class MainWindow(QMainWindow):
         ensure_dirs()
         if _PSUTIL_ERROR is not None:
             raise _PSUTIL_ERROR
-        self.setWindowTitle(f"Kloudy's FH6 Painter - {get_version()}")
+        self.setWindowTitle(f"KFPS - Kloudy's Forza Painter Suite - {get_version()}")
         self.resize(1840, 1060)
         self.setMinimumSize(1600, 940)
         self.app_settings = load_app_settings()
@@ -2287,7 +2287,7 @@ class MainWindow(QMainWindow):
         top_layout = QHBoxLayout(top_bar)
         top_layout.setContentsMargins(18, 12, 18, 12)
         title_stack = QVBoxLayout()
-        title = QLabel(f"Kloudy's FH6 Painter {get_version()}")
+        title = QLabel(f"KFPS {get_version()}")
         title.setObjectName("appTitle")
         subtitle = QLabel("Generate, finalize, import, edit, and troubleshoot FH6 vinyl JSONs.")
         subtitle.setObjectName("appSubtitle")
@@ -2337,7 +2337,7 @@ class MainWindow(QMainWindow):
         footer.addWidget(optional_label)
         self.kofi_button = QPushButton("Support on Ko-fi")
         self.kofi_button.setObjectName("kofiButton")
-        self.kofi_button.setToolTip("Support Kloudy's FH6 Painter on Ko-fi")
+        self.kofi_button.setToolTip("Support KFPS on Ko-fi")
         self.kofi_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.kofi_button.setFixedHeight(24)
         self.kofi_button.setMinimumWidth(122)
@@ -3271,7 +3271,7 @@ class MainWindow(QMainWindow):
         title = self.report_title.text().strip() if hasattr(self, "report_title") else ""
         details = self.report_body.toPlainText().strip() if hasattr(self, "report_body") else ""
         lines = [
-            "# Kloudy's FH6 Painter Report",
+            "# KFPS Report",
             "",
             f"Type: {kind}",
             f"Title: {title or '(not provided)'}",
@@ -5655,7 +5655,7 @@ class MainWindow(QMainWindow):
                     prev_index, prev_candidate = previous
                     raise RuntimeError(
                         "export refused: FH6 exposed duplicate full-strength layer tables for this group. "
-                        "Kloudy's FH6 Painter only exports normal editable user-owned groups; the FH creator "
+                        "KFPS only exports normal editable user-owned groups; the FH creator "
                         "community does not condone copying or redistributing another creator's design without permission. "
                         f"Duplicate candidates: #{prev_index} {prev_candidate.get('group')} and #{index} {candidate.get('group')}."
                     )
@@ -5906,14 +5906,14 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     try:
         require_project_presence()
-        parser = argparse.ArgumentParser(description="Kloudy's FH6 Painter PySide6 app.")
+        parser = argparse.ArgumentParser(description="KFPS PySide6 app.")
         parser.add_argument("images", nargs="*", help="Optional image files to preload.")
         args = parser.parse_args(argv)
         window = MainWindow(args.images)
     except Exception as exc:
         QMessageBox.critical(
             None,
-            "Kloudy's FH6 Painter",
+            "KFPS",
             f"{exc}\n\nIf this mentions a missing module, run 02_install_dependencies.bat and start the app again.",
         )
         return 1
