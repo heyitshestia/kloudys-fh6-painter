@@ -18,7 +18,7 @@ This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.
 | `Final JSON Browser` | Shows generated runs, finalized checkpoints, previews, scores, and the selected JSON that will be imported. |
 | `Import Final JSON` | Imports generated final JSON into a prepared FH6 vinyl group template and trims the in-game layer count. |
 | `Import Handmade JSON` | Imports compatible FH6 shape-code JSONs that use the wider FH6 shape library. |
-| `Editor` | Opens the bundled Fabric-based JSON editor for manual vinyl creation, tracing, layer edits, shape search, favorites, color picking, and JSON export. |
+| `Editor` | Opens the bundled Fabric-based JSON editor for manual vinyl creation, cleanup, tracing, shape search, favorites, color picking, layer work, guide snapping, and JSON export. |
 | `Image Tools` | Collects useful prep links for background removal, browser upscaling, and browser downscaling/compression. |
 | `Image Size Helper` | Reads an image, reports resolution/megapixels, and gives same-aspect resize targets from 1 MP to 6 MP. |
 | `Launcher + Updater` | Starts the app, checks Python/dependencies, checks GitHub `main`, and syncs updates without manually dragging files around. |
@@ -32,6 +32,27 @@ This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.
 - FH6 imports use a reusable 3000-layer plain white circle template, then cull the saved layer count down to the imported design.
 - The editor is offline and browser-based, so manual shape work can be done outside the in-game editor.
 - The image tools and size helper make source preparation part of the same workflow instead of a separate guessing step.
+
+## Manual Editor Highlight
+
+KFPS includes a standalone browser editor for people who want to manually build, repair, trace, or clean up FH6 JSON instead of relying only on automatic generation.
+
+<p align="center">
+  <img src="docs/screenshots/12-fabric-editor-browser.png" alt="Full KFPS Fabric Editor window" width="100%">
+</p>
+
+The editor is designed around practical vinyl work:
+
+- Load generated JSON or compatible handmade JSON and inspect it visually.
+- Add FH6 shapes from a searchable in-game-style shape library.
+- Favorite common shapes so they stay easy to reach.
+- Add a source image overlay for tracing and adjust overlay opacity/size.
+- Sample colors from the overlay or existing shapes instead of guessing RGB values.
+- Select one layer, box-select many layers, group layers internally, hide/lock groups, duplicate, delete, and reorder.
+- Move, stretch, skew, rotate, and nudge shapes with editor controls built for vinyl cleanup.
+- Use guides and snapping for cleaner alignment work.
+- Save editor projects separately from FH6 export JSON.
+- Export JSON back into the KFPS import workflow.
 
 ## Download
 
@@ -176,22 +197,43 @@ Important limitation: the live FH6 editor preview can display imported shape-cod
 
 ## Editor
 
-The editor opens a local browser-based Fabric editor for FH6 JSON work.
+The editor opens a local browser-based Fabric editor for FH6 JSON work. It is meant for manual creation, cleanup, tracing, final touch-ups, and converting compatible JSON into something easier to edit than raw text.
 
-It supports:
+Open it from the app's `Editor` tab:
+
+<p align="center">
+  <img src="docs/screenshots/06-editor.png" alt="Editor launcher tab" width="820">
+</p>
+
+The full editor opens in a browser window:
+
+<p align="center">
+  <img src="docs/screenshots/12-fabric-editor-browser.png" alt="Full KFPS Fabric Editor window" width="100%">
+</p>
+
+### Editor Workflow
+
+1. Open `Editor` in KFPS.
+2. Click `Open Editor`.
+3. Import a generated or compatible handmade JSON, or start placing shapes manually.
+4. Add a source overlay if you want to trace over art.
+5. Search or browse the shape library.
+6. Place shapes, sample colors, move/stretch/skew/rotate, and clean up layers.
+7. Save a project if you want to continue editing later.
+8. Export JSON for the matching import path.
+
+### Editor Features
 
 - importing generated and compatible handmade JSON
 - placing FH6 shapes from the shape library
 - shape search and favorites
 - source image overlay for tracing
 - color picking from shapes or overlay art
-- layer selection, box selection, grouping, hiding, and locking
-- move, scale, stretch, skew, rotate, and guide/snap tooling
+- layer selection, box selection, internal grouping, hiding, and locking
+- move, scale, stretch, skew, rotate, nudge, and guide/snap tooling
+- visible-only selection for removing top visible cleanup layers without grabbing hidden lower layers
+- project save/load for editor sessions
 - exporting JSON for generated-style or handmade-style import paths
-
-<p align="center">
-  <img src="docs/screenshots/06-editor.png" alt="Editor tab" width="820">
-</p>
 
 The editor is offline/export-only. It does not write to FH6 memory.
 
