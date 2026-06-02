@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.2
+
+- Fixed Fabric editor live overlay color adoption for newly added, moved, nudged, and manually edited shapes.
+
 ## 2.0.1
 
 - Fixed Fabric editor primitive import/export mapping so FH6 JSONs keep normal primitive shapes instead of resolving some codes to the wrong border-style resources.

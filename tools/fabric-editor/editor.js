@@ -1189,6 +1189,7 @@ function applySelectionFields() {
   obj.kloudy.mask = $("maskInput").checked;
   obj.set({ stroke: obj.kloudy.mask ? "#ff5572" : null, strokeWidth: obj.kloudy.mask ? 3 : 0 });
   obj.setCoords();
+  applyLiveOverlayColor(obj);
   canvas.requestRenderAll();
   updateSelectionPanel();
   pushHistory("field edit");
@@ -1276,9 +1277,9 @@ async function addShape(family, index) {
   };
   const object = await makeFabricObject(shape);
   placeNewObjectInViewport(object);
-  if ($("autoOverlayColor")?.checked) applyOverlayColorToObject(object, { remember: true, silent: true });
   canvas.add(object);
   canvas.setActiveObject(object);
+  applyLiveOverlayColor(object);
   bringGuidesToBack();
   canvas.requestRenderAll();
   refreshLayers();
@@ -1460,6 +1461,7 @@ function nudgeSelected(dx, dy) {
     obj.set({ left: (obj.left || 0) + dx, top: (obj.top || 0) + dy });
     obj.setCoords();
   });
+  applyLiveOverlayColor();
   canvas.requestRenderAll();
   updateSelectionPanel();
   pushHistory("nudge");
@@ -1527,8 +1529,6 @@ function dominantOverlayColorForObject(obj) {
     const y = rect.top + rect.height * ((iy + 0.5) / stepsY);
     for (let ix = 0; ix < stepsX; ix++) {
       const x = rect.left + rect.width * ((ix + 0.5) / stepsX);
-      const point = new fabric.Point(x, y);
-      if (typeof obj.containsPoint === "function" && !obj.containsPoint(point)) continue;
       const pixel = canvasPointToOverlayPixel(x, y);
       if (!pixel) continue;
       const pos = (pixel.y * overlaySampler.width + pixel.x) * 4;
@@ -1592,21 +1592,27 @@ function applyOverlayColorToObject(obj, options = {}) {
   return true;
 }
 
+function applyLiveOverlayColor(target = null) {
+  if (!$("autoOverlayColor")?.checked || !overlaySampler) return false;
+  const selected = selectedVinylObjects();
+  const targets = selected.length ? selected : (target?.kloudy ? [target] : []);
+  let changed = false;
+  targets.forEach((obj) => {
+    if (applyOverlayColorToObject(obj, { remember: true, silent: true })) changed = true;
+  });
+  if (changed) {
+    updateSelectionPanel();
+    canvas.requestRenderAll();
+  }
+  return changed;
+}
+
 function scheduleLiveOverlayColor(target) {
   if (!$("autoOverlayColor")?.checked || !overlaySampler) return;
   if (liveOverlayColorFrame) return;
   liveOverlayColorFrame = requestAnimationFrame(() => {
     liveOverlayColorFrame = null;
-    const objects = selectedVinylObjects();
-    const targets = objects.length ? objects : (target?.kloudy ? [target] : []);
-    let changed = false;
-    targets.forEach((obj) => {
-      if (applyOverlayColorToObject(obj, { remember: true, silent: true })) changed = true;
-    });
-    if (changed) {
-      updateSelectionPanel();
-      canvas.requestRenderAll();
-    }
+    applyLiveOverlayColor(target);
   });
 }
 
@@ -1748,6 +1754,9 @@ function bindUi() {
   $("overlayScale").addEventListener("input", updateOverlay);
   $("overlaySampleMode").addEventListener("change", () => {
     if ($("autoOverlayColor")?.checked) sampleOverlayColorForSelected();
+  });
+  $("autoOverlayColor").addEventListener("change", () => {
+    if ($("autoOverlayColor").checked) applyLiveOverlayColor();
   });
   $("sampleOverlayColor").addEventListener("click", sampleOverlayColorForSelected);
   $("toggleOverlay").addEventListener("click", toggleOverlay);
