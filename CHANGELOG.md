@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.78
+
+- Fixed Fabric editor full-library shape placement so chosen shapes keep their exact family/resource slot instead of reverse-mapping colliding FH6 words back to primitives.
+- Fabric editor exports now preserve `resource_family`, `resource_index`, and `shape_name` metadata for reliable editor round-trips.
+
 ## 1.10.77
 
 - Changed Fabric editor non-font shape labels to verified FH6 family/slot/word labels instead of guessed FH5-derived names.

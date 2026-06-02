@@ -204,9 +204,14 @@ function resourceToShapeWord(family, index) {
 }
 
 async function loadResourcePath(typeCode) {
-  if (resourceCache.has(typeCode)) return resourceCache.get(typeCode);
   const resolved = typeCodeToResource(typeCode);
   if (!resolved) throw new Error(`Unsupported FH6 type code: ${typeCode}`);
+  return loadResourcePathForResolved(resolved);
+}
+
+async function loadResourcePathForResolved(resolved) {
+  const cacheKey = `${resolved.family}:${resolved.index}:${resolved.typeCode || ""}`;
+  if (resourceCache.has(cacheKey)) return resourceCache.get(cacheKey);
   const url = await resolveVinylResourceUrl(resolved.family, resolved.index, "");
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Missing shape resource: ${url}`);
@@ -222,7 +227,7 @@ async function loadResourcePath(typeCode) {
     chunks.push(`M ${fmt(p0.X)} ${fmt(p0.Y)} L ${fmt(p1.X)} ${fmt(p1.Y)} L ${fmt(p2.X)} ${fmt(p2.Y)} Z`);
   }
   const d = chunks.join(" ");
-  resourceCache.set(typeCode, d);
+  resourceCache.set(cacheKey, d);
   return d;
 }
 
@@ -345,7 +350,15 @@ function normalizeInputShape(shape, index, legacyOffset = { x: 0, y: 0 }) {
 
 async function makeFabricObject(shape, name = null) {
   const typeCode = Number(shape.type);
-  const d = await loadResourcePath(typeCode);
+  const explicitResource = shape.resource_family && shape.resource_index
+    ? {
+      family: String(shape.resource_family),
+      index: Number(shape.resource_index),
+      typeCode,
+      shapeWord: Number(shape.type_word ?? (typeCode & 0xffff)),
+    }
+    : null;
+  const d = explicitResource ? await loadResourcePathForResolved(explicitResource) : await loadResourcePath(typeCode);
   const color = normalizeColor(shape.color);
   const data = shape.data || [0, 0, 1, 1, 0, 0, 0];
   const object = new fabric.Path(d, {
@@ -364,9 +377,11 @@ async function makeFabricObject(shape, name = null) {
     moveCursor: "move",
   });
   object.kloudy = {
-    name: name || typeLabel(typeCode),
+    name: name || shape.shape_name || (explicitResource ? shapeDisplayName(explicitResource.family, explicitResource.index) : typeLabel(typeCode)),
     type: typeCode,
     type_word: Number(shape.type_word ?? (typeCode & 0xffff)),
+    resource_family: explicitResource?.family || null,
+    resource_index: explicitResource?.index || null,
     source_format: shape.source_format || "fh6_typecode",
     legacy_type: shape.legacy_type ?? null,
     legacy_divisor: shape.legacy_divisor ?? null,
@@ -708,6 +723,9 @@ function objectToShape(object) {
     mask: Boolean(meta.mask),
     score: Number(meta.score) || 0,
     source_format: meta.source_format || "fh6_typecode",
+    resource_family: meta.resource_family || null,
+    resource_index: meta.resource_index || null,
+    shape_name: meta.name || null,
     legacy_type: meta.legacy_type ?? null,
     legacy_divisor: meta.legacy_divisor ?? null,
     legacy_offset: Array.isArray(meta.legacy_offset) ? meta.legacy_offset.slice(0, 2) : null,
@@ -1246,6 +1264,9 @@ async function addShape(family, index) {
   const shape = {
     type: typeCode,
     type_word: shapeWord,
+    resource_family: family,
+    resource_index: index,
+    shape_name: shapeDisplayName(family, index),
     data: [0, 0, 1, 1, 0, 0, 0],
     color: rememberedColor,
     mask: false,
