@@ -167,6 +167,10 @@ function saveFavoriteColors() {
 
 function typeCodeToResource(typeCode) {
   const word = Number(typeCode) & 0xffff;
+  const primitiveIndex = word - 100;
+  if (primitiveIndex >= 1 && primitiveIndex <= 40) {
+    return { family: "Primitives", index: primitiveIndex, typeCode: 0x100000 + word, shapeWord: word };
+  }
   const explicit = shapeWords?.families || {};
   for (const [family, values] of Object.entries(explicit)) {
     for (const [index, shapeWord] of Object.entries(values || {})) {
@@ -174,9 +178,6 @@ function typeCodeToResource(typeCode) {
         return { family, index: Number(index), typeCode: 0x100000 + word, shapeWord: word };
       }
     }
-  }
-  if (word === 0x0066) {
-    return { family: "Primitives", index: 11, typeCode: 0x100000 + word, shapeWord: word };
   }
   for (const [family, base] of Object.entries(VINYL_TYPE_BASES)) {
     if (family.includes("Letters")) continue;
@@ -195,6 +196,7 @@ function resourceToTypeCode(family, index) {
 }
 
 function resourceToShapeWord(family, index) {
+  if (family === "Primitives") return (100 + Number(index)) & 0xffff;
   const explicit = shapeWords?.families?.[family]?.[String(index)];
   if (explicit !== undefined) return Number(explicit) & 0xffff;
   const base = VINYL_TYPE_BASES[family];

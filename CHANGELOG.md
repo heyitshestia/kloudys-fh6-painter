@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.1
+
+- Fixed Fabric editor primitive import/export mapping so FH6 JSONs keep normal primitive shapes instead of resolving some codes to the wrong border-style resources.
+
 ## 2.0.0
 
 - Reworked the main app shell into a wider workflow layout with a left-side navigation rail and dashboard.
