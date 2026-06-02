@@ -2447,20 +2447,6 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(tab)
         layout.setSpacing(16)
 
-        hero = QFrame()
-        hero.setObjectName("dashboardCard")
-        hero_layout = QGridLayout(hero)
-        hero_title = QLabel("What do you want to do next?")
-        hero_title.setObjectName("dashboardCardTitle")
-        hero_text = QLabel(
-            "Use the left workflow rail for the full toolset, or start with the three most common actions below. "
-            "Every existing feature still has its own page; this shell just gives the app a clearer order."
-        )
-        hero_text.setWordWrap(True)
-        hero_layout.addWidget(hero_title, 0, 0, 1, 3)
-        hero_layout.addWidget(hero_text, 1, 0, 1, 3)
-        layout.addWidget(hero)
-
         cards = QGridLayout()
         cards.setSpacing(14)
         cards.addWidget(
@@ -2495,28 +2481,42 @@ class MainWindow(QMainWindow):
         )
         layout.addLayout(cards)
 
-        lower = QSplitter(Qt.Orientation.Horizontal)
-        status_panel = QGroupBox("Current Session")
-        status_layout = QVBoxLayout(status_panel)
-        status_layout.addWidget(QLabel("Imports: use one saved/reopened 3000 white-circle FH6 template, then ungroup it."))
-        status_layout.addWidget(QLabel("Generation: wait for Finalize Checkpoints before importing; raw builder output is not the final target."))
-        status_layout.addWidget(QLabel("Reports: create local report packages you can inspect and redact before sharing."))
-        shortcut_panel = QGroupBox("Useful Shortcuts")
-        shortcut_layout = QVBoxLayout(shortcut_panel)
-        for label, target in (
-            ("Prepare source art: background remover / upscale / downscale", "Image Tools"),
-            ("Check source megapixels before generating", "Image Size Helper"),
-            ("Universal handmade importer", "Import Handmade JSON"),
-            ("Tutorial and first-time setup guide", "Tutorial"),
+        editor_ad = QFrame()
+        editor_ad.setObjectName("dashboardCard")
+        editor_layout = QGridLayout(editor_ad)
+        editor_layout.setHorizontalSpacing(18)
+        editor_layout.setVerticalSpacing(12)
+        editor_title = QLabel("Built for editing vinyls faster than FH6's in-game editor")
+        editor_title.setObjectName("dashboardCardTitle")
+        editor_title.setWordWrap(True)
+        editor_body = QLabel(
+            "The bundled editor gives you a searchable shape library, favorites, source-image overlay, viewport-friendly placement, saved colors, eyedropper tools, box selection, JSON import/export, and quick manual cleanup. "
+            "Use FH6 for the final save, but use this editor when you need precision, repeatable colors, easier shape picking, and less menu wrestling."
+        )
+        editor_body.setObjectName("dashboardCardText")
+        editor_body.setWordWrap(True)
+        editor_button = QPushButton("Open the editor")
+        editor_button.setObjectName("primaryButton")
+        editor_button.clicked.connect(lambda: self.go_to_workflow("Editor"))
+        editor_layout.addWidget(editor_title, 0, 0, 1, 2)
+        editor_layout.addWidget(editor_body, 1, 0, 1, 2)
+
+        advantages = QGroupBox("Why it beats editing only in-game")
+        advantages_layout = QVBoxLayout(advantages)
+        for text in (
+            "Search and favorite shapes instead of scrolling through every FH6 shape page.",
+            "Use a source overlay and eyedropper so colors and placement are easier to match.",
+            "Move, delete, duplicate, box-select, and clean up JSON layers before importing.",
+            "Export back to FH6-compatible JSON when the design is ready for the game.",
         ):
-            button = QPushButton(label)
-            button.clicked.connect(lambda _checked=False, t=target: self.go_to_workflow(t))
-            shortcut_layout.addWidget(button)
-        lower.addWidget(status_panel)
-        lower.addWidget(shortcut_panel)
-        lower.setStretchFactor(0, 1)
-        lower.setStretchFactor(1, 1)
-        layout.addWidget(lower, 1)
+            label = QLabel(text)
+            label.setWordWrap(True)
+            advantages_layout.addWidget(label)
+        editor_layout.addWidget(advantages, 2, 0)
+        editor_layout.addWidget(editor_button, 2, 1, Qt.AlignmentFlag.AlignBottom)
+        editor_layout.setColumnStretch(0, 3)
+        editor_layout.setColumnStretch(1, 1)
+        layout.addWidget(editor_ad, 1)
         self.tabs.addTab(tab, "Dashboard")
 
     def _build_generate_tab(self):
