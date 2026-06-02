@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.76
+
+- Updated the Fabric editor color controls with an 8-slot saved-color picker, shape/source eyedropper toggle, and protected undo floor for loaded designs.
+- Fixed Fabric editor shape-library slot mapping so FH6 shape words follow the calibrated slot order instead of one-by-one FH5-style increments.
+- Filled missing FH6 font labels from the dumped font registry, including lower-case A slots.
+
 ## 1.10.75
 
 - Fixed late-generation stalls where the generator kept retrying after the detail gate was mostly satisfied while the visible layer timer still looked fast.

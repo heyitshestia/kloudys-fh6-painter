@@ -96,13 +96,22 @@
       <section>
         <h2>Selected</h2>
         <div class="colorPreview">
-          <span id="selectedColorSwatch"></span>
           <div>
             <b id="selectedShapeName">No layer selected</b>
             <small id="selectedShapeCode">Click a layer or a shape tile.</small>
           </div>
         </div>
-        <label>Color <input id="colorPicker" type="color" value="#ffffff"></label>
+        <label>Color
+          <span class="colorControlGroup">
+            <button id="colorSwatchButton" type="button" title="Open color picker and saved colors"></button>
+            <button id="colorEyedropper" class="iconButton" type="button" title="Pick color from canvas">⌕</button>
+            <select id="eyedropperMode" title="Choose whether the eyedropper samples shapes or the source overlay">
+              <option value="shape" selected>Shape</option>
+              <option value="source">Source</option>
+            </select>
+            <input id="colorPicker" class="hiddenColorInput" type="color" value="#ffffff" aria-hidden="true" tabindex="-1">
+          </span>
+        </label>
         <label>Opacity <input id="opacitySlider" type="range" min="0" max="255" value="255"></label>
         <label>X <input id="xInput" type="number" step="0.01"></label>
         <label>Y <input id="yInput" type="number" step="0.01"></label>
@@ -219,6 +228,30 @@
         <h3>Important Limits</h3>
         <p>This is not an arbitrary SVG/path converter. It edits FH6 layers and exports FH6 JSON. If a shape type exists in FH6, it is preserved by type code. Arbitrary freehand SVG paths are not supported.</p>
       </section>
+    </div>
+  </dialog>
+
+  <dialog id="colorDialog">
+    <div class="helpHeader">
+      <h2>Saved Colors</h2>
+      <button id="closeColorDialog">Close</button>
+    </div>
+    <div class="colorDialogBody">
+      <div class="colorDialogPreview">
+        <span id="activeColorLarge"></span>
+        <div>
+          <b id="activeColorLabel">#ffffff</b>
+          <input id="dialogColorPicker" type="color" value="#ffffff">
+          <p>Pick a slot, choose a color, then click Save Color to overwrite that slot. The window stays open.</p>
+        </div>
+      </div>
+      <div id="favoriteColorGrid"></div>
+      <div class="smallTools">
+        <button id="saveFavoriteColor">Save Color</button>
+        <button id="removeFavoriteColor">Clear Slot</button>
+        <button id="clearFavoriteColors">Clear Saved Colors</button>
+      </div>
+      <p class="hint">The eyedropper beside Color samples either a shape or the source overlay depending on the Shape/Source toggle.</p>
     </div>
   </dialog>
 

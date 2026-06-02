@@ -59,10 +59,15 @@ let overlayImage = null;
 let history = [];
 let historyIndex = -1;
 let historyLocked = false;
+let protectedHistoryIndex = -1;
 let showFavoritesOnly = false;
 let favorites = new Set(JSON.parse(localStorage.getItem("kloudyFabricFavorites") || "[]"));
 let shapeNames = { families: {} };
+let shapeWords = { families: {} };
 let rememberedColor = [255, 255, 255, 255];
+let favoriteColors = loadFavoriteColors();
+let selectedFavoriteColorSlot = 0;
+let shapeEyedropperActive = false;
 let overlaySampler = null;
 let liveOverlayColorFrame = null;
 let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
@@ -146,16 +151,56 @@ function hexToRgb(hex, alpha) {
   ];
 }
 
+function loadFavoriteColors() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("kloudyFabricFavoriteColors") || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.map((color) => color ? normalizeColor(color) : null).slice(0, 8);
+  } catch (_err) {
+    return [];
+  }
+}
+
+function saveFavoriteColors() {
+  localStorage.setItem("kloudyFabricFavoriteColors", JSON.stringify(favoriteColors));
+}
+
 function typeCodeToResource(typeCode) {
+  const word = Number(typeCode) & 0xffff;
+  const explicit = shapeWords?.families || {};
+  for (const [family, values] of Object.entries(explicit)) {
+    for (const [index, shapeWord] of Object.entries(values || {})) {
+      if ((Number(shapeWord) & 0xffff) === word) {
+        return { family, index: Number(index), typeCode: 0x100000 + word, shapeWord: word };
+      }
+    }
+  }
+  if (word === 0x0066) {
+    return { family: "Primitives", index: 11, typeCode: 0x100000 + word, shapeWord: word };
+  }
   for (const [family, base] of Object.entries(VINYL_TYPE_BASES)) {
-    const index = typeCode - base + 1;
-    if (index >= 1 && index <= 80) return { family, index, typeCode };
+    if (family.includes("Letters")) continue;
+    const baseWord = base & 0xffff;
+    const delta = word - baseWord;
+    if (delta >= 0 && delta % 4 === 0) {
+      const index = delta / 4 + 1;
+      if (index >= 1 && index <= 40) return { family, index, typeCode: 0x100000 + word, shapeWord: word };
+    }
   }
   return null;
 }
 
 function resourceToTypeCode(family, index) {
-  return VINYL_TYPE_BASES[family] + index - 1;
+  return 0x100000 + resourceToShapeWord(family, index);
+}
+
+function resourceToShapeWord(family, index) {
+  const explicit = shapeWords?.families?.[family]?.[String(index)];
+  if (explicit !== undefined) return Number(explicit) & 0xffff;
+  const base = VINYL_TYPE_BASES[family];
+  if (!base) throw new Error(`Unknown shape family: ${family}`);
+  if (family.includes("Letters")) return (base + Number(index) - 1) & 0xffff;
+  return ((base & 0xffff) + (Number(index) - 1) * 4) & 0xffff;
 }
 
 async function loadResourcePath(typeCode) {
@@ -378,20 +423,157 @@ function shapeCountForFamily(family) {
 
 async function loadShapeNames() {
   try {
-    const response = await fetch("/tools/fabric-editor/shape-names.json");
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    shapeNames = await response.json();
+    const [namesResponse, wordsResponse] = await Promise.all([
+      fetch("/tools/fabric-editor/shape-names.json"),
+      fetch("/tools/fabric-editor/shape-words.json"),
+    ]);
+    if (!namesResponse.ok) throw new Error(`shape-names HTTP ${namesResponse.status}`);
+    if (!wordsResponse.ok) throw new Error(`shape-words HTTP ${wordsResponse.status}`);
+    shapeNames = await namesResponse.json();
+    shapeWords = await wordsResponse.json();
     renderShapeGrid();
   } catch (err) {
-    console.warn("Shape names unavailable.", err);
+    console.warn("Shape metadata unavailable.", err);
   }
 }
 
 function rememberColor(color) {
   rememberedColor = normalizeColor(color);
   localStorage.setItem("kloudyFabricLastColor", JSON.stringify(rememberedColor));
-  const swatch = $("selectedColorSwatch");
-  if (swatch) swatch.style.setProperty("--swatch", colorToHex(rememberedColor));
+  refreshColorUi();
+}
+
+function currentPanelColor() {
+  const selected = selectedVinylObjects();
+  if (selected.length === 1) {
+    return hexToRgb(selected[0].fill || "#ffffff", (selected[0].opacity ?? 1) * 255);
+  }
+  return rememberedColor;
+}
+
+function refreshColorUi() {
+  const active = normalizeColor(currentPanelColor());
+  const activeHex = colorToHex(active);
+  const swatch = $("colorSwatchButton");
+  if (swatch) swatch.style.setProperty("--swatch", activeHex);
+  if ($("activeColorLarge")) $("activeColorLarge").style.setProperty("--swatch", activeHex);
+  if ($("activeColorLabel")) $("activeColorLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
+  if ($("dialogColorPicker")) $("dialogColorPicker").value = activeHex;
+  if ($("colorPicker") && selectedVinylObjects().length !== 1) $("colorPicker").value = colorToHex(rememberedColor);
+  renderFavoriteColors();
+}
+
+function renderFavoriteColors() {
+  const grid = $("favoriteColorGrid");
+  if (!grid) return;
+  const activeHex = colorToHex(currentPanelColor());
+  grid.innerHTML = "";
+  for (let index = 0; index < 8; index++) {
+    const color = favoriteColors[index] || null;
+    const button = document.createElement("button");
+    button.type = "button";
+    const selected = index === selectedFavoriteColorSlot;
+    button.className = `favoriteColorSwatch${color ? "" : " empty"}${selected ? " selected" : ""}${color && colorToHex(color) === activeHex ? " active" : ""}`;
+    button.title = color
+      ? `Slot ${index + 1}: use ${colorToHex(color).toUpperCase()} / A ${color[3]}`
+      : `Slot ${index + 1}: empty. Click to select, then Save Color.`;
+    if (color) button.style.setProperty("--swatch", colorToHex(color));
+    button.addEventListener("click", () => {
+      selectedFavoriteColorSlot = index;
+      if (color) applyEditorColor(color, "saved color");
+      else {
+        renderFavoriteColors();
+        setStatus(`Selected empty color slot ${index + 1}. Choose a color, then Save Color.`);
+      }
+    });
+    grid.appendChild(button);
+  }
+}
+
+function applyEditorColor(color, reason = "color") {
+  const normalized = normalizeColor(color);
+  rememberColor(normalized);
+  const selected = selectedVinylObjects();
+  if (selected.length === 1) {
+    selected[0].set({ fill: colorToHex(normalized), opacity: normalized[3] / 255 });
+    selected[0].setCoords();
+    canvas.requestRenderAll();
+    updateSelectionPanel();
+    pushHistory(reason);
+    return;
+  }
+  if ($("colorPicker")) $("colorPicker").value = colorToHex(normalized);
+  if ($("opacitySlider")) $("opacitySlider").value = normalized[3];
+  updateSelectionPanel();
+  setStatus(`Active color set to ${colorToHex(normalized).toUpperCase()}.`);
+}
+
+function openColorDialog() {
+  refreshColorUi();
+  $("colorDialog").showModal();
+}
+
+function saveCurrentFavoriteColor() {
+  const color = normalizeColor(currentPanelColor());
+  const hex = colorToHex(color);
+  if (selectedFavoriteColorSlot < 0 || selectedFavoriteColorSlot > 7) {
+    selectedFavoriteColorSlot = Math.max(0, favoriteColors.findIndex((item) => !item));
+  }
+  if (selectedFavoriteColorSlot < 0) selectedFavoriteColorSlot = 0;
+  while (favoriteColors.length < 8) favoriteColors.push(null);
+  favoriteColors[selectedFavoriteColorSlot] = color;
+  favoriteColors = favoriteColors.slice(0, 8);
+  saveFavoriteColors();
+  renderFavoriteColors();
+  setStatus(`Saved ${hex.toUpperCase()} to color slot ${selectedFavoriteColorSlot + 1}.`);
+}
+
+function removeCurrentFavoriteColor() {
+  const slot = Math.max(0, Math.min(7, selectedFavoriteColorSlot));
+  const hadColor = Boolean(favoriteColors[slot]);
+  while (favoriteColors.length < 8) favoriteColors.push(null);
+  favoriteColors[slot] = null;
+  saveFavoriteColors();
+  renderFavoriteColors();
+  setStatus(hadColor ? `Cleared color slot ${slot + 1}.` : `Color slot ${slot + 1} is already empty.`);
+}
+
+function clearFavoriteColors() {
+  favoriteColors = Array(8).fill(null);
+  saveFavoriteColors();
+  renderFavoriteColors();
+  setStatus("Cleared saved colors.");
+}
+
+function setShapeEyedropper(active) {
+  shapeEyedropperActive = active;
+  $("colorEyedropper")?.classList.toggle("active", active);
+  document.body.classList.toggle("eyedropperMode", active);
+  const mode = $("eyedropperMode")?.value === "source" ? "source overlay" : "shape";
+  setStatus(active ? `Eyedropper active. Click the canvas to pick from ${mode}.` : "Eyedropper off.");
+}
+
+function pickShapeColorFromEvent(opt) {
+  const mode = $("eyedropperMode")?.value || "shape";
+  if (mode === "source") {
+    const pointer = canvas.getPointer(opt.e);
+    const color = overlayColorAtCanvasPoint(pointer.x, pointer.y);
+    setShapeEyedropper(false);
+    if (!color) {
+      setStatus("No source overlay pixel under the eyedropper.");
+      return;
+    }
+    applyEditorColor(color, "source eyedropper");
+    return;
+  }
+  const target = opt.target?.kloudy ? opt.target : null;
+  setShapeEyedropper(false);
+  if (!target) {
+    setStatus("No vinyl layer under the eyedropper.");
+    return;
+  }
+  const color = hexToRgb(target.fill || "#ffffff", (target.opacity ?? 1) * 255);
+  applyEditorColor(color, "shape eyedropper");
 }
 
 function signedScaleX(object) {
@@ -573,13 +755,22 @@ async function restoreShapes(shapes) {
   canvas.requestRenderAll();
 }
 
+function resetHistory() {
+  history = [];
+  historyIndex = -1;
+  protectedHistoryIndex = -1;
+}
+
 function pushHistory(reason = "change") {
   if (historyLocked) return;
   const snapshot = JSON.stringify(snapshotShapes());
   if (history[historyIndex] === snapshot) return;
   history = history.slice(0, historyIndex + 1);
   history.push(snapshot);
-  if (history.length > 80) history.shift();
+  if (history.length > 80) {
+    history.shift();
+    if (protectedHistoryIndex >= 0) protectedHistoryIndex = Math.max(0, protectedHistoryIndex - 1);
+  }
   historyIndex = history.length - 1;
   localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
     name: loadedName,
@@ -590,7 +781,11 @@ function pushHistory(reason = "change") {
 }
 
 async function undo() {
-  if (historyIndex <= 0) return;
+  const floor = Math.max(0, protectedHistoryIndex);
+  if (historyIndex <= floor) {
+    setStatus(protectedHistoryIndex >= 0 ? "Undo stopped at loaded source." : "Nothing to undo.");
+    return;
+  }
   historyIndex--;
   await restoreShapes(JSON.parse(history[historyIndex]));
   setStatus("Undo.");
@@ -651,6 +846,12 @@ function initCanvas() {
     opt.e.stopPropagation();
   });
   canvas.on("mouse:down", (opt) => {
+    if (shapeEyedropperActive) {
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+      pickShapeColorFromEvent(opt);
+      return;
+    }
     if (opt.e.button === 1 || opt.e.button === 2) {
       isPanning = true;
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
@@ -829,6 +1030,7 @@ async function loadPayload(payload) {
   const shapes = Array.isArray(payload.shapes) ? payload.shapes : null;
   if (!shapes) throw new Error("JSON must contain a shapes list.");
   clearVinylObjects();
+  resetHistory();
   const hasLegacyGeometry = shapes.some((shape) => LEGACY_RECTANGLE_TYPES.has(Number(shape.type)) || LEGACY_ELLIPSE_TYPES.has(Number(shape.type)));
   const legacyOffset = hasLegacyGeometry ? computeLegacyOffset(shapes) : { x: 0, y: 0 };
   const normalized = shapes.map((shape, index) => normalizeInputShape(shape, index, legacyOffset)).filter(Boolean);
@@ -854,6 +1056,7 @@ async function loadPayload(payload) {
   refreshLayers();
   fitDesignView();
   pushHistory("import");
+  protectedHistoryIndex = historyIndex;
   clearBusy(`Loaded ${loaded}/${normalized.length} editable FH6 layer(s).${failed ? ` Failed: ${failed}.` : ""}`);
 }
 
@@ -915,17 +1118,16 @@ function updateSelectionPanel() {
   if (!enabled) {
     $("selectedShapeName").textContent = selected.length > 1 ? `${selected.length} layers selected` : "No layer selected";
     $("selectedShapeCode").textContent = selected.length > 1 ? "Use layer tools or drag the selection." : "Click a layer or a shape tile.";
-    $("selectedColorSwatch").style.setProperty("--swatch", colorToHex(rememberedColor));
     if (selected.length > 1) {
       $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together.`;
     }
+    refreshColorUi();
     refreshLayers();
     return;
   }
   const obj = selected[0];
   $("selectedShapeName").textContent = obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0);
   $("selectedShapeCode").textContent = `Type ${obj.kloudy?.type || "unknown"}${obj.kloudy?.mask ? " / mask" : ""}`;
-  $("selectedColorSwatch").style.setProperty("--swatch", obj.fill || "#ffffff");
   $("colorPicker").value = obj.fill || "#ffffff";
   $("opacitySlider").value = Math.round((obj.opacity ?? 1) * 255);
   const decoded = fh6DataFromObject(obj);
@@ -936,6 +1138,7 @@ function updateSelectionPanel() {
   $("rotInput").value = round(decoded[4]);
   $("skewInput").value = round(decoded[5]);
   $("maskInput").checked = Boolean(obj.kloudy.mask);
+  refreshColorUi();
   refreshLayers();
 }
 
@@ -1033,9 +1236,10 @@ function placeNewObjectInViewport(object) {
 
 async function addShape(family, index) {
   const typeCode = resourceToTypeCode(family, index);
+  const shapeWord = resourceToShapeWord(family, index);
   const shape = {
     type: typeCode,
-    type_word: typeCode & 0xffff,
+    type_word: shapeWord,
     data: [0, 0, 1, 1, 0, 0, 0],
     color: rememberedColor,
     mask: false,
@@ -1076,6 +1280,7 @@ function renderShapeGrid() {
   const families = (query || showFavoritesOnly) ? FAMILY_ORDER : [selectedFamily];
   for (const family of families) for (let index = 1; index <= shapeCountForFamily(family); index++) {
     const typeCode = resourceToTypeCode(family, index);
+    const shapeWord = resourceToShapeWord(family, index);
     const favKey = `${family}:${index}`;
     const isFavorite = favorites.has(favKey);
     if (showFavoritesOnly && !isFavorite) continue;
@@ -1084,7 +1289,7 @@ function renderShapeGrid() {
     const tile = document.createElement("div");
     tile.className = `shapeTile${isFavorite ? " favorite" : ""}`;
     tile.tabIndex = 0;
-    tile.title = `${name}\n${family.replaceAll("_", " ")} #${index}\nType ${typeCode}`;
+    tile.title = `${name}\n${family.replaceAll("_", " ")} #${index}\nType ${typeCode} / word ${shapeWord}`;
     tile.innerHTML = `
       <button class="favButton" type="button" title="${isFavorite ? "Remove favorite" : "Add favorite"}">${isFavorite ? "x" : "+"}</button>
       <img alt="" src="${vinylResourceUrl(family, index, ".png")}">
@@ -1265,6 +1470,20 @@ function canvasPointToOverlayPixel(x, y) {
   const py = Math.round(local.y + (overlayImage.height || overlaySampler.height) / 2);
   if (px < 0 || py < 0 || px >= overlaySampler.width || py >= overlaySampler.height) return null;
   return { x: px, y: py };
+}
+
+function overlayColorAtCanvasPoint(x, y) {
+  const pixel = canvasPointToOverlayPixel(x, y);
+  if (!pixel || !overlaySampler) return null;
+  const pos = (pixel.y * overlaySampler.width + pixel.x) * 4;
+  const alpha = overlaySampler.data[pos + 3];
+  if (alpha < 24) return null;
+  return [
+    overlaySampler.data[pos],
+    overlaySampler.data[pos + 1],
+    overlaySampler.data[pos + 2],
+    255,
+  ];
 }
 
 function dominantOverlayColorForObject(obj) {
@@ -1466,6 +1685,19 @@ function bindUi() {
   $("redoBtn").addEventListener("click", redo);
   $("helpBtn").addEventListener("click", () => $("helpDialog").showModal());
   $("closeHelp").addEventListener("click", () => $("helpDialog").close());
+  $("colorSwatchButton").addEventListener("click", openColorDialog);
+  $("closeColorDialog").addEventListener("click", () => $("colorDialog").close());
+  $("saveFavoriteColor").addEventListener("click", saveCurrentFavoriteColor);
+  $("removeFavoriteColor").addEventListener("click", removeCurrentFavoriteColor);
+  $("clearFavoriteColors").addEventListener("click", clearFavoriteColors);
+  $("colorEyedropper").addEventListener("click", () => setShapeEyedropper(!shapeEyedropperActive));
+  $("dialogColorPicker").addEventListener("input", (event) => {
+    const selected = selectedVinylObjects();
+    const alpha = selected.length === 1
+      ? Math.round((selected[0].opacity ?? 1) * 255)
+      : (Number($("opacitySlider")?.value) || rememberedColor[3] || 255);
+    applyEditorColor(hexToRgb(event.target.value, alpha), "dialog color");
+  });
   $("applyFields").addEventListener("click", applySelectionFields);
   $("deleteLayer").addEventListener("click", deleteSelected);
   $("duplicateLayer").addEventListener("click", duplicateSelected);
