@@ -2208,7 +2208,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1600, 940)
         self.app_settings = load_app_settings()
         self.settings = load_settings()
-        self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
+        self.images = [Path(p) for p in initial_images if Path(p).exists()]
         self.selected_import_json_path: Path | None = None
         self.selected_handmade_json_path: Path | None = None
         self.outputs: list[Path] = []
@@ -2221,6 +2221,7 @@ class MainWindow(QMainWindow):
         self.dialup_sound_thread: threading.Thread | None = None
         self.active_generation_images: list[Path] = []
         self.active_generation_run_dirs: dict[Path, Path] = {}
+        self.current_generation_image: Path | None = None
         self.latest_generated_run_dir: Path | None = None
         self.generation_eta_state = {"total": None, "ema_ms": None, "last_current": 0}
         self.auto_located_context: dict | None = None
@@ -2569,7 +2570,7 @@ class MainWindow(QMainWindow):
         image_group = QGroupBox("Step 1 - Source Art")
         image_layout = QVBoxLayout(image_group)
         image_row = QHBoxLayout()
-        choose = QPushButton("Choose source image")
+        choose = QPushButton("Choose source image(s)")
         choose.clicked.connect(self.add_image)
         image_row.addWidget(choose)
         open_out = QPushButton("Open latest vinyl folder")
@@ -2577,7 +2578,7 @@ class MainWindow(QMainWindow):
         image_row.addWidget(open_out)
         image_layout.addLayout(image_row)
         self.image_list = QListWidget()
-        self.image_list.setMaximumHeight(72)
+        self.image_list.setMaximumHeight(118)
         self.image_list.currentRowChanged.connect(self.preview_selected_image)
         image_layout.addWidget(self.image_list)
         image_group.setMaximumHeight(145)
@@ -3878,8 +3879,22 @@ class MainWindow(QMainWindow):
         setting = self.selected_setting()
         if not setting:
             return None
+        return self.effective_setting_from_snapshot(
+            setting,
+            image_path,
+            ui_overrides={
+                "stopAt": self.custom_layers.text(),
+                "saveAt": self.custom_save_at.text(),
+                "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
+                "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+            },
+            pro_overrides=self.pro_custom_values(),
+            sample_boost=self.vroom.isChecked(),
+        )
+
+    def effective_setting_from_snapshot(self, setting, image_path=None, ui_overrides=None, pro_overrides=None, sample_boost=False):
         setting_values = dict(setting.get("values", {}))
-        overrides = {
+        overrides = ui_overrides or {
             "stopAt": self.custom_layers.text(),
             "saveAt": self.custom_save_at.text(),
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
@@ -3891,25 +3906,35 @@ class MainWindow(QMainWindow):
             tuned_values, auto_summary = auto_generation_values(
                 image_path,
                 base_values,
-                pro_overrides=self.pro_custom_values(),
-                sample_boost=self.vroom.isChecked(),
+                pro_overrides=pro_overrides or {},
+                sample_boost=sample_boost,
             )
         else:
             tuned_values = base_values
-            tuned_values.update(self.pro_custom_values())
-            tuned_values.update(self.vroom_boost_overrides(tuned_values))
+            tuned_values.update(pro_overrides or {})
+            if sample_boost:
+                for key in ("randomSamples", "mutatedSamples", "maxNoImproveRetries"):
+                    value = tuned_values.get(key)
+                    text = str(value).strip()
+                    if re.fullmatch(r"-?\d+", text) and int(text) > 0:
+                        tuned_values[key] = str(int(text) * 2)
             auto_summary = None
         boosted = write_custom_settings(setting, tuned_values)
         boosted["label"] = setting.get("label", boosted.get("label"))
         boosted["auto_tune"] = auto_summary
-        if self.vroom.isChecked():
+        if sample_boost:
             boosted["vroom_boost"] = True
         return boosted
 
     def sync_auto_summary(self):
         if not hasattr(self, "auto_summary_label"):
             return
-        image_path = self.images[-1] if getattr(self, "images", None) else None
+        image_path = None
+        if getattr(self, "images", None):
+            row = self.image_list.currentRow() if hasattr(self, "image_list") else 0
+            if not (0 <= row < len(self.images)):
+                row = 0
+            image_path = self.images[row]
         setting = self.selected_setting()
         if not image_path or not setting:
             self.auto_summary_label.setText("Preset settings are fixed. Source image metrics are shown for context only.")
@@ -3941,13 +3966,13 @@ class MainWindow(QMainWindow):
 
     def add_image(self):
         USER_IMAGES_ROOT.mkdir(parents=True, exist_ok=True)
-        file_name, _ = QFileDialog.getOpenFileName(self, "Choose source image", str(USER_IMAGES_ROOT), "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
-        if not file_name:
+        file_names, _ = QFileDialog.getOpenFileNames(self, "Choose source image(s)", str(USER_IMAGES_ROOT), "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
+        if not file_names:
             return
-        path = Path(file_name)
-        self.images = [path]
+        self.images = [Path(file_name) for file_name in file_names]
         self.render_lists()
-        self.show_preview_bytes(render_source_image(path) or b"")
+        self.image_list.setCurrentRow(0)
+        self.show_preview_bytes(render_source_image(self.images[0]) or b"")
         self.sync_auto_summary()
 
     def choose_luma_image(self):
@@ -4299,23 +4324,44 @@ class MainWindow(QMainWindow):
         if not GENERATOR_EXE.exists():
             self.log_line(f"Missing generator: {GENERATOR_EXE}")
             return
-        images = list(reversed(self.images))
+        images = list(self.images)
+        setting_snapshot = dict(setting)
+        setting_snapshot["values"] = dict(setting.get("values", {}))
+        ui_overrides = {
+            "stopAt": self.custom_layers.text(),
+            "saveAt": self.custom_save_at.text(),
+            "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
+            "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+        }
+        pro_overrides = self.pro_custom_values()
+        sample_boost = self.vroom.isChecked()
         repair_enabled = self.repair_enabled.isChecked()
         self.shutdown_event.clear()
         self.stop_generation_event.clear()
         self.preview_request_id += 1
         self.active_generation_images = images
+        self.current_generation_image = None
         self.set_status("Running")
-        self.set_phase("building", "Starting internal build. Final import JSONs are not ready yet.")
+        if len(images) > 1:
+            self.log_line(f"Batch generation queued: {len(images)} image(s). Same selected settings will be used one after another.")
+            self.set_phase("building", f"Batch generation queued: 1/{len(images)} starting. Final import JSONs are not ready yet.")
+        else:
+            self.set_phase("building", "Starting internal build. Final import JSONs are not ready yet.")
         self.start_dialup_sound_if_needed()
-        threading.Thread(target=self.generate_worker, args=(setting, images, repair_enabled), daemon=True).start()
+        threading.Thread(
+            target=self.generate_worker,
+            args=(setting_snapshot, images, repair_enabled, ui_overrides, pro_overrides, sample_boost),
+            daemon=True,
+        ).start()
 
     def stop_generate(self):
         if not self.active_generation_images:
             self.log_line("No active generation job to stop.")
             return
         self.stop_generation_event.set()
-        for image_path in list(self.active_generation_images):
+        current = self.current_generation_image
+        targets = [current] if current is not None else list(self.active_generation_images[:1])
+        for image_path in targets:
             try:
                 stop_path = generator_stop_request_path(image_path, self.active_generation_run_dirs.get(image_path))
                 stop_path.parent.mkdir(parents=True, exist_ok=True)
@@ -4323,18 +4369,37 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.log_line(f"Failed to request stop for {image_path.name}: {exc}")
         self.set_status("Stopping")
-        self.log_line("Stop requested. Finalize Checkpoints will finish the latest saved point.")
+        self.log_line("Stop requested. Finalize Checkpoints will finish the current image, then the batch will stop.")
 
-    def generate_worker(self, setting, images, repair_enabled):
+    def generate_worker(self, setting, images, repair_enabled, ui_overrides, pro_overrides, sample_boost):
+        failures = 0
         try:
             self.bus.log.emit(f"Selected Kloudy preset: {setting.get('label') or setting['path'].name}")
             self.bus.log.emit("Preset settings: resolution and samples are fixed by the selected preset unless Pro settings are enabled.")
             self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
-            for image_path in images:
-                effective = self.effective_setting(image_path)
+            total_images = len(images)
+            for index, image_path in enumerate(images, start=1):
+                if self.stop_generation_event.is_set():
+                    self.bus.log.emit("Batch stopped before starting the next image.")
+                    break
+                self.current_generation_image = image_path
+                self.active_generation_images = list(images[index - 1 :])
+                if total_images > 1:
+                    self.bus.log.emit(f"Batch item {index}/{total_images}: {image_path.name}")
+                    self.bus.phase.emit("building", f"Batch generation running: {index}/{total_images}. Final import JSONs are not ready yet.")
+                effective = self.effective_setting_from_snapshot(
+                    setting,
+                    image_path,
+                    ui_overrides=ui_overrides,
+                    pro_overrides=pro_overrides,
+                    sample_boost=sample_boost,
+                )
                 if not effective:
                     self.bus.log.emit("Generator failed: no effective preset could be built.")
-                    return
+                    failures += 1
+                    if total_images <= 1:
+                        return
+                    continue
                 values = effective.get("values", {})
                 self.reset_generation_eta()
                 run_dir = next_generator_output_dir(image_path)
@@ -4392,9 +4457,12 @@ class MainWindow(QMainWindow):
                 self.unregister_process(proc)
                 last_message = self.drain_generator_output(output_queue, last_message)
                 if proc.returncode != 0:
-                    self.bus.log.emit(f"Generator exited with code {proc.returncode}.")
-                    self.bus.status.emit("Failed")
-                    return
+                    failures += 1
+                    self.bus.log.emit(f"Generator exited with code {proc.returncode} for {image_path.name}.")
+                    if total_images <= 1:
+                        self.bus.status.emit("Failed")
+                        return
+                    continue
                 after = self.run_json_files(run_dir)
                 diff_outputs = [path for path in after if path.resolve() not in before]
                 new_outputs = [path for path in diff_outputs if self.is_v2_output_json(path)] or diff_outputs
@@ -4415,7 +4483,7 @@ class MainWindow(QMainWindow):
                     break
             self.bus.refresh_lists.emit()
             self.bus.generated_changed.emit()
-            self.bus.status.emit("Done")
+            self.bus.status.emit("Failed" if failures and failures >= total_images else "Done")
         except Exception as exc:
             self.bus.log.emit(f"Generator failed: {exc}")
             self.bus.status.emit("Failed")
@@ -4423,6 +4491,7 @@ class MainWindow(QMainWindow):
             self.stop_dialup_sound()
             self.active_generation_images = []
             self.active_generation_run_dirs = {}
+            self.current_generation_image = None
 
     def drain_generator_output(self, output_queue, last_message):
         while True:
