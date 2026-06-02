@@ -651,6 +651,70 @@ def collect_candidate_jsons(out_dir: Path, stem: str, max_checkpoint: int | None
     return paths
 
 
+def drawable_count_from_payload(payload: dict) -> int:
+    return len(drawable_shapes(payload))
+
+
+def first_drawable_shapes(payload: dict, count: int) -> list[dict]:
+    selected = []
+    for shape in payload.get("shapes", [])[1:]:
+        color = shape.get("color", [0, 0, 0, 0])
+        if len(color) >= 4 and int(color[3]) > 0:
+            selected.append(shape)
+            if len(selected) >= count:
+                break
+    return selected
+
+
+def synthesize_missing_checkpoints(out_dir: Path, stem: str, requested_points: list[int], max_checkpoint: int) -> None:
+    requested = sorted({int(point) for point in requested_points if 0 < int(point) <= max_checkpoint})
+    if not requested:
+        return
+
+    available: list[tuple[int, Path, dict]] = []
+    for path in collect_candidate_jsons(out_dir, stem, max_checkpoint=max_checkpoint):
+        try:
+            payload = normalize_payload(path)
+            count = drawable_count_from_payload(payload)
+        except Exception as exc:
+            print(f"Checkpoint repair skipped unreadable raw JSON {path.name}: {exc}", flush=True)
+            continue
+        if count > 0:
+            available.append((count, path, payload))
+    if not available:
+        return
+    available.sort(key=lambda item: (item[0], item[1].name.lower()))
+
+    existing_by_number = {
+        checkpoint: path
+        for count, path, _payload in available
+        if (checkpoint := raw_checkpoint_number(path, stem)) is not None
+    }
+    for point in requested:
+        existing = existing_by_number.get(point)
+        if existing is not None and existing.exists():
+            continue
+        source = next(((count, path, payload) for count, path, payload in available if count >= point), None)
+        if source is None:
+            continue
+        source_count, source_path, source_payload = source
+        selected_shapes = first_drawable_shapes(source_payload, point)
+        if len(selected_shapes) < point:
+            continue
+        synthesized = dict(source_payload)
+        synthesized["shapes"] = [background_shape(source_payload)] + selected_shapes
+        dest = out_dir / f"{stem}.{point}.json"
+        save_json(dest, synthesized)
+        available.append((point, dest, synthesized))
+        available.sort(key=lambda item: (item[0], item[1].name.lower()))
+        existing_by_number[point] = dest
+        print(
+            f"Recovered missing internal checkpoint {point}: "
+            f"trimmed {source_path.name} ({source_count} shapes) -> {dest.name}",
+            flush=True,
+        )
+
+
 def candidate_json_sort_key(path: Path, stem: str) -> tuple[int, int, str]:
     checkpoint = raw_checkpoint_number(path, stem)
     if checkpoint is None:
@@ -2337,6 +2401,8 @@ def main() -> int:
         print("INTERNAL BUILD COMPLETE. Finalize Checkpoints is starting now; do not close the app yet.", flush=True)
     print("Finalized JSONs are the only import-ready vinyl files. Internal checkpoints are not final.", flush=True)
 
+    requested_checkpoints = parse_save_points(base_settings.get("saveAt", ""), raw_stop)
+    synthesize_missing_checkpoints(checkpoint_dir, stem, requested_checkpoints, raw_stop)
     raw_candidates = collect_candidate_jsons(checkpoint_dir, stem, max_checkpoint=raw_stop)
     if not raw_candidates:
         print("No internal checkpoint JSON outputs found after base build.", file=sys.stderr)
