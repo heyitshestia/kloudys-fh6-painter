@@ -5,7 +5,12 @@
 </p>
 
 [English](README.md) | [中文](README.zh-CN.md)
+```
 
+안녕하세요, dcinside.com 여러분!
+
+제 앱에 대해 작성해주신 매우 자세하고 깊이 있는 가이드를 읽어보았습니다. 정말 진심으로 감사드립니다. VPN 제한 때문에 아쉽게도 댓글을 달 수는 없었지만, 긍정적인 댓글들에 대해 정말 큰 감사의 말씀을 전하고 싶습니다!
+```
 Kloudy's FH6 Painter turns source art into finalized Forza Horizon 6 vinyl JSON, then imports that JSON into an open FH6 Vinyl Group Editor template.
 
 This README is the readable start-here guide. The full detailed manual is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md). The very detailed FH6 group/import guide is in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
