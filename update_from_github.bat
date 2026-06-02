@@ -285,7 +285,11 @@ for %%I in ("%CD%") do set "CURRENT_FOLDER=%%~nxI"
 if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
 if exist "Kloudys Painter Launcher.exe" (
     copy /y "Kloudys Painter Launcher.exe" "..\Kloudys Painter Launcher.exe" >nul 2>nul
-    del /f /q "Kloudys Painter Launcher.exe" >nul 2>nul
+    if errorlevel 1 (
+        call :log "Parent launcher is currently running or locked; kept updated launcher inside KloudysFH6Painter."
+    ) else (
+        del /f /q "Kloudys Painter Launcher.exe" >nul 2>nul
+    )
 )
 if exist "..\Kloudys Painter.exe" del /f /q "..\Kloudys Painter.exe" >nul 2>nul
 exit /b 0

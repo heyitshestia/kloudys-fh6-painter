@@ -16,7 +16,20 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSplitter, QTabWidget, QTextEdit, QVBoxLayout, QWidget
 
 
-ROOT = Path(__file__).resolve().parent
+STANDALONE_FOLDER_NAME = "KloudysFH6Painter"
+
+
+def resolve_app_root() -> Path:
+    launch_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    if (launch_root / "app_qt.py").exists():
+        return launch_root
+    bundled_root = launch_root / STANDALONE_FOLDER_NAME
+    if (bundled_root / "app_qt.py").exists():
+        return bundled_root
+    return launch_root
+
+
+ROOT = resolve_app_root()
 REPO_OWNER = "heyitshestia"
 REPO_NAME = "kloudys-forza-painter-suite"
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
@@ -31,7 +44,6 @@ DEPENDENCY_SETUP = ROOT / "02_install_dependencies.bat"
 APP_ENTRY = ROOT / "app_qt.py"
 UPDATE_BAT = ROOT / "03_update_from_github.bat"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
-STANDALONE_FOLDER_NAME = "KloudysFH6Painter"
 LAUNCHER_EXE_NAME = "Kloudys Painter Launcher.exe"
 OLD_LAUNCHER_EXE_NAME = "Kloudys Painter.exe"
 
