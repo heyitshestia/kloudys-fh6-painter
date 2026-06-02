@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QM
 
 ROOT = Path(__file__).resolve().parent
 REPO_OWNER = "heyitshestia"
-REPO_NAME = "kloudys-fh6-painter"
+REPO_NAME = "kloudys-forza-painter-suite"
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 BRANCH = "main"
 GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/refs/heads/{BRANCH}/VERSION"

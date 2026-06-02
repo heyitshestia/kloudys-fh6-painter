@@ -88,7 +88,7 @@ from version_info import get_version
 
 ROOT = Path(__file__).resolve().parent
 REPO_OWNER = "heyitshestia"
-REPO_NAME = "kloudys-fh6-painter"
+REPO_NAME = "kloudys-forza-painter-suite"
 BRANCH = "main"
 GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
 KOFI_URL = "https://ko-fi.com/O7O020EQNQ"

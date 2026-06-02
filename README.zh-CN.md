@@ -81,4 +81,4 @@
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author. |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in upstream history. |
-| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | This fork and current app workflow. |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-forza-painter-suite | This fork and current app workflow. |

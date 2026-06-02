@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
-set "REPO_URL=https://github.com/heyitshestia/kloudys-fh6-painter.git"
+set "REPO_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite.git"
 set "BRANCH=main"
 
 call :init_update_log
@@ -45,7 +45,7 @@ call :log "A fresh copy will be downloaded and copied over this folder, like dra
 call :log "Existing generated/runtime data will be preserved."
 call :log ""
 
-set "TMP_PARENT=%TEMP%\kloudys-fh6-painter-update"
+set "TMP_PARENT=%TEMP%\kloudys-forza-painter-suite-update"
 set "TMP_REPO=%TMP_PARENT%\repo"
 if exist "%TMP_PARENT%" rmdir /s /q "%TMP_PARENT%"
 mkdir "%TMP_PARENT%" >nul 2>nul

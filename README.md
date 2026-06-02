@@ -397,7 +397,7 @@ This project builds on earlier Forza Painter work and keeps license notices in [
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author; original geometry approximation work credited by upstream license notices. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by upstream license notices. |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in upstream history. |
-| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | KFPS suite workflow, launcher, PySide app, presets, finalization, browser UI, updater, packaging, FH6 safety adjustments, layer culling, editor integration, and FH6 handmade/import tooling. |
+| heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-forza-painter-suite | KFPS suite workflow, launcher, PySide app, presets, finalization, browser UI, updater, packaging, FH6 safety adjustments, layer culling, editor integration, and FH6 handmade/import tooling. |
 
 ## Theme Showcase
 
