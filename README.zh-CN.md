@@ -1,8 +1,8 @@
-# Kloudy's FH6 Painter
+# KFPS - Kloudy's Forza Painter Suite
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-这是 Kloudy's FH6 Painter 的中文简短说明。完整、最新、最详细的文档目前以英文维护：
+这是 KFPS（Kloudy's Forza Painter Suite）的中文简短说明。完整、最新、最详细的文档目前以英文维护：
 
 - 入门说明：[README.md](README.md)
 - 完整用户手册：[docs/USER_MANUAL.md](docs/USER_MANUAL.md)
@@ -68,7 +68,7 @@
 
 - [LICENSE](LICENSE)
 - [LICENSE.geometrize-gpu](LICENSE.geometrize-gpu)
-- [LICENSE.forza-vinyl-studio](LICENSE.forza-vinyl-studio)
+- [LICENSE.fabricjs](LICENSE.fabricjs)
 
 主要来源和贡献包括：
 

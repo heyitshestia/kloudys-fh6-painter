@@ -1,4 +1,4 @@
-# Kloudy's FH6 Painter User Manual
+# KFPS User Manual
 
 This is the full manual. It is intentionally detailed so a first-time user can follow it without guessing.
 
@@ -34,12 +34,12 @@ Use this with:
 
 ## What The App Does
 
-Kloudy's FH6 Painter has two major jobs:
+KFPS, short for Kloudy's Forza Painter Suite, has two major jobs:
 
 1. Convert source art into finalized Forza vinyl JSON.
 2. Import a finalized JSON into an open Forza Horizon 6 Vinyl Group Editor template.
 
-It also bundles Forza Vinyl Studio as an optional offline editor for manual FH6 JSON creation/export.
+It also bundles an optional offline editor for manual FH6 JSON creation/export.
 
 The app does not magically edit a livery from outside the game. FH6 must be running, you must be in the correct editor screen, and the recommended reusable base is a saved/reopened 3000-layer plain white circle template.
 
