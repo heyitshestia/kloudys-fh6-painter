@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.80
+
+- Corrected Fabric editor primitive names against the actual bundled primitive thumbnails instead of the old FH5-derived order.
+
 ## 1.10.79
 
 - Restored verified primitive display names in the Fabric editor, so basic shapes such as Square and Circle are named normally again.
