@@ -415,7 +415,7 @@ function shapeDisplayName(family, index) {
   const familyLabel = family.replaceAll("_", " ");
   const word = shapeWords?.families?.[family]?.[String(index)];
   const suffix = word !== undefined ? ` / word ${word}` : "";
-  if (family.includes("Letters")) {
+  if (family === "Primitives" || family.includes("Letters")) {
     return shapeNames?.families?.[family]?.[String(index)] || `${familyLabel} slot ${index}${suffix}`;
   }
   return `${familyLabel} slot ${index}${suffix}`;

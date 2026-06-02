@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.79
+
+- Restored verified primitive display names in the Fabric editor, so basic shapes such as Square and Circle are named normally again.
+
 ## 1.10.78
 
 - Fixed Fabric editor full-library shape placement so chosen shapes keep their exact family/resource slot instead of reverse-mapping colliding FH6 words back to primitives.
