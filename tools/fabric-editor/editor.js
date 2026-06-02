@@ -397,7 +397,13 @@ function typeLabel(typeCode) {
 }
 
 function shapeDisplayName(family, index) {
-  return shapeNames?.families?.[family]?.[String(index)] || `${family.replaceAll("_", " ")} #${index}`;
+  const familyLabel = family.replaceAll("_", " ");
+  const word = shapeWords?.families?.[family]?.[String(index)];
+  const suffix = word !== undefined ? ` / word ${word}` : "";
+  if (family.includes("Letters")) {
+    return shapeNames?.families?.[family]?.[String(index)] || `${familyLabel} slot ${index}${suffix}`;
+  }
+  return `${familyLabel} slot ${index}${suffix}`;
 }
 
 function shapeSearchText(family, index, typeCode) {

@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 1.10.77
+
+- Changed Fabric editor non-font shape labels to verified FH6 family/slot/word labels instead of guessed FH5-derived names.
+- Font pages still show FH6 font glyph labels from the dumped font registry.
+
 ## 1.10.76
 
 - Updated the Fabric editor color controls with an 8-slot saved-color picker, shape/source eyedropper toggle, and protected undo floor for loaded designs.
