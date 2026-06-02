@@ -38,7 +38,7 @@ This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.
 KFPS includes a standalone browser editor for people who want to manually build, repair, trace, or clean up FH6 JSON instead of relying only on automatic generation.
 
 <p align="center">
-  <img src="docs/screenshots/12-fabric-editor-browser.png" alt="Full KFPS Fabric Editor window" width="100%">
+  <img src="docs/images/kfps-editor-theme-showcase.gif" alt="KFPS editor theme showcase" width="100%">
 </p>
 
 The editor is designed around practical vinyl work:
@@ -205,11 +205,13 @@ Open it from the app's `Editor` tab:
   <img src="docs/screenshots/06-editor.png" alt="Editor launcher tab" width="820">
 </p>
 
-The full editor opens in a browser window:
+The full editor opens in a browser window and includes both Signature Pink and Dark themes:
 
 <p align="center">
-  <img src="docs/screenshots/12-fabric-editor-browser.png" alt="Full KFPS Fabric Editor window" width="100%">
+  <img src="docs/images/kfps-editor-theme-showcase.gif" alt="KFPS editor showing Signature Pink and Dark themes" width="100%">
 </p>
+
+Detailed still screenshots are kept here: [Signature Pink](docs/screenshots/editor-full-signature-pink.png) and [Dark](docs/screenshots/editor-full-dark.png).
 
 ### Editor Workflow
 
@@ -376,6 +378,14 @@ This project builds on earlier Forza Painter work and keeps license notices in [
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author; original primitive-based image approximation library credited by upstream license notices. |
 | Sanguk Ko / ree9622 | https://github.com/ree9622 | Korean localization contributor in upstream history. |
 | heyitshestia / Kloudy | https://github.com/heyitshestia/kloudys-fh6-painter | KFPS suite workflow, launcher, PySide app, presets, finalization, browser UI, updater, packaging, FH6 safety adjustments, layer culling, editor integration, and FH6 handmade/import tooling. |
+
+## Theme Showcase
+
+KFPS includes multiple visual themes for the app.
+
+<p align="center">
+  <img src="docs/images/kfps-theme-showcase.gif" alt="Animated KFPS theme showcase" width="900">
+</p>
 
 ## Discord
 
