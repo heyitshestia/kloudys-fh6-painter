@@ -1,5 +1,14 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.0
+
+- Reworked the main app shell into a wider workflow layout with a left-side navigation rail and dashboard.
+- Added a local-only Bug Reports page that builds redaction-friendly reports for preview, copy, or local save without automatic upload.
+- Added Eurocorp, Elite, CryNet, UNATCO, New Eden, Red Phosphorous, Blackout Violet, Blue Terminal 90s, and Matrix Green themes.
+- Added BIOS-style Blue Terminal visuals, Matrix Green animated falling-code visuals, and terminal-safe monospace sizing.
+- Added an optional Blue Terminal 90s dial-up sound loop while generation is running.
+- Moved generator Pro Settings for manual resolution/random/mutated sample overrides into Settings while keeping layer count and finalize checkpoints in the Generate page.
+
 ## 1.10.80
 
 - Corrected Fabric editor primitive names against the actual bundled primitive thumbnails instead of the old FH5-derived order.

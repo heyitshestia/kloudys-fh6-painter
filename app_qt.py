@@ -9,14 +9,16 @@ import queue
 import random
 import re
 import subprocess
+import struct
 import sys
 import threading
 import time
 import urllib.request
+import wave
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRectF, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QObject, QPoint, QRectF, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -43,6 +45,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QTextEdit,
     QToolButton,
@@ -106,8 +109,634 @@ THEMES = {
     "Sakura Glass": "sakura",
     "Horizon Pulse": "horizon",
     "Blackout": "blackout",
+    "Eurocorp": "eurocorp",
+    "Elite": "elite",
+    "CryNet": "crynet",
+    "UNATCO": "unatco",
+    "New Eden": "new_eden",
+    "Red Phosphorous": "red_phosphorous",
+    "Blackout Violet": "blackout_violet",
+    "Blue Terminal 90s": "blue_terminal_90s",
+    "Matrix Green": "matrix_green",
 }
 DEFAULT_THEME = "Blackout"
+
+WORKFLOW_META = {
+    "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
+    "Generate Final Vinyl": ("Create", "Build new vinyl JSONs from source art."),
+    "Import Final JSON": ("Create", "Preview a finalized checkpoint and write it into FH6."),
+    "Import Handmade JSON": ("Advanced Import", "Write full-shape handmade JSONs into a reusable FH6 template."),
+    "Export Game JSON": ("Advanced Import", "Read an open editable FH6 group into handmade JSON."),
+    "Editor": ("Tools", "Open the local shape editor for JSON cleanup and manual edits."),
+    "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
+    "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
+    "Bug Reports": ("Support", "Create a private, reviewable report package without automatic upload."),
+    "Tutorial": ("Support", "Step-by-step setup, generation, import, and troubleshooting guide."),
+    "Settings": ("Support", "Appearance, Pro Settings, and importer behavior."),
+}
+
+WORKFLOW_SUBTITLES = {
+    "Dashboard": "One screen for the most important actions, current status, recent work, and safe next steps.",
+    "Generate Final Vinyl": "Choose source art, pick a preset, and build import-ready checkpoints.",
+    "Import Final JSON": "Select a finalized JSON, preview it, auto-locate FH6, and import.",
+    "Import Handmade JSON": "Use the universal full-shape importer with a saved 3000-circle template.",
+    "Export Game JSON": "Read the current editable group into JSON for backup or sharing when allowed.",
+    "Editor": "Launch the local browser editor for manual JSON adjustments.",
+    "Image Tools": "Quick access to safe browser tools that prepare source art before generation.",
+    "Image Size Helper": "Convert image dimensions into practical megapixel targets for presets.",
+    "Bug Reports": "No automatic upload. Build, inspect, redact, then save or copy a report manually.",
+    "Tutorial": "Detailed setup and workflow instructions.",
+    "Settings": "Theme, Pro Settings, sound toggles, and compatibility settings.",
+}
+
+SHELL_QSS = """
+QFrame#topBar {
+    border: 1px solid rgba(255, 255, 255, 80);
+    border-radius: 18px;
+    padding: 10px;
+}
+QLabel#appTitle {
+    background: transparent;
+    font-size: 19pt;
+    font-weight: 950;
+    letter-spacing: -0.5px;
+}
+QLabel#appSubtitle {
+    background: transparent;
+    font-size: 9pt;
+}
+QFrame#workflowShell {
+    border-radius: 18px;
+}
+QListWidget#workflowNav {
+    border: 1px solid rgba(255, 255, 255, 72);
+    border-radius: 18px;
+    padding: 10px;
+    font-weight: 800;
+}
+QListWidget#workflowNav::item {
+    background: rgba(255, 255, 255, 18);
+    border: 1px solid rgba(255, 255, 255, 60);
+    min-height: 38px;
+    padding: 8px 10px;
+    margin: 4px 0;
+    border-radius: 12px;
+}
+QListWidget#workflowNav::item:hover {
+    background: rgba(255, 255, 255, 42);
+    border: 1px solid rgba(255, 255, 255, 130);
+}
+QListWidget#workflowNav::item:selected {
+    border: 1px solid rgba(255, 255, 255, 220);
+    font-weight: 950;
+}
+QListWidget#workflowNav::item:disabled {
+    background: transparent;
+    border: none;
+    min-height: 18px;
+    padding: 14px 8px 4px 8px;
+    font-size: 8pt;
+    font-weight: 950;
+}
+QFrame#workflowContent {
+    border: 1px solid rgba(255, 255, 255, 56);
+    border-radius: 18px;
+    padding: 10px;
+}
+QLabel#workflowTitle {
+    background: transparent;
+    font-size: 20pt;
+    font-weight: 950;
+}
+QLabel#workflowSubtitle {
+    background: transparent;
+    font-size: 10pt;
+}
+QFrame#dashboardCard {
+    border: 1px solid rgba(255, 255, 255, 72);
+    border-radius: 18px;
+    padding: 14px;
+}
+QLabel#dashboardCardTitle {
+    background: transparent;
+    font-size: 14pt;
+    font-weight: 950;
+}
+QLabel#dashboardCardText {
+    background: transparent;
+    font-size: 10pt;
+}
+QLabel#bugReportPrivacy {
+    background: transparent;
+    font-weight: 850;
+}
+"""
+
+
+def shell_theme_qss(theme_key: str) -> str:
+    if theme_key == "sakura":
+        return """
+        QFrame#topBar, QFrame#workflowContent { background: rgba(255, 249, 251, 238); border: 1px solid #b77b8f; }
+        QListWidget#workflowNav { background: rgba(255, 249, 251, 230); border: 1px solid #b77b8f; }
+        QListWidget#workflowNav::item { background: rgba(255, 236, 243, 230); color: #5d2d41; border: 1px solid rgba(167, 100, 122, 120); }
+        QListWidget#workflowNav::item:hover { background: #f8d9e4; color: #3b1f2f; border: 1px solid #a7647a; }
+        QListWidget#workflowNav::item:selected { background: #a83f67; color: #ffffff; border: 1px solid #793047; }
+        QListWidget#workflowNav::item:disabled { color: #7f3d58; }
+        QFrame#dashboardCard { background: rgba(255, 253, 253, 245); border: 1px solid #e5b9c8; }
+        """
+    if theme_key == "horizon":
+        return """
+        QFrame#topBar, QFrame#workflowContent { background: rgba(5, 9, 20, 205); border: 1px solid rgba(36, 233, 255, 110); }
+        QListWidget#workflowNav { background: rgba(2, 7, 14, 190); border: 1px solid rgba(36, 233, 255, 95); }
+        QListWidget#workflowNav::item { background: rgba(8, 22, 35, 190); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 105); }
+        QListWidget#workflowNav::item:hover { background: rgba(18, 50, 66, 230); color: #ffffff; border: 1px solid #24e9ff; }
+        QListWidget#workflowNav::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.55 #ffb000, stop:1 #24e9ff); color: #050914; border: 1px solid #ffffff; }
+        QListWidget#workflowNav::item:disabled { color: #ffb000; }
+        QFrame#dashboardCard { background: rgba(12, 26, 38, 222); border: 1px solid rgba(36, 233, 255, 100); }
+        """
+    if theme_key == "blackout":
+        return """
+        QFrame#topBar, QFrame#workflowContent { background: #000000; border: 1px solid rgba(255, 255, 255, 125); }
+        QListWidget#workflowNav { background: #000000; border: 1px solid rgba(255, 255, 255, 125); }
+        QListWidget#workflowNav::item { background: #050505; color: #f4f4f4; border: 1px solid rgba(255, 255, 255, 105); }
+        QListWidget#workflowNav::item:hover { background: #121212; color: #ffffff; border: 1px solid rgba(255, 255, 255, 190); }
+        QListWidget#workflowNav::item:selected { background: #ffffff; color: #000000; border: 1px solid #ffffff; }
+        QListWidget#workflowNav::item:disabled { color: #bdbdbd; }
+        QFrame#dashboardCard { background: #080808; border: 1px solid rgba(255, 255, 255, 145); }
+        """
+    if theme_key in THEME_TOKEN_STYLES:
+        tokens = THEME_TOKEN_STYLES[theme_key]
+        return f"""
+        QFrame#topBar, QFrame#workflowContent {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
+        QListWidget#workflowNav {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
+        QListWidget#workflowNav::item {{ background: {tokens["button"]}; color: {tokens["button_fg"]}; border: 1px solid {tokens["border"]}; }}
+        QListWidget#workflowNav::item:hover {{ background: {tokens["button_active"]}; color: {tokens["button_active_fg"]}; border: 1px solid {tokens["accent"]}; }}
+        QListWidget#workflowNav::item:selected {{ background: {tokens["accent"]}; color: {tokens["select_fg"]}; border: 1px solid {tokens["frame_light"]}; }}
+        QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
+        QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+        """
+    return """
+    QFrame#topBar, QFrame#workflowContent { background: rgba(255, 248, 251, 236); border: 1px solid #d8c2f0; }
+    QListWidget#workflowNav { background: rgba(234, 220, 255, 225); border: 1px solid #d8c2f0; }
+    QListWidget#workflowNav::item { background: rgba(255, 253, 248, 218); color: #3b244d; border: 1px solid rgba(159, 106, 216, 95); }
+    QListWidget#workflowNav::item:hover { background: #eadcff; color: #3b244d; border: 1px solid #9f6ad8; }
+    QListWidget#workflowNav::item:selected { background: #9f6ad8; color: #ffffff; border: 1px solid #7b4eb0; }
+    QListWidget#workflowNav::item:disabled { color: #6c3fa0; }
+    QFrame#dashboardCard { background: rgba(255, 253, 248, 245); border: 1px solid #e3d1f5; }
+    """
+
+THEME_TOKEN_STYLES = {
+    "eurocorp": {
+        "bg": "#040405",
+        "panel": "#0a0b0e",
+        "panel_alt": "#121418",
+        "input": "#08090c",
+        "text": "#e8ebf0",
+        "muted": "#70788a",
+        "accent": "#cc6a2e",
+        "accent_dark": "#8f4a1a",
+        "warn": "#a8844a",
+        "border": "#262a32",
+        "button": "#14171c",
+        "button_active": "#1e2229",
+        "hint": "#94704a",
+        "info": "#5c7082",
+        "success": "#6d848c",
+        "error": "#b8544c",
+        "preview_bg": "#0c0d10",
+        "preview_fg": "#e8ebf0",
+        "select_fg": "#e8ebf0",
+        "button_active_fg": "#e8ebf0",
+        "button_fg": "#e8ebf0",
+        "frame_light": "#353a44",
+        "frame_dark": "#0c0e12",
+        "sash": "#181b22",
+    },
+    "elite": {
+        "bg": "#0a0a0a",
+        "panel": "#111111",
+        "panel_alt": "#1a0f00",
+        "input": "#1a0f00",
+        "text": "#ffa040",
+        "muted": "#cc7700",
+        "accent": "#ff8c00",
+        "accent_dark": "#ff6a00",
+        "warn": "#ffb347",
+        "border": "#cc5500",
+        "button": "#1a1208",
+        "button_active": "#ff7a00",
+        "hint": "#ff9d00",
+        "info": "#ff8c00",
+        "success": "#ffb84d",
+        "error": "#ff6a3d",
+        "preview_bg": "#0a0a0a",
+        "preview_fg": "#ffa040",
+        "select_fg": "#0a0a0a",
+        "button_active_fg": "#0a0a0a",
+        "button_fg": "#ffa040",
+        "frame_light": "#cc5500",
+        "frame_dark": "#1a0f00",
+        "sash": "#1a0f00",
+    },
+    "crynet": {
+        "bg": "#020304",
+        "panel": "#060a10",
+        "panel_alt": "#0a1018",
+        "input": "#040810",
+        "text": "#c8dce8",
+        "muted": "#5a7284",
+        "accent": "#7fefff",
+        "accent_dark": "#1a4858",
+        "warn": "#8ec4dc",
+        "border": "#1a3848",
+        "button": "#081018",
+        "button_active": "#122028",
+        "hint": "#6a98a8",
+        "info": "#7fefff",
+        "success": "#5a9aa8",
+        "error": "#d06070",
+        "preview_bg": "#060a10",
+        "preview_fg": "#c8dce8",
+        "select_fg": "#020304",
+        "button_active_fg": "#7fefff",
+        "button_fg": "#c8dce8",
+        "frame_light": "#3a6878",
+        "frame_dark": "#040810",
+        "sash": "#142028",
+    },
+    "unatco": {
+        "bg": "#000000",
+        "panel": "#252525",
+        "panel_alt": "#2a3830",
+        "input": "#0a0a0a",
+        "text": "#ffffff",
+        "muted": "#bbbbbb",
+        "accent": "#283868",
+        "accent_dark": "#101830",
+        "warn": "#888888",
+        "border": "#505050",
+        "button": "#888888",
+        "button_active": "#aaaaaa",
+        "hint": "#707070",
+        "info": "#48b0c8",
+        "success": "#99ff00",
+        "error": "#c06060",
+        "preview_bg": "#141414",
+        "preview_fg": "#ffffff",
+        "select_fg": "#ffffff",
+        "button_active_fg": "#101010",
+        "button_fg": "#101010",
+        "frame_light": "#aaaaaa",
+        "frame_dark": "#1a1a1a",
+        "sash": "#404040",
+    },
+    "new_eden": {
+        "bg": "#ffffff",
+        "panel": "#ffffff",
+        "panel_alt": "#f4f4f4",
+        "input": "#ffffff",
+        "text": "#141414",
+        "muted": "#5c5c5c",
+        "accent": "#e4032e",
+        "accent_dark": "#c90025",
+        "warn": "#b80f22",
+        "border": "#e0e0e0",
+        "button": "#f2f2f2",
+        "button_active": "#fde8ec",
+        "hint": "#8a3040",
+        "info": "#1a8cff",
+        "success": "#1f8a4c",
+        "error": "#c90025",
+        "preview_bg": "#fafafa",
+        "preview_fg": "#141414",
+        "select_fg": "#ffffff",
+        "button_active_fg": "#141414",
+        "button_fg": "#141414",
+        "frame_light": "#f0f0f0",
+        "frame_dark": "#e5e5e5",
+        "sash": "#ebebeb",
+    },
+    "red_phosphorous": {
+        "bg": "#0d0000",
+        "panel": "#110000",
+        "panel_alt": "#1a0000",
+        "input": "#1a0000",
+        "text": "#ff4444",
+        "muted": "#cc3333",
+        "accent": "#ff1a1a",
+        "accent_dark": "#cc0000",
+        "warn": "#ff6666",
+        "border": "#800000",
+        "button": "#1a0000",
+        "button_active": "#cc0000",
+        "hint": "#ff6666",
+        "info": "#ff1a1a",
+        "success": "#ff5555",
+        "error": "#ff3333",
+        "preview_bg": "#0d0000",
+        "preview_fg": "#ff4444",
+        "select_fg": "#0d0000",
+        "button_active_fg": "#0d0000",
+        "button_fg": "#ff4444",
+        "frame_light": "#800000",
+        "frame_dark": "#1a0000",
+        "sash": "#1a0000",
+    },
+    "blackout_violet": {
+        "bg": "#020003",
+        "panel": "#08030d",
+        "panel_alt": "#11071b",
+        "input": "#060208",
+        "text": "#f5eaff",
+        "muted": "#a58ab8",
+        "accent": "#b46cff",
+        "accent_dark": "#6b2fb5",
+        "warn": "#e0b0ff",
+        "border": "#39204f",
+        "button": "#12081c",
+        "button_active": "#241032",
+        "hint": "#c996ff",
+        "info": "#d8b0ff",
+        "success": "#b6ffde",
+        "error": "#ff6fae",
+        "preview_bg": "#030004",
+        "preview_fg": "#f5eaff",
+        "select_fg": "#050007",
+        "button_active_fg": "#ffffff",
+        "button_fg": "#f5eaff",
+        "frame_light": "#7d42c7",
+        "frame_dark": "#09030e",
+        "sash": "#180a25",
+        "font": "\"Segoe UI Variable\", \"Segoe UI\"",
+    },
+    "blue_terminal_90s": {
+        "bg": "#0000aa",
+        "panel": "#0000aa",
+        "panel_alt": "#000088",
+        "input": "#000088",
+        "text": "#ffffff",
+        "muted": "#c0c0c0",
+        "accent": "#ffff55",
+        "accent_dark": "#ffffff",
+        "warn": "#ffff55",
+        "border": "#ffffff",
+        "button": "#000088",
+        "button_active": "#5555ff",
+        "hint": "#ffff55",
+        "info": "#55ffff",
+        "success": "#55ff55",
+        "error": "#ff5555",
+        "preview_bg": "#0000aa",
+        "preview_fg": "#ffffff",
+        "select_fg": "#0000aa",
+        "button_active_fg": "#ffffff",
+        "button_fg": "#ffffff",
+        "frame_light": "#ffffff",
+        "frame_dark": "#000088",
+        "sash": "#000088",
+        "font": "\"Lucida Console\", \"Terminal\", \"Consolas\", \"Courier New\"",
+        "font_size": "9pt",
+    },
+    "matrix_green": {
+        "bg": "#000000",
+        "panel": "#020702",
+        "panel_alt": "#041204",
+        "input": "#000000",
+        "text": "#b7ffb7",
+        "muted": "#45a645",
+        "accent": "#00ff41",
+        "accent_dark": "#00b830",
+        "warn": "#a7ff6a",
+        "border": "#087a22",
+        "button": "#020d05",
+        "button_active": "#063b14",
+        "hint": "#66ff88",
+        "info": "#00ff41",
+        "success": "#00ff41",
+        "error": "#ff4d6d",
+        "preview_bg": "#000000",
+        "preview_fg": "#b7ffb7",
+        "select_fg": "#000000",
+        "button_active_fg": "#d9ffd9",
+        "button_fg": "#b7ffb7",
+        "frame_light": "#00ff41",
+        "frame_dark": "#001f08",
+        "sash": "#063b14",
+        "font": "\"Lucida Console\", \"Consolas\", \"Courier New\"",
+        "font_size": "9pt",
+    },
+}
+
+
+def token_theme_stylesheet(tokens: dict[str, str]) -> str:
+    font_family = tokens.get("font", "\"Segoe UI Variable\", \"Segoe UI\"")
+    font_size = tokens.get("font_size", "10pt")
+    return f"""
+        QMainWindow, QWidget {{
+            background: {tokens["bg"]};
+            color: {tokens["text"]};
+            font-family: {font_family};
+            font-size: {font_size};
+        }}
+        QWidget#appRoot {{ background: transparent; }}
+        QTabWidget::pane {{
+            border: 1px solid {tokens["border"]};
+            border-radius: 14px;
+            background: {tokens["panel"]};
+        }}
+        QTabBar::tab {{
+            background: {tokens["panel_alt"]};
+            color: {tokens["muted"]};
+            padding: 10px 18px;
+            border: 1px solid {tokens["border"]};
+            border-bottom: none;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            margin-right: 4px;
+            font-weight: 800;
+        }}
+        QTabBar::tab:hover {{
+            background: {tokens["button_active"]};
+            color: {tokens["text"]};
+            border-color: {tokens["accent"]};
+        }}
+        QTabBar::tab:selected {{
+            background: {tokens["panel"]};
+            color: {tokens["text"]};
+            border-color: {tokens["accent"]};
+        }}
+        QGroupBox {{
+            border: 1px solid {tokens["border"]};
+            border-radius: 15px;
+            margin-top: 14px;
+            padding: 12px;
+            background: {tokens["panel"]};
+            font-weight: 800;
+            color: {tokens["accent"]};
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 9px;
+            background: {tokens["panel"]};
+            color: {tokens["accent"]};
+            border-radius: 7px;
+        }}
+        QPushButton {{
+            background: {tokens["button"]};
+            color: {tokens["button_fg"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 10px;
+            padding: 8px 14px;
+            font-weight: 800;
+            min-height: 28px;
+        }}
+        QPushButton:hover {{
+            background: {tokens["button_active"]};
+            color: {tokens["button_active_fg"]};
+            border-color: {tokens["accent"]};
+        }}
+        QPushButton:pressed {{
+            background: {tokens["frame_dark"]};
+            border-color: {tokens["frame_light"]};
+        }}
+        QPushButton#primaryButton {{
+            background: {tokens["accent"]};
+            color: {tokens["button_active_fg"]};
+            border: 1px solid {tokens["frame_light"]};
+            font-weight: 950;
+            padding: 12px 16px;
+        }}
+        QPushButton#primaryButton:hover {{
+            background: {tokens["accent_dark"]};
+            color: {tokens["button_active_fg"]};
+        }}
+        QPushButton#kofiButton {{
+            background: {tokens["panel"]};
+            color: {tokens["hint"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 8px;
+            padding: 2px 10px;
+            font-weight: 950;
+            min-height: 18px;
+            max-height: 24px;
+        }}
+        QPushButton#kofiButton:hover {{
+            background: {tokens["button_active"]};
+            color: {tokens["accent"]};
+            border-color: {tokens["accent"]};
+        }}
+        QLabel#kofiOptionalLabel {{
+            color: {tokens["hint"]};
+            font-size: 8pt;
+            font-weight: 900;
+        }}
+        QFrame#editorWipPanel {{
+            background: {tokens["panel_alt"]};
+            border: 3px dashed {tokens["error"]};
+            border-radius: 18px;
+        }}
+        QLabel#editorWipText {{
+            color: {tokens["error"]};
+            font-size: 14pt;
+            font-weight: 900;
+            padding: 8px 28px 28px 28px;
+        }}
+        QToolButton#helpButton {{
+            background: {tokens["accent"]};
+            color: {tokens["button_active_fg"]};
+            border: 1px solid {tokens["frame_light"]};
+            border-radius: 12px;
+            font-weight: 950;
+        }}
+        QToolButton#helpButton:hover {{
+            background: {tokens["accent_dark"]};
+        }}
+        QLineEdit, QComboBox, QListWidget, QTextEdit, QTreeWidget {{
+            background: {tokens["input"]};
+            color: {tokens["text"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 9px;
+            padding: 6px;
+            selection-background-color: {tokens["accent"]};
+            selection-color: {tokens["select_fg"]};
+        }}
+        QLineEdit:focus, QComboBox:focus, QListWidget:focus, QTextEdit:focus, QTreeWidget:focus {{
+            border: 1px solid {tokens["accent"]};
+        }}
+        QComboBox {{ padding-right: 30px; }}
+        QComboBox::drop-down {{
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 28px;
+            border-left: 1px solid {tokens["border"]};
+            border-top-right-radius: 8px;
+            border-bottom-right-radius: 8px;
+            background: {tokens["button"]};
+        }}
+        QComboBox QAbstractItemView {{
+            background: {tokens["input"]};
+            color: {tokens["text"]};
+            border: 1px solid {tokens["accent"]};
+            selection-background-color: {tokens["accent"]};
+            selection-color: {tokens["select_fg"]};
+            outline: 0;
+        }}
+        QGraphicsView {{
+            background: {tokens["preview_bg"]};
+            color: {tokens["preview_fg"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 10px;
+        }}
+        QScrollArea, QAbstractScrollArea {{
+            background: transparent;
+            border: none;
+        }}
+        QCheckBox {{
+            spacing: 8px;
+            color: {tokens["text"]};
+            background: transparent;
+        }}
+        QLabel {{
+            color: {tokens["text"]};
+            background: transparent;
+        }}
+        QLabel#updateAlarm {{
+            background: transparent;
+            color: {tokens["success"]};
+            border: none;
+            padding: 0;
+            font-weight: 900;
+        }}
+        QHeaderView::section {{
+            background: {tokens["panel_alt"]};
+            color: {tokens["accent"]};
+            border: 1px solid {tokens["border"]};
+            padding: 5px;
+            font-weight: 800;
+        }}
+        QScrollBar:vertical, QScrollBar:horizontal {{
+            background: {tokens["frame_dark"]};
+            border: none;
+            width: 13px;
+            height: 13px;
+        }}
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+            background: {tokens["border"]};
+            border-radius: 6px;
+            min-height: 24px;
+            min-width: 24px;
+        }}
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{
+            background: {tokens["accent"]};
+        }}
+        QScrollBar::add-line, QScrollBar::sub-line {{
+            background: transparent;
+            border: none;
+            width: 0;
+            height: 0;
+        }}
+    """
 
 
 def configure_combo_box(combo: QComboBox, *, max_visible: int = 16, min_height: int = 34, editable: bool = False) -> QComboBox:
@@ -1072,10 +1701,23 @@ class AnimatedThemeBackground(QWidget):
                     "color": "#24e9ff" if index % 3 else "#ff4a2b",
                 }
             )
+        self.matrix_phase = 0.0
+        self.matrix_columns = []
+        for index in range(72):
+            self.matrix_columns.append(
+                {
+                    "x": rng.uniform(0.0, 1.0),
+                    "y": rng.uniform(-1.0, 1.0),
+                    "speed": rng.uniform(0.006, 0.022),
+                    "length": rng.randint(7, 19),
+                    "alpha": rng.uniform(0.18, 0.78),
+                    "glyph_seed": rng.randint(0, 9999),
+                }
+            )
 
     def set_theme(self, theme_key: str):
         self.theme_key = theme_key
-        if theme_key in ("sakura", "horizon"):
+        if theme_key in ("sakura", "horizon", "matrix_green"):
             if not self.timer.isActive():
                 self.timer.start(33)
         else:
@@ -1101,13 +1743,24 @@ class AnimatedThemeBackground(QWidget):
                     streak["x"] = random.uniform(0.12, 0.88)
                     streak["y"] = random.uniform(-0.08, 0.22)
                     streak["lane"] = random.choice([-1, 1])
+        elif self.theme_key == "matrix_green":
+            self.matrix_phase = (self.matrix_phase + 0.08) % math.tau
+            for column in self.matrix_columns:
+                column["y"] += column["speed"]
+                if column["y"] > 1.18:
+                    column["y"] = random.uniform(-0.55, -0.05)
+                    column["x"] = random.uniform(0.0, 1.0)
+                    column["speed"] = random.uniform(0.006, 0.022)
+                    column["glyph_seed"] = random.randint(0, 9999)
         self.update()
 
     def paintEvent(self, _event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect()
-        if self.theme_key == "sakura":
+        if self.theme_key in THEME_TOKEN_STYLES:
+            self.paint_token_theme(painter, rect, THEME_TOKEN_STYLES[self.theme_key])
+        elif self.theme_key == "sakura":
             gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
             gradient.setColorAt(0.00, QColor("#fff6f9"))
             gradient.setColorAt(0.42, QColor("#f8e0eb"))
@@ -1125,6 +1778,110 @@ class AnimatedThemeBackground(QWidget):
             self.paint_horizon(painter, rect)
         else:
             painter.fillRect(rect, QColor("#f5edff"))
+
+    def paint_token_theme(self, painter: QPainter, rect, tokens: dict[str, str]):
+        width = max(1, rect.width())
+        height = max(1, rect.height())
+        if self.theme_key == "blue_terminal_90s":
+            painter.fillRect(rect, QColor(tokens["bg"]))
+            painter.setPen(QPen(QColor(tokens["frame_light"]), 2))
+            painter.drawRect(QRectF(18, 18, width - 36, height - 36))
+            painter.setPen(QPen(QColor(tokens["accent"]), 1))
+            painter.drawText(34, 50, "KLOUDY BIOS TERMINAL 90S")
+            painter.setPen(QPen(QColor(tokens["text"]), 1))
+            for index, label in enumerate(("SYSTEM READY", "FH6 VINYL BUFFER ONLINE", "PRESS GENERATE TO CONNECT")):
+                painter.drawText(34, 82 + index * 22, label)
+            return
+        if self.theme_key == "matrix_green":
+            painter.fillRect(rect, QColor("#000000"))
+            painter.setPen(QPen(QColor(0, 255, 65, 58), 1))
+            painter.drawRect(QRectF(18, 18, width - 36, height - 36))
+            glyphs = "01ABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&<>"
+            font = painter.font()
+            font.setFamily("Consolas")
+            font.setPointSize(10)
+            font.setBold(True)
+            painter.setFont(font)
+            line_height = 16
+            for column in self.matrix_columns:
+                rng = random.Random(column["glyph_seed"])
+                x = int(column["x"] * width)
+                y = int(column["y"] * height)
+                for row in range(column["length"]):
+                    alpha = int(255 * column["alpha"] * max(0.08, 1.0 - row / max(1, column["length"])))
+                    if row == 0:
+                        color = QColor(220, 255, 220, min(255, alpha + 80))
+                    else:
+                        color = QColor(0, 255, 65, alpha)
+                    painter.setPen(QPen(color, 1))
+                    painter.drawText(x, y - row * line_height, rng.choice(glyphs))
+            painter.setPen(QPen(QColor("#00ff41"), 1))
+            painter.drawText(34, 50, "MATRIX LINK ESTABLISHED")
+            return
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0.00, QColor(tokens["bg"]))
+        gradient.setColorAt(0.58, QColor(tokens["panel"]))
+        gradient.setColorAt(1.00, QColor(tokens["panel_alt"]))
+        painter.fillRect(rect, gradient)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        accent = QColor(tokens["accent"])
+        accent.setAlpha(34)
+        accent_dark = QColor(tokens["accent_dark"])
+        accent_dark.setAlpha(46)
+        painter.setBrush(accent)
+        painter.drawEllipse(QRectF(width * 0.66, -height * 0.16, width * 0.46, height * 0.46))
+        painter.setBrush(accent_dark)
+        painter.drawEllipse(QRectF(-width * 0.18, height * 0.58, width * 0.46, height * 0.44))
+
+        if self.theme_key in ("eurocorp", "crynet", "elite"):
+            grid_color = QColor(tokens["accent"])
+            grid_color.setAlpha(30 if self.theme_key != "elite" else 46)
+            painter.setPen(QPen(grid_color, 1))
+            step = 54 if self.theme_key != "elite" else 42
+            for x in range(-step, width + step, step):
+                painter.drawLine(x, 0, x + int(width * 0.10), height)
+            for y in range(0, height + step, step):
+                painter.drawLine(0, y, width, y - int(height * 0.06))
+            painter.setPen(QPen(QColor(tokens["frame_light"]), 2))
+            painter.drawLine(0, int(height * 0.16), width, int(height * 0.16))
+            painter.drawLine(int(width * 0.76), 0, int(width * 0.90), height)
+        elif self.theme_key == "unatco":
+            block = QColor(tokens["accent"])
+            block.setAlpha(42)
+            painter.setBrush(block)
+            for index in range(7):
+                painter.drawRect(QRectF(width * (0.08 + index * 0.12), height * 0.08, width * 0.035, height * 0.18))
+            painter.setPen(QPen(QColor(tokens["success"]), 1))
+            for y in range(38, height, 72):
+                painter.drawLine(18, y, min(width - 18, 260), y)
+        elif self.theme_key == "new_eden":
+            painter.setPen(QPen(QColor(tokens["accent"]), 5))
+            painter.drawLine(int(width * 0.78), 0, width, int(height * 0.24))
+            painter.drawLine(0, int(height * 0.82), int(width * 0.22), height)
+            painter.setBrush(QColor(228, 3, 46, 22))
+            painter.drawPolygon(
+                [
+                    QPoint(int(width * 0.68), int(height * 0.08)),
+                    QPoint(int(width * 0.93), int(height * 0.17)),
+                    QPoint(int(width * 0.84), int(height * 0.38)),
+                    QPoint(int(width * 0.59), int(height * 0.28)),
+                ]
+            )
+        elif self.theme_key == "red_phosphorous":
+            painter.setPen(QPen(QColor(tokens["accent"]), 1))
+            for y in range(0, height, 18):
+                painter.drawLine(0, y, width, y)
+            painter.setPen(QPen(QColor(tokens["error"]), 2))
+            painter.drawRect(QRectF(16, 16, width - 32, height - 32))
+        elif self.theme_key == "blackout_violet":
+            painter.setPen(QPen(QColor(180, 108, 255, 32), 1))
+            for index in range(9):
+                x = int(width * (0.08 + index * 0.11))
+                painter.drawLine(x, 0, int(x + width * 0.18), height)
+            painter.setPen(QPen(QColor(125, 66, 199, 95), 2))
+            painter.drawArc(QRectF(width - 280, height - 230, 210, 210), 20 * 16, 270 * 16)
+            painter.drawArc(QRectF(45, 42, 170, 170), 180 * 16, -230 * 16)
 
     def paint_petals(self, painter: QPainter):
         width = max(1, self.width())
@@ -1331,6 +2088,104 @@ class SparkleLinkPanel(QWidget):
             painter.drawLine(int(inner_x), int(inner_y), int(outer_x), int(outer_y))
 
 
+class WorkflowShell(QFrame):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("workflowShell")
+        self.page_titles: list[str] = []
+        self.page_indices: dict[str, int] = {}
+        self.current_group: str | None = None
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+
+        self.nav = QListWidget()
+        self.nav.setObjectName("workflowNav")
+        self.nav.setFixedWidth(280)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.nav.itemClicked.connect(self._activate_item)
+        layout.addWidget(self.nav)
+
+        content = QFrame()
+        content.setObjectName("workflowContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(16, 12, 16, 16)
+        content_layout.setSpacing(10)
+        self.title = QLabel("Dashboard")
+        self.title.setObjectName("workflowTitle")
+        self.subtitle = QLabel(WORKFLOW_SUBTITLES["Dashboard"])
+        self.subtitle.setObjectName("workflowSubtitle")
+        self.subtitle.setWordWrap(True)
+        content_layout.addWidget(self.title)
+        content_layout.addWidget(self.subtitle)
+        self.stack = QStackedWidget()
+        content_layout.addWidget(self.stack, 1)
+        layout.addWidget(content, 1)
+
+    def addTab(self, widget: QWidget, title: str):
+        group = WORKFLOW_META.get(title, ("Other", ""))[0]
+        if group != self.current_group:
+            heading = QListWidgetItem(group.upper())
+            heading.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.nav.addItem(heading)
+            self.current_group = group
+        index = self.stack.addWidget(widget)
+        item = QListWidgetItem(title)
+        item.setData(Qt.ItemDataRole.UserRole, index)
+        item.setToolTip(WORKFLOW_SUBTITLES.get(title, title))
+        self.nav.addItem(item)
+        self.page_titles.append(title)
+        self.page_indices[title] = index
+        if self.stack.count() == 1:
+            self.nav.setCurrentItem(item)
+            self._set_page(index)
+        return index
+
+    def switch_to(self, title: str):
+        index = self.page_indices.get(title)
+        if index is None:
+            return
+        self._set_page(index)
+        for row in range(self.nav.count()):
+            item = self.nav.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == index:
+                self.nav.setCurrentItem(item)
+                break
+
+    def _activate_item(self, item: QListWidgetItem):
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if index is not None:
+            self._set_page(int(index))
+
+    def _set_page(self, index: int):
+        self.stack.setCurrentIndex(index)
+        title = self.page_titles[index] if 0 <= index < len(self.page_titles) else "Dashboard"
+        self.title.setText(title)
+        self.subtitle.setText(WORKFLOW_SUBTITLES.get(title, ""))
+
+
+class DashboardCard(QFrame):
+    def __init__(self, title: str, text: str, action_text: str, action, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("dashboardCard")
+        self.setMinimumHeight(160)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        title_label = QLabel(title)
+        title_label.setObjectName("dashboardCardTitle")
+        title_label.setWordWrap(True)
+        body = QLabel(text)
+        body.setObjectName("dashboardCardText")
+        body.setWordWrap(True)
+        button = QPushButton(action_text)
+        button.setObjectName("primaryButton")
+        button.clicked.connect(action)
+        layout.addWidget(title_label)
+        layout.addWidget(body, 1)
+        layout.addWidget(button)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_images: list[str]):
         super().__init__()
@@ -1338,8 +2193,8 @@ class MainWindow(QMainWindow):
         if _PSUTIL_ERROR is not None:
             raise _PSUTIL_ERROR
         self.setWindowTitle(f"Kloudy's FH6 Painter - {get_version()}")
-        self.resize(1280, 1060)
-        self.setMinimumSize(1180, 940)
+        self.resize(1840, 1060)
+        self.setMinimumSize(1600, 940)
         self.app_settings = load_app_settings()
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()][:1]
@@ -1351,6 +2206,8 @@ class MainWindow(QMainWindow):
         self.process_lock = threading.Lock()
         self.shutdown_event = threading.Event()
         self.stop_generation_event = threading.Event()
+        self.dialup_sound_stop_event = threading.Event()
+        self.dialup_sound_thread: threading.Thread | None = None
         self.active_generation_images: list[Path] = []
         self.active_generation_run_dirs: dict[Path, Path] = {}
         self.latest_generated_run_dir: Path | None = None
@@ -1411,19 +2268,36 @@ class MainWindow(QMainWindow):
         central.setObjectName("appRoot")
         self.background_widget = central
         root = QVBoxLayout(central)
+        root.setContentsMargins(12, 12, 12, 10)
+        root.setSpacing(12)
+        top_bar = QFrame()
+        top_bar.setObjectName("topBar")
+        top_layout = QHBoxLayout(top_bar)
+        top_layout.setContentsMargins(18, 12, 18, 12)
+        title_stack = QVBoxLayout()
+        title = QLabel(f"Kloudy's FH6 Painter {get_version()}")
+        title.setObjectName("appTitle")
+        subtitle = QLabel("Generate, finalize, import, edit, and troubleshoot FH6 vinyl JSONs.")
+        subtitle.setObjectName("appSubtitle")
+        title_stack.addWidget(title)
+        title_stack.addWidget(subtitle)
+        top_layout.addLayout(title_stack, 1)
         self.phase_label = QLabel("Ready to generate or import.")
         self.phase_label.setObjectName("phaseBanner")
         self.phase_label.setWordWrap(True)
         self.phase_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root.addWidget(self.phase_label)
+        top_layout.addWidget(self.phase_label, 2)
         self.update_alarm = QLabel("Main build: checking...", central)
         self.update_alarm.setObjectName("updateAlarm")
         self.update_alarm.setWordWrap(True)
         self.update_alarm.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.update_alarm.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.update_alarm.raise_()
-        self.tabs = QTabWidget()
+        top_layout.addWidget(self.update_alarm, 1)
+        root.addWidget(top_bar)
+        self.tabs = WorkflowShell()
         root.addWidget(self.tabs, 1)
+        self._build_dashboard_tab()
         self._build_generate_tab()
         self._build_import_tab()
         self._build_handmade_import_tab()
@@ -1431,8 +2305,12 @@ class MainWindow(QMainWindow):
         self._build_editor_tab()
         self._build_image_tools_tab()
         self._build_image_size_tab()
+        self._build_bug_report_tab()
         self._build_tutorial_tab()
         self._build_settings_tab()
+        self.populate_profile_list()
+        self.update_setting_description()
+        self.sync_custom_state()
         footer = QHBoxLayout()
         self.status_label = QLabel("Ready")
         self.progress_label = QLabel("")
@@ -1471,6 +2349,10 @@ class MainWindow(QMainWindow):
 
     def open_kofi(self):
         QDesktopServices.openUrl(QUrl(KOFI_URL))
+
+    def go_to_workflow(self, title: str):
+        if hasattr(self, "tabs") and hasattr(self.tabs, "switch_to"):
+            self.tabs.switch_to(title)
 
     def open_fabric_editor(self):
         if os.name != "nt":
@@ -1560,6 +2442,83 @@ class MainWindow(QMainWindow):
             with contextlib.suppress(RuntimeError):
                 combo.hidePopup()
 
+    def _build_dashboard_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(16)
+
+        hero = QFrame()
+        hero.setObjectName("dashboardCard")
+        hero_layout = QGridLayout(hero)
+        hero_title = QLabel("What do you want to do next?")
+        hero_title.setObjectName("dashboardCardTitle")
+        hero_text = QLabel(
+            "Use the left workflow rail for the full toolset, or start with the three most common actions below. "
+            "Every existing feature still has its own page; this shell just gives the app a clearer order."
+        )
+        hero_text.setWordWrap(True)
+        hero_layout.addWidget(hero_title, 0, 0, 1, 3)
+        hero_layout.addWidget(hero_text, 1, 0, 1, 3)
+        layout.addWidget(hero)
+
+        cards = QGridLayout()
+        cards.setSpacing(14)
+        cards.addWidget(
+            DashboardCard(
+                "Generate Final Vinyl",
+                "Pick source art, choose a preset, watch progress, then finalize import-ready JSONs.",
+                "Start generating",
+                lambda: self.go_to_workflow("Generate Final Vinyl"),
+            ),
+            0,
+            0,
+        )
+        cards.addWidget(
+            DashboardCard(
+                "Import Final JSON",
+                "Choose a finalized checkpoint, preview it, auto-locate the FH6 template, and write it into the editor.",
+                "Open importer",
+                lambda: self.go_to_workflow("Import Final JSON"),
+            ),
+            0,
+            1,
+        )
+        cards.addWidget(
+            DashboardCard(
+                "Open Vinyl Editor",
+                "Clean up JSONs manually with the local Fabric editor, shape library, favorites, overlay, and export tools.",
+                "Open editor tools",
+                lambda: self.go_to_workflow("Editor"),
+            ),
+            0,
+            2,
+        )
+        layout.addLayout(cards)
+
+        lower = QSplitter(Qt.Orientation.Horizontal)
+        status_panel = QGroupBox("Current Session")
+        status_layout = QVBoxLayout(status_panel)
+        status_layout.addWidget(QLabel("Imports: use one saved/reopened 3000 white-circle FH6 template, then ungroup it."))
+        status_layout.addWidget(QLabel("Generation: wait for Finalize Checkpoints before importing; raw builder output is not the final target."))
+        status_layout.addWidget(QLabel("Reports: create local report packages you can inspect and redact before sharing."))
+        shortcut_panel = QGroupBox("Useful Shortcuts")
+        shortcut_layout = QVBoxLayout(shortcut_panel)
+        for label, target in (
+            ("Prepare source art: background remover / upscale / downscale", "Image Tools"),
+            ("Check source megapixels before generating", "Image Size Helper"),
+            ("Universal handmade importer", "Import Handmade JSON"),
+            ("Tutorial and first-time setup guide", "Tutorial"),
+        ):
+            button = QPushButton(label)
+            button.clicked.connect(lambda _checked=False, t=target: self.go_to_workflow(t))
+            shortcut_layout.addWidget(button)
+        lower.addWidget(status_panel)
+        lower.addWidget(shortcut_panel)
+        lower.setStretchFactor(0, 1)
+        lower.setStretchFactor(1, 1)
+        layout.addWidget(lower, 1)
+        self.tabs.addTab(tab, "Dashboard")
+
     def _build_generate_tab(self):
         tab = QWidget()
         layout = QHBoxLayout(tab)
@@ -1605,48 +2564,19 @@ class MainWindow(QMainWindow):
         self.auto_summary_label = QLabel("Preset settings are fixed. Source image metrics are shown for context only.")
         self.auto_summary_label.setWordWrap(True)
         quality_layout.addWidget(self.auto_summary_label)
-        self.custom_enabled = QCheckBox("Pro settings - manual samples/resolution")
-        self.custom_enabled.setToolTip("Default uses the selected preset exactly. Enable this only when you want to override resolution and sample counts yourself.")
-        self.custom_enabled.setChecked(settings_bool(self.app_settings.get("pro_generation_settings"), False))
-        self.custom_enabled.stateChanged.connect(self.sync_custom_state)
-        self.custom_enabled.stateChanged.connect(self.save_pro_settings_state)
-        quality_layout.addWidget(self.custom_enabled)
         form = QGridLayout()
         self.custom_layers = QLineEdit()
-        self.custom_resolution = QLineEdit()
-        self.custom_random = QLineEdit()
-        self.custom_mutated = QLineEdit()
         self.custom_save_at = QLineEdit()
         fields = [
             ("Template layers", self.custom_layers, "template_layers"),
-            ("Max resolution", self.custom_resolution, "max_resolution"),
-            ("Random samples", self.custom_random, "random_samples"),
-            ("Mutated samples", self.custom_mutated, "mutated_samples"),
             ("Finalize at layers", self.custom_save_at, "finalize_at"),
         ]
         for row, (label, widget, help_key) in enumerate(fields):
             form.addWidget(self.label_with_help(label, help_key), row, 0)
             form.addWidget(widget, row, 1)
-        for widget in (self.custom_resolution, self.custom_random, self.custom_mutated):
-            widget.textEdited.connect(self.enable_custom_tuning_from_edit)
-            widget.textEdited.connect(self.save_pro_field_values)
         for widget in (self.custom_layers, self.custom_save_at):
             widget.textEdited.connect(self.sync_auto_summary)
         quality_layout.addLayout(form)
-        self.pro_setting_widgets = [
-            self.custom_resolution,
-            self.custom_random,
-            self.custom_mutated,
-        ]
-        saved_pro_values = self.app_settings.get("generation_pro_values") if isinstance(self.app_settings.get("generation_pro_values"), dict) else {}
-        self.custom_resolution.setText(str(saved_pro_values.get("maxResolution", "")))
-        self.custom_random.setText(str(saved_pro_values.get("randomSamples", "")))
-        self.custom_mutated.setText(str(saved_pro_values.get("mutatedSamples", "")))
-        self.pro_setting_labels = []
-        for row in (1, 2, 3):
-            label_item = form.itemAtPosition(row, 0)
-            if label_item and label_item.widget():
-                self.pro_setting_labels.append(label_item.widget())
         self.vroom = QCheckBox("2x Sample Goblin (slower)")
         self.vroom.setToolTip("Doubles auto/manual random and mutated samples for more search effort. Usually slower, sometimes cleaner.")
         self.vroom.stateChanged.connect(self.update_setting_description)
@@ -1661,7 +2591,6 @@ class MainWindow(QMainWindow):
         preset_actions.addWidget(save_preset)
         preset_actions.addWidget(delete_preset)
         quality_layout.addLayout(preset_actions)
-        self.pro_action_widgets = [self.vroom_row, save_preset, delete_preset]
         self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
         self.luma_enabled.setToolTip("Best for flat logos/liveries and hard color bands. Leave off for most anime, hair, skin, and smooth gradients.")
         self.luma_enabled.setChecked(False)
@@ -1674,7 +2603,6 @@ class MainWindow(QMainWindow):
         self.repair_enabled.stateChanged.connect(self.sync_auto_summary)
         self.repair_row = self.checkbox_with_help(self.repair_enabled, "edge_repair")
         quality_layout.addWidget(self.repair_row)
-        self.pro_action_widgets.extend([self.luma_row, self.repair_row])
         left_layout.addWidget(quality_group)
 
         run_group = QGroupBox("Step 3 - Generate Final Vinyl")
@@ -1693,9 +2621,6 @@ class MainWindow(QMainWindow):
         self.preview = PreviewView("Choose source art or a finalized vinyl to preview it here.")
         right_layout.addWidget(self.preview, 1)
         self.tabs.addTab(tab, "Generate Final Vinyl")
-        self.populate_profile_list()
-        self.update_setting_description()
-        self.sync_custom_state()
 
     def _build_import_tab(self):
         tab = QWidget()
@@ -2140,6 +3065,93 @@ class MainWindow(QMainWindow):
         layout.addWidget(text)
         self.tabs.addTab(tab, "Tutorial")
 
+    def _build_bug_report_tab(self):
+        tab = QWidget()
+        layout = QHBoxLayout(tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter)
+
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        privacy = QLabel(
+            "Private by default: this page never uploads anything. It builds a local report you can inspect, edit, copy, or send manually."
+        )
+        privacy.setObjectName("bugReportPrivacy")
+        privacy.setWordWrap(True)
+        left_layout.addWidget(privacy)
+
+        form = QGroupBox("Report Details")
+        form_layout = QGridLayout(form)
+        self.report_kind = self.make_combo(["Bug", "Suggestion", "Importer issue", "Generator quality issue", "Setup issue"], max_visible=8)
+        self.report_title = QLineEdit()
+        self.report_title.setPlaceholderText("Short title")
+        self.report_body = QTextEdit()
+        self.report_body.setPlaceholderText("What happened? What did you expect? What exact steps reproduce it?")
+        self.report_body.setMinimumHeight(220)
+        form_layout.addWidget(QLabel("Type"), 0, 0)
+        form_layout.addWidget(self.report_kind, 0, 1)
+        form_layout.addWidget(QLabel("Title"), 1, 0)
+        form_layout.addWidget(self.report_title, 1, 1)
+        form_layout.addWidget(QLabel("Details"), 2, 0, Qt.AlignmentFlag.AlignTop)
+        form_layout.addWidget(self.report_body, 2, 1)
+        left_layout.addWidget(form)
+
+        options = QGroupBox("What To Include")
+        options_layout = QVBoxLayout(options)
+        self.report_include_version = QCheckBox("App version and selected theme")
+        self.report_include_version.setChecked(True)
+        self.report_include_logs = QCheckBox("Visible app log text")
+        self.report_include_logs.setChecked(True)
+        self.report_include_paths = QCheckBox("Local file paths")
+        self.report_include_paths.setChecked(False)
+        options_layout.addWidget(self.report_include_version)
+        options_layout.addWidget(self.report_include_logs)
+        options_layout.addWidget(self.report_include_paths)
+        note = QLabel(
+            "Recommended privacy: leave local paths off. Screenshots, source images, generated JSONs, and memory dumps are never attached automatically."
+        )
+        note.setWordWrap(True)
+        options_layout.addWidget(note)
+        left_layout.addWidget(options)
+
+        actions = QHBoxLayout()
+        preview = QPushButton("Preview report")
+        preview.clicked.connect(self.preview_bug_report)
+        save = QPushButton("Save local report")
+        save.setObjectName("primaryButton")
+        save.clicked.connect(self.save_bug_report)
+        copy = QPushButton("Copy preview")
+        copy.clicked.connect(self.copy_bug_report)
+        actions.addWidget(preview)
+        actions.addWidget(save)
+        actions.addWidget(copy)
+        left_layout.addLayout(actions)
+        left_layout.addStretch()
+
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.addWidget(QLabel("Review before sharing"))
+        self.report_preview = QTextEdit()
+        self.report_preview.setReadOnly(False)
+        self.report_preview.setPlaceholderText("Click Preview report to build a local, redaction-friendly report.")
+        right_layout.addWidget(self.report_preview, 1)
+        security = QTextEdit()
+        security.setReadOnly(True)
+        security.setMaximumHeight(190)
+        security.setPlainText(
+            "Secure upload design for later:\n"
+            "- App creates a redaction preview locally first.\n"
+            "- Upload goes only to a private endpoint controlled by Kloudy.\n"
+            "- Server owns tokens/secrets; the app never ships secrets.\n"
+            "- Users can still choose manual copy/save if they do not trust upload."
+        )
+        right_layout.addWidget(security)
+
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setSizes([560, 720])
+        self.tabs.addTab(tab, "Bug Reports")
+
     def _build_settings_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -2153,10 +3165,50 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(QLabel("Theme"))
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addWidget(QLabel("Theme changes apply immediately and are saved for the next launch."))
-        theme_layout.addWidget(QLabel("Horizon Pulse uses an animated neon road grid, racing streaks, and translucent dark controls."))
-        theme_layout.addWidget(QLabel("Sakura Glass uses an opaque control frame with animated cherry blossoms in the background."))
-        theme_layout.addWidget(QLabel("Blackout is a full dark opaque preset for low-glare use."))
+        theme_layout.addWidget(QLabel("Animated themes: Sakura Glass and Horizon Pulse."))
+        theme_layout.addWidget(QLabel("Game-inspired themes: Eurocorp, Elite, CryNet, UNATCO, New Eden, Red Phosphorous, Blue Terminal 90s, and Matrix Green."))
+        theme_layout.addWidget(QLabel("Blackout Violet mixes the low-glare Blackout base with a purple neon edge."))
+        theme_layout.addWidget(QLabel("Blackout remains the full opaque low-glare default."))
         layout.addWidget(theme)
+
+        generator = QGroupBox("Generator Pro Settings")
+        generator_layout = QVBoxLayout(generator)
+        self.custom_enabled = QCheckBox("Enable manual resolution and sample overrides")
+        self.custom_enabled.setToolTip("Default uses the selected preset exactly. Enable this only when you want to override resolution and sample counts yourself.")
+        self.custom_enabled.setChecked(settings_bool(self.app_settings.get("pro_generation_settings"), False))
+        self.custom_enabled.stateChanged.connect(self.sync_custom_state)
+        self.custom_enabled.stateChanged.connect(self.save_pro_settings_state)
+        generator_layout.addWidget(self.custom_enabled)
+        pro_form = QGridLayout()
+        self.custom_resolution = QLineEdit()
+        self.custom_random = QLineEdit()
+        self.custom_mutated = QLineEdit()
+        pro_fields = [
+            ("Max resolution", self.custom_resolution, "max_resolution"),
+            ("Random samples", self.custom_random, "random_samples"),
+            ("Mutated samples", self.custom_mutated, "mutated_samples"),
+        ]
+        self.pro_setting_labels = []
+        for row, (label, widget, help_key) in enumerate(pro_fields):
+            label_widget = self.label_with_help(label, help_key)
+            self.pro_setting_labels.append(label_widget)
+            pro_form.addWidget(label_widget, row, 0)
+            pro_form.addWidget(widget, row, 1)
+            widget.textEdited.connect(self.enable_custom_tuning_from_edit)
+            widget.textEdited.connect(self.save_pro_field_values)
+        generator_layout.addLayout(pro_form)
+        saved_pro_values = self.app_settings.get("generation_pro_values") if isinstance(self.app_settings.get("generation_pro_values"), dict) else {}
+        self.custom_resolution.setText(str(saved_pro_values.get("maxResolution", "")))
+        self.custom_random.setText(str(saved_pro_values.get("randomSamples", "")))
+        self.custom_mutated.setText(str(saved_pro_values.get("mutatedSamples", "")))
+        self.pro_setting_widgets = [self.custom_resolution, self.custom_random, self.custom_mutated]
+        self.blue_terminal_dialup_enabled = QCheckBox("Blue Terminal 90s: play dial-up sound while generating")
+        self.blue_terminal_dialup_enabled.setToolTip("Only affects the Blue Terminal 90s theme. The generated modem-like sound loops while generation is running and stops when it finishes.")
+        self.blue_terminal_dialup_enabled.setChecked(settings_bool(self.app_settings.get("blue_terminal_dialup_sound"), False))
+        self.blue_terminal_dialup_enabled.stateChanged.connect(self.save_generator_settings)
+        generator_layout.addWidget(self.blue_terminal_dialup_enabled)
+        layout.addWidget(generator)
+
         importer = QGroupBox("Importer")
         importer_layout = QVBoxLayout(importer)
         self.legacy_masks_enabled = QCheckBox("Use legacy 4 big FH border masks")
@@ -2172,10 +3224,163 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
 
+    def save_generator_settings(self, *_args):
+        if hasattr(self, "blue_terminal_dialup_enabled"):
+            self.app_settings["blue_terminal_dialup_sound"] = bool(self.blue_terminal_dialup_enabled.isChecked())
+            save_app_settings(self.app_settings)
+
     def save_importer_settings(self, *_args):
         if hasattr(self, "legacy_masks_enabled"):
             self.app_settings["legacy_border_masks"] = bool(self.legacy_masks_enabled.isChecked())
             save_app_settings(self.app_settings)
+
+    def build_bug_report_text(self) -> str:
+        kind = self.report_kind.currentText() if hasattr(self, "report_kind") else "Bug"
+        title = self.report_title.text().strip() if hasattr(self, "report_title") else ""
+        details = self.report_body.toPlainText().strip() if hasattr(self, "report_body") else ""
+        lines = [
+            "# Kloudy's FH6 Painter Report",
+            "",
+            f"Type: {kind}",
+            f"Title: {title or '(not provided)'}",
+            f"Created UTC: {datetime.utcnow().isoformat(timespec='seconds')}Z",
+            "",
+            "## User Description",
+            details or "(not provided)",
+            "",
+        ]
+        if getattr(self, "report_include_version", None) and self.report_include_version.isChecked():
+            theme = self.theme_combo.currentText() if hasattr(self, "theme_combo") else self.app_settings.get("theme", DEFAULT_THEME)
+            lines.extend([
+                "## App Context",
+                f"Version: {get_version()}",
+                f"Theme: {theme}",
+                f"Platform: {sys.platform}",
+                "",
+            ])
+        if getattr(self, "report_include_logs", None) and self.report_include_logs.isChecked():
+            log_text = self.log.toPlainText() if hasattr(self, "log") else ""
+            if not getattr(self, "report_include_paths", None) or not self.report_include_paths.isChecked():
+                log_text = re.sub(r"([A-Za-z]:\\|/home/|/Users/|\\\\)[^\n\r\t\"]+", "[local path redacted]", log_text)
+            lines.extend([
+                "## Visible App Log",
+                "```text",
+                log_text[-12000:] if log_text else "(empty)",
+                "```",
+                "",
+            ])
+        lines.extend([
+            "## Privacy Notes",
+            "- This report was generated locally.",
+            "- No automatic upload was performed.",
+            "- Screenshots, source images, generated JSONs, memory dumps, and external files are not attached automatically.",
+        ])
+        return "\n".join(lines)
+
+    def preview_bug_report(self):
+        self.report_preview.setPlainText(self.build_bug_report_text())
+        self.log_line("Built local bug/suggestion report preview.")
+
+    def copy_bug_report(self):
+        text = self.report_preview.toPlainText().strip() or self.build_bug_report_text()
+        QApplication.clipboard().setText(text)
+        self.log_line("Copied local report preview to clipboard.")
+
+    def save_bug_report(self):
+        text = self.report_preview.toPlainText().strip() or self.build_bug_report_text()
+        out_dir = ROOT / "runtime" / "bug-reports"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe_title = re.sub(r"[^a-zA-Z0-9_.-]+", "-", (self.report_title.text().strip() or "report")).strip("-")[:60]
+        path = out_dir / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{safe_title or 'report'}.md"
+        path.write_text(text, encoding="utf-8")
+        self.report_preview.setPlainText(text)
+        self.log_line(f"Saved local report: {path}")
+
+    def selected_theme_key(self) -> str:
+        theme_name = self.theme_combo.currentText() if hasattr(self, "theme_combo") else self.app_settings.get("theme", DEFAULT_THEME)
+        return THEMES.get(theme_name, THEMES[DEFAULT_THEME])
+
+    def dialup_sound_enabled(self) -> bool:
+        if hasattr(self, "blue_terminal_dialup_enabled"):
+            return bool(self.blue_terminal_dialup_enabled.isChecked())
+        return settings_bool(self.app_settings.get("blue_terminal_dialup_sound"), False)
+
+    def start_dialup_sound_if_needed(self):
+        if self.selected_theme_key() != "blue_terminal_90s":
+            return
+        if not self.dialup_sound_enabled():
+            self.log_line("Blue Terminal 90s dial-up sound is off in Settings.")
+            return
+        if self.dialup_sound_thread and self.dialup_sound_thread.is_alive():
+            return
+        self.dialup_sound_stop_event.clear()
+        self.log_line("Blue Terminal 90s dial-up sound started.")
+        self.dialup_sound_thread = threading.Thread(target=self.dialup_sound_worker, daemon=True)
+        self.dialup_sound_thread.start()
+
+    def stop_dialup_sound(self):
+        self.dialup_sound_stop_event.set()
+        if os.name == "nt":
+            try:
+                import winsound
+                winsound.PlaySound(None, 0)
+            except Exception:
+                pass
+
+    def dialup_wav_path(self) -> Path:
+        return ROOT / "runtime" / "theme-audio" / "blue-terminal-dialup.wav"
+
+    def ensure_dialup_wav(self) -> Path:
+        path = self.dialup_wav_path()
+        if path.exists() and path.stat().st_size > 1024:
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        sample_rate = 11025
+        pattern = [
+            (1200, 0.10),
+            (0, 0.03),
+            (2100, 0.08),
+            (1450, 0.06),
+            (900, 0.08),
+            (1800, 0.12),
+            (700, 0.08),
+            (2300, 0.05),
+            (1500, 0.10),
+            (1050, 0.12),
+        ]
+        with wave.open(str(path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+            phase = 0.0
+            frames = bytearray()
+            for frequency, seconds in pattern:
+                count = max(1, int(sample_rate * seconds))
+                for index in range(count):
+                    if frequency <= 0:
+                        sample = 0
+                    else:
+                        sweep = frequency + 180.0 * math.sin(index / max(1, count) * math.tau)
+                        phase += math.tau * sweep / sample_rate
+                        value = math.sin(phase) + 0.35 * math.sin(phase * 2.7)
+                        sample = int(max(-1.0, min(1.0, value * 0.42)) * 32767)
+                    frames.extend(struct.pack("<h", sample))
+            wav.writeframes(bytes(frames))
+        return path
+
+    def dialup_sound_worker(self):
+        if os.name != "nt":
+            return
+        try:
+            import winsound
+            path = self.ensure_dialup_wav()
+            winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+            while not self.dialup_sound_stop_event.is_set():
+                time.sleep(0.1)
+            winsound.PlaySound(None, 0)
+        except Exception as exc:
+            self.bus.log.emit(f"Blue Terminal 90s dial-up sound failed: {exc}")
+            return
 
     def schedule_theme_apply(self, *_args):
         if self._theme_apply_pending:
@@ -2302,6 +3507,8 @@ class MainWindow(QMainWindow):
                 QScrollBar::add-line, QScrollBar::sub-line { background: transparent; border: none; width: 0; height: 0; }
                 """
             )
+        elif theme_key in THEME_TOKEN_STYLES:
+            self.setStyleSheet(token_theme_stylesheet(THEME_TOKEN_STYLES[theme_key]))
         else:
             self.setStyleSheet(
                 """
@@ -2329,6 +3536,7 @@ class MainWindow(QMainWindow):
                 QLabel { color: #3b244d; }
                 """
             )
+        self.setStyleSheet(self.styleSheet() + SHELL_QSS + shell_theme_qss(theme_key))
         self.apply_update_alarm_style()
 
     def start_update_check(self):
@@ -2461,8 +3669,6 @@ class MainWindow(QMainWindow):
         self.profile_combo.blockSignals(False)
 
     def on_profile_changed(self):
-        if hasattr(self, "custom_enabled") and self.custom_enabled.isChecked():
-            self.custom_enabled.setChecked(False)
         self.update_setting_description()
         self.sync_auto_summary()
 
@@ -3070,6 +4276,7 @@ class MainWindow(QMainWindow):
         self.active_generation_images = images
         self.set_status("Running")
         self.set_phase("building", "Starting internal build. Final import JSONs are not ready yet.")
+        self.start_dialup_sound_if_needed()
         threading.Thread(target=self.generate_worker, args=(setting, images, repair_enabled), daemon=True).start()
 
     def stop_generate(self):
@@ -3182,6 +4389,7 @@ class MainWindow(QMainWindow):
             self.bus.log.emit(f"Generator failed: {exc}")
             self.bus.status.emit("Failed")
         finally:
+            self.stop_dialup_sound()
             self.active_generation_images = []
             self.active_generation_run_dirs = {}
 
