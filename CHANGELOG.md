@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.8
+
+- Fixed Fabric editor transform behavior for mirrored shapes, side resizing, corner skewing, and light-theme selection visibility.
+- Improved editor JSON round-trip handling for negative scale values.
+
 ## 2.0.7
 
 - Improved FH6 import/export memory locating from grouped, ungrouped, and nested-group dump analysis.

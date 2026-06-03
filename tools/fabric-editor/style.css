@@ -32,6 +32,10 @@
   --editor-notch-line: rgba(18, 16, 18, 0.92);
   --editor-notch-muted: rgba(18, 16, 18, 0.48);
   --editor-notch-active: rgba(236, 111, 164, 0.98);
+  --editor-selection-border: #2b1622;
+  --editor-selection-corner: #fffafd;
+  --editor-selection-corner-stroke: #2b1622;
+  --editor-skew-corner: #ec6fa4;
   --shape-tile-bg: #fff4f9;
   --dialog-bg: #fffafd;
   --dialog-header: #ffe5f1;
@@ -72,6 +76,10 @@
   --editor-notch-line: rgba(255, 255, 255, 0.94);
   --editor-notch-muted: rgba(255, 255, 255, 0.46);
   --editor-notch-active: rgba(255, 255, 255, 1);
+  --editor-selection-border: #ffffff;
+  --editor-selection-corner: #111722;
+  --editor-selection-corner-stroke: #ffffff;
+  --editor-skew-corner: #70e8ff;
   --shape-tile-bg: #111722;
   --dialog-bg: #171b25;
   --dialog-header: #202638;

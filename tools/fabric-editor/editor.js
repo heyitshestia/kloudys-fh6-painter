@@ -134,6 +134,7 @@ function applyEditorTheme(theme) {
   if (canvas) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
     canvas.set("backgroundColor", bg);
+    styleAllTransformControls();
     canvas.requestRenderAll();
   }
 }
@@ -155,6 +156,118 @@ function colorWithAlpha(color, alpha) {
     return `rgba(${parseInt(raw.slice(0, 2), 16)}, ${parseInt(raw.slice(2, 4), 16)}, ${parseInt(raw.slice(4, 6), 16)}, ${safeAlpha})`;
   }
   return color || `rgba(0, 0, 0, ${safeAlpha})`;
+}
+
+function editorTransformColors() {
+  return {
+    border: cssColorVar("--editor-selection-border", "#2b1622"),
+    corner: cssColorVar("--editor-selection-corner", "#ffffff"),
+    cornerStroke: cssColorVar("--editor-selection-corner-stroke", "#2b1622"),
+    skewCorner: cssColorVar("--editor-skew-corner", "#ec6fa4"),
+  };
+}
+
+function styleObjectTransformControls(object) {
+  if (!object) return;
+  const colors = editorTransformColors();
+  object.set({
+    borderColor: colors.border,
+    cornerColor: colors.corner,
+    cornerStrokeColor: colors.cornerStroke,
+    cornerStyle: "circle",
+    transparentCorners: false,
+    cornerSize: 13,
+    touchCornerSize: 28,
+    borderScaleFactor: 2.4,
+    padding: 3,
+  });
+}
+
+function styleAllTransformControls() {
+  if (!canvas) return;
+  canvas.getObjects().forEach(styleObjectTransformControls);
+  const active = canvas.getActiveObject();
+  if (active) styleObjectTransformControls(active);
+}
+
+function editorCornerSkewHandler(eventData, transform, x, y) {
+  if (!fabric?.controlsUtils?.skewHandlerX) return false;
+  return fabric.controlsUtils.skewHandlerX(eventData, transform, x, y);
+}
+
+function editorCornerSkewActionName() {
+  return "skewX";
+}
+
+function editorCornerSkewCursorStyleHandler(_eventData, control) {
+  return control?.x === control?.y ? "nesw-resize" : "nwse-resize";
+}
+
+function editorSideScaleCursorStyleHandler(_eventData, control) {
+  return control?.x ? "ew-resize" : "ns-resize";
+}
+
+function renderSkewCornerControl(ctx, left, top, styleOverride, fabricObject) {
+  const colors = editorTransformColors();
+  const size = this.sizeX || this.sizeY || styleOverride.cornerSize || fabricObject.cornerSize || 13;
+  ctx.save();
+  ctx.translate(left, top);
+  ctx.rotate(fabric.util.degreesToRadians(fabricObject.angle || 0));
+  ctx.fillStyle = colors.skewCorner;
+  ctx.strokeStyle = colors.cornerStroke;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(0, -size / 2);
+  ctx.lineTo(size / 2, 0);
+  ctx.lineTo(0, size / 2);
+  ctx.lineTo(-size / 2, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function configureEditorTransformControls() {
+  if (!fabric?.Control || !fabric?.Object?.prototype?.controls || !fabric.controlsUtils) return;
+  const controls = fabric.Object.prototype.controls;
+  controls.ml = new fabric.Control({
+    x: -0.5,
+    y: 0,
+    cursorStyleHandler: editorSideScaleCursorStyleHandler,
+    actionHandler: fabric.controlsUtils.scalingX,
+    actionName: "scaleX",
+  });
+  controls.mr = new fabric.Control({
+    x: 0.5,
+    y: 0,
+    cursorStyleHandler: editorSideScaleCursorStyleHandler,
+    actionHandler: fabric.controlsUtils.scalingX,
+    actionName: "scaleX",
+  });
+  controls.mt = new fabric.Control({
+    x: 0,
+    y: -0.5,
+    cursorStyleHandler: editorSideScaleCursorStyleHandler,
+    actionHandler: fabric.controlsUtils.scalingY,
+    actionName: "scaleY",
+  });
+  controls.mb = new fabric.Control({
+    x: 0,
+    y: 0.5,
+    cursorStyleHandler: editorSideScaleCursorStyleHandler,
+    actionHandler: fabric.controlsUtils.scalingY,
+    actionName: "scaleY",
+  });
+  for (const [name, x, y] of [["tl", -0.5, -0.5], ["tr", 0.5, -0.5], ["bl", -0.5, 0.5], ["br", 0.5, 0.5]]) {
+    controls[name] = new fabric.Control({
+      x,
+      y,
+      cursorStyleHandler: editorCornerSkewCursorStyleHandler,
+      actionHandler: editorCornerSkewHandler,
+      getActionName: editorCornerSkewActionName,
+      render: renderSkewCornerControl,
+    });
+  }
 }
 
 function setStatus(message) {
@@ -542,6 +655,8 @@ async function makeFabricObject(shape, name = null) {
     targetFindTolerance: 3,
     hoverCursor: "pointer",
     moveCursor: "move",
+    lockScalingFlip: false,
+    centeredScaling: false,
   });
   object.kloudy = {
     name: name || shape.shape_name || (explicitResource ? shapeDisplayName(explicitResource.family, explicitResource.index) : typeLabel(typeCode)),
@@ -566,6 +681,7 @@ async function makeFabricObject(shape, name = null) {
   };
   if (shape.editor_hidden) object.visible = false;
   if (object.kloudy.locked) setObjectLocked(object, true);
+  styleObjectTransformControls(object);
   return object;
 }
 
@@ -843,6 +959,18 @@ function signedScaleToFabric(value) {
   return { scale: Math.abs(safe), flip: safe < 0 };
 }
 
+function currentScaleSigns(object) {
+  return {
+    x: signedScaleX(object) < 0 ? -1 : 1,
+    y: signedScaleY(object) < 0 ? -1 : 1,
+  };
+}
+
+function updateObjectScaleSigns(object) {
+  if (!object?.kloudy) return;
+  object.kloudy.scaleSigns = currentScaleSigns(object);
+}
+
 function fh6SkewFromFabricDegrees(degrees, sx, sy) {
   const safeSy = Number(sy) || 1;
   return -(Math.tan((Number(degrees) || 0) * Math.PI / 180) * (Number(sx) || 1) / safeSy);
@@ -940,7 +1068,8 @@ function objectToShape(object, options = {}) {
   const meta = object.kloudy || {};
   const color = hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
   const extra = Array.isArray(meta.extra) ? meta.extra.slice() : [];
-  const decoded = fh6DataFromObject(object, meta.scaleSigns);
+  updateObjectScaleSigns(object);
+  const decoded = fh6DataFromObject(object, currentScaleSigns(object));
   const data = [
     round(decoded[0]),
     round(decoded[1]),
@@ -1048,6 +1177,7 @@ function round(value) {
 }
 
 function initCanvas() {
+  configureEditorTransformControls();
   const canvasBg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
   canvas = new fabric.Canvas("canvas", {
     preserveObjectStacking: true,
@@ -1063,6 +1193,7 @@ function initCanvas() {
     moveCursor: "move",
     freeDrawingCursor: "default",
   });
+  styleAllTransformControls();
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
   resetView();
@@ -1075,6 +1206,7 @@ function initCanvas() {
   canvas.on("object:modified", () => {
     transformAnchorSnapshot = null;
     clearSnapOverlay();
+    selectedVinylObjects().forEach(updateObjectScaleSigns);
     if ($("autoOverlayColor")?.checked) {
       selectedVinylObjects().forEach((obj) => applyOverlayColorToObject(obj, { remember: true, silent: true }));
     }
@@ -2310,9 +2442,14 @@ function snapTargetToGuides(target, event = null) {
   const zoom = Math.max(canvas.getZoom() || 1, 0.001);
   const threshold = guideState.snapThreshold / zoom;
   const cursorThreshold = (guideState.snapThreshold * 1.45) / zoom;
-  const anchorResult = stabilizeOppositeTransformAnchor(target, contact, transformAction);
   const anchoredResize = transformAction === "scale" || transformAction === "skew";
+  const snappingEnabled = guideState.snapGuides || (guideState.gridEnabled && guideState.snapGrid);
   if (anchoredResize) {
+    if (!snappingEnabled || !snapAllowed) {
+      clearSnapOverlay();
+      return false;
+    }
+    const anchorResult = stabilizeOppositeTransformAnchor(target, contact, transformAction);
     const sideSnap = transformAction === "scale" && snapAllowed
       ? snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold)
       : null;
@@ -2330,7 +2467,7 @@ function snapTargetToGuides(target, event = null) {
     }
     return false;
   }
-  if (!guideState.snapGuides && !(guideState.gridEnabled && guideState.snapGrid)) {
+  if (!snappingEnabled) {
     renderSnapOverlayForTarget(target, contact, null);
     return false;
   }
@@ -2806,7 +2943,8 @@ function updateSelectionPanel() {
   $("selectedShapeCode").textContent = `Type ${obj.kloudy?.type || "unknown"}${obj.kloudy?.mask ? " / mask" : ""}`;
   $("colorPicker").value = obj.fill || "#ffffff";
   $("opacitySlider").value = alphaForObject(obj);
-  const decoded = fh6DataFromObject(obj);
+  updateObjectScaleSigns(obj);
+  const decoded = fh6DataFromObject(obj, currentScaleSigns(obj));
   $("xInput").value = round(decoded[0]);
   $("yInput").value = round(decoded[1]);
   $("sxInput").value = round(decoded[2]);
@@ -2875,6 +3013,10 @@ function applySelectionFields() {
     ...transformProps,
   });
   obj.kloudy.mask = $("maskInput").checked;
+  obj.kloudy.scaleSigns = {
+    x: (Number($("sxInput").value) || 1) < 0 ? -1 : 1,
+    y: (Number($("syInput").value) || 1) < 0 ? -1 : 1,
+  };
   obj.set({ stroke: obj.kloudy.mask ? "#ff5572" : null, strokeWidth: obj.kloudy.mask ? 3 : 0 });
   obj.setCoords();
   applyLiveOverlayColor(obj);
