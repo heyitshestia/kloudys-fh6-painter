@@ -975,36 +975,6 @@ function objectToShape(object, options = {}) {
   return shape;
 }
 
-function objectToLegacyShape(object) {
-  const meta = object.kloudy || {};
-  const typeCode = Number(meta.type);
-  const color = hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
-  const isRect = typeCode === 1048677;
-  const isEllipse = typeCode === 1048678;
-  if (!isRect && !isEllipse) {
-    throw new Error(`${meta.name || typeLabel(typeCode)} is not supported by the normal importer export.`);
-  }
-  const offset = Array.isArray(meta.legacy_offset) ? meta.legacy_offset : [0, 0];
-  const divisor = Number(meta.legacy_divisor) || (isRect ? RECTANGLE_DIVISOR : ELLIPSE_DIVISOR);
-  const decoded = fh6DataFromObject(object, meta.scaleSigns);
-  const fh6Rotation = decoded[4];
-  const rotation = round((360 - fh6Rotation) % 360);
-  return {
-    type: isRect && Math.abs(rotation) < 0.000001 ? 1 : (isRect ? 2 : 16),
-    data: [
-      round(decoded[0] + (Number(offset[0]) || 0)),
-      round(-decoded[1] + (Number(offset[1]) || 0)),
-      round(decoded[2] * divisor),
-      round(decoded[3] * divisor),
-      rotation,
-      round(decoded[5]),
-    ],
-    color,
-    score: Number(meta.score) || 0,
-    mask: Boolean(meta.mask),
-  };
-}
-
 function snapshotShapes() {
   return vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true }));
 }
@@ -2804,9 +2774,7 @@ function refreshLayers() {
     list.appendChild(li);
   });
   setText("exportWarningCount", "0");
-  setText("normalExportStatus", objects.every((obj) => Number(obj.kloudy?.type) === 1048677 || Number(obj.kloudy?.type) === 1048678 || obj.kloudy?.source_format === "legacy_geometry")
-    ? "Compatible"
-    : "FH6 JSON only");
+  setText("normalExportStatus", "Compatible");
   setText("exportReadyChip", objects.length ? "Ready" : "No JSON");
   updateHud();
 }
@@ -2962,7 +2930,8 @@ function cleanProjectBaseName(name, fallback = "vinyl") {
     .replace(/\.json$/i, "")
     .replace(/\.fabric-project$/i, "")
     .replace(/\.fabric-export$/i, "")
-    .replace(/\.normal-import$/i, "");
+    .replace(/\.normal-import$/i, "")
+    .replace(/\.fh6-import$/i, "");
   base = base.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/\s+/g, " ").trim();
   return base || fallback;
 }
@@ -2977,25 +2946,8 @@ function exportJson() {
     setStatus("Nothing to export. Import a JSON or add at least one shape first.");
     return;
   }
-  downloadText(filenameWithSuffix(loadedName, "fabric-export"), JSON.stringify({ shapes }, null, 2));
-  setStatus(`Exported ${shapes.length} layer(s) for Handmade Importer.`);
-}
-
-function exportLegacyJson() {
-  try {
-    const shapes = vinylObjects().map(objectToLegacyShape);
-    if (!shapes.length) {
-      setStatus("Nothing to export. Import a generated JSON or add supported rectangle/ellipse shapes first.");
-      return;
-    }
-    downloadText(filenameWithSuffix(loadedName, "normal-import"), JSON.stringify({ shapes }, null, 2));
-    setStatus(`Exported ${shapes.length} layer(s) for Generated Importer.`);
-  } catch (err) {
-    showError("Normal import export failed", new Error(
-      `${err.message}\n\nExport for Generated only supports generated rectangle/ellipse layers. ` +
-      "Use Export for Handmade for full shape-library designs."
-    ));
-  }
+  downloadText(filenameWithSuffix(loadedName, "fh6-import"), JSON.stringify({ shapes }, null, 2));
+  setStatus(`Exported ${shapes.length} layer(s) for KFPS Import JSON.`);
 }
 
 function saveProject() {
@@ -3631,7 +3583,6 @@ function bindUi() {
       .finally(() => { event.target.value = ""; });
   });
   $("exportJson").addEventListener("click", exportJson);
-  $("exportLegacyJson").addEventListener("click", exportLegacyJson);
   $("saveProject").addEventListener("click", saveProject);
   $("fitView").addEventListener("click", fitDesignView);
   $("resetView").addEventListener("click", resetView);

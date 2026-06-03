@@ -22,7 +22,7 @@ Use this with:
 11. [Edge Repair](#edge-repair)
 12. [2x Sample Goblin](#2x-sample-goblin-slower)
 13. [Final JSON Browser](#final-json-browser)
-14. [Import Final JSON](#import-final-json)
+14. [Import JSON](#import-json)
 15. [Editor Tab](#editor-tab)
 16. [Image Tools Tab](#image-tools-tab)
 17. [Image Size Helper Tab](#image-size-helper-tab)
@@ -262,7 +262,7 @@ Numbered areas:
 6. Leave Pro settings closed unless you know you want manual samples/resolution.
 7. Click `Generate Final Vinyl`.
 8. Wait until `FINALIZE CHECKPOINTS COMPLETE`.
-9. Go to `Import Final JSON`.
+9. Go to `Import JSON`.
 
 ## Generate Final Vinyl: Every Control Explained
 
@@ -683,7 +683,7 @@ Use it when the current preset is close but needs more search effort. It is a qu
 Open:
 
 ```text
-Import Final JSON
+Import JSON
 ```
 
 <img src="screenshots/app-import-json-browser-annotated.png" width="900" alt="Import tab JSON browser with numbered controls">
@@ -764,9 +764,9 @@ Example use cases:
 - generator finished but v2/finalization crashed
 - copied raw checkpoint folder from another install
 
-## Import Final JSON
+## Import JSON
 
-The import tab writes the selected final JSON into FH6 memory.
+The import tab writes the selected compatible JSON into FH6 memory.
 
 Before clicking import, FH6 must be prepared correctly.
 
@@ -778,7 +778,7 @@ Short version:
 4. If you just made the template, it was saved once and reopened.
 5. The template is ungrouped.
 6. The exact layer count is entered, normally `3000`.
-7. The selected JSON fits the usable layer budget.
+7. The selected generated final, editor export, game export, or hand-edited JSON fits the usable layer budget.
 
 For the detailed FH6 setup, read [FH6_IMPORT_GUIDE.md](FH6_IMPORT_GUIDE.md).
 
@@ -811,13 +811,11 @@ If the group has 3000 layers, enter:
 
 Do not guess. Wrong layer count can make auto-location fail or point to the wrong memory region.
 
-### Legacy FH Border Masks
+### Border Mask Behavior
 
-Default: off.
+Current import does not reserve separate FH border-mask layers.
 
-Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so normal imports do not need FH border masks.
-
-Legacy 4-mask mode is available in Settings as a fallback test mode. Use it only when intentionally testing old behavior because it can make underlying stacked vinyls transparent.
+Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so all template layers remain available for art.
 
 ### Auto-Locate FH6 Template
 
@@ -832,7 +830,7 @@ Use it when:
 
 Do not switch menus during or after auto-locate.
 
-### Import Final JSON Into FH6
+### Import JSON Into FH6
 
 Writes all layers into the located FH6 template.
 
@@ -870,7 +868,7 @@ What it does:
 What it does not do:
 
 - It does not write to FH6 memory.
-- It does not replace the Import Final JSON workflow yet.
+- It exports JSON for the app's `Import JSON` workflow.
 - It is not required for normal image-to-vinyl generation.
 
 ## Image Tools Tab

@@ -130,10 +130,8 @@ def validate_editable_group(metadata, requested_count, expected_table):
         reasons.append("group header address is outside the normal FH6 editable group range")
     if not begin or not end or not capacity:
         reasons.append("group vector begin/end/capacity is missing")
-    elif not (begin < end <= capacity):
-        reasons.append("group vector begin/end/capacity is not ordered like an editable layer table")
-    if metadata.get("vector_count") != int(requested_count):
-        reasons.append(f"group vector layer count does not match requested count ({metadata.get('vector_count')} != {requested_count})")
+    elif not (begin < capacity and begin <= end <= capacity):
+        reasons.append("group vector begin/end/capacity is not ordered like a readable layer table")
     capacity_count = metadata.get("capacity_count")
     if capacity_count is None or int(capacity_count) < int(requested_count):
         reasons.append(f"group vector capacity is smaller than requested count ({capacity_count} < {requested_count})")
@@ -152,45 +150,42 @@ def validate_probe_report(probe_report, requested_count, selected_group, selecte
         reasons.append(f"locator report count does not match requested count ({probe.get('count')} != {requested_count})")
     candidates = probe.get("candidates") or []
     min_sample_ok = min(8, int(requested_count))
-    strong = []
+    strong_count = 0
     selected_seen = False
+    selected_strong = False
     for index, candidate in enumerate(candidates, start=1):
         group = candidate.get("group")
         table = candidate.get("table")
         valid_ptrs = int(candidate.get("valid_ptrs") or 0)
-        sample_ok = int(candidate.get("sample_ok_count") or 0)
-        if group and table and valid_ptrs >= int(requested_count) and sample_ok >= min_sample_ok:
-            signature = (
-                tuple(sorted((candidate.get("shape_id_counts_sample") or {}).items())),
-                tuple(sorted((candidate.get("color_counts_sample") or {}).items())),
-            )
-            score = int(candidate.get("score") or 0)
-            strong.append((index, candidate, signature, score))
-            if parse_int(group) == int(selected_group) and parse_int(table) == int(selected_table):
-                selected_seen = True
-    if strong:
-        best_score = max(score for _index, _candidate, _signature, score in strong)
-        score_floor = best_score - max(10, int(best_score * 0.02))
-        strong = [
-            (index, candidate, signature, score)
-            for index, candidate, signature, score in strong
-            if score >= score_floor
-        ]
-        seen = {}
-        for index, candidate, signature, _score in strong:
-            previous = seen.get(signature)
-            if previous:
-                prev_index, prev_candidate = previous
-                reasons.append(
-                    "locator found duplicate top-ranked editable-looking layer tables "
-                    f"(#{prev_index} {prev_candidate.get('group')} and #{index} {candidate.get('group')})"
-                )
-                break
-            seen[signature] = (index, candidate)
-    else:
+        invalid_ptrs = int(candidate.get("invalid_ptrs") or max(0, int(requested_count) - valid_ptrs))
+        sample_ok = int(candidate.get("layer_ok_count") or candidate.get("sample_ok_count") or 0)
+        capacity_count = candidate.get("capacity_count")
+        is_selected = bool(
+            group
+            and table
+            and parse_int(group) == int(selected_group)
+            and parse_int(table) == int(selected_table)
+        )
+        if is_selected:
+            selected_seen = True
+        is_strong = bool(
+            group
+            and table
+            and (capacity_count is None or int(capacity_count) >= int(requested_count))
+            and valid_ptrs >= int(requested_count)
+            and invalid_ptrs == 0
+            and sample_ok >= min_sample_ok
+        )
+        if is_strong:
+            strong_count += 1
+            if is_selected:
+                selected_strong = True
+    if strong_count <= 0:
         reasons.append("locator report contains no strong editable group candidate")
     if not selected_seen:
         reasons.append("selected group/table was not confirmed by the locator report")
+    elif not selected_strong:
+        reasons.append("selected group/table did not pass full pointer/vector validation")
     return not reasons, reasons
 
 

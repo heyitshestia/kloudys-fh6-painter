@@ -124,9 +124,8 @@ DEFAULT_THEME = "Blackout"
 WORKFLOW_META = {
     "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
     "Generate Final Vinyl": ("Create", "Build new vinyl JSONs from source art."),
-    "Import Final JSON": ("Create", "Preview a finalized checkpoint and write it into FH6."),
-    "Import Handmade JSON": ("Advanced Import", "Write full-shape handmade JSONs into a reusable FH6 template."),
-    "Export Game JSON": ("Advanced Import", "Read an open editable FH6 group into handmade JSON."),
+    "Import JSON": ("Create", "Preview a generated or hand-edited JSON and write it into FH6."),
+    "Export Game JSON": ("Advanced Import", "Read an open editable FH6 group into compatible JSON."),
     "Editor": ("Tools", "Open the local shape editor for JSON cleanup and manual edits."),
     "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
     "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
@@ -138,9 +137,8 @@ WORKFLOW_META = {
 WORKFLOW_SUBTITLES = {
     "Dashboard": "One screen for the most important actions, current status, recent work, and safe next steps.",
     "Generate Final Vinyl": "Choose source art, pick a preset, and build import-ready checkpoints.",
-    "Import Final JSON": "Select a finalized JSON, preview it, auto-locate FH6, and import.",
-    "Import Handmade JSON": "Use the universal full-shape importer with a saved 3000-circle template.",
-    "Export Game JSON": "Read the current editable group into JSON for backup or sharing when allowed.",
+    "Import JSON": "Select a generated final, editor export, hand-edited JSON, or exported game JSON and import through one path.",
+    "Export Game JSON": "Read the current editable group into compatible JSON for backup or sharing when allowed.",
     "Editor": "Launch the local browser editor for manual JSON adjustments.",
     "Image Tools": "Quick access to safe browser tools that prepare source art before generation.",
     "Image Size Helper": "Convert image dimensions into practical megapixel targets for presets.",
@@ -764,12 +762,39 @@ def helper_python() -> Path | str:
     return EMBEDDED_PYTHON if EMBEDDED_PYTHON.exists() else sys.executable
 
 
-def handmade_shape_count(path: Path) -> int:
+def import_json_shape_count(path: Path) -> int:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     shapes = payload.get("shapes")
     if not isinstance(shapes, list):
-        raise ValueError("Handmade JSON must contain a shapes list.")
-    return len(shapes)
+        raise ValueError("Import JSON must contain a shapes list.")
+    count = 0
+    for index, shape in enumerate(shapes):
+        if not isinstance(shape, dict):
+            continue
+        color = shape.get("color") or []
+        alpha = 255
+        if isinstance(color, (list, tuple)) and len(color) >= 4:
+            try:
+                values = [float(value) for value in color[:4]]
+                alpha = int(round(values[3] * 255)) if all(0.0 <= value <= 1.0 for value in values) else int(round(values[3]))
+            except (TypeError, ValueError):
+                alpha = 255
+        if alpha <= 0:
+            continue
+        try:
+            shape_type = int(float(shape.get("type", 0) or 0))
+        except (TypeError, ValueError):
+            shape_type = 0
+        if index == 0 and shape_type == 1:
+            data = shape.get("data") or []
+            if isinstance(data, list) and len(data) == 4:
+                try:
+                    if float(data[0]) == 0 and float(data[1]) == 0 and float(data[2]) > 0 and float(data[3]) > 0:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+        count += 1
+    return count
 
 
 TEXT = {
@@ -852,7 +877,7 @@ The app has two phases:
 Phase 1: internal build
 - The patched GPU builder creates raw checkpoints.
 - The preview may update while layers are being built.
-- These raw checkpoints are not the normal import target.
+- These raw checkpoints are not the recommended import target.
 
 Phase 2: Finalize Checkpoints
 - The app scores checkpoints.
@@ -873,11 +898,11 @@ imgs/generated/<job>/finals
 
 finals
 - Import-ready JSON files.
-- Use these in normal import.
+- Use these in Import JSON.
 
 checkpoints
 - Internal raw builder checkpoints.
-- Useful for diagnostics, not normal import.
+- Useful for diagnostics, not the recommended import target.
 
 previews
 - Preview PNGs for raw and finalized outputs.
@@ -899,8 +924,7 @@ In Forza Horizon 6:
 7. Enter 3000 as the exact template layer count unless you intentionally opened a different template.
 
 Default import uses the full template for art layers.
-Finalize Checkpoints keeps transparent-source shapes inside the PNG canvas, so normal imports do not need FH border masks.
-Legacy 4-mask import is available in Settings only if you need to test old behavior.
+Finalize Checkpoints keeps transparent-source shapes inside the PNG canvas, so current imports do not need FH border masks.
 That means normal usable art layers are:
 
 template layers
@@ -913,18 +937,18 @@ Examples:
 3000 template layers = 3000 usable art layers
 
 
-7. Import Final JSON
+7. Import JSON
 
-Open Import Final JSON.
+Open Import JSON.
 
 1. Pick the generated vinyl run.
-2. Pick the finalized checkpoint you want.
+2. Pick the finalized checkpoint you want, or choose any compatible editor, hand-edited, or exported JSON manually.
 3. Check the preview.
 4. Enter the exact FH6 template layer count. Default/recommended is 3000.
 5. Click Auto-locate FH6 template if needed.
-6. Click Import Final JSON into FH6.
+6. Click Import JSON into FH6.
 
-The highlighted finalized checkpoint is the one that imports.
+The highlighted/selected JSON is the one that imports.
 The best safe final is listed first, but you can pick a different finalized checkpoint yourself.
 
 
@@ -1017,25 +1041,17 @@ HELP_TEXT = {
         "Import Template Layer Count",
         "Enter the exact layer count of the open ungrouped FH6 template.\n\n"
         "Recommended default: use one saved 3000-layer template made from plain white circles. Save it once, reopen it before importing, ungroup it, and enter 3000.\n\n"
-        "Normal imports use all open template layers for art and then cull the saved result to the JSON's used layer count. The reusable 3000-circle template itself is not overwritten unless you save over that template manually."
+        "Imports use all open template layers for art and then cull the saved result to the JSON's used layer count. The reusable 3000-circle template itself is not overwritten unless you save over that template manually."
     ),
     "final_json_browser": (
-        "Final JSON Browser",
-        "Only import files from the finals folder.\n\n"
-        "Pick a generated run, then click the finalized checkpoint you want. The highlighted checkpoint is the one that imports. The app does not auto-pick the best one for you."
+        "JSON Browser",
+        "Generated runs show finalized files from the finals folder.\n\n"
+        "Pick a generated run, click a finalized checkpoint, or choose any compatible JSON manually. The highlighted/selected JSON is the one that imports."
     ),
     "auto_locate": (
         "Auto-Locate",
         "Finds the live FH6 vinyl layer table in memory.\n\n"
         "Keep FH6 in Vinyl Group Editor, keep the group ungrouped, and do not switch menus while locating or importing."
-    ),
-    "handmade_template": (
-        "Universal Import Template",
-        "Use a saved/reopened 3000-layer plain white circle template for universal handmade imports.\n\n"
-        "Create the template once, save it, reopen it when needed, then ungroup it before importing. The importer trims the imported result, so the 3000-circle base template can be reused.\n\n"
-        "Ungrouped templates are still the safest target. Grouped templates can be found and written in current testing, "
-        "but treat grouped import as experimental until more save/reload cases are verified. The importer writes the "
-        "requested shapes, then trims the group to the used layer count after writing."
     ),
     "clear_unused": (
         "Clear Unused Layers",
@@ -1046,17 +1062,12 @@ HELP_TEXT = {
         "Export Layer Count",
         "Enter the exact layer count of the currently open FH6 group.\n\n"
         "Exporter is read-only and only supports normal editable user-owned groups. It refuses groups that do not expose "
-        "a standard editable layer table, records a content fingerprint/summary, and saves a compatible handmade JSON."
+        "a standard editable layer table, records a content fingerprint/summary, and saves compatible JSON."
     ),
     "luma_tab": (
         "Fabric FH6 Editor",
         "Opens the bundled local-browser JSON editor.\n\n"
         "Use it to create or clean FH6 JSON by hand, trace over an overlay image, search/favorite shapes, and export FH6-compatible JSON."
-    ),
-    "legacy_masks": (
-        "Legacy FH Border Masks",
-        "Old import mode that adds four large FH mask layers around the art.\n\n"
-        "Default is off because finalized JSONs now keep shapes inside the canvas. Legacy masks can make vinyls underneath turn transparent when stacking designs."
     ),
 }
 
@@ -2210,7 +2221,6 @@ class MainWindow(QMainWindow):
         self.settings = load_settings()
         self.images = [Path(p) for p in initial_images if Path(p).exists()]
         self.selected_import_json_path: Path | None = None
-        self.selected_handmade_json_path: Path | None = None
         self.outputs: list[Path] = []
         self.processes = []
         self.active_processes = set()
@@ -2312,7 +2322,6 @@ class MainWindow(QMainWindow):
         self._build_dashboard_tab()
         self._build_generate_tab()
         self._build_import_tab()
-        self._build_handmade_import_tab()
         self._build_game_export_tab()
         self._build_editor_tab()
         self._build_image_tools_tab()
@@ -2473,10 +2482,10 @@ class MainWindow(QMainWindow):
         )
         cards.addWidget(
             DashboardCard(
-                "Import Final JSON",
-                "Choose a finalized checkpoint, preview it, auto-locate the FH6 template, and write it into the editor.",
+                "Import JSON",
+                "Choose a generated final, editor export, hand-edited JSON, or game export, then write it into FH6.",
                 "Open importer",
-                lambda: self.go_to_workflow("Import Final JSON"),
+                lambda: self.go_to_workflow("Import JSON"),
             ),
             0,
             1,
@@ -2682,18 +2691,15 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(tab)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         left = QWidget()
         left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        left_scroll.setWidget(left)
-        splitter.addWidget(left_scroll)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        splitter.addWidget(left)
         splitter.addWidget(right)
-        splitter.setSizes([620, 660])
+        splitter.setSizes([760, 820])
 
         game = QGroupBox("Step 1 - FH6 Session")
         game_layout = QGridLayout(game)
@@ -2718,10 +2724,10 @@ class MainWindow(QMainWindow):
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
 
-        json_group = QGroupBox("Step 3 - Pick Final Vinyl")
+        json_group = QGroupBox("Step 3 - Pick JSON")
         json_layout = QVBoxLayout(json_group)
         controls = QGridLayout()
-        add_json = QPushButton("Choose final JSON...")
+        add_json = QPushButton("Choose any JSON...")
         add_json.clicked.connect(self.manual_add_json)
         refresh_jsons = QPushButton("Refresh")
         refresh_jsons.clicked.connect(self.refresh_generated_browser)
@@ -2746,11 +2752,13 @@ class MainWindow(QMainWindow):
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
         self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
         json_layout.addWidget(self.label_with_help("Generated vinyl run", "final_json_browser"))
-        json_layout.addWidget(QLabel("Pick a finalized checkpoint below. The highlighted final JSON is the one that will be imported."))
+        json_intro = QLabel("Pick a finalized checkpoint below, or choose any compatible editor, hand-edited, or exported JSON manually. The highlighted JSON is the one that will import.")
+        json_intro.setWordWrap(True)
+        json_layout.addWidget(json_intro)
         json_layout.addWidget(self.generated_folder_combo)
         self.generated_checkpoint_list = QListWidget()
         self.generated_checkpoint_list.setObjectName("finalizedCheckpointList")
-        self.generated_checkpoint_list.setMinimumHeight(560)
+        self.generated_checkpoint_list.setMinimumHeight(320)
         self.generated_checkpoint_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.generated_checkpoint_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.generated_checkpoint_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -2762,15 +2770,19 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(self.generated_checkpoint_list, 2)
         left_layout.addWidget(json_group, 1)
 
-        import_group = QGroupBox("Step 4 - Import Final JSON")
+        import_group = QGroupBox("Step 4 - Import JSON")
         import_layout = QVBoxLayout(import_group)
         import_layout.addWidget(QLabel("Keep FH6 in Vinyl Group Editor and do not switch menus during import."))
-        self.selected_json_label = QLabel("Selected final JSON: none")
+        self.selected_json_label = QLabel("Selected JSON: none")
         self.selected_json_label.setWordWrap(False)
         self.selected_json_label.setMaximumHeight(28)
         self.selected_json_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         import_layout.addWidget(self.selected_json_label)
-        import_btn = QPushButton("Import Final JSON into FH6")
+        self.import_clear_unused = QCheckBox("Clear unused template layers before trimming")
+        self.import_clear_unused.setChecked(True)
+        self.import_clear_unused.setToolTip("Recommended. Clears old template layers that are not used by the imported JSON before trimming the FH6 group count.")
+        import_layout.addWidget(self.checkbox_with_help(self.import_clear_unused, "clear_unused"))
+        import_btn = QPushButton("Import JSON into FH6")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
         auto_btn = QPushButton("Auto-locate FH6 template")
@@ -2781,105 +2793,16 @@ class MainWindow(QMainWindow):
         auto_row.addWidget(self.help_button("auto_locate"))
         import_layout.addLayout(auto_row)
         right_layout.addWidget(import_group)
-        right_layout.addWidget(QLabel("Final Vinyl Preview"))
-        self.import_preview = PreviewView("Select a finalized JSON to preview it here.")
+        right_layout.addWidget(QLabel("JSON Preview"))
+        self.import_preview = PreviewView("Select a generated, editor, exported, or hand-edited JSON to preview it here.")
         right_layout.addWidget(self.import_preview, 1)
-        self.tabs.addTab(tab, "Import Final JSON")
-
-    def _build_handmade_import_tab(self):
-        tab = QWidget()
-        layout = QHBoxLayout(tab)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        layout.addWidget(splitter)
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        splitter.addWidget(left)
-        splitter.addWidget(right)
-        splitter.setSizes([640, 640])
-
-        intro = QLabel(
-            "Universal handmade importer. Import a handmade JSON into a saved/reopened 3000 white-circle FH6 template."
+        notes = QLabel(
+            "One importer handles generated finals, Fabric editor exports, hand-edited full-shape JSONs, and game exports. "
+            "Use a saved/reopened 3000 plain white circle template, ungroup it, import once, then save and reload in FH6."
         )
-        intro.setWordWrap(True)
-        left_layout.addWidget(intro)
-        warning = QLabel(
-            "WIP: after importing, save and reload the vinyl group to view the shapes properly. "
-            "A weird vinyl thumbnail in the menu is normal right now. Both issues are being worked on."
-        )
-        warning.setWordWrap(True)
-        warning.setStyleSheet("font-weight: 900; font-size: 15px;")
-        left_layout.addWidget(warning)
-
-        game = QGroupBox("Step 1 - FH6 Session")
-        game_layout = QGridLayout(game)
-        self.handmade_pid_combo = self.make_combo(max_visible=12, editable=True)
-        handmade_refresh = QPushButton("Refresh FH6")
-        handmade_refresh.clicked.connect(self.refresh_processes)
-        game_layout.addWidget(QLabel("Process"), 0, 0)
-        game_layout.addWidget(self.handmade_pid_combo, 0, 1)
-        game_layout.addWidget(handmade_refresh, 0, 2)
-        left_layout.addWidget(game)
-
-        template = QGroupBox("Step 2 - Base Template")
-        template_layout = QGridLayout(template)
-        self.handmade_template_count = QLineEdit("3000")
-        self.handmade_template_count.setToolTip("Use one saved/reopened 3000-layer plain white circle template. Ungroup it before importing; the app trims the imported result to the used layer count.")
-        template_layout.addWidget(self.label_with_help("Loaded template layer count", "handmade_template"), 0, 0)
-        template_layout.addWidget(self.handmade_template_count, 0, 1)
-        template_help = QLabel("Recommended: create the 3000 white-circle template once, save it, reopen it, then ungroup it before importing. It is reusable because imports write into the open copy and trim the result.")
-        template_help.setWordWrap(True)
-        template_layout.addWidget(template_help, 1, 0, 1, 2)
-        left_layout.addWidget(template)
-
-        json_group = QGroupBox("Step 3 - Handmade JSON")
-        json_layout = QVBoxLayout(json_group)
-        pick_row = QHBoxLayout()
-        pick = QPushButton("Choose handmade JSON")
-        pick.clicked.connect(self.choose_handmade_json)
-        pick_row.addWidget(pick)
-        json_layout.addLayout(pick_row)
-        self.handmade_json_label = QLabel("Selected handmade JSON: none")
-        self.handmade_json_label.setWordWrap(True)
-        self.handmade_json_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        json_layout.addWidget(self.handmade_json_label)
-        left_layout.addWidget(json_group)
-
-        run_group = QGroupBox("Step 4 - Import And Trim")
-        run_layout = QVBoxLayout(run_group)
-        self.handmade_clear_unused = QCheckBox("Clear unused template layers before trimming")
-        self.handmade_clear_unused.setChecked(True)
-        self.handmade_clear_unused.setToolTip("Keeps the save file clean if FH6 briefly sees the old template capacity during import.")
-        run_layout.addWidget(self.checkbox_with_help(self.handmade_clear_unused, "clear_unused"))
-        import_btn = QPushButton("Import Handmade JSON into Loaded Template")
-        import_btn.setObjectName("primaryButton")
-        import_btn.clicked.connect(self.start_handmade_import)
-        run_layout.addWidget(import_btn)
-        run_help = QLabel("After import completes, save and reload the vinyl group to confirm the final trimmed layer count.")
-        run_help.setWordWrap(True)
-        run_layout.addWidget(run_help)
-        left_layout.addWidget(run_group)
-        left_layout.addStretch()
-
-        right_layout.addWidget(QLabel("Universal Import Notes"))
-        notes = QTextEdit()
-        notes.setReadOnly(True)
-        notes.setText(
-            "Confirmed model:\n"
-            "- Uses full 16-bit shape word at layer offset 0x7A.\n"
-            "- Writes position, scale, rotation, skew, color, mask flag, and shape word only.\n"
-            "- Does not copy volatile render/cache fields or resource pointers.\n"
-            "- Auto-locates the loaded template by layer count.\n"
-            "- Trims FH6 group count and table end after import.\n\n"
-            "Current best workflow:\n"
-            "1. Open FH6 Vinyl Group Editor.\n"
-            "2. Load your saved 3000-layer plain white circle template.\n"
-            "3. Reopen it if you just created/saved it, then ungroup it before importing.\n"
-            "4. To import: choose a handmade JSON, import, then save/reload."
-        )
-        right_layout.addWidget(notes, 1)
-        self.tabs.addTab(tab, "Import Handmade JSON")
+        notes.setWordWrap(True)
+        right_layout.addWidget(notes)
+        self.tabs.addTab(tab, "Import JSON")
 
     def _build_game_export_tab(self):
         tab = QWidget()
@@ -2895,7 +2818,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([620, 660])
 
         intro = QLabel(
-            "Export the currently open FH6 vinyl group into a handmade-compatible JSON. "
+            "Export the currently open FH6 vinyl group into compatible JSON. "
             "This is read-only and only works on normal editable user-owned groups. "
             "Locked/community-highlight work is refused."
         )
@@ -2940,8 +2863,8 @@ class MainWindow(QMainWindow):
         browser_controls = QHBoxLayout()
         refresh_exports = QPushButton("Refresh exports")
         refresh_exports.clicked.connect(self.refresh_game_export_browser)
-        use_for_import = QPushButton("Use selected in Handmade Import")
-        use_for_import.clicked.connect(self.use_selected_export_for_handmade_import)
+        use_for_import = QPushButton("Use selected in Import JSON")
+        use_for_import.clicked.connect(self.use_selected_export_for_import)
         browser_controls.addWidget(refresh_exports)
         browser_controls.addWidget(use_for_import)
         browser_layout.addLayout(browser_controls)
@@ -3241,29 +3164,12 @@ class MainWindow(QMainWindow):
         generator_layout.addWidget(self.blue_terminal_dialup_enabled)
         layout.addWidget(generator)
 
-        importer = QGroupBox("Importer")
-        importer_layout = QVBoxLayout(importer)
-        self.legacy_masks_enabled = QCheckBox("Use legacy 4 big FH border masks")
-        self.legacy_masks_enabled.setChecked(settings_bool(self.app_settings.get("legacy_border_masks"), False))
-        self.legacy_masks_enabled.stateChanged.connect(self.save_importer_settings)
-        importer_layout.addWidget(self.checkbox_with_help(self.legacy_masks_enabled, "legacy_masks"))
-        mask_note = QLabel(
-            "Default uses no FH border masks. Finalize Checkpoints now keeps transparent-source shapes inside the PNG canvas. Legacy uses the old 4 big border masks and may make underlying vinyls transparent when stacking designs."
-        )
-        mask_note.setWordWrap(True)
-        importer_layout.addWidget(mask_note)
-        layout.addWidget(importer)
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
 
     def save_generator_settings(self, *_args):
         if hasattr(self, "blue_terminal_dialup_enabled"):
             self.app_settings["blue_terminal_dialup_sound"] = bool(self.blue_terminal_dialup_enabled.isChecked())
-            save_app_settings(self.app_settings)
-
-    def save_importer_settings(self, *_args):
-        if hasattr(self, "legacy_masks_enabled"):
-            self.app_settings["legacy_border_masks"] = bool(self.legacy_masks_enabled.isChecked())
             save_app_settings(self.app_settings)
 
     def build_bug_report_text(self) -> str:
@@ -4034,30 +3940,13 @@ class MainWindow(QMainWindow):
         self.log_line(f"Image Size Helper: {source.name} is {width}x{height}, {megapixels:.2f} MP")
 
     def manual_add_json(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Choose finalized vinyl JSON", "", "Final vinyl JSON (*.json);;All files (*.*)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Choose vinyl JSON", "", "Vinyl JSON (*.json);;All files (*.*)")
         if not file_name:
             return
         path = Path(file_name)
         if path.exists():
-            self.select_import_json(path, "manual final JSON")
+            self.select_import_json(path, "manual JSON")
         self.render_lists()
-
-    def choose_handmade_json(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Choose handmade JSON", "", "Handmade JSON (*.json);;All files (*.*)")
-        if not file_name:
-            return
-        path = Path(file_name)
-        if not path.exists():
-            return
-        try:
-            count = handmade_shape_count(path)
-        except Exception as exc:
-            QMessageBox.warning(self, "Invalid handmade JSON", str(exc))
-            return
-        self.selected_handmade_json_path = path
-        self.handmade_json_label.setText(f"Selected handmade JSON: {path.name}\nShapes: {count}\n{path}")
-        self.handmade_json_label.setToolTip(str(path))
-        self.log_line(f"Selected handmade JSON: {path} ({count} shapes)")
 
     def render_lists(self):
         self.image_list.clear()
@@ -4097,13 +3986,13 @@ class MainWindow(QMainWindow):
     def set_status(self, text: str):
         self.status_label.setText(text)
         if text == "Done":
-            self.set_phase("done", "Ready to import a finalized JSON.")
+            self.set_phase("done", "Ready to import JSON.")
         elif text == "Failed":
             self.set_phase("failed", "Something failed. Check the log below for the exact error.")
         elif text == "Stopping":
             self.set_phase("finalizing", "Stop requested. Waiting for the latest checkpoint to finalize.")
         elif text == "Importing":
-            self.set_phase("importing", "Writing the selected final JSON into FH6. Do not switch menus.")
+            self.set_phase("importing", "Writing the selected JSON into FH6. Do not switch menus.")
 
     def set_progress(self, text: str):
         self.progress_label.setText(text)
@@ -4117,7 +4006,7 @@ class MainWindow(QMainWindow):
         if text.startswith(("Internal build finished", "INTERNAL BUILD COMPLETE", "Finalize ", "Finalizing ", "Edge Repair:", "Candidate ", "Best accuracy:", "Final JSON:", "Final preview:", "Report:")):
             return ("finalizing", "Finalize Checkpoints is running. Do not close yet.")
         if text.startswith("FINALIZE CHECKPOINTS COMPLETE"):
-            return ("done", "Finalized JSONs are ready. Go to Import Final JSON.")
+            return ("done", "Finalized JSONs are ready. Go to Import JSON.")
         return None
 
     def set_phase(self, phase: str, detail: str):
@@ -4281,8 +4170,6 @@ class MainWindow(QMainWindow):
     def refresh_processes(self):
         self.processes = game_processes()
         combos = [self.pid_combo]
-        if hasattr(self, "handmade_pid_combo"):
-            combos.append(self.handmade_pid_combo)
         if hasattr(self, "export_pid_combo"):
             combos.append(self.export_pid_combo)
         for combo in combos:
@@ -5030,18 +4917,14 @@ class MainWindow(QMainWindow):
         self.preview_export_json(entry["path"])
         self.log_line(f"Selected exported game JSON: {entry['path']}")
 
-    def use_selected_export_for_handmade_import(self):
+    def use_selected_export_for_import(self):
         entry = self.selected_exported_game_entry()
         if not entry:
             self.log_line("No exported game JSON selected.")
             return
         path = Path(entry["path"])
-        self.selected_handmade_json_path = path
-        text = f"Selected handmade JSON: {path.name}\nShapes: {entry.get('shape_count') or handmade_shape_count(path)}\n{path}"
-        if hasattr(self, "handmade_json_label"):
-            self.handmade_json_label.setText(text)
-            self.handmade_json_label.setToolTip(str(path))
-        self.log_line(f"Export selected for handmade import: {path}")
+        self.select_import_json(path, "exported game JSON")
+        self.go_to_workflow("Import JSON")
 
     def select_recommended_generated_json(self):
         entry = self.recommended_generated_entry()
@@ -5222,10 +5105,10 @@ class MainWindow(QMainWindow):
                 rel = path.relative_to(ROOT)
             except ValueError:
                 rel = path
-            self.selected_json_label.setText(f"Selected final JSON: {path.name}")
+            self.selected_json_label.setText(f"Selected JSON: {path.name}")
             self.selected_json_label.setToolTip(str(path))
         else:
-            self.selected_json_label.setText("Selected final JSON: none")
+            self.selected_json_label.setText("Selected JSON: none")
             self.selected_json_label.setToolTip("")
 
     def run_subprocess(self, cmd, timeout=None):
@@ -5263,13 +5146,13 @@ class MainWindow(QMainWindow):
         if "fh6_probe.py" in joined and "--auto-locate" in joined:
             return "Finding current FH6 template..."
         if "fh6_group1000_probe.py" in joined:
-            return "Locating loaded FH6 handmade-import template..."
+            return "Locating loaded FH6 group..."
         if "fh6_import_typecode_json.py" in joined:
-            return "Importing handmade JSON into FH6..."
+            return "Importing JSON into FH6..."
         if "fh6_export_typecode_json.py" in joined:
-            return "Exporting current FH6 group to handmade JSON..."
+            return "Exporting current FH6 group to compatible JSON..."
         if "fh6_trim_group_count.py" in joined:
-            return "Trimming FH6 handmade-import layer count..."
+            return "Trimming FH6 import layer count..."
         if "main.py" in joined:
             return "Importing JSON into FH6..."
         return "Starting helper..."
@@ -5384,127 +5267,42 @@ class MainWindow(QMainWindow):
 
     def start_import(self):
         if not self.selected_import_json_path:
-            self.log_line("No finalized JSON selected.")
+            self.log_line("No JSON selected.")
             return
         pid = self.selected_pid_value()
-        game = self.game_combo.currentText() or "fh6"
-        layer_count = self.layer_count.text().strip()
-        count_address = None
-        table_address = None
-        if game == "fh6":
-            if not pid:
-                self.log_line("Select or refresh the FH6 process before importing.")
-                return
-            if not layer_count:
-                self.log_line("Template layer count is required for FH6 import.")
-                return
-            self.auto_located_context = None
-            self.log_line("FH6 import will re-locate the live template table before writing.")
-        json_path = self.selected_import_json_path
-        mask_mode, mask_budget = self.selected_import_mask_options()
-        self.set_status("Importing")
-        threading.Thread(
-            target=self.import_worker,
-            args=(pid, game, count_address, table_address, layer_count, json_path, mask_mode, mask_budget),
-            daemon=True,
-        ).start()
-
-    def selected_import_mask_options(self):
-        if settings_bool(self.app_settings.get("legacy_border_masks"), False):
-            return "full", 4
-        return "off", 0
-
-    def check_json_layer_fit(self, json_path, layer_count, mask_budget=0):
-        try:
-            json_layers = geometry_shape_count(json_path)
-            template_layers = int(layer_count)
-        except Exception:
-            return
-        usable_layers = max(0, template_layers - int(mask_budget))
-        if json_layers and template_layers and json_layers > usable_layers:
-            self.bus.log.emit(f"FH mask budget reserves {mask_budget} layers. JSON={json_layers}, template={template_layers}, usable={usable_layers}")
-        if json_layers and usable_layers and json_layers < usable_layers * 0.75:
-            self.bus.log.emit(f"Selected JSON has far fewer drawable layers than usable capacity. JSON={json_layers}, usable={usable_layers}")
-
-    def import_worker(self, pid, game, count_address, table_address, layer_count, json_path, mask_mode="off", mask_budget=0):
-        if not count_address and not table_address and game == "fh6":
-            if pid and layer_count:
-                self.bus.log.emit("Finding current FH6 template...")
-                session = self.auto_locate_worker(pid, layer_count, game, update_status=False)
-                if session and str(session.get("layer_count", "")) == str(layer_count) and session_pid_is_live(session, game):
-                    count_address = "0x{:x}".format(int(session["count_address"]))
-                    table_address = "0x{:x}".format(int(session["table_address"]))
-                    self.bus.log.emit("FH6 template located and verified.")
-                else:
-                    self.bus.status.emit("Failed")
-                    return
-            else:
-                self.bus.log.emit("FH6 import requires a selected process and template layer count.")
-                self.bus.status.emit("Failed")
-                return
-        path = Path(json_path)
-        try:
-            json_layers = geometry_shape_count(path)
-            layer_label = str(json_layers)
-        except Exception:
-            layer_label = "unknown"
-        self.bus.log.emit(f"Import target: {path.name} ({layer_label} drawable layers)")
-        if game == "fh6" and layer_count:
-            self.check_json_layer_fit(path, layer_count, mask_budget)
-        cmd = [helper_python(), ROOT / "main.py", "--game", game, "--no-preview"]
-        if pid:
-            cmd.extend(["--pid", str(pid)])
-        if count_address:
-            cmd.extend(["--layer-count-address", count_address])
-        if table_address:
-            cmd.extend(["--layer-table-address", table_address])
-        if game == "fh6" and layer_count:
-            cmd.extend(["--layer-count-value", str(layer_count)])
-            cmd.extend(["--fh-boundary-mask-mode", str(mask_mode), "--fh-boundary-mask-budget", str(mask_budget)])
-        cmd.append(path)
-        code = self.run_subprocess(cmd)
-        if code != 0:
-            self.bus.status.emit("Failed")
-            return
-        self.bus.status.emit("Done")
-
-    def start_handmade_import(self):
-        if not self.selected_handmade_json_path:
-            self.log_line("No handmade JSON selected.")
-            return
-        pid = self.selected_pid_value(self.handmade_pid_combo)
         if not pid:
-            self.log_line("Select or refresh the FH6 process before handmade import.")
+            self.log_line("Select or refresh the FH6 process before importing.")
             return
         try:
-            template_count = int(self.handmade_template_count.text().strip())
+            template_count = int(self.layer_count.text().strip())
         except ValueError:
-            self.log_line("Loaded template layer count must be a number.")
+            self.log_line("Template layer count must be a number.")
             return
         if template_count <= 0:
-            self.log_line("Loaded template layer count must be greater than zero.")
+            self.log_line("Template layer count must be greater than zero.")
             return
+        json_path = Path(self.selected_import_json_path)
         try:
-            shape_count = handmade_shape_count(self.selected_handmade_json_path)
+            shape_count = import_json_shape_count(json_path)
         except Exception as exc:
-            self.log_line(f"Handmade JSON is invalid: {exc}")
+            self.log_line(f"Import JSON is invalid: {exc}")
             return
         if shape_count <= 0:
-            self.log_line("Handmade JSON has no shapes.")
+            self.log_line("Import JSON has no visible shapes.")
             return
         if shape_count > template_count:
-            self.log_line(f"Handmade JSON has too many shapes for the loaded template. JSON={shape_count}, template={template_count}")
+            self.log_line(f"Import JSON has too many shapes for the loaded template. JSON={shape_count}, template={template_count}")
             return
         self.set_status("Importing")
-        self.set_phase("importing", "Importing handmade JSON into FH6, then trimming unused template layers.")
+        self.set_phase("importing", "Importing JSON into FH6, then trimming unused template layers.")
         threading.Thread(
-            target=self.handmade_import_worker,
+            target=self.unified_import_worker,
             args=(
                 pid,
                 template_count,
                 shape_count,
-                Path(self.selected_handmade_json_path),
-                self.handmade_clear_unused.isChecked(),
+                json_path,
+                self.import_clear_unused.isChecked() if hasattr(self, "import_clear_unused") else True,
             ),
             daemon=True,
         ).start()
@@ -5588,6 +5386,30 @@ class MainWindow(QMainWindow):
         requires_fresh_circle_template = purpose.startswith("import")
         min_circle_count = int(template_count * 0.90) if requires_fresh_circle_template else 0
 
+        def candidate_sample_ok(candidate):
+            return int(candidate.get("layer_ok_count") or candidate.get("sample_ok_count") or 0)
+
+        def candidate_sort_key(candidate):
+            valid_ptrs = int(candidate.get("valid_ptrs") or 0)
+            invalid_ptrs = int(candidate.get("invalid_ptrs") or max(0, template_count - valid_ptrs))
+            sample_ok = candidate_sample_ok(candidate)
+            exact_table = int(valid_ptrs == template_count and invalid_ptrs == 0)
+            exact_decoded = int(exact_table and sample_ok >= template_count)
+            vector_bonus = int(candidate.get("vector_ok") is True)
+            source_bonus = 1 if candidate.get("source") == "vector_header" else 0
+            return (
+                exact_decoded,
+                exact_table,
+                valid_ptrs,
+                sample_ok,
+                -invalid_ptrs,
+                vector_bonus,
+                source_bonus,
+                int(candidate.get("score") or 0),
+            )
+
+        candidates = sorted(candidates, key=candidate_sort_key, reverse=True)
+
         def shape_count(candidate, shape_byte):
             counts = candidate.get("shape_id_counts_all") or {}
             return int(counts.get(str(shape_byte)) or counts.get(shape_byte) or 0)
@@ -5596,14 +5418,17 @@ class MainWindow(QMainWindow):
             vector_ok = candidate.get("vector_ok")
             vector_count = candidate.get("vector_count")
             capacity_count = candidate.get("capacity_count")
-            if vector_ok is False:
+            if requires_fresh_circle_template and vector_ok is False:
                 return "vector metadata invalid"
-            if vector_count is not None and int(vector_count) != int(template_count):
+            if requires_fresh_circle_template and vector_count is not None and int(vector_count) != int(template_count):
                 return f"vector_count={vector_count}"
             if capacity_count is not None and int(capacity_count) < int(template_count):
                 return f"capacity_count={capacity_count}"
             if valid_ptrs < template_count:
                 return f"valid_ptrs={valid_ptrs}"
+            invalid_ptrs = int(candidate.get("invalid_ptrs") or max(0, template_count - valid_ptrs))
+            if invalid_ptrs:
+                return f"invalid_ptrs={invalid_ptrs}"
             if sample_ok < min_sample_ok:
                 return f"sample_ok={sample_ok}"
             if requires_fresh_circle_template:
@@ -5619,7 +5444,7 @@ class MainWindow(QMainWindow):
             group = candidate.get("group")
             table = candidate.get("table")
             valid_ptrs = int(candidate.get("valid_ptrs") or 0)
-            sample_ok = int(candidate.get("sample_ok_count") or 0)
+            sample_ok = candidate_sample_ok(candidate)
             rejection = candidate_rejection(candidate, valid_ptrs, sample_ok)
             if group and table and not rejection:
                 strong_candidates.append((index, candidate))
@@ -5632,34 +5457,20 @@ class MainWindow(QMainWindow):
                 group = candidate.get("group")
                 table = candidate.get("table")
                 valid_ptrs = int(candidate.get("valid_ptrs") or 0)
-                sample_ok = int(candidate.get("sample_ok_count") or 0)
+                sample_ok = candidate_sample_ok(candidate)
                 rejection = candidate_rejection(candidate, valid_ptrs, sample_ok)
                 if group and table and not rejection:
-                    signature = (
-                        tuple(sorted((candidate.get("shape_id_counts_sample") or {}).items())),
-                        tuple(sorted((candidate.get("color_counts_sample") or {}).items())),
-                    )
-                    strong_candidates.append((index, candidate, signature, int(candidate.get("score") or 0)))
-            if strong_candidates:
-                best_score = max(score for _index, _candidate, _signature, score in strong_candidates)
-                score_floor = best_score - max(10, int(best_score * 0.02))
-                strong_candidates = [
-                    (index, candidate, signature, score)
-                    for index, candidate, signature, score in strong_candidates
-                    if score >= score_floor
-                ]
-            seen_signatures = {}
-            for index, candidate, signature, _score in strong_candidates:
-                previous = seen_signatures.get(signature)
-                if previous:
-                    prev_index, prev_candidate = previous
-                    raise RuntimeError(
-                        "export refused: FH6 exposed duplicate full-strength layer tables for this group. "
-                        "KFPS only exports normal editable user-owned groups; the FH creator "
-                        "community does not condone copying or redistributing another creator's design without permission. "
-                        f"Duplicate candidates: #{prev_index} {prev_candidate.get('group')} and #{index} {candidate.get('group')}."
-                    )
-                seen_signatures[signature] = (index, candidate)
+                    strong_candidates.append((index, candidate))
+            if strong_candidates and selected is None:
+                index, candidate = strong_candidates[0]
+                selected = (
+                    index,
+                    candidate.get("group"),
+                    candidate.get("table"),
+                    int(candidate.get("valid_ptrs") or 0),
+                    candidate_sample_ok(candidate),
+                    shape_count(candidate, 102),
+                )
         if not selected:
             detail = "; ".join(rejected[:5]) if rejected else "no candidates"
             if requires_fresh_circle_template:
@@ -5675,7 +5486,7 @@ class MainWindow(QMainWindow):
         self.bus.log.emit(f"FH6 group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
         return group, table
 
-    def handmade_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):
+    def unified_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"{json_path.stem}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -5684,7 +5495,7 @@ class MainWindow(QMainWindow):
         trim_backup = run_dir / "trim-backup.json"
         try:
             self.bus.log.emit(f"Universal import run folder: {run_dir}")
-            self.bus.log.emit(f"Handmade JSON shapes: {shape_count}")
+            self.bus.log.emit(f"Import JSON visible shapes: {shape_count}")
             group, table = self.locate_universal_template(pid, template_count, run_dir, purpose="import-template")
             import_cmd = [
                 helper_python(),
@@ -5707,7 +5518,7 @@ class MainWindow(QMainWindow):
             ]
             if clear_unused:
                 import_cmd.append("--clear-unused")
-            self.bus.log.emit("Writing handmade shapes into FH6...")
+            self.bus.log.emit("Writing JSON shapes into FH6...")
             code = self.run_subprocess(import_cmd, timeout=240)
             if code != 0:
                 self.bus.log.emit("Universal import failed while writing layers.")
@@ -5725,7 +5536,7 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit("Universal import failed: no layers were imported.")
                 self.bus.status.emit("Failed")
                 return
-            self.bus.log.emit(f"Imported {imported} handmade shape layers. Trimming FH6 group count...")
+            self.bus.log.emit(f"Imported {imported} shape layers. Trimming FH6 group count...")
             trim_cmd = [
                 helper_python(),
                 ROOT / "fh6_trim_group_count.py",
@@ -5749,7 +5560,7 @@ class MainWindow(QMainWindow):
                 return
             self.bus.log.emit(f"Universal import complete: {imported} layers. Save and reload the vinyl group to verify.")
             self.bus.status.emit("Done")
-            self.bus.phase.emit("done", "Handmade JSON imported and layer count trimmed. Save/reload in FH6 to verify.")
+            self.bus.phase.emit("done", "JSON imported and layer count trimmed. Save/reload in FH6 to verify.")
         except Exception as exc:
             self.bus.log.emit(f"Universal import failed: {exc}")
             self.bus.status.emit("Failed")
@@ -5768,14 +5579,14 @@ class MainWindow(QMainWindow):
             self.log_line("Loaded template layer count must be greater than zero.")
             return
         self.set_status("Exporting")
-        self.set_phase("importing", "Exporting current FH6 group into handmade-compatible JSON.")
+        self.set_phase("importing", "Exporting current FH6 group into compatible JSON.")
         threading.Thread(
-            target=self.handmade_export_worker,
+            target=self.game_export_worker,
             args=(pid, template_count),
             daemon=True,
         ).start()
 
-    def handmade_export_worker(self, pid, template_count):
+    def game_export_worker(self, pid, template_count):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"export-current-group-{template_count}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -5802,7 +5613,7 @@ class MainWindow(QMainWindow):
                 "--probe-report",
                 run_dir / "fallback-export-template-probe.json",
             ]
-            self.bus.log.emit("Reading current FH6 group into handmade JSON...")
+            self.bus.log.emit("Reading current FH6 group into compatible JSON...")
             code = self.run_subprocess(export_cmd, timeout=240)
             if code != 0:
                 if export_report.exists():
@@ -5825,12 +5636,12 @@ class MainWindow(QMainWindow):
             report = json.loads(export_report.read_text(encoding="utf-8"))
             exported = int(report.get("exported_shape_count") or 0)
             failures = int(report.get("failure_count") or 0)
-            self.selected_handmade_json_path = export_json
+            self.selected_import_json_path = export_json
             self.bus.log.emit(f"Universal export complete: {exported} layers -> {export_json}")
             if failures:
                 self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
             self.bus.status.emit("Done")
-            self.bus.phase.emit("done", "Current FH6 group exported to handmade-compatible JSON.")
+            self.bus.phase.emit("done", "Current FH6 group exported to compatible JSON.")
             self.bus.ui_call.emit(self.refresh_game_export_browser)
             self.bus.ui_call.emit(lambda: self.select_exported_path_after_refresh(export_json))
         except Exception as exc:

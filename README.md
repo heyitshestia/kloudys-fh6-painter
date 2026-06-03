@@ -6,7 +6,7 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-KFPS is a Windows-focused Forza Horizon 6 vinyl suite. It can generate vinyl JSON from source art, finalize and preview import-ready checkpoints, import generated or handmade JSON into a prepared FH6 vinyl template, and open a browser-based editor for manual JSON work.
+KFPS is a Windows-focused Forza Horizon 6 vinyl suite. It can generate vinyl JSON from source art, finalize and preview import-ready checkpoints, import compatible JSON through one FH6 importer, and open a browser-based editor for manual JSON work.
 
 This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md), and the detailed FH6 template/import guide is in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
 
@@ -16,8 +16,7 @@ This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.
 | --- | --- |
 | `Generate Final Vinyl` | Converts PNG/JPG source art into FH6 vinyl JSON using the bundled GPU generator and KFPS finalization pipeline. |
 | `Final JSON Browser` | Shows generated runs, finalized checkpoints, previews, scores, and the selected JSON that will be imported. |
-| `Import Final JSON` | Imports generated final JSON into a prepared FH6 vinyl group template and trims the in-game layer count. |
-| `Import Handmade JSON` | Imports compatible FH6 shape-code JSONs that use the wider FH6 shape library. |
+| `Import JSON` | Imports generated finals, editor exports, hand-edited JSONs, and exported game JSONs into one prepared FH6 vinyl group template, then trims the in-game layer count. |
 | `Editor` | Opens the bundled Fabric-based JSON editor for manual vinyl creation, cleanup, tracing, shape search, favorites, color picking, layer work, guide snapping, and JSON export. |
 | `Image Tools` | Collects useful prep links for background removal, browser upscaling, and browser downscaling/compression. |
 | `Image Size Helper` | Reads an image, reports resolution/megapixels, and gives same-aspect resize targets from 1 MP to 6 MP. |
@@ -49,7 +48,7 @@ KFPS includes a standalone browser editor for people who want to manually build,
 
 The editor is designed around practical vinyl work:
 
-- Load generated JSON or compatible handmade JSON and inspect it visually.
+- Load generated, exported, or hand-edited JSON and inspect it visually.
 - Add FH6 shapes from a searchable in-game-style shape library.
 - Favorite common shapes so they stay easy to reach.
 - Add a source image overlay for tracing and adjust overlay opacity/size.
@@ -113,10 +112,10 @@ If something does not start, run:
 6. Set `Template layers` to the FH6 template size you will import into.
 7. Click `Generate Final Vinyl`.
 8. Wait until the log says `FINALIZE CHECKPOINTS COMPLETE`.
-9. Open `Import Final JSON`.
+9. Open `Import JSON`.
 10. Select the finalized checkpoint you want.
 11. Open FH6, load your reusable 3000-layer plain white circle template, and ungroup it.
-12. Click `Import Final JSON into FH6`.
+12. Click `Import JSON into FH6`.
 
 Generation is not finished when the generator process stops. The import-ready files are ready only after finalization completes.
 
@@ -179,7 +178,7 @@ The helper shows the current pixel size, megapixels, and same-aspect 1 MP throug
 The importer browser is organized around generated run folders.
 
 ```text
-Generated run -> finalized checkpoint -> preview -> import
+Generated run or compatible JSON -> preview -> Import JSON
 ```
 
 <p align="center">
@@ -192,23 +191,23 @@ Use files from:
 imgs/generated/<run-name>/finals/
 ```
 
-Raw checkpoints are kept for reports and debugging. Final checkpoints are the normal import target.
+Raw checkpoints are kept for reports and debugging. Final checkpoints are the recommended import target.
 
-## Handmade JSON Import
+## Compatible JSON Import
 
-The handmade importer is for compatible JSON files that contain FH6 shape codes rather than only the generated ellipse/rectangle path.
+The same `Import JSON` tab handles generated finals and compatible full shape-code JSON files from the editor, game export, or manual tools.
 
 Basic use:
 
 1. Load the reusable 3000-layer template in FH6.
 2. Reopen and ungroup it if needed.
-3. Open `Import Handmade JSON`.
+3. Open `Import JSON`.
 4. Choose the JSON.
 5. Import.
 6. Save and reload the vinyl group before judging the final result.
 
 <p align="center">
-  <img src="docs/screenshots/04-import-handmade-json.png" alt="Import Handmade JSON tab" width="820">
+  <img src="docs/screenshots/03-import-final-json.png" alt="Import JSON tab" width="820">
 </p>
 
 Important limitation: the live FH6 editor preview can display imported shape-code layers incorrectly until the group is saved and reopened. Judge the saved/reloaded group, not the first live refresh.
@@ -235,16 +234,16 @@ Detailed still screenshots are kept here: [Signature Pink](docs/screenshots/edit
 
 1. Open `Editor` in KFPS.
 2. Click `Open Editor`.
-3. Import a generated or compatible handmade JSON, or start placing shapes manually.
+3. Import a generated, exported, or hand-edited JSON, or start placing shapes manually.
 4. Add a source overlay if you want to trace over art.
 5. Search or browse the shape library.
 6. Place shapes, sample colors, move/stretch/skew/rotate, and clean up layers.
 7. Save a project if you want to continue editing later.
-8. Export JSON for the matching import path.
+8. Export one FH6-compatible JSON for the KFPS `Import JSON` tab.
 
 ### Editor Features
 
-- importing generated and compatible handmade JSON
+- importing generated, exported, and hand-edited JSON
 - placing FH6 shapes from the shape library
 - shape search and favorites
 - source image overlay for tracing

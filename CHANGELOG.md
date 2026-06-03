@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.7
+
+- Improved FH6 import/export memory locating from grouped, ungrouped, and nested-group dump analysis.
+- Unified the app importer around one JSON import flow for generated finals, editor exports, hand-edited JSONs, and game exports.
+- Made the Import JSON page fit the default app window without an outer page scroll; only the checkpoint list scrolls.
+- Added a compact read-only FH6 research dumper for collecting locator diagnostics.
+
 ## 2.0.2
 
 - Fixed Fabric editor live overlay color adoption for newly added, moved, nudged, and manually edited shapes.

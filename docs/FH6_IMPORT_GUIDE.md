@@ -12,9 +12,9 @@ The importer can only write correctly when FH6 is in the exact expected editor s
 4. If you just created it, save it once, leave/reopen it, then ungroup it.
 5. Do not switch menus.
 6. Enter `3000` as the exact template layer count in the app unless you intentionally opened a different template.
-7. Pick a finalized JSON from `finals/`.
+7. Pick a finalized JSON from `finals/`, or choose another compatible JSON manually.
 8. Click `Auto-locate FH6 template` if needed.
-9. Click `Import Final JSON into FH6`.
+9. Click `Import JSON into FH6`.
 
 ## Important Words
 
@@ -25,7 +25,7 @@ The importer can only write correctly when FH6 is in the exact expected editor s
 | Layer count | The exact number of layers in the current open FH6 template group. |
 | Ungrouped | The template's layers are individually editable, not nested inside another group. |
 | Final JSON | Import-ready JSON written by the app in `finals/`. |
-| Raw checkpoint | Internal generator JSON in `checkpoints/`; not the normal import target. |
+| Raw checkpoint | Internal generator JSON in `checkpoints/`; not the recommended import target. |
 | Mask layers | Extra non-art layers used by the importer for FH cover/apply behavior. |
 | Auto-locate | The app scanning FH6 memory to find the live editable layer table. |
 
@@ -39,7 +39,7 @@ This is why most import errors are editor-state errors, not generator errors.
 
 ## Template Layer Budget
 
-Default import uses the full template for drawable art layers. Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so normal imports do not need FH border masks.
+Default import uses the full template for drawable art layers. Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so current imports do not need FH border masks.
 
 Formula:
 
@@ -212,7 +212,7 @@ After auto-locate or after the app verifies the template:
 
 1. Make sure the right final JSON is highlighted.
 2. Make sure template layer count is exact.
-3. Click `Import Final JSON into FH6`.
+3. Click `Import JSON into FH6`.
 4. Do not touch FH6 while it writes.
 5. Wait for `DONE!` or success message.
 
@@ -226,17 +226,15 @@ Writing layer 200/2000
 DONE!
 ```
 
-## Mask Layer Modes
+## Border Mask Behavior
 
-Default:
+Current default:
 
 ```text
 No FH border masks
 ```
 
-Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so this is the normal mode.
-
-### No FH Border Masks
+Finalize Checkpoints keeps transparent-source geometry inside the PNG canvas, so the importer does not reserve separate border-mask layers.
 
 Uses every template layer for art.
 
@@ -245,33 +243,6 @@ Pros:
 - maximum drawable layers
 - does not punch transparent strips through stacked vinyls
 - default behavior
-
-### Full Legacy Masks
-
-Uses the old 4-mask boundary behavior.
-
-Pros:
-
-- best tested
-- fallback if an old import needs it
-
-Cons:
-
-- reserves 4 layers
-- may make underlying stacked vinyls transparent
-
-### Precise Adaptive Masks
-
-Attempts to use only needed masks.
-
-Pros:
-
-- can save some layers
-
-Cons:
-
-- less tested
-- may behave differently on edge cases
 
 ## Common Import Errors
 

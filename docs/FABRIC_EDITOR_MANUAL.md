@@ -15,14 +15,14 @@ The editor is not the memory importer. It creates, loads, edits, and exports JSO
 3. Optionally add a source overlay image for tracing.
 4. Move, scale, skew, rotate, recolor, group, hide, or lock editor layers.
 5. Use guides and snapping for precise alignment.
-6. Export either for the Handmade Importer or the Generated Importer.
-7. Import the exported JSON into FH6 from the main app.
+6. Export one FH6-compatible JSON.
+7. Import the exported JSON with the app's `Import JSON` tab.
 
 ## Supported Inputs
 
 The editor accepts these practical input types:
 
-- FH6 handmade/type-code JSON: full shape-library JSON with FH6 shape codes.
+- FH6 type-code JSON: full shape-library JSON with FH6 shape codes.
 - FH6 generated JSON: rectangle/ellipse generator output.
 - FH5 legacy generated JSON: older rectangle/ellipse JSON is converted into FH6 editor coordinates.
 - Fabric editor project JSON: editor project saves with editor metadata such as groups, locks, hidden layers, and guides.
@@ -337,43 +337,31 @@ Autosave is kept in browser local storage. If storage is full or unavailable, th
 
 There are two export paths because not all JSONs are the same.
 
-### Export For Handmade
+### Export FH6 JSON
 
-Use this for full FH6 shape-library JSON.
+Use this for all editor exports.
 
 This export keeps FH6 type-code shape information and should be used for:
 
-- Handmade shape-library designs.
+- Hand-edited shape-library designs.
 - Designs made inside this editor using non-generated shapes.
 - Full community shape/font shape designs.
+- Generated designs after manual cleanup.
 
-Import this with the Handmade Importer.
+Import this with the app's `Import JSON` tab.
 
-### Export For Generated
+## Why There Is One Importer
 
-Use this only for generated-compatible rectangle/ellipse designs.
+Generated finals, editor exports, game exports, and hand-edited shape-code JSONs now go through the same app import path.
 
-This export converts compatible layers into the legacy/generated JSON format that the normal generator importer expects.
+The importer accepts:
 
-It only supports generated rectangle/ellipse-style layers. If the design contains unsupported full-library shapes, use Export For Handmade instead.
+- legacy generated rectangle/ellipse JSON
+- current FH6 type-code JSON
+- editor exports
+- game exports from normal editable user-owned groups
 
-## Why There Are Two Importers
-
-The normal/generated importer and handmade importer target different JSON structures.
-
-Generated importer:
-
-- Fast path for generated rectangle/ellipse JSON.
-- Uses the generated format.
-- Not meant for all FH6 shape-library types.
-
-Handmade importer:
-
-- Supports full FH6 type-code shapes.
-- Needed for custom/editor-made shape-library designs.
-- Takes longer because it uses the universal template scanner and wider compatibility checks.
-
-The editor can export for both, but the correct export/import pair must be chosen.
+The editor therefore exports only one JSON type: FH6-compatible type-code JSON for the unified importer.
 
 ## JSON Conversion Notes
 

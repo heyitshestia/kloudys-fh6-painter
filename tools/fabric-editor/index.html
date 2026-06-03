@@ -53,8 +53,7 @@
         </div>
         <div class="menuGroup exportGroup">
           <span>Export</span>
-          <button id="exportJson" class="primary" title="Full FH6 shape-library export. Use with the Handmade Importer.">Export for Handmade</button>
-          <button id="exportLegacyJson" title="Fast normal-import export for generated rectangle/ellipse JSONs only.">Export for Generated</button>
+          <button id="exportJson" class="primary" title="Export one FH6-compatible JSON for the KFPS importer.">Export FH6 JSON</button>
           <button id="helpBtn">Help</button>
         </div>
       </nav>
@@ -322,10 +321,10 @@
             <div class="exportGrid">
               <span>Editable layers</span><b id="exportLayerCount">0</b>
               <span>FH6 JSON export</span><b>Compatible</b>
-              <span>Normal import JSON</span><b id="normalExportStatus">Rect/ellipse only</b>
+              <span>KFPS importer</span><b id="normalExportStatus">Compatible</b>
               <span>Warnings</span><b id="exportWarningCount">0</b>
             </div>
-      <p class="hint">Export for Handmade supports the full FH6 shape library. Export for Generated is only for generated rectangle/ellipse designs.</p>
+      <p class="hint">The editor exports one FH6-compatible JSON. Use it with the KFPS Import JSON tab.</p>
           </section>
         </div>
       </aside>
@@ -348,18 +347,18 @@
     <div class="helpBody">
       <section>
         <h3>What This Editor Does</h3>
-        <p>This editor works on FH6 vinyl JSON, not pixels. It lets you import generated or handmade JSON, edit the vinyl layers visually, trace over a source image, use the FH6 shape library, then export JSON back into the KFPS import workflow.</p>
+        <p>This editor works on FH6 vinyl JSON, not pixels. It lets you import generated, exported, or hand-edited JSON, edit the vinyl layers visually, trace over a source image, use the FH6 shape library, then export JSON back into the KFPS import workflow.</p>
         <p>Think of it as a safer desktop workspace for vinyl layer cleanup before you import into FH6.</p>
       </section>
       <section>
         <h3>Basic Safe Workflow</h3>
         <ol>
-          <li><b>Import JSON</b>: load a generated final JSON or a compatible handmade/exported FH6 JSON.</li>
+          <li><b>Import JSON</b>: load a generated final JSON, editor JSON, or exported FH6 JSON.</li>
           <li><b>Add Overlay</b> if you want to trace over the original source image.</li>
           <li><b>Select / Move</b>: click visible vinyl shapes, box-select groups, or select rows in Layers.</li>
           <li><b>Clean up</b>: move, stretch, skew, rotate, recolor, delete, duplicate, group, hide, lock, or reorder layers.</li>
-          <li><b>Use Export Check</b>: confirm whether the design can use Generated export or needs Handmade export.</li>
-          <li><b>Export</b>: use the export button that matches the JSON type you want to import.</li>
+          <li><b>Use Export Check</b>: confirm the layer count and warnings.</li>
+          <li><b>Export</b>: save one FH6-compatible JSON for the KFPS Import JSON tab.</li>
         </ol>
       </section>
       <section>
@@ -421,8 +420,7 @@
       <section>
         <h3>Exports</h3>
         <ul>
-          <li><b>Export for Handmade</b>: full FH6 shape-library export. Use this for hand-edited designs or anything using non-generated shapes.</li>
-          <li><b>Export for Generated</b>: normal generated-style export. Use this only when the design still contains generated-compatible rectangle/ellipse layers.</li>
+          <li><b>Export FH6 JSON</b>: full FH6 shape-library export for the unified KFPS importer.</li>
           <li><b>Save Project</b>: saves editor state for later editing. This is not the same as an FH6 import JSON.</li>
           <li><b>Load Project</b>: reloads a saved editor project.</li>
         </ul>
