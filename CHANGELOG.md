@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.10
+
+- Fixed the native Windows launcher opening the launcher window behind other windows.
+- Verified launcher setup buttons still run the Python setup and dependency setup batch files correctly.
+
 ## 2.0.9
 
 - Rebuilt the Windows launcher as a smaller native launcher.
