@@ -22,9 +22,14 @@ Provide a simpler FH6 JSON editor focused on manual cleanup:
 - Live auto color from overlay: updates selected/new shape color from the pixels under the shape.
 - Mouse wheel: zoom.
 - Middle/right mouse drag: pan.
+- `V` / `S` / `I` / `G` / `O`: Select, Shapes, Dropper, Guides, Overlay. Ignored while typing in fields.
 - Click visible pixels: select the top visible layer under the cursor.
 - Drag box: select multiple layers.
+- Hold `V` while dragging: force box-select even when the drag starts on a shape.
+- Invert box select: select layers outside the dragged box.
 - Drag selected layer/box: move.
+- Side handles: resize one axis.
+- Corner handles: skew by default; hold Shift for uniform/global scale.
 - Delete/Backspace: delete selected layer(s).
 - Ctrl+D: duplicate selected layer(s).
 - Ctrl+Z / Ctrl+Y: undo / redo.
@@ -32,8 +37,15 @@ Provide a simpler FH6 JSON editor focused on manual cleanup:
 - Shift+Arrow keys: larger nudge.
 - `[` / `]`: move selected layer(s) backward/forward in layer order.
 - Click a shape tile: place that shape in the current viewport center.
+- Place mode: add at top, insert above/below selection, or replace selected layer shape type.
+- Reuse last font size: keep repeated font characters consistent.
 - Click the star corner on a shape tile: add/remove favorite.
 - Search: filter shapes by name, family, index, or type code.
+- Gradient Shapes render with their bundled fade masks in the editor preview.
+- Multi-select color edit: apply color/alpha to all selected unlocked layers.
+- Enter in transform fields: apply typed values.
+- Tool options bar: keeps shape placement mode, active color, duplicate/delete/group/fit, and export readiness visible above the canvas.
+- Selected-shape halo/frame: editor-only visibility helper for same-color neighboring shapes.
 
 ## Known Limits
 

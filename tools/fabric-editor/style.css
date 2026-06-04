@@ -33,6 +33,7 @@
   --editor-notch-muted: rgba(18, 16, 18, 0.48);
   --editor-notch-active: rgba(236, 111, 164, 0.98);
   --editor-selection-border: #2b1622;
+  --editor-shape-outline: #151015;
   --editor-selection-corner: #fffafd;
   --editor-selection-corner-stroke: #2b1622;
   --editor-skew-corner: #ec6fa4;
@@ -77,6 +78,7 @@
   --editor-notch-muted: rgba(255, 255, 255, 0.46);
   --editor-notch-active: rgba(255, 255, 255, 1);
   --editor-selection-border: #ffffff;
+  --editor-shape-outline: #ffffff;
   --editor-selection-corner: #111722;
   --editor-selection-corner-stroke: #ffffff;
   --editor-skew-corner: #70e8ff;
@@ -390,7 +392,7 @@ small,
 .rightDock {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(360px, 1fr) 350px;
+  grid-template-rows: minmax(430px, 1fr) 300px;
   border-left: 1px solid var(--line);
   background: rgba(var(--panel-rgb), 0.96);
 }
@@ -546,6 +548,30 @@ label.inline,
   white-space: nowrap;
 }
 
+.compactOption {
+  min-width: 230px;
+}
+
+.compactOption select {
+  min-width: 150px;
+}
+
+.quickActionGroup {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(var(--panel-rgb), 0.72);
+}
+
+.quickActionGroup button {
+  min-height: 29px;
+  padding: 5px 8px;
+  border-radius: 999px;
+}
+
 input[type="checkbox"] {
   width: auto;
 }
@@ -571,6 +597,27 @@ input[type="range"] {
   flex-wrap: wrap;
   gap: 7px;
   margin: 8px 0;
+}
+
+.shapePlacementPanel {
+  margin: 9px 0 10px;
+  padding: 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.20);
+  border-radius: 14px;
+  background: rgba(var(--surface-rgb), 0.52);
+}
+
+.shapePlacementPanel label {
+  grid-template-columns: 52px minmax(0, 1fr);
+  margin: 0 0 7px;
+}
+
+.shapePlacementPanel label.inline {
+  margin: 7px 0;
+}
+
+.shapePlacementPanel button {
+  width: 100%;
 }
 
 .selectedCard,
@@ -672,7 +719,8 @@ input[type="range"] {
 }
 
 #colorSwatchButton,
-#colorPanelSwatch {
+#colorPanelSwatch,
+#quickColorSwatch {
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
@@ -688,6 +736,12 @@ input[type="range"] {
   background-size: 10px 10px;
   background-position: 0 0, 0 5px, 5px -5px, -5px 0;
   box-shadow: inset 0 0 0 999px var(--swatch, #ffffff);
+}
+
+#quickColorSwatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
 }
 
 .colorPanelSummary {
@@ -735,6 +789,10 @@ input[type="range"] {
 }
 
 body.eyedropperMode #canvas {
+  cursor: crosshair;
+}
+
+body.forceBoxSelectMode #canvas {
   cursor: crosshair;
 }
 
@@ -1133,6 +1191,74 @@ dialog::backdrop {
   background: rgba(var(--surface-rgb), 0.48);
   margin-bottom: 12px;
   padding: 12px;
+}
+
+.startupHelpDialog {
+  width: min(760px, 92vw);
+}
+
+.startupHelpHeader {
+  justify-content: center;
+  text-align: center;
+}
+
+.startupHelpHeader h2 {
+  color: var(--danger);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.startupHelpBody {
+  max-height: calc(86vh - 54px);
+}
+
+.shortcutGrid {
+  display: grid;
+  grid-template-columns: minmax(92px, 160px) minmax(0, 1fr);
+  gap: 7px 12px;
+  align-items: start;
+}
+
+.shortcutGrid b {
+  display: inline-flex;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.42);
+  border-radius: 9px;
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.12);
+  font-size: 12px;
+}
+
+.shortcutGrid span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.startupConfirmBox {
+  display: grid;
+  gap: 10px;
+  border-color: rgba(var(--accent-rgb), 0.45) !important;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(var(--accent-rgb), 0.14), transparent 12rem),
+    rgba(var(--surface-rgb), 0.62) !important;
+}
+
+.startupConfirmBox label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 900;
+}
+
+.startupConfirmBox button {
+  justify-self: start;
+}
+
+.startupConfirmBox p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .helpBody h3 {

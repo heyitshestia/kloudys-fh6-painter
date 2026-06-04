@@ -10,6 +10,8 @@ const VINYL_RESOURCE_BASES = [
   "/tools/fabric-editor/Resources/Vinyls",
   "/tools/forza-vinyl-studio/Resources/Vinyls",
 ];
+const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
+const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
 
 const VINYL_TYPE_BASES = {
   Primitives: 1048677,
@@ -83,6 +85,13 @@ let guideRenderQueued = false;
 let lastSnapMessageAt = 0;
 let snapOverlayObjects = [];
 let transformAnchorSnapshot = null;
+let reuseLastFontSize = localStorage.getItem("kloudyFabricReuseLastFontSize") === "true";
+let lastFontShapeTransform = loadLastFontShapeTransform();
+let selectedShapeOutlineObjects = new Set();
+let selectionInvertLocked = false;
+let pendingDialogColor = null;
+let dialogColorFrame = null;
+let vBoxSelectActive = false;
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -158,6 +167,29 @@ function colorWithAlpha(color, alpha) {
   return color || `rgba(0, 0, 0, ${safeAlpha})`;
 }
 
+function isGradientResource(resource) {
+  return resource?.family === "Gradient_Shapes";
+}
+
+function isGradientObject(object) {
+  return object?.kloudy?.resource_family === "Gradient_Shapes";
+}
+
+function applyObjectColor(object, color) {
+  if (!object) return;
+  const normalized = normalizeColor(color);
+  const hex = colorToHex(normalized);
+  object.set({ fill: hex, opacity: normalized[3] / 255 });
+  if (isGradientObject(object) && fabric?.Image?.filters?.BlendColor) {
+    object.filters = [new fabric.Image.filters.BlendColor({
+      color: hex,
+      mode: "tint",
+      alpha: 1,
+    })];
+    object.applyFilters();
+  }
+}
+
 function editorTransformColors() {
   return {
     border: cssColorVar("--editor-selection-border", "#2b1622"),
@@ -183,6 +215,85 @@ function styleObjectTransformControls(object) {
   });
 }
 
+function rgbFromCssColor(color) {
+  const value = String(color || "").trim();
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const raw = hex[1].length === 3
+      ? hex[1].split("").map((ch) => ch + ch).join("")
+      : hex[1];
+    return [
+      parseInt(raw.slice(0, 2), 16),
+      parseInt(raw.slice(2, 4), 16),
+      parseInt(raw.slice(4, 6), 16),
+    ];
+  }
+  const rgba = value.match(/^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)/i);
+  if (rgba) return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3])].map((v) => Math.max(0, Math.min(255, Math.round(v || 0))));
+  return null;
+}
+
+function colorLuminance(rgb) {
+  if (!rgb) return 1;
+  const [r, g, b] = rgb.map((v) => {
+    const c = Math.max(0, Math.min(255, Number(v) || 0)) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function selectedShapeHalo(object) {
+  const rgb = rgbFromCssColor(object?.fill);
+  const luminance = colorLuminance(rgb);
+  const opacity = Number(object?.opacity ?? 1);
+  const darkShape = luminance < 0.36 || opacity < 0.35;
+  return {
+    color: darkShape ? "rgba(255, 255, 255, 0.98)" : "rgba(18, 12, 18, 0.92)",
+    blur: darkShape ? 13 : 10,
+  };
+}
+
+function restoreSelectionOutline(object) {
+  const original = object?.__kloudySelectionOutline;
+  if (!object || !original) return;
+  object.set({
+    shadow: original.shadow || null,
+  });
+  delete object.__kloudySelectionOutline;
+  object.dirty = true;
+}
+
+function storeSelectionOutlineOriginal(object) {
+  if (!object || object.__kloudySelectionOutline) return;
+  object.__kloudySelectionOutline = {
+    shadow: object.shadow || null,
+  };
+}
+
+function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
+  if (!canvas) return;
+  const next = new Set(selected.filter((obj) => obj?.kloudy && !obj.kloudyGuide));
+  selectedShapeOutlineObjects.forEach((obj) => {
+    if (!next.has(obj)) restoreSelectionOutline(obj);
+  });
+  next.forEach((obj) => {
+    storeSelectionOutlineOriginal(obj);
+    const halo = selectedShapeHalo(obj);
+    obj.set({
+      shadow: new fabric.Shadow({
+        color: halo.color,
+        blur: halo.blur,
+        offsetX: 0,
+        offsetY: 0,
+        affectStroke: false,
+      }),
+    });
+    obj.dirty = true;
+  });
+  selectedShapeOutlineObjects = next;
+  canvas.requestRenderAll();
+}
+
 function styleAllTransformControls() {
   if (!canvas) return;
   canvas.getObjects().forEach(styleObjectTransformControls);
@@ -190,16 +301,20 @@ function styleAllTransformControls() {
   if (active) styleObjectTransformControls(active);
 }
 
-function editorCornerSkewHandler(eventData, transform, x, y) {
+function editorCornerTransformHandler(eventData, transform, x, y) {
+  if (eventData?.shiftKey && fabric?.controlsUtils?.scalingEqually) {
+    return fabric.controlsUtils.scalingEqually(eventData, transform, x, y);
+  }
   if (!fabric?.controlsUtils?.skewHandlerX) return false;
   return fabric.controlsUtils.skewHandlerX(eventData, transform, x, y);
 }
 
-function editorCornerSkewActionName() {
-  return "skewX";
+function editorCornerTransformActionName(eventData) {
+  return eventData?.shiftKey ? "scale" : "skewX";
 }
 
-function editorCornerSkewCursorStyleHandler(_eventData, control) {
+function editorCornerTransformCursorStyleHandler(eventData, control) {
+  if (eventData?.shiftKey) return "nwse-resize";
   return control?.x === control?.y ? "nesw-resize" : "nwse-resize";
 }
 
@@ -262,9 +377,9 @@ function configureEditorTransformControls() {
     controls[name] = new fabric.Control({
       x,
       y,
-      cursorStyleHandler: editorCornerSkewCursorStyleHandler,
-      actionHandler: editorCornerSkewHandler,
-      getActionName: editorCornerSkewActionName,
+      cursorStyleHandler: editorCornerTransformCursorStyleHandler,
+      actionHandler: editorCornerTransformHandler,
+      getActionName: editorCornerTransformActionName,
       render: renderSkewCornerControl,
     });
   }
@@ -380,6 +495,36 @@ function loadFavoriteShapes() {
   }
 }
 
+function loadLastFontShapeTransform() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("kloudyFabricLastFontShapeTransform") || "null");
+    if (!saved || typeof saved !== "object") return null;
+    return {
+      scaleX: Number(saved.scaleX) || 1,
+      scaleY: Number(saved.scaleY) || 1,
+      angle: Number(saved.angle) || 0,
+      skewX: Number(saved.skewX) || 0,
+    };
+  } catch (_err) {
+    return null;
+  }
+}
+
+function isFontFamily(family) {
+  return String(family || "").includes("Letters");
+}
+
+function rememberFontShapeTransform(object) {
+  if (!object?.kloudy || !isFontFamily(object.kloudy.resource_family)) return;
+  lastFontShapeTransform = {
+    scaleX: Number(object.scaleX) || 1,
+    scaleY: Number(object.scaleY) || 1,
+    angle: Number(object.angle) || 0,
+    skewX: Number(object.skewX) || 0,
+  };
+  localStorage.setItem("kloudyFabricLastFontShapeTransform", JSON.stringify(lastFontShapeTransform));
+}
+
 function saveFavoriteColors() {
   localStorage.setItem("kloudyFabricFavoriteColors", JSON.stringify(favoriteColors));
 }
@@ -428,6 +573,28 @@ function setActiveTool(button) {
   if (mode === "shapeLibrary") setStatus("Shape Library open. Click a shape tile to place it in the current viewport.");
   if (mode === "guides") setStatus("Guides mode. Drag on the canvas to create editor-only guide lines. Hold Control while moving vinyl layers to snap.");
   if (mode === "overlay") setStatus("Overlay controls open. Overlay images are reference-only and never exported.");
+}
+
+function activateToolShortcut(key) {
+  const normalized = String(key || "").toLowerCase();
+  const button = document.querySelector(`.toolButton[data-tool-key="${normalized}"]`);
+  if (!button) return false;
+  setActiveTool(button);
+  return true;
+}
+
+function setVBoxSelectActive(active) {
+  vBoxSelectActive = Boolean(active);
+  document.body.classList.toggle("forceBoxSelectMode", vBoxSelectActive);
+  if (canvas && !shapeEyedropperActive && activeToolMode !== "guides") {
+    canvas.selection = true;
+    canvas.skipTargetFind = vBoxSelectActive;
+    canvas.defaultCursor = vBoxSelectActive ? "crosshair" : "default";
+    canvas.hoverCursor = vBoxSelectActive ? "crosshair" : "default";
+    canvas.requestRenderAll();
+  }
+  if (vBoxSelectActive) setText("hudMode", "V box select");
+  else setText("hudMode", currentHudMode(selectedVinylObjects().length));
 }
 
 function leaveGuideModeForLayerEdit() {
@@ -509,6 +676,15 @@ async function loadResourcePathForResolved(resolved) {
   const d = chunks.join(" ");
   resourceCache.set(cacheKey, d);
   return d;
+}
+
+function loadFabricImage(url) {
+  return new Promise((resolve, reject) => {
+    fabric.Image.fromURL(url, (image) => {
+      if (!image) reject(new Error(`Failed to load image resource: ${url}`));
+      else resolve(image);
+    }, { crossOrigin: "anonymous" });
+  });
 }
 
 async function resolveVinylResourceUrl(family, index, suffix = "") {
@@ -641,12 +817,16 @@ async function makeFabricObject(shape, name = null) {
   const d = explicitResource ? await loadResourcePathForResolved(explicitResource) : await loadResourcePath(typeCode);
   const color = normalizeColor(shape.color);
   const data = shape.data || [0, 0, 1, 1, 0, 0, 0];
-  const object = new fabric.Path(d, {
+  const resolved = explicitResource || typeCodeToResource(typeCode);
+  const gradientResource = isGradientResource(resolved);
+  const shapePathForBounds = gradientResource ? new fabric.Path(d, { originX: "center", originY: "center" }) : null;
+  const object = gradientResource
+    ? await loadFabricImage(await resolveVinylResourceUrl(resolved.family, resolved.index, ".png"))
+    : new fabric.Path(d);
+  object.set({
     originX: "center",
     originY: "center",
     ...fabricPropsFromFh6Data(data),
-    fill: colorToHex(color),
-    opacity: color[3] / 255,
     stroke: shape.mask ? "#ff5572" : null,
     strokeWidth: shape.mask ? 3 : 0,
     objectCaching: false,
@@ -658,6 +838,12 @@ async function makeFabricObject(shape, name = null) {
     lockScalingFlip: false,
     centeredScaling: false,
   });
+  if (shapePathForBounds) {
+    object.set({
+      width: Math.max(1, Number(shapePathForBounds.width) || Number(object.width) || 1),
+      height: Math.max(1, Number(shapePathForBounds.height) || Number(object.height) || 1),
+    });
+  }
   object.kloudy = {
     name: name || shape.shape_name || (explicitResource ? shapeDisplayName(explicitResource.family, explicitResource.index) : typeLabel(typeCode)),
     type: typeCode,
@@ -679,6 +865,7 @@ async function makeFabricObject(shape, name = null) {
       y: (Number(data[3]) || 1) < 0 ? -1 : 1,
     },
   };
+  applyObjectColor(object, color);
   if (shape.editor_hidden) object.visible = false;
   if (object.kloudy.locked) setObjectLocked(object, true);
   styleObjectTransformControls(object);
@@ -766,12 +953,27 @@ function refreshColorUi() {
   const swatch = $("colorSwatchButton");
   if (swatch) swatch.style.setProperty("--swatch", activeHex);
   if ($("colorPanelSwatch")) $("colorPanelSwatch").style.setProperty("--swatch", activeHex);
+  if ($("quickColorSwatch")) $("quickColorSwatch").style.setProperty("--swatch", activeHex);
   if ($("colorPanelLabel")) $("colorPanelLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
   if ($("activeColorLarge")) $("activeColorLarge").style.setProperty("--swatch", activeHex);
   if ($("activeColorLabel")) $("activeColorLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
   if ($("dialogColorPicker")) $("dialogColorPicker").value = activeHex;
   if ($("colorPicker") && selectedVinylObjects().length !== 1) $("colorPicker").value = colorToHex(rememberedColor);
   renderFavoriteColors();
+}
+
+function refreshColorUiFast(color) {
+  const active = normalizeColor(color);
+  const activeHex = colorToHex(active);
+  const swatch = $("colorSwatchButton");
+  if (swatch) swatch.style.setProperty("--swatch", activeHex);
+  if ($("colorPanelSwatch")) $("colorPanelSwatch").style.setProperty("--swatch", activeHex);
+  if ($("quickColorSwatch")) $("quickColorSwatch").style.setProperty("--swatch", activeHex);
+  if ($("colorPanelLabel")) $("colorPanelLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
+  if ($("activeColorLarge")) $("activeColorLarge").style.setProperty("--swatch", activeHex);
+  if ($("activeColorLabel")) $("activeColorLabel").textContent = `${activeHex.toUpperCase()} / A ${active[3]}`;
+  if ($("colorPicker")) $("colorPicker").value = activeHex;
+  if ($("opacitySlider")) $("opacitySlider").value = active[3];
 }
 
 function renderFavoriteColors() {
@@ -801,6 +1003,39 @@ function renderFavoriteColors() {
   }
 }
 
+function previewEditorColor(color) {
+  const normalized = normalizeColor(color);
+  rememberedColor = normalized;
+  const selected = selectedVinylObjects();
+  const editable = unlockedObjects(selected);
+  editable.forEach((obj) => {
+    applyObjectColor(obj, normalized);
+    obj.setCoords();
+  });
+  refreshColorUiFast(normalized);
+  syncSelectedShapeOutlines(selected);
+  if (canvas && editable.length) canvas.requestRenderAll();
+}
+
+function scheduleDialogColorPreview(color) {
+  pendingDialogColor = normalizeColor(color);
+  if (dialogColorFrame) return;
+  dialogColorFrame = requestAnimationFrame(() => {
+    dialogColorFrame = null;
+    if (!pendingDialogColor) return;
+    previewEditorColor(pendingDialogColor);
+  });
+}
+
+function commitDialogColor(color) {
+  pendingDialogColor = null;
+  applyEditorColor(color, "dialog color");
+}
+
+function commitPendingDialogColor() {
+  if (pendingDialogColor) commitDialogColor(pendingDialogColor);
+}
+
 function applyEditorColor(color, reason = "color") {
   const normalized = normalizeColor(color);
   const selected = selectedVinylObjects();
@@ -811,11 +1046,32 @@ function applyEditorColor(color, reason = "color") {
       return;
     }
     rememberColor(normalized);
-    selected[0].set({ fill: colorToHex(normalized), opacity: normalized[3] / 255 });
+    applyObjectColor(selected[0], normalized);
     selected[0].setCoords();
+    syncSelectedShapeOutlines(selected);
     canvas.requestRenderAll();
     updateSelectionPanel();
     pushHistory(reason);
+    return;
+  }
+  if (selected.length > 1) {
+    const editable = unlockedObjects(selected);
+    if (!editable.length) {
+      rememberColor(normalized);
+      updateSelectionPanel();
+      setStatus("Selected layers are locked. Unlock them before changing color.");
+      return;
+    }
+    rememberColor(normalized);
+    editable.forEach((obj) => {
+      applyObjectColor(obj, normalized);
+      obj.setCoords();
+    });
+    syncSelectedShapeOutlines(selected);
+    canvas.requestRenderAll();
+    updateSelectionPanel();
+    pushHistory("batch color edit");
+    setStatus(`Applied ${colorToHex(normalized).toUpperCase()} / A ${normalized[3]} to ${editable.length} selected layer(s).${editable.length !== selected.length ? ` Skipped ${selected.length - editable.length} locked layer(s).` : ""}`);
     return;
   }
   rememberColor(normalized);
@@ -1197,8 +1453,8 @@ function initCanvas() {
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
   resetView();
-  canvas.on("selection:created", updateSelectionPanel);
-  canvas.on("selection:updated", updateSelectionPanel);
+  canvas.on("selection:created", handleSelectionChanged);
+  canvas.on("selection:updated", handleSelectionChanged);
   canvas.on("selection:cleared", () => {
     clearSnapOverlay();
     updateSelectionPanel();
@@ -1207,6 +1463,7 @@ function initCanvas() {
     transformAnchorSnapshot = null;
     clearSnapOverlay();
     selectedVinylObjects().forEach(updateObjectScaleSigns);
+    selectedVinylObjects().forEach(rememberFontShapeTransform);
     if ($("autoOverlayColor")?.checked) {
       selectedVinylObjects().forEach((obj) => applyOverlayColorToObject(obj, { remember: true, silent: true }));
     }
@@ -1244,6 +1501,13 @@ function initCanvas() {
     opt.e.stopPropagation();
   });
   canvas.on("mouse:down", (opt) => {
+    if (vBoxSelectActive && activeToolMode !== "guides" && !shapeEyedropperActive && opt.e.button === 0) {
+      opt.target = null;
+      canvas.skipTargetFind = true;
+      canvas.selection = true;
+      transformAnchorSnapshot = null;
+      return;
+    }
     if (activeToolMode === "guides") {
       opt.e.preventDefault();
       opt.e.stopPropagation();
@@ -1315,6 +1579,9 @@ function initCanvas() {
     clearSnapOverlay();
     isPanning = false;
     canvas.selection = !shapeEyedropperActive && activeToolMode !== "guides";
+    canvas.skipTargetFind = vBoxSelectActive;
+    canvas.defaultCursor = vBoxSelectActive ? "crosshair" : "default";
+    canvas.hoverCursor = vBoxSelectActive ? "crosshair" : "default";
     updateHud();
   });
 }
@@ -2078,7 +2345,7 @@ function contactScaleAxis(contactKind) {
   return null;
 }
 
-function snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold) {
+function snapAnchoredScaleSideToAxisLine(target, contact, anchorResult, threshold) {
   if (!target || !contact || !anchorResult || contact.kind === "center") return null;
   const scaleAxis = contactScaleAxis(contact.kind);
   if (!scaleAxis) return null;
@@ -2087,9 +2354,13 @@ function snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold) 
   if (!active?.point || !anchor) return null;
   let best = null;
   guideSnapLines().forEach((candidate) => {
+    if (scaleAxis === "x" && candidate.axis !== "x") return;
+    if (scaleAxis === "y" && candidate.axis !== "y") return;
     const line = lineObjectForSnap(candidate);
     if (!line) return;
-    const distance = distancePointToSnapLine(active.point, line);
+    const distance = scaleAxis === "x"
+      ? Math.abs(active.point.x - line.value)
+      : Math.abs(active.point.y - line.value);
     if (distance > threshold) return;
     if (!best || distance < best.distance) best = { line, distance };
   });
@@ -2100,19 +2371,19 @@ function snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold) 
   };
   const axisLength = Math.hypot(axisVector.x, axisVector.y);
   if (axisLength < 0.000001) return null;
-  const axisLine = {
-    x1: anchor.x,
-    y1: anchor.y,
-    x2: anchor.x + axisVector.x * 10000,
-    y2: anchor.y + axisVector.y * 10000,
+  const axisComponent = scaleAxis === "x" ? axisVector.x : axisVector.y;
+  if (Math.abs(axisComponent) < 0.000001) return null;
+  const desiredComponent = best.line.value - (scaleAxis === "x" ? anchor.x : anchor.y);
+  const t = desiredComponent / axisComponent;
+  if (!Number.isFinite(t) || t <= 0.01) return null;
+  const intersection = {
+    x: anchor.x + axisVector.x * t,
+    y: anchor.y + axisVector.y * t,
   };
-  const intersection = lineIntersection(axisLine, best.line);
-  if (!intersection) return null;
-  const currentDistance = axisLength;
   const desiredVector = { x: intersection.x - anchor.x, y: intersection.y - anchor.y };
   const desiredDistance = (desiredVector.x * axisVector.x + desiredVector.y * axisVector.y) / axisLength;
   if (!Number.isFinite(desiredDistance) || desiredDistance <= 0.01) return null;
-  const factor = desiredDistance / currentDistance;
+  const factor = desiredDistance / axisLength;
   if (!Number.isFinite(factor) || Math.abs(factor) < 0.02 || Math.abs(factor) > 50) return null;
   if (scaleAxis === "x") target.set({ scaleX: (Number(target.scaleX) || 1) * factor });
   else target.set({ scaleY: (Number(target.scaleY) || 1) * factor });
@@ -2121,11 +2392,13 @@ function snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold) 
   const correctedContact = refreshedGuideContact(target, contact);
   return {
     line: best.line,
-    projection: correctedContact.point,
+    projection: intersection,
     from: active.point,
     contact: correctedContact,
     anchorKind: correctedAnchor?.anchorKind || anchorResult.anchorKind,
-    distance: distancePointToSnapLine(correctedContact.point, best.line),
+    distance: scaleAxis === "x"
+      ? Math.abs(correctedContact.point.x - best.line.value)
+      : Math.abs(correctedContact.point.y - best.line.value),
     scaleAxis,
   };
 }
@@ -2451,7 +2724,7 @@ function snapTargetToGuides(target, event = null) {
     }
     const anchorResult = stabilizeOppositeTransformAnchor(target, contact, transformAction);
     const sideSnap = transformAction === "scale" && snapAllowed
-      ? snapAnchoredScaleSideToGuide(target, contact, anchorResult, threshold)
+      ? snapAnchoredScaleSideToAxisLine(target, contact, anchorResult, threshold)
       : null;
     const overlayContact = sideSnap?.contact || refreshedGuideContact(target, contact);
     renderSnapOverlayForTarget(target, overlayContact, sideSnap || (anchorResult ? {
@@ -2708,6 +2981,8 @@ async function loadPayload(payload) {
 }
 
 function clearVinylObjects() {
+  selectedShapeOutlineObjects.forEach(restoreSelectionOutline);
+  selectedShapeOutlineObjects.clear();
   vinylObjects().forEach((obj) => canvas.remove(obj));
   collapsedLayerGroups.clear();
   lastLayerListObject = null;
@@ -2725,6 +3000,46 @@ function selectedVinylObjects() {
     return active._objects.filter((obj) => obj.kloudy && !obj.kloudyGuide);
   }
   return active.kloudy && !active.kloudyGuide ? [active] : [];
+}
+
+function isActiveSelectionObject(object) {
+  return object && (object.type === "activeSelection" || object.type === "activeselection");
+}
+
+function shouldInvertCurrentSelection(event = null) {
+  if (!$("invertBoxSelect")?.checked || selectionInvertLocked) return false;
+  const active = canvas?.getActiveObject();
+  if (!isActiveSelectionObject(active)) return false;
+  const selected = selectedVinylObjects();
+  if (selected.length < 2) return false;
+  if (event?.e?.shiftKey || event?.e?.ctrlKey || event?.e?.metaKey) return false;
+  return true;
+}
+
+function invertCurrentSelection(event = null) {
+  if (!shouldInvertCurrentSelection(event)) return false;
+  const selectedSet = new Set(selectedVinylObjects());
+  const inverted = vinylObjects().filter((obj) => obj.visible !== false && !selectedSet.has(obj));
+  if (!inverted.length) {
+    setStatus("Invert box select found no layers outside the box.");
+    return false;
+  }
+  selectionInvertLocked = true;
+  if (inverted.length === 1) canvas.setActiveObject(inverted[0]);
+  else canvas.setActiveObject(new fabric.ActiveSelection(inverted, { canvas }));
+  selectionInvertLocked = false;
+  canvas.requestRenderAll();
+  setStatus(`Invert box selected ${inverted.length} layer(s) outside the drag box.`);
+  return true;
+}
+
+function handleSelectionChanged(event = null) {
+  if (invertCurrentSelection(event)) {
+    updateSelectionPanel();
+    refreshLayers();
+    return;
+  }
+  updateSelectionPanel();
 }
 
 function unlockedObjects(objects) {
@@ -2918,21 +3233,31 @@ function refreshLayers() {
 
 function updateSelectionPanel() {
   const selected = selectedVinylObjects();
+  syncSelectedShapeOutlines(selected);
   const enabled = selected.length === 1;
-  ["colorPicker", "xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "maskInput", "applyFields"].forEach((id) => {
+  ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "maskInput"].forEach((id) => {
     $(id).disabled = !enabled;
   });
+  $("colorPicker").disabled = selected.length < 1;
+  $("applyFields").disabled = selected.length < 1;
+  $("applyColorToSelection").disabled = selected.length < 1;
+  ["quickDuplicateLayer", "quickDeleteLayer", "quickFitSelected"].forEach((id) => {
+    const el = $(id);
+    if (el) el.disabled = selected.length < 1;
+  });
+  const quickGroup = $("quickGroupSelected");
+  if (quickGroup) quickGroup.disabled = selected.length < 2;
   const sharedAlpha = sharedSelectedAlpha(selected);
-  $("opacitySlider").disabled = !(enabled || (selected.length > 1 && sharedAlpha !== null));
+  $("opacitySlider").disabled = selected.length < 1;
   $("equalizeAlpha").disabled = selected.length < 2;
   if (!enabled) {
     $("selectedShapeName").textContent = selected.length > 1 ? `${selected.length} layers selected` : "No layer selected";
     $("selectedShapeCode").textContent = selected.length > 1
-      ? (sharedAlpha === null ? "Mixed alpha. Click Equalize Alpha before batch alpha edits." : `Shared alpha ${sharedAlpha}. Alpha slider edits all selected layers.`)
+      ? (sharedAlpha === null ? "Mixed alpha. Color applies to all selected layers; alpha uses the slider value." : `Shared alpha ${sharedAlpha}. Color and alpha apply to all selected layers.`)
       : "Click a layer or a shape tile.";
-    if (selected.length > 1 && sharedAlpha !== null) $("opacitySlider").value = sharedAlpha;
+    if (selected.length > 1) $("opacitySlider").value = sharedAlpha ?? rememberedColor[3] ?? 255;
     if (selected.length > 1) {
-      $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together.`;
+      $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together. Color edits apply to unlocked selected layers.`;
     }
     refreshColorUi();
     refreshLayers();
@@ -2961,29 +3286,24 @@ function applySelectionFields() {
   if (selected.length > 1) {
     const editable = unlockedObjects(selected);
     if (!editable.length) {
-      setStatus("Selected layers are locked. Unlock them before editing alpha.");
+      setStatus("Selected layers are locked. Unlock them before editing.");
       updateSelectionPanel();
       return;
     }
     if (editable.length !== selected.length) {
       setStatus(`Skipped ${selected.length - editable.length} locked layer(s). Unlock them before batch editing.`);
     }
-    const sharedAlpha = sharedSelectedAlpha(editable);
-    if (sharedAlpha === null) {
-      setStatus("Selected layers have mixed alpha. Click Equalize Alpha before batch alpha edits.");
-      updateSelectionPanel();
-      return;
-    }
     const alpha = Math.max(0, Math.min(255, Math.round(Number($("opacitySlider").value) || 0)));
+    const color = hexToRgb($("colorPicker").value || colorToHex(rememberedColor), alpha);
     editable.forEach((obj) => {
-      obj.set({ opacity: alpha / 255 });
+      applyObjectColor(obj, color);
       obj.setCoords();
     });
-    rememberColor([rememberedColor[0], rememberedColor[1], rememberedColor[2], alpha]);
+    rememberColor(color);
     canvas.requestRenderAll();
     updateSelectionPanel();
-    pushHistory("batch alpha edit");
-    setStatus(`Set alpha ${alpha} on ${editable.length} selected layer(s).`);
+    pushHistory("batch appearance edit");
+    setStatus(`Applied ${colorToHex(color).toUpperCase()} / A ${alpha} to ${editable.length} selected layer(s).${editable.length !== selected.length ? " Locked layers were skipped." : ""}`);
     return;
   }
   const obj = selected[0];
@@ -3008,16 +3328,17 @@ function applySelectionFields() {
     ),
   ]);
   obj.set({
-    fill: colorToHex(color),
-    opacity: color[3] / 255,
     ...transformProps,
   });
+  applyObjectColor(obj, color);
   obj.kloudy.mask = $("maskInput").checked;
   obj.kloudy.scaleSigns = {
     x: (Number($("sxInput").value) || 1) < 0 ? -1 : 1,
     y: (Number($("syInput").value) || 1) < 0 ? -1 : 1,
   };
-  obj.set({ stroke: obj.kloudy.mask ? "#ff5572" : null, strokeWidth: obj.kloudy.mask ? 3 : 0 });
+  const maskStroke = obj.kloudy.mask ? "#ff5572" : null;
+  const maskStrokeWidth = obj.kloudy.mask ? 3 : 0;
+  obj.set({ stroke: maskStroke, strokeWidth: maskStrokeWidth });
   obj.setCoords();
   applyLiveOverlayColor(obj);
   canvas.requestRenderAll();
@@ -3151,7 +3472,109 @@ function placeNewObjectInViewport(object) {
   object.setCoords();
 }
 
+function shapePlacementMode() {
+  return $("shapePlacementMode")?.value || "top";
+}
+
+function updateShapePlacementLabel() {
+  const select = $("shapePlacementMode");
+  const label = $("shapePlacementModeLabel");
+  if (!select || !label) return;
+  label.textContent = select.options[select.selectedIndex]?.textContent || "Add at top";
+}
+
+function orderedSelectedVinylObjects() {
+  const selected = selectedVinylObjects();
+  const all = canvas.getObjects();
+  return selected.slice().sort((a, b) => all.indexOf(a) - all.indexOf(b));
+}
+
+function insertionReferenceForMode(mode) {
+  const ordered = orderedSelectedVinylObjects();
+  if (!ordered.length) return null;
+  if (mode === "below") return ordered[0];
+  return ordered[ordered.length - 1];
+}
+
+function insertNewVinylObject(object, mode) {
+  if (mode !== "above" && mode !== "below") {
+    canvas.add(object);
+    return true;
+  }
+  const reference = insertionReferenceForMode(mode);
+  if (!reference) {
+    setStatus("Select a layer before using Insert above/below selected.");
+    return false;
+  }
+  const referenceIndex = canvas.getObjects().indexOf(reference);
+  canvas.add(object);
+  object.moveTo(mode === "below" ? referenceIndex : referenceIndex + 1);
+  return true;
+}
+
+function applyReusableFontTransform(object, family) {
+  if (!reuseLastFontSize || !isFontFamily(family) || !lastFontShapeTransform) return;
+  object.set({
+    scaleX: lastFontShapeTransform.scaleX,
+    scaleY: lastFontShapeTransform.scaleY,
+    angle: lastFontShapeTransform.angle,
+    skewX: lastFontShapeTransform.skewX,
+  });
+  object.setCoords();
+}
+
+function updateShapeResourceOnShape(shape, family, index) {
+  const typeCode = resourceToTypeCode(family, index);
+  const shapeWord = resourceToShapeWord(family, index);
+  return {
+    ...shape,
+    type: typeCode,
+    type_word: shapeWord,
+    resource_family: family,
+    resource_index: index,
+    shape_name: shapeDisplayName(family, index),
+  };
+}
+
+async function replaceSelectedShapes(family, index) {
+  const selected = orderedSelectedVinylObjects();
+  if (!selected.length) {
+    setStatus("Select one or more layers before replacing their shape type.");
+    return;
+  }
+  const editable = unlockedObjects(selected);
+  if (!editable.length) {
+    setStatus("Selected layers are locked. Unlock them before replacing shape type.");
+    return;
+  }
+  const replacements = [];
+  for (const oldObject of editable) {
+    const oldIndex = canvas.getObjects().indexOf(oldObject);
+    const shape = updateShapeResourceOnShape(objectToShape(oldObject, { includeEditorMeta: true }), family, index);
+    const replacement = await makeFabricObject(shape);
+    replacement.visible = oldObject.visible;
+    replacements.push({ oldObject, oldIndex, replacement });
+  }
+  replacements.forEach(({ oldObject }) => canvas.remove(oldObject));
+  replacements.forEach(({ oldIndex, replacement }) => {
+    canvas.add(replacement);
+    replacement.moveTo(Math.max(0, oldIndex));
+    if (isFontFamily(family)) rememberFontShapeTransform(replacement);
+  });
+  bringGuidesToBack();
+  selectObjects(replacements.map((item) => item.replacement), "shape replacement");
+  canvas.requestRenderAll();
+  refreshLayers();
+  pushHistory("replace shape type");
+  setStatus(`Replaced ${replacements.length} layer(s) with ${shapeDisplayName(family, index)}.${editable.length !== selected.length ? ` Skipped ${selected.length - editable.length} locked layer(s).` : ""}`);
+}
+
 async function addShape(family, index) {
+  const mode = shapePlacementMode();
+  if (mode === "replace") {
+    await replaceSelectedShapes(family, index);
+    return;
+  }
   const typeCode = resourceToTypeCode(family, index);
   const shapeWord = resourceToShapeWord(family, index);
   const shape = {
@@ -3167,14 +3590,16 @@ async function addShape(family, index) {
   };
   const object = await makeFabricObject(shape);
   placeNewObjectInViewport(object);
-  canvas.add(object);
+  applyReusableFontTransform(object, family);
+  if (!insertNewVinylObject(object, mode)) return;
   canvas.setActiveObject(object);
   applyLiveOverlayColor(object);
+  if (isFontFamily(family)) rememberFontShapeTransform(object);
   bringGuidesToBack();
   canvas.requestRenderAll();
   refreshLayers();
   updateSelectionPanel();
-  pushHistory("add shape");
+  pushHistory(mode === "top" ? "add shape" : `insert shape ${mode}`);
 }
 
 function buildShapeLibrary() {
@@ -3576,7 +4001,7 @@ function applyOverlayColorToObject(obj, options = {}) {
   }
   const alpha = Math.round((obj.opacity ?? 1) * 255);
   const applied = [color[0], color[1], color[2], alpha];
-  obj.set({ fill: colorToHex(applied), opacity: alpha / 255 });
+  applyObjectColor(obj, applied);
   if (options.remember) rememberColor(applied);
   if (canvas.getActiveObject() === obj) {
     $("colorPicker").value = colorToHex(applied);
@@ -3705,6 +4130,60 @@ function removeOverlay() {
   setStatus("Overlay removed.");
 }
 
+function bindEnterToApply(ids) {
+  ids.forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      applySelectionFields();
+    });
+  });
+}
+
+async function readStartupHelpConfirmed() {
+  try {
+    const response = await fetch(STARTUP_HELP_CONFIRMED_API, { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      return data.confirmed === true;
+    }
+  } catch (_err) {
+    // Direct file/browser fallback only. Normal app launches use the app-folder marker API.
+  }
+  return localStorage.getItem(STARTUP_HELP_CONFIRMED_KEY) === "true";
+}
+
+async function writeStartupHelpConfirmed() {
+  try {
+    const response = await fetch(STARTUP_HELP_CONFIRMED_API, { method: "POST" });
+    if (response.ok) {
+      const data = await response.json();
+      return data.marker || true;
+    }
+  } catch (_err) {
+    // Direct file/browser fallback only. Normal app launches use the app-folder marker API.
+  }
+  localStorage.setItem(STARTUP_HELP_CONFIRMED_KEY, "true");
+  return null;
+}
+
+async function maybeShowStartupHelp() {
+  const dialog = $("startupHelpDialog");
+  if (!dialog || await readStartupHelpConfirmed()) return;
+  requestAnimationFrame(() => {
+    try {
+      if (!dialog.open) dialog.showModal();
+    } catch (_err) {
+      // If another modal is open during startup recovery, try once more shortly after.
+      setTimeout(() => {
+        if (!dialog.open) dialog.showModal();
+      }, 250);
+    }
+  });
+}
+
 function bindUi() {
   applyEditorTheme(localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme);
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
@@ -3732,9 +4211,26 @@ function bindUi() {
   $("redoBtn").addEventListener("click", redo);
   $("helpBtn").addEventListener("click", () => $("helpDialog").showModal());
   $("closeHelp").addEventListener("click", () => $("helpDialog").close());
+  $("startupHelpConfirm")?.addEventListener("click", async () => {
+    if ($("startupHelpDontShow")?.checked) {
+      const marker = await writeStartupHelpConfirmed();
+      $("startupHelpDialog")?.close();
+      setStatus(marker
+        ? "Startup help confirmed for this app folder. The full Help menu is available from the Help button in the top toolbar."
+        : "Startup help confirmed for this browser. The full Help menu is available from the Help button in the top toolbar.");
+      return;
+    }
+    setStatus("Tick \"I have read and understood this\" before opening the editor.");
+  });
   $("colorSwatchButton").addEventListener("click", openColorDialog);
   $("colorPanelSwatch").addEventListener("click", openColorDialog);
-  $("closeColorDialog").addEventListener("click", () => $("colorDialog").close());
+  $("quickColorSwatch")?.addEventListener("click", openColorDialog);
+  $("shapePlacementMode")?.addEventListener("change", updateShapePlacementLabel);
+  $("closeColorDialog").addEventListener("click", () => {
+    commitPendingDialogColor();
+    $("colorDialog").close();
+  });
+  $("colorDialog").addEventListener("close", commitPendingDialogColor);
   $("saveFavoriteColor").addEventListener("click", saveCurrentFavoriteColor);
   $("removeFavoriteColor").addEventListener("click", removeCurrentFavoriteColor);
   $("clearFavoriteColors").addEventListener("click", clearFavoriteColors);
@@ -3744,21 +4240,37 @@ function bindUi() {
     const alpha = selected.length === 1
       ? Math.round((selected[0].opacity ?? 1) * 255)
       : (Number($("opacitySlider")?.value) || rememberedColor[3] || 255);
-    applyEditorColor(hexToRgb(event.target.value, alpha), "dialog color");
+    scheduleDialogColorPreview(hexToRgb(event.target.value, alpha));
+  });
+  $("dialogColorPicker").addEventListener("change", (event) => {
+    const selected = selectedVinylObjects();
+    const alpha = selected.length === 1
+      ? Math.round((selected[0].opacity ?? 1) * 255)
+      : (Number($("opacitySlider")?.value) || rememberedColor[3] || 255);
+    commitDialogColor(hexToRgb(event.target.value, alpha));
   });
   $("applyFields").addEventListener("click", applySelectionFields);
   $("deleteLayer").addEventListener("click", deleteSelected);
   $("duplicateLayer").addEventListener("click", duplicateSelected);
+  $("quickDeleteLayer")?.addEventListener("click", deleteSelected);
+  $("quickDuplicateLayer")?.addEventListener("click", duplicateSelected);
   $("bringForward").addEventListener("click", () => moveSelected(1));
   $("sendBackward").addEventListener("click", () => moveSelected(-1));
   $("fitSelected").addEventListener("click", fitSelectedView);
+  $("quickFitSelected")?.addEventListener("click", fitSelectedView);
   $("groupSelected").addEventListener("click", groupSelectedLayers);
+  $("quickGroupSelected")?.addEventListener("click", groupSelectedLayers);
   $("hideSelectedGroup").addEventListener("click", toggleSelectedGroupVisibility);
   $("lockSelectedGroup").addEventListener("click", toggleSelectedGroupLock);
   $("ungroupSelected").addEventListener("click", ungroupSelectedLayers);
+  $("applyColorToSelection").addEventListener("click", () => {
+    const alpha = Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
+    applyEditorColor(hexToRgb($("colorPicker")?.value || colorToHex(rememberedColor), alpha), "apply color to selection");
+  });
   $("colorPicker").addEventListener("input", applySelectionFields);
   $("opacitySlider").addEventListener("input", applySelectionFields);
   $("equalizeAlpha").addEventListener("click", equalizeSelectedAlpha);
+  bindEnterToApply(["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "opacitySlider"]);
   $("layerSearch").addEventListener("input", refreshLayers);
   $("pixelSelect").addEventListener("change", () => setPixelSelection($("pixelSelect").checked));
   $("boxVisibleOnly").addEventListener("change", () => setPixelSelection($("boxVisibleOnly").checked));
@@ -3806,6 +4318,14 @@ function bindUi() {
     showFavoritesOnly = false;
     renderShapeGrid();
   });
+  if ($("reuseLastFontSize")) {
+    $("reuseLastFontSize").checked = reuseLastFontSize;
+    $("reuseLastFontSize").addEventListener("change", (event) => {
+      reuseLastFontSize = Boolean(event.target.checked);
+      localStorage.setItem("kloudyFabricReuseLastFontSize", String(reuseLastFontSize));
+      setStatus(reuseLastFontSize ? "New font shapes reuse the last edited font size." : "New font shapes use viewport placement size.");
+    });
+  }
   document.querySelectorAll(".dockTab").forEach((button) => {
     button.addEventListener("click", () => activateDockPanel(button.dataset.panel));
   });
@@ -3814,6 +4334,17 @@ function bindUi() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+    const shortcutKey = event.key.toLowerCase();
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && ["v", "s", "i", "g", "o"].includes(shortcutKey)) {
+      event.preventDefault();
+      if (!event.repeat) activateToolShortcut(shortcutKey);
+      if (shortcutKey === "v" && !vBoxSelectActive) {
+        event.preventDefault();
+        setVBoxSelectActive(true);
+        setStatus("Hold V: box-select override active. Drag from anywhere, even on top of a shape.");
+      }
+      return;
+    }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
       if (activeToolMode === "guides" && selectedGuideId && !selectedVinylObjects().length) {
@@ -3863,6 +4394,17 @@ function bindUi() {
       moveSelected(-1);
     }
   });
+  document.addEventListener("keyup", (event) => {
+    if (event.key.toLowerCase() !== "v") return;
+    if (vBoxSelectActive) {
+      event.preventDefault();
+      setVBoxSelectActive(false);
+      setStatus("Box-select override released.");
+    }
+  });
+  window.addEventListener("blur", () => {
+    if (vBoxSelectActive) setVBoxSelectActive(false);
+  });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -3873,6 +4415,7 @@ document.addEventListener("DOMContentLoaded", () => {
   applyGuideStateToUi();
   renderGuideObjects();
   updateSelectionPanel();
+  updateShapePlacementLabel();
   const autosave = localStorage.getItem("kloudyFabricAutosave");
   if (autosave && window.confirm("Recover the last autosaved Fabric editor project?")) {
     try {
@@ -3886,4 +4429,5 @@ document.addEventListener("DOMContentLoaded", () => {
       setStatus(`Autosave recovery failed: ${err.message}`);
     }
   }
+  maybeShowStartupHelp();
 });

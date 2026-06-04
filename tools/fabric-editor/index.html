@@ -71,12 +71,31 @@
       <label class="toolbarToggle" title="Selection prefers visible pixels instead of full bounding boxes.">
         <input id="boxVisibleOnly" type="checkbox" checked> Visible-only select
       </label>
+      <label class="toolbarToggle" title="Box-select everything outside the dragged box instead of inside it. Single clicks are unaffected.">
+        <input id="invertBoxSelect" type="checkbox"> Invert box select
+      </label>
       <label class="toolbarSelect" title="Dropper samples a vinyl layer if clicked, otherwise it samples the source overlay.">
         <span class="contextLabel">Dropper</span>
         <select id="eyedropperMode" disabled>
           <option value="auto" selected>Auto layer/overlay</option>
         </select>
       </label>
+      <label class="toolbarSelect compactOption" title="Choose what happens when you click a shape tile.">
+        <span class="contextLabel">Shape Click</span>
+        <select id="shapePlacementMode" title="Choose where a clicked shape tile is added.">
+          <option value="top" selected>Add at top</option>
+          <option value="above">Insert above selected</option>
+          <option value="below">Insert below selected</option>
+          <option value="replace">Replace selected shape</option>
+        </select>
+      </label>
+      <button id="quickColorSwatch" type="button" title="Open color picker and saved colors"></button>
+      <div class="quickActionGroup" aria-label="Selected layer quick actions">
+        <button id="quickDuplicateLayer" type="button" title="Duplicate selected layer(s).">Duplicate</button>
+        <button id="quickDeleteLayer" type="button" title="Delete selected layer(s).">Delete</button>
+        <button id="quickGroupSelected" type="button" title="Create an editor-only group from selected layers.">Group</button>
+        <button id="quickFitSelected" type="button" title="Zoom to selected layer(s).">Fit</button>
+      </div>
       <div class="contextItem statusChip ready">
         <span class="contextLabel">Export</span>
         <b id="exportReadyChip">Ready</b>
@@ -90,11 +109,11 @@
 
     <main class="workspace">
       <aside class="toolRail" aria-label="Tools">
-        <button class="toolButton active" data-tool="Select / Move" data-tool-mode="select" title="Select, move, resize, rotate, or box-select vinyl layers.">V<span>Select</span></button>
-        <button class="toolButton" data-tool="Shape Library" data-tool-mode="shapeLibrary" data-focus-panel="shapeLibraryPane" title="Open the shape library. Click a shape tile to place it in the viewport.">S<span>Shapes</span></button>
-        <button class="toolButton" data-tool="Eyedropper" data-tool-mode="dropper" title="Pick color from an existing vinyl layer or from the overlay.">I<span>Dropper</span></button>
-        <button class="toolButton" data-tool="Guides / Snap" data-tool-mode="guides" data-focus-panel="guidesPane" title="Draw editor-only guide lines and snap layers to them while holding Control.">G<span>Guides</span></button>
-        <button class="toolButton" data-tool="Overlay / Reference" data-tool-mode="overlay" data-focus-panel="overlayPane" title="Open overlay/reference image controls.">O<span>Overlay</span></button>
+        <button class="toolButton active" data-tool-key="v" data-tool="Select / Move" data-tool-mode="select" title="Select, move, resize, rotate, or box-select vinyl layers.">V<span>Select</span></button>
+        <button class="toolButton" data-tool-key="s" data-tool="Shape Library" data-tool-mode="shapeLibrary" data-focus-panel="shapeLibraryPane" title="Open the shape library. Click a shape tile to place it in the viewport.">S<span>Shapes</span></button>
+        <button class="toolButton" data-tool-key="i" data-tool="Eyedropper" data-tool-mode="dropper" title="Pick color from an existing vinyl layer or from the overlay.">I<span>Dropper</span></button>
+        <button class="toolButton" data-tool-key="g" data-tool="Guides / Snap" data-tool-mode="guides" data-focus-panel="guidesPane" title="Draw editor-only guide lines and snap layers to them while holding Control.">G<span>Guides</span></button>
+        <button class="toolButton" data-tool-key="o" data-tool="Overlay / Reference" data-tool-mode="overlay" data-focus-panel="overlayPane" title="Open overlay/reference image controls.">O<span>Overlay</span></button>
       </aside>
 
       <section class="canvasStage">
@@ -161,6 +180,7 @@
                 </span>
               </label>
               <label>Alpha <input id="opacitySlider" type="range" min="0" max="255" value="255" disabled></label>
+              <button id="applyColorToSelection" type="button" title="Apply the active color and alpha to every selected unlocked layer." disabled>Apply Color To Selection</button>
               <button id="equalizeAlpha" type="button" title="Set every selected layer to the first selected layer's alpha." disabled>Equalize Alpha</button>
               <label class="inline"><input id="maskInput" type="checkbox" disabled> Mask layer</label>
             </div>
@@ -192,6 +212,13 @@
             </div>
             <input id="shapeSearch" placeholder="Search name, number, family, or type code">
             <select id="shapeFamily"></select>
+            <div class="shapePlacementPanel">
+              <b>Shape click mode: <span id="shapePlacementModeLabel">Add at top</span></b>
+              <label class="inline" title="When adding font shapes, reuse the last edited font size and rotation.">
+                <input id="reuseLastFontSize" type="checkbox"> Reuse last font size
+              </label>
+              <p class="hint">Replace keeps position, color, alpha, group, lock, and layer order. Above/below need a selected layer.</p>
+            </div>
             <div class="smallTools">
               <button id="showAllShapes">All</button>
               <button id="showFavorites">Favorites</button>
@@ -377,8 +404,12 @@
           <li>Use the category dropdown to browse shapes in an FH6-like order.</li>
           <li>Use search for shape names, numbers, families, or type codes.</li>
           <li>Click a tile to place that shape in the current viewport.</li>
+          <li>Use Place mode to add at the top, insert above/below a selected layer, or replace the selected layer's shape type.</li>
+          <li>Replace keeps the selected layer's position, color, alpha, group, lock, and layer order.</li>
           <li>Use the favorite button on a tile to keep common shapes near the top.</li>
           <li>New shapes use the active color unless live overlay sampling is enabled.</li>
+          <li>Gradient Shapes preview with their bundled fade masks instead of flat solid fills.</li>
+          <li>Reuse last font size helps repeated font characters stay consistent.</li>
         </ul>
       </section>
       <section>
@@ -390,13 +421,16 @@
           <li><b>Hide Group</b> hides grouped layers while editing. Hidden vinyl layers are still part of the project unless deleted.</li>
           <li><b>Lock Group</b> prevents accidental edits to grouped layers.</li>
           <li><b>Visible-only select</b> makes clicks prefer actual visible pixels instead of huge bounding boxes.</li>
+          <li><b>Invert box select</b> selects layers outside a dragged box. It is useful when deleting or isolating everything except a small area.</li>
         </ul>
       </section>
       <section>
         <h3>Color And Overlay Sampling</h3>
         <ul>
           <li>The color panel edits the active layer color and alpha.</li>
+          <li>When multiple layers are selected, color edits apply to every selected unlocked layer.</li>
           <li>Saved colors work like a small paint palette for colors you reuse often.</li>
+          <li>Clicking a saved color applies it to the current selection. Locked layers are skipped.</li>
           <li>The overlay image is only a reference. It is never exported into JSON.</li>
           <li><b>Sample overlay under selection</b> recolors selected layers from the source overlay beneath their current shape area.</li>
           <li><b>Live auto color from overlay</b> updates color while you move or resize a shape over the overlay.</li>
@@ -413,6 +447,7 @@
           <li>Enable the grid when you need repeated spacing or coarse layout checks.</li>
           <li>Hold <b>Control</b> while moving, scaling, skewing, or reshaping a vinyl layer to snap to guides or grid lines.</li>
           <li>For resizing/stretching, the side you drag is the side that should snap. The opposite side stays anchored as much as possible.</li>
+          <li>Side handles resize one axis. Corner handles skew/disform by default. Hold <b>Shift</b> while dragging a corner for uniform/global scale.</li>
           <li>Angled guide snapping can rotate the shape to match the guide. Horizontal/vertical guides can bring it back to straight alignment.</li>
           <li>Use <b>Clear Guides</b> when helpers get in the way. This removes guides only, not vinyl layers.</li>
         </ul>
@@ -430,19 +465,81 @@
         <ul>
           <li><b>Mouse wheel</b>: Zoom.</li>
           <li><b>Middle/right drag</b>: Pan.</li>
+          <li><b>V / S / I / G / O</b>: Select, Shapes, Dropper, Guides, Overlay. These shortcuts are ignored while typing in a text field.</li>
           <li><b>Drag empty canvas in Select mode</b>: Box-select layers.</li>
+          <li><b>Hold V while dragging</b>: Force box-select, even if the drag starts on top of a shape.</li>
           <li><b>Control while dragging/editing</b>: Snap to active guides or grid helpers.</li>
+          <li><b>Shift while dragging a corner</b>: Uniform/global scale instead of skew.</li>
           <li><b>Delete / Backspace</b>: Delete selected layers.</li>
           <li><b>Ctrl+D</b>: Duplicate selected layers.</li>
           <li><b>Ctrl+Z / Ctrl+Y</b>: Undo / redo.</li>
           <li><b>Arrow keys</b>: Nudge selection. Hold Shift for larger nudges.</li>
           <li><b>[ / ]</b>: Move layer order backward / forward.</li>
+          <li><b>Enter in transform fields</b>: Apply typed position, scale, rotation, skew, or alpha values.</li>
         </ul>
       </section>
       <section class="warning">
         <h3>Important Limits</h3>
         <p>This is not a raster image editor. It edits FH6 vinyl layers and exports FH6 JSON. Arbitrary freehand SVG paths are not supported.</p>
         <p>If an exported design imports incorrectly, first check whether you used the matching export/import path, then save and reload the group in FH6 before judging shape-code imports.</p>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="startupHelpDialog" class="startupHelpDialog">
+    <div class="helpHeader startupHelpHeader">
+      <h2>Read This Before Editing</h2>
+    </div>
+    <div class="helpBody startupHelpBody">
+      <section class="warning">
+        <h3>Most Important Limits</h3>
+        <ul>
+          <li>This edits FH6 vinyl JSON layers, not pixels. It is not Photoshop, Krita, or a raster image editor.</li>
+          <li>Source overlays are only references. They never export into the JSON.</li>
+          <li>Editor groups, guide lines, grids, halos, snap overlays, and helper UI never count as vinyl layers.</li>
+          <li>Export one FH6 JSON, then import it through the KFPS Import JSON tab.</li>
+          <li>If the in-game thumbnail looks wrong after import, save and reopen the vinyl group before judging shape-library imports.</li>
+          <li>Autosave is browser-local safety only. Use <b>Save Project</b> when you want a real editable project file.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Safe Basic Workflow</h3>
+        <ol>
+          <li><b>Import JSON</b> or start with shapes from the library.</li>
+          <li><b>Add Overlay</b> if you want to trace or sample colors from a source image.</li>
+          <li><b>Edit layers</b>: select, move, stretch, skew, rotate, recolor, group, hide, lock, duplicate, delete, and reorder.</li>
+          <li><b>Check export readiness</b>: confirm layer count and warnings.</li>
+          <li><b>Export FH6 JSON</b> and import it with the main app importer.</li>
+        </ol>
+      </section>
+      <section>
+        <h3>Shortcuts</h3>
+        <div class="shortcutGrid">
+          <b>V</b><span>Select / Move. Hold while dragging to force box-select from anywhere, even on top of a shape.</span>
+          <b>S</b><span>Shape Library.</span>
+          <b>I</b><span>Eyedropper.</span>
+          <b>G</b><span>Guides / Snap.</span>
+          <b>O</b><span>Overlay / Reference.</span>
+          <b>Ctrl</b><span>Snap while moving, scaling, skewing, or reshaping.</span>
+          <b>Shift + corner drag</b><span>Uniform/global scale instead of corner skew.</span>
+          <b>Mouse wheel</b><span>Zoom.</span>
+          <b>Middle/right drag</b><span>Pan.</span>
+          <b>Delete / Backspace</b><span>Delete selected layers.</span>
+          <b>Ctrl+D</b><span>Duplicate selected layers.</span>
+          <b>Ctrl+Z / Ctrl+Y</b><span>Undo / redo.</span>
+          <b>Arrow keys</b><span>Nudge selection. Hold Shift for a larger nudge.</span>
+          <b>[ / ]</b><span>Move selected layers backward / forward in layer order.</span>
+          <b>Enter in fields</b><span>Apply typed transform or alpha values.</span>
+        </div>
+      </section>
+      <section class="startupConfirmBox">
+        <label>
+          <input id="startupHelpDontShow" type="checkbox">
+          I have read and understood this.
+        </label>
+        <button id="startupHelpConfirm" type="button">Confirm And Open Editor</button>
+        <p>The full help menu is always available from the <b>Help</b> button in the top toolbar, near the File actions.</p>
+        <p>This confirmation is saved in this KFPS app folder, so it stays hidden for future launches from this copy.</p>
       </section>
     </div>
   </dialog>

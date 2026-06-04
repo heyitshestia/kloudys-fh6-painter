@@ -53,10 +53,34 @@ Features:
 - Favorite shapes can be toggled from the tile corner.
 - Favorite shapes persist in browser local storage.
 - Shape search matches family, name, index, and type code.
+- Gradient Shapes render with their bundled fade masks in the editor preview while still exporting as normal FH6 gradient resources.
+- Placement modes control what a clicked tile does:
+  - Add at top: creates a new top layer.
+  - Insert above selected: creates a new layer directly above the selected layer.
+  - Insert below selected: creates a new layer directly below the selected layer.
+  - Replace selected shape: keeps position, color, alpha, group, lock, and layer order, but swaps the selected layer's FH6 shape type.
+- Reuse last font size can keep newly placed font shapes consistent after one font character has been resized.
 
 Important: shape display thumbnails are editor UI only. Export uses the actual FH6 type code and geometry data.
 
 ## Selection Tools
+
+### Tool Options Bar
+
+The bar above the canvas keeps common actions visible instead of hiding everything in dock tabs.
+
+It shows:
+
+- Current tool.
+- Selection count.
+- Visible-only selection toggle.
+- Invert box-select toggle.
+- Shape click placement mode.
+- Active color swatch.
+- Quick duplicate, delete, group, and fit actions.
+- Export readiness.
+
+This follows the same general idea as Krita/Photoshop tool options: the detailed panels stay docked, but actions users need constantly remain reachable.
 
 ### Select / Move
 
@@ -68,9 +92,25 @@ Controls:
 - Drag a selected shape to move it.
 - Drag the Fabric handles to scale, rotate, or skew.
 - Drag empty canvas to box-select.
+- Hold V while dragging to force box-select even if the drag starts on top of a shape.
 - Hold Shift for multi-select behavior where Fabric supports it.
 - Mouse wheel zooms.
 - Middle/right mouse drag pans.
+
+Selected shapes get an editor-only halo and stronger transform frame. This makes selected shapes readable when several neighboring layers use the same color. The halo/frame is not exported and does not change JSON.
+
+### Invert Box Select
+
+Invert box-select changes drag-box selection into "select everything outside this box".
+
+Use it when a design has many layers and you want to isolate or delete everything except a specific region.
+
+Rules:
+
+- It only affects multi-layer box selections.
+- Normal single clicks are unaffected.
+- Hidden layers are skipped.
+- Shift/Ctrl modified selections are not inverted.
 
 ### Box Select Visible Only
 
@@ -97,6 +137,8 @@ Rotation uses degrees. The editor normalizes angles when exporting.
 Skew/disform changes the shape slant. This is useful for matching perspective or angled surfaces.
 
 Skew is more sensitive than move/scale. The guide snapping code is intentionally conservative during skew so it does not fight Fabric's active transform math.
+
+Corner handles skew by default. Hold Shift while dragging a corner to use uniform/global scale instead of skew. Ctrl remains reserved for snapping, so Shift avoids conflicting with guide/grid behavior.
 
 ## Guides And Snapping
 
@@ -241,6 +283,8 @@ The source overlay is never exported and never becomes a vinyl layer.
 
 The editor remembers the last active color. New shapes use this color by default.
 
+When one layer is selected, color edits apply to that layer. When multiple layers are selected, color edits apply to every selected unlocked layer and locked layers are skipped.
+
 ### Color Picker
 
 Click the color square to open the color picker.
@@ -249,6 +293,7 @@ Saved color slots:
 
 - Sixteen saved color slots are available.
 - Pick a slot, choose a color, and save it.
+- Clicking a saved color applies it to the current selection. With multiple selected layers, it performs a batch recolor.
 - Saved colors persist in browser local storage.
 
 ### Eyedropper
@@ -335,7 +380,7 @@ Autosave is kept in browser local storage. If storage is full or unavailable, th
 
 ## Export Buttons
 
-There are two export paths because not all JSONs are the same.
+The editor has one game/import export path.
 
 ### Export FH6 JSON
 
@@ -403,12 +448,13 @@ These do not export as vinyl layers:
 
 ## Known Practical Rules
 
-- Use Export For Handmade for anything involving full FH6 shape library shapes.
-- Use Export For Generated only for generated rectangle/ellipse outputs.
+- Use Export FH6 JSON for generated, handmade, or editor-created layers.
 - If a shape behaves strangely during skew, release the handle and try a smaller adjustment.
 - Use Ctrl snapping for precise placement, not for every drag.
 - Keep source overlay opacity low enough to see white shapes.
 - Save Fabric project files if you want to preserve editor-only guides/groups/locks.
+- Press Enter inside transform fields to apply typed values without clicking the apply button.
+- If two same-color shapes are hard to tell apart, select one layer from the canvas or layer list. The editor-only halo marks the selected layer without changing export data.
 
 ## Current Stability Tests
 
