@@ -286,10 +286,22 @@ if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
 if exist "Kloudys Painter Launcher.exe" (
     copy /y "Kloudys Painter Launcher.exe" "..\Kloudys Painter Launcher.exe" >nul 2>nul
     if errorlevel 1 (
-        call :log "Parent launcher is currently running or locked; kept updated launcher inside KloudysFH6Painter."
+        call :schedule_launcher_handoff
     ) else (
         del /f /q "Kloudys Painter Launcher.exe" >nul 2>nul
     )
 )
 if exist "..\Kloudys Painter.exe" del /f /q "..\Kloudys Painter.exe" >nul 2>nul
+exit /b 0
+
+:schedule_launcher_handoff
+set "HANDOFF_SCRIPT=%CD%\tools\replace_parent_launcher.ps1"
+if not exist "%HANDOFF_SCRIPT%" (
+    call :log "Parent launcher is currently running or locked; kept updated launcher inside KloudysFH6Painter."
+    call :log "Manual fallback: close KFPS, then copy KloudysFH6Painter\Kloudys Painter Launcher.exe over the launcher one folder above."
+    exit /b 0
+)
+call :log "Parent launcher is currently running or locked."
+call :log "Scheduled launcher replacement after KFPS Launcher closes."
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$script='%HANDOFF_SCRIPT%'; $src='%CD%\Kloudys Painter Launcher.exe'; $target='%CD%\..\Kloudys Painter Launcher.exe'; $old='%CD%\..\Kloudys Painter.exe'; $log='%UPDATE_LOG%'; $args='-NoProfile -ExecutionPolicy Bypass -File \"' + $script + '\" -Source \"' + $src + '\" -Target \"' + $target + '\" -OldTarget \"' + $old + '\" -LogFile \"' + $log + '\" -DeleteSelf'; Start-Process -WindowStyle Hidden -FilePath powershell.exe -ArgumentList $args"
 exit /b 0

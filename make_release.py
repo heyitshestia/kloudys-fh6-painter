@@ -138,6 +138,7 @@ def verify_stage() -> None:
     for path in required:
         if not path.exists():
             raise RuntimeError(f"release verification failed: missing {path}")
+    verify_launcher_executable(STAGE / "Kloudys Painter Launcher.exe")
     for path in STAGE.rglob("*"):
         rel = path.relative_to(STAGE).parts
         if any(part in BLOCKED_PARTS for part in rel):
@@ -150,6 +151,22 @@ def verify_stage() -> None:
             raise RuntimeError(f"release verification failed: development docs staged: {path}")
     verify_updater_batch(APP_DIR / "03_update_from_github.bat")
     verify_updater_batch(APP_DIR / "update_from_github.bat")
+
+
+def verify_launcher_executable(path: Path) -> None:
+    data = path.read_bytes()
+    forbidden = [
+        b"PyInstaller",
+        b"_MEIPASS",
+        b"Failed to remove temporary directory",
+        b"pyi-runtime-tmpdir",
+    ]
+    hits = [marker.decode("ascii", errors="replace") for marker in forbidden if marker in data]
+    if hits:
+        raise RuntimeError(
+            "release verification failed: launcher is still a PyInstaller one-file executable "
+            f"({', '.join(hits)}). Rebuild tools/native-launcher before packaging."
+        )
 
 
 def verify_updater_batch(path: Path) -> None:

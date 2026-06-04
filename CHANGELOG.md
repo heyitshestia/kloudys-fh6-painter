@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.9
+
+- Rebuilt the Windows launcher as a smaller native launcher.
+- Improved updater handling when the launcher executable is still running or locked.
+- Added release checks to prevent packaging the old launcher format again.
+
 ## 2.0.8
 
 - Fixed Fabric editor transform behavior for mirrored shapes, side resizing, corner skewing, and light-theme selection visibility.

@@ -96,6 +96,13 @@ $Launcher = Join-Path $Root "Kloudys Painter Launcher.exe"
 if (!(Test-Path -LiteralPath $Launcher)) {
     throw "Missing launcher executable: $Launcher"
 }
+$LauncherBytes = [System.IO.File]::ReadAllBytes($Launcher)
+$LauncherText = [System.Text.Encoding]::ASCII.GetString($LauncherBytes)
+foreach ($Marker in @("PyInstaller", "_MEIPASS", "Failed to remove temporary directory", "pyi-runtime-tmpdir")) {
+    if ($LauncherText.Contains($Marker)) {
+        throw "Release verification failed: launcher is still a PyInstaller one-file executable ($Marker). Rebuild tools/native-launcher before packaging."
+    }
+}
 Copy-Item -LiteralPath $Launcher -Destination (Join-Path $Stage "Kloudys Painter Launcher.exe") -Force
 
 foreach ($Item in $ProjectItems) {
