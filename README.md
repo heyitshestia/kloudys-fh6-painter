@@ -416,7 +416,7 @@ KFPS includes multiple visual themes for the app.
 
 ## Discord
 
-Discord: https://discord.gg/CHkAQeWM
+Discord: https://discord.gg/Mu2nUqVt3j
 
 Please read the guide before asking for help. This project assumes basic Windows, file, and FH6 editor familiarity.
 
