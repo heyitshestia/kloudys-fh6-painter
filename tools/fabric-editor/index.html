@@ -91,7 +91,7 @@
       </label>
       <button id="quickColorSwatch" type="button" title="Open color picker and saved colors"></button>
       <div class="quickActionGroup" aria-label="Selected layer quick actions">
-        <button id="quickDuplicateLayer" type="button" title="Duplicate selected layer(s).">Duplicate</button>
+        <button id="quickDuplicateLayer" type="button" title="Duplicate selected layer(s). Respects Shape Click above/below placement mode.">Duplicate</button>
         <button id="quickDeleteLayer" type="button" title="Delete selected layer(s).">Delete</button>
         <button id="quickGroupSelected" type="button" title="Create an editor-only group from selected layers.">Group</button>
         <button id="quickFitSelected" type="button" title="Zoom to selected layer(s).">Fit</button>
@@ -405,6 +405,7 @@
           <li>Use search for shape names, numbers, families, or type codes.</li>
           <li>Click a tile to place that shape in the current viewport.</li>
           <li>Use Place mode to add at the top, insert above/below a selected layer, or replace the selected layer's shape type.</li>
+          <li>Duplicate also follows Place mode, so duplicated layers can be inserted above or below the current selection instead of always going to the top.</li>
           <li>Replace keeps the selected layer's position, color, alpha, group, lock, and layer order.</li>
           <li>Use the favorite button on a tile to keep common shapes near the top.</li>
           <li>New shapes use the active color unless live overlay sampling is enabled.</li>

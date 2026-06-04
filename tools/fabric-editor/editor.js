@@ -3512,6 +3512,30 @@ function insertNewVinylObject(object, mode) {
   return true;
 }
 
+function insertDuplicateVinylObjects(clones, originals, mode) {
+  if (mode !== "above" && mode !== "below") {
+    clones.forEach((clone) => canvas.add(clone));
+    return "top";
+  }
+  const all = canvas.getObjects();
+  const orderedOriginals = originals
+    .filter((obj) => all.includes(obj))
+    .slice()
+    .sort((a, b) => all.indexOf(a) - all.indexOf(b));
+  if (!orderedOriginals.length) {
+    clones.forEach((clone) => canvas.add(clone));
+    return "top";
+  }
+
+  const reference = mode === "below" ? orderedOriginals[0] : orderedOriginals[orderedOriginals.length - 1];
+  const referenceIndex = canvas.getObjects().indexOf(reference);
+  clones.forEach((clone, offset) => {
+    canvas.add(clone);
+    clone.moveTo(mode === "below" ? referenceIndex + offset : referenceIndex + 1 + offset);
+  });
+  return mode;
+}
+
 function applyReusableFontTransform(object, family) {
   if (!reuseLastFontSize || !isFontFamily(family) || !lastFontShapeTransform) return;
   object.set({
@@ -3685,7 +3709,9 @@ function toggleFavorite(family, index) {
 
 function duplicateSelected() {
   const selected = selectedVinylObjects();
-  const objects = unlockedObjects(selected);
+  const selectedSet = new Set(selected);
+  const orderedSelection = orderedSelectedVinylObjects();
+  const objects = unlockedObjects(orderedSelection);
   if (!selected.length) return;
   if (!objects.length) {
     setStatus("Selected layers are locked. Unlock them before duplicating.");
@@ -3694,14 +3720,14 @@ function duplicateSelected() {
   if (objects.length !== selected.length) {
     setStatus(`Duplicating ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
   }
-  const selectedSet = new Set(objects);
+  const editableSet = new Set(objects);
   const duplicateGroupMap = new Map();
   const duplicateGroupNameMap = new Map();
   objects.forEach((obj) => {
     const groupId = obj.kloudy?.group_id;
     if (!groupId || duplicateGroupMap.has(groupId)) return;
     const members = membersForGroupIds([groupId]);
-    const completeGroupSelection = members.length > 1 && members.every((member) => selectedSet.has(member));
+    const completeGroupSelection = members.length > 1 && members.every((member) => editableSet.has(member));
     if (completeGroupSelection) {
       duplicateGroupMap.set(groupId, `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
       duplicateGroupNameMap.set(groupId, nextLayerGroupName());
@@ -3724,18 +3750,22 @@ function duplicateSelected() {
       clone.targetFindTolerance = $("pixelSelect").checked ? 3 : 0;
       clone.hoverCursor = "pointer";
       clone.moveCursor = "move";
-      canvas.add(clone);
       resolve(clone);
     });
   }))).then((clones) => {
+    const mode = shapePlacementMode();
+    const placement = insertDuplicateVinylObjects(clones, objects, mode);
     if (clones.length === 1) {
       canvas.setActiveObject(clones[0]);
     } else {
       canvas.setActiveObject(new fabric.ActiveSelection(clones, { canvas }));
     }
+    bringGuidesToBack();
     refreshLayers();
     canvas.requestRenderAll();
-    pushHistory("duplicate");
+    pushHistory(placement === "top" ? "duplicate" : `duplicate ${placement}`);
+    const placementText = placement === "top" ? "at top" : `${placement} selected layer(s)`;
+    setStatus(`Duplicated ${clones.length} layer(s) ${placementText}.${objects.length !== selectedSet.size ? ` Skipped ${selectedSet.size - objects.length} locked layer(s).` : ""}`);
   });
 }
 

@@ -97,6 +97,8 @@ Controls:
 - Mouse wheel zooms.
 - Middle/right mouse drag pans.
 
+Duplicate follows the current placement mode. In `Add at top` mode, duplicated layers go to the top as usual. In `Insert above selected` or `Insert below selected`, duplicated layers keep their internal layer order and are inserted directly above or below the selected layer or selected range.
+
 Selected shapes get an editor-only halo and stronger transform frame. This makes selected shapes readable when several neighboring layers use the same color. The halo/frame is not exported and does not change JSON.
 
 ### Invert Box Select

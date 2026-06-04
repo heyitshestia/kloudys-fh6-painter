@@ -32,6 +32,7 @@ Provide a simpler FH6 JSON editor focused on manual cleanup:
 - Corner handles: skew by default; hold Shift for uniform/global scale.
 - Delete/Backspace: delete selected layer(s).
 - Ctrl+D: duplicate selected layer(s).
+- Duplicate follows Place mode, so copies can be inserted above/below the selected layer or range.
 - Ctrl+Z / Ctrl+Y: undo / redo.
 - Arrow keys: nudge selected layer(s).
 - Shift+Arrow keys: larger nudge.
