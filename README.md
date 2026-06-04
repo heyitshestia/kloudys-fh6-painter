@@ -1,5 +1,13 @@
 # KFPS - Kloudy's Forza Painter Suite
 
+## **IMPORTANT UPDATE NOTE FOR VERSIONS BELOW 2.0.10**
+
+**If you are on any version below `2.0.10` and the launcher does not open, do not keep clicking the launcher.**
+
+**Open the `KloudysFH6Painter` folder and run `03_update_from_github.bat` instead.**
+
+**After the update finishes, use the launcher normally again. New downloads from `2.0.10` onward already include the fixed launcher.**
+
 <p align="center">
   <img src="docs/images/repo-banner.png" alt="KFPS - Kloudy's Forza Painter Suite" width="100%">
 </p>
