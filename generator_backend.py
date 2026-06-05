@@ -620,6 +620,95 @@ def source_image_metrics(image_path):
     }
 
 
+def source_sanity_check(image_path):
+    """Return user-facing source warnings for the generator preview banner."""
+    severity_rank = {"ok": 0, "warn": 1, "bad": 2}
+    messages = []
+
+    def add(severity, text):
+        messages.append({"severity": severity, "text": text})
+
+    metrics = source_image_metrics(image_path)
+    if metrics.get("analysis_error"):
+        return {
+            "severity": "warn",
+            "title": "Source Check",
+            "messages": [f"Could not inspect image: {metrics['analysis_error']}"],
+            "metrics": metrics,
+        }
+
+    megapixels = float(metrics.get("megapixels") or 0.0)
+    short_edge = int(metrics.get("short_edge") or 0)
+    width = int(metrics.get("width") or 0)
+    height = int(metrics.get("height") or 0)
+
+    if megapixels < 0.25 or short_edge < 400:
+        add("bad", "Very small source. Details will likely become soft or simplified; use the Image Tools upscaler first.")
+    elif megapixels < 0.45 or short_edge < 600:
+        add("warn", "Small source. It should still run, but tiny details may not survive well.")
+
+    if megapixels > 18.0:
+        add("bad", "Very large source. KFPS will downscale it heavily, so tiny details may be wasted or unstable.")
+    elif megapixels > 10.0:
+        add("warn", "Large source. KFPS will downscale it; resizing/cropping first may give more predictable detail.")
+
+    try:
+        from PIL import Image
+        import numpy as np
+
+        with Image.open(image_path) as img:
+            has_alpha = img.mode in ("RGBA", "LA") or "transparency" in img.info
+            rgba = img.convert("RGBA")
+            rgba.thumbnail((512, 512), Image.Resampling.LANCZOS)
+            alpha = np.asarray(rgba.getchannel("A"), dtype=np.uint8)
+            visible = alpha > 16
+            alpha_coverage = float(np.mean(visible))
+            border_width = max(1, min(alpha.shape[:2]) // 32)
+            border = np.concatenate([
+                alpha[:border_width, :].reshape(-1),
+                alpha[-border_width:, :].reshape(-1),
+                alpha[:, :border_width].reshape(-1),
+                alpha[:, -border_width:].reshape(-1),
+            ])
+            border_opaque = float(np.mean(border > 240))
+            border_transparent = float(np.mean(border < 16))
+            border_soft = float(np.mean((border >= 16) & (border <= 240)))
+            metrics.update({
+                "has_alpha": bool(has_alpha),
+                "border_opaque": round(border_opaque, 4),
+                "border_transparent": round(border_transparent, 4),
+                "border_soft": round(border_soft, 4),
+            })
+            if not has_alpha:
+                add("warn", "No transparency detected. Fine for full rectangular art; cutout vinyls should use background removal first.")
+            elif alpha_coverage < 0.03:
+                add("bad", "Almost everything is transparent. This may be the wrong file or an empty cutout.")
+            elif alpha_coverage > 0.97 and border_opaque > 0.92:
+                add("warn", "Alpha exists, but the background looks effectively opaque. It may not actually be removed.")
+            elif alpha_coverage > 0.90 and border_opaque > 0.70:
+                add("warn", "Only a little transparency detected. Check that the background is really removed.")
+            elif border_soft > 0.12:
+                add("warn", "Transparent edge looks soft. KFPS cleans some fringe pixels, but a cleaner cutout may generate better.")
+    except Exception as exc:
+        add("warn", f"Background check unavailable: {type(exc).__name__}: {exc}")
+
+    if not messages:
+        add("ok", f"Looks usable - {width}x{height}, {megapixels:.2f} MP.")
+
+    severity = max((msg["severity"] for msg in messages), key=lambda value: severity_rank.get(value, 0))
+    titles = {
+        "ok": "Source Check - Good",
+        "warn": "Source Check - Warning",
+        "bad": "Source Check - Problem",
+    }
+    return {
+        "severity": severity,
+        "title": titles[severity],
+        "messages": [msg["text"] for msg in messages],
+        "metrics": metrics,
+    }
+
+
 def preset_auto_family(values):
     shape_mode = str(values.get("shapeMode", "")).strip().lower()
     description = str(values.get("description", "")).strip().lower()

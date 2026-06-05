@@ -81,6 +81,7 @@ from generator_backend import (
     load_settings,
     next_generator_output_dir,
     save_user_preset,
+    source_sanity_check,
     write_custom_settings,
 )
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
@@ -2290,6 +2291,7 @@ class MainWindow(QMainWindow):
         self.render_lists()
         if self.images:
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
+            self.update_source_check_banner(self.images[0])
             self.sync_auto_summary()
         self.start_update_check()
         self.update_check_timer.start()
@@ -2734,6 +2736,11 @@ class MainWindow(QMainWindow):
         left_layout.addStretch()
 
         right_layout.addWidget(QLabel("Live Preview"))
+        self.source_check_label = QLabel("Source check: choose an image.")
+        self.source_check_label.setWordWrap(True)
+        self.source_check_label.setMinimumHeight(58)
+        self.source_check_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        right_layout.addWidget(self.source_check_label)
         self.preview = PreviewView("Choose source art or a finalized vinyl to preview it here.")
         right_layout.addWidget(self.preview, 1)
         self.tabs.addTab(tab, "Generate Final Vinyl")
@@ -3932,6 +3939,47 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.auto_summary_label.setText(f"Preset settings preview unavailable: {type(exc).__name__}: {exc}")
 
+    def update_source_check_banner(self, image_path: Path | None = None):
+        if not hasattr(self, "source_check_label"):
+            return
+        if image_path is None:
+            if getattr(self, "images", None):
+                row = self.image_list.currentRow() if hasattr(self, "image_list") else 0
+                if not (0 <= row < len(self.images)):
+                    row = 0
+                image_path = self.images[row]
+        if image_path is None:
+            self.source_check_label.setText("Source Check - Choose an image.")
+            self.source_check_label.setStyleSheet(
+                "QLabel { color: #666666; background: rgba(128,128,128,24); border: 1px solid rgba(128,128,128,90); "
+                "border-radius: 10px; padding: 8px; font-weight: 800; }"
+            )
+            return
+        try:
+            check = source_sanity_check(image_path)
+            severity = check.get("severity", "warn")
+            colors = {
+                "ok": ("#083d1b", "#c9f7d7", "#27b45b"),
+                "warn": ("#4d3300", "#fff1bf", "#d89b00"),
+                "bad": ("#5a0710", "#ffd4da", "#e53a4d"),
+            }
+            fg, bg, border = colors.get(severity, colors["warn"])
+            messages = check.get("messages") or ["No source details available."]
+            text = f"{check.get('title', 'Source Check')} - " + " ".join(messages[:3])
+            if len(messages) > 3:
+                text += f" +{len(messages) - 3} more."
+            self.source_check_label.setText(text)
+            self.source_check_label.setStyleSheet(
+                f"QLabel {{ color: {fg}; background: {bg}; border: 2px solid {border}; "
+                "border-radius: 10px; padding: 8px; font-weight: 900; }}"
+            )
+        except Exception as exc:
+            self.source_check_label.setText(f"Source Check - unavailable ({type(exc).__name__}: {exc})")
+            self.source_check_label.setStyleSheet(
+                "QLabel { color: #4d3300; background: #fff1bf; border: 2px solid #d89b00; "
+                "border-radius: 10px; padding: 8px; font-weight: 900; }"
+            )
+
     def add_image(self):
         USER_IMAGES_ROOT.mkdir(parents=True, exist_ok=True)
         file_names, _ = QFileDialog.getOpenFileNames(self, "Choose source image(s)", str(USER_IMAGES_ROOT), "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
@@ -3943,6 +3991,7 @@ class MainWindow(QMainWindow):
         self.detail_heatmap_preview_active = False
         self.preview_heatmap_button.setText("Preview heatmap")
         self.show_preview_bytes(render_source_image(self.images[0]) or b"")
+        self.update_source_check_banner(self.images[0])
         self.sync_auto_summary()
 
     def preview_detail_heatmap(self):
@@ -4137,6 +4186,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, "preview_heatmap_button"):
                 self.preview_heatmap_button.setText("Preview heatmap")
             self.show_preview_bytes(render_source_image(self.images[row]) or b"")
+            self.update_source_check_banner(self.images[row])
             self.sync_auto_summary()
 
     def preview_json(self, path: Path):
