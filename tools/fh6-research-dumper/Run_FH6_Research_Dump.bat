@@ -58,7 +58,7 @@ set "STATE_NAME=%LAYER_COUNT%_%STATE_KIND%"
 echo.
 echo Selected state: %STATE_KIND%
 echo Selected layer count: %LAYER_COUNT%
-echo Capturing compact research dump...
+echo Capturing research dump and raw candidate region chunks...
 "%PY_EXE%" %PY_ARGS% "%~dp0fh6_research_capture.py" --count "%LAYER_COUNT%" --state-name "%STATE_NAME%" --out-root "%~dp0captures"
 if errorlevel 1 (
   echo.

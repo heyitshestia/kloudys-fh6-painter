@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.17
+
+- Improved grouped and nested FH6 export flattening so parent group scale, rotation, skew, and negative scale are applied to child layers instead of only parent position.
+- Improved fast RTTI export validation so current game exports can use the fast locator report without requiring the old fallback probe report.
+
 ## 2.0.16
 
 - Added a basic FH5/FH6 target switch for import/export testing.

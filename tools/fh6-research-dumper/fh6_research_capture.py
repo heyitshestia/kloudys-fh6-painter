@@ -44,6 +44,13 @@ SAFE_LAYER_SIZE = 0xC0
 USER_MIN = 0x10000
 USER_MAX = 0x7FFFFFFFFFFF
 
+RAW_GROUP_PAD = 0x4000
+RAW_TABLE_PAD = 0x4000
+RAW_LAYER_PAD = 0x400
+RAW_LAYER_MERGE_GAP = 0x1000
+RAW_MAX_FILE_BYTES = 8 * 1024 * 1024
+RAW_MAX_TOTAL_BYTES_PER_CANDIDATE = 64 * 1024 * 1024
+
 
 class MBI(ctypes.Structure):
     _fields_ = [
@@ -522,6 +529,144 @@ def read_surrounding(handle, contains, address: int, before: int = 0x100, size: 
     return {"address": hx(start), "size": len(raw), "hex": raw.hex()}
 
 
+def parse_hex_address(value: str | int | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(str(value), 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def clamp_range_to_region(regions: list[dict], start: int, end: int) -> tuple[int, int] | None:
+    if end <= start:
+        return None
+    for region in regions:
+        if start < region["end"] and end > region["base"]:
+            clamped_start = max(start, region["base"])
+            clamped_end = min(end, region["end"])
+            if clamped_end > clamped_start:
+                return clamped_start, clamped_end
+    return None
+
+
+def merge_ranges(ranges: list[tuple[int, int]], gap: int = 0) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if end <= start:
+            continue
+        if merged and start <= merged[-1][1] + gap:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def pointer_sample_for_raw_dump(ptrs: list[int], count: int) -> list[int]:
+    valid = [p for p in ptrs if USER_MIN <= p <= USER_MAX]
+    if count <= 256 or len(valid) <= 256:
+        return valid
+    indices = set(range(min(64, len(valid))))
+    indices.update(range(max(0, len(valid) - 64), len(valid)))
+    for i in range(128):
+        indices.add(round(i * (len(valid) - 1) / 127))
+    return [valid[i] for i in sorted(indices) if 0 <= i < len(valid)]
+
+
+def write_raw_range(
+    handle,
+    chunk_dir: Path,
+    rank: int,
+    kind: str,
+    start: int,
+    end: int,
+    notes: str = "",
+) -> list[dict]:
+    written = []
+    offset = 0
+    total = max(0, end - start)
+    while offset < total:
+        chunk_start = start + offset
+        chunk_size = min(RAW_MAX_FILE_BYTES, total - offset)
+        raw = read_memory(handle, chunk_start, chunk_size)
+        if not raw:
+            break
+        suffix = f"_{offset // RAW_MAX_FILE_BYTES + 1}" if total > RAW_MAX_FILE_BYTES else ""
+        name = f"candidate{rank:02d}_{kind}_{chunk_start:016x}_{len(raw):x}{suffix}.bin"
+        path = chunk_dir / name
+        path.write_bytes(raw)
+        written.append(
+            {
+                "candidate_rank": rank,
+                "kind": kind,
+                "address": hx(chunk_start),
+                "requested_size": chunk_size,
+                "bytes_read": len(raw),
+                "file": str(path.name),
+                "crc32": f"{zlib.crc32(raw) & 0xFFFFFFFF:08x}",
+                "notes": notes,
+            }
+        )
+        offset += len(raw)
+        if len(raw) < chunk_size:
+            break
+    return written
+
+
+def dump_candidate_raw_chunks(
+    handle,
+    regions: list[dict],
+    out_dir: Path,
+    candidate: dict,
+    count: int,
+    rank: int,
+) -> list[dict]:
+    group = parse_hex_address(candidate.get("group"))
+    table = parse_hex_address(candidate.get("table"))
+    if group is None or table is None:
+        return []
+
+    chunk_dir = out_dir / "raw-region-chunks"
+    chunk_dir.mkdir(exist_ok=True)
+    ranges: list[tuple[str, int, int, str]] = []
+
+    group_range = clamp_range_to_region(regions, group - RAW_GROUP_PAD, group + GROUP_HEADER_READ + RAW_GROUP_PAD)
+    if group_range:
+        ranges.append(("group", group_range[0], group_range[1], "group header plus surrounding bytes"))
+
+    table_span = max(8, count * 8)
+    table_range = clamp_range_to_region(regions, table - RAW_TABLE_PAD, table + table_span + RAW_TABLE_PAD)
+    if table_range:
+        ranges.append(("table", table_range[0], table_range[1], "pointer table/vector area plus surrounding bytes"))
+
+    ptrs = [parse_hex_address(value) for value in candidate.get("table_pointers") or []]
+    ptrs = [p for p in ptrs if p is not None]
+    layer_ranges = []
+    for ptr in pointer_sample_for_raw_dump(ptrs, count):
+        clamped = clamp_range_to_region(regions, ptr - RAW_LAYER_PAD, ptr + FULL_LAYER_SIZE + RAW_LAYER_PAD)
+        if clamped:
+            layer_ranges.append(clamped)
+    merged_layer_ranges = merge_ranges(layer_ranges, RAW_LAYER_MERGE_GAP)
+    total_layers = sum(end - start for start, end in merged_layer_ranges)
+    if total_layers > RAW_MAX_TOTAL_BYTES_PER_CANDIDATE:
+        reduced = []
+        used = 0
+        for start, end in merged_layer_ranges:
+            if used >= RAW_MAX_TOTAL_BYTES_PER_CANDIDATE:
+                break
+            keep_end = min(end, start + RAW_MAX_TOTAL_BYTES_PER_CANDIDATE - used)
+            reduced.append((start, keep_end))
+            used += keep_end - start
+        merged_layer_ranges = reduced
+    for index, (start, end) in enumerate(merged_layer_ranges, start=1):
+        ranges.append((f"layers{index:02d}", start, end, "merged layer blobs from candidate pointer table"))
+
+    metadata = []
+    for kind, start, end, notes in ranges:
+        metadata.extend(write_raw_range(handle, chunk_dir, rank, kind, start, end, notes))
+    return metadata
+
+
 def deepen_candidate(handle, regions, contains, candidate: dict, count: int, deep_layers: int, include_raw: bool) -> dict:
     group = int(str(candidate["group"]), 0)
     table = int(str(candidate["table"]), 0)
@@ -568,6 +713,7 @@ def main() -> int:
     log(f"Capturing FH6 state '{state}' count={args.count} pid={pid}")
     log(f"Output: {out_dir}")
     handle = open_process(pid, read=True)
+    raw_chunk_metadata = []
     try:
         regions = iter_regions(handle, writable_only=True)
         contains = build_contains(regions)
@@ -587,7 +733,9 @@ def main() -> int:
         deep_candidates = []
         for index, candidate in enumerate(candidates[: max(1, args.top)], start=1):
             log(f"Deep dumping candidate {index}/{min(len(candidates), args.top)} score={candidate.get('score')} group={candidate.get('group')}")
-            deep_candidates.append(deepen_candidate(handle, regions, contains, candidate, args.count, args.deep_layers, args.full))
+            deep = deepen_candidate(handle, regions, contains, candidate, args.count, args.deep_layers, args.full)
+            deep_candidates.append(deep)
+            raw_chunk_metadata.extend(dump_candidate_raw_chunks(handle, regions, out_dir, deep, args.count, index))
     finally:
         close_handle(handle)
 
@@ -606,12 +754,15 @@ def main() -> int:
             "deep_layers": args.deep_layers,
             "top_deep_candidates": args.top,
             "full_raw_mode": bool(args.full),
+            "raw_chunk_files": len(raw_chunk_metadata),
         },
         "regions": region_summary,
         "candidates": candidates,
         "deep_candidates": deep_candidates,
+        "raw_region_chunks": raw_chunk_metadata,
     }
     (out_dir / "capture.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    (out_dir / "raw-region-chunks.json").write_text(json.dumps(raw_chunk_metadata, indent=2), encoding="utf-8")
     (out_dir / "candidate-summary.json").write_text(
         json.dumps(
             [
@@ -649,6 +800,7 @@ def main() -> int:
     )
     log(f"Wrote {out_dir / 'capture.json'}")
     log(f"Wrote {out_dir / 'candidate-summary.json'}")
+    log(f"Wrote {out_dir / 'raw-region-chunks.json'} with {len(raw_chunk_metadata)} raw chunk file(s)")
     log("Done. Zip the whole capture folder when sharing results.")
     return 0
 

@@ -508,6 +508,16 @@ button.primary {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.20), rgba(var(--accent2-rgb), 0.32));
 }
 
+#makeMaskLayer {
+  border-color: rgba(255, 85, 114, 0.48);
+  background: linear-gradient(135deg, rgba(255, 85, 114, 0.12), rgba(var(--surface-rgb), 0.72));
+}
+
+#makeMaskLayer:hover {
+  border-color: #ff5572;
+  color: #ff8da2;
+}
+
 .fileButton input {
   display: none;
 }

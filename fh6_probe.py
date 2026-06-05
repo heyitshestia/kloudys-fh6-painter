@@ -25,6 +25,13 @@ PAGE_READWRITE = 0x04
 READABLE_WRITABLE_MASK = 0xCC
 ROOT = Path(__file__).resolve().parent
 
+FH6_CALIBRATED_RTTI_PROFILE = {
+    "update_code": b"98170067497080",
+    "descriptor_offset": 0x9E17E20,
+    "vtable_offsets": [0x6802470],
+    "base_class_count": 4,
+}
+
 
 class MEMORY_BASIC_INFORMATION(ctypes.Structure):
     _fields_ = [
@@ -733,6 +740,7 @@ def load_update_code_patterns():
                 patterns.append(item)
         break
     patterns.extend([
+        FH6_CALIBRATED_RTTI_PROFILE["update_code"],
         b".?AVCLiveryGroup@@",
     ])
     seen = set()
@@ -797,7 +805,44 @@ def find_first_pattern_in_typed_regions(pid, patterns, region_type):
     return None, None
 
 
-def locate_clivery_group_rtti(pid):
+def locate_calibrated_clivery_group_rtti(pid, profile):
+    if getattr(profile, "key", "") != "fh6":
+        return None
+    module_base = get_base_address(pid)
+    descriptor_address = module_base + FH6_CALIBRATED_RTTI_PROFILE["descriptor_offset"]
+    vtables = [module_base + offset for offset in FH6_CALIBRATED_RTTI_PROFILE["vtable_offsets"]]
+    update_code = FH6_CALIBRATED_RTTI_PROFILE["update_code"]
+    try:
+        found_code = read_process_memory(pid, descriptor_address + 0x10, len(update_code)).rstrip(b"\x00 ")
+    except Exception:
+        found_code = b""
+    if found_code and found_code != update_code.rstrip(b"\x00 "):
+        print(
+            f"Calibrated CLiveryGroup update-code mismatch at descriptor offset "
+            f"0x{FH6_CALIBRATED_RTTI_PROFILE['descriptor_offset']:x}: "
+            f"found={found_code.decode('ascii', 'replace')}",
+            flush=True,
+        )
+    print(
+        f"Using calibrated FH6 CLiveryGroup RTTI: update_code="
+        f"{update_code.decode('ascii', 'replace')} descriptor=0x{descriptor_address:x} "
+        f"vtables={', '.join('0x%x' % v for v in vtables)}",
+        flush=True,
+    )
+    return {
+        "descriptor_address": descriptor_address,
+        "descriptor_offset": FH6_CALIBRATED_RTTI_PROFILE["descriptor_offset"],
+        "info_addresses": [],
+        "vtables": vtables,
+        "source": "calibrated_profile",
+        "update_code": update_code.decode("ascii", "replace"),
+    }
+
+
+def locate_clivery_group_rtti(pid, profile=None):
+    calibrated = locate_calibrated_clivery_group_rtti(pid, profile) if profile is not None else None
+    if calibrated:
+        return calibrated
     patterns = load_update_code_patterns()
     print(f"Loaded {len(patterns)} CLiveryGroup update-code patterns.", flush=True)
     descriptor_match, descriptor_pattern = find_first_pattern_in_typed_regions(pid, patterns, MEM_IMAGE)
@@ -851,9 +896,319 @@ def locate_clivery_group_rtti(pid):
     }
 
 
+def build_clivery_group_candidate(pid, profile, layer_count, rtti, group_address, vtable, count_kind):
+    count_address = group_address + profile.livery_count_offset
+    table_field = group_address + profile.layer_table_offset
+    try:
+        current_count = read_u16(pid, count_address)
+        table_address = read_u64(pid, table_field)
+    except Exception:
+        return None
+    if current_count != layer_count:
+        return None
+    if not table_address or not is_user_pointer(table_address):
+        return None
+    if not is_private_writable_address(pid, table_address):
+        return None
+    vector_ok, vector = validate_group_vector(pid, profile, group_address, table_address, layer_count)
+    if not vector_ok:
+        return None
+    score, samples = score_table(pid, profile, table_address, min(layer_count, 64))
+    if score <= 0:
+        return None
+    ok, checked, valid_entries = validate_table_layer_coverage(pid, profile, table_address, layer_count)
+    if not ok:
+        print(
+            f"rejected RTTI group=0x{group_address:x} table=0x{table_address:x} "
+            f"strictLayers={valid_entries}/{layer_count} scanned={checked}",
+            flush=True,
+        )
+        return None
+    return {
+        "score": score + 120,
+        "group_address": group_address,
+        "count_address": count_address,
+        "table_pointer_field": table_field,
+        "table_address": table_address,
+        "count_kind": count_kind,
+        "current_u16": current_count,
+        "current_u32": current_count,
+        "samples": samples,
+        "validated_entries": valid_entries,
+        "vector_count": vector.get("vector_count"),
+        "capacity_count": vector.get("capacity_count"),
+        "vtable": vtable,
+        "rtti_source": rtti.get("source") or "pattern_scan",
+        "rtti_update_code": rtti.get("update_code"),
+        "rtti_descriptor_offset": rtti.get("descriptor_offset"),
+    }
+
+
+def locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti, max_seconds=20, max_count_hits=250000):
+    """Use the calibrated vtable as a direct validator for count-offset candidates."""
+    vtables = set(rtti.get("vtables") or [])
+    if not vtables:
+        return []
+    started = time.monotonic()
+    pattern = struct.pack("<H", layer_count)
+    scanned = 0
+    hits = 0
+    next_progress = 512 * 1024 * 1024
+    for base, size, _protect, _type in iter_regions(pid, type_filter=MEM_PRIVATE, writable_only=True):
+        if max_seconds and time.monotonic() - started > max_seconds:
+            print(f"Stopped calibrated RTTI count scan after {max_seconds} seconds.", flush=True)
+            break
+        memory = read_region(pid, base, size)
+        if not memory:
+            continue
+        scanned += len(memory)
+        if scanned >= next_progress:
+            print(
+                f"Calibrated RTTI count scan checked {scanned // (1024 * 1024)} MB, "
+                f"count hits={hits}.",
+                flush=True,
+            )
+            next_progress += 512 * 1024 * 1024
+        start = 0
+        while True:
+            pos = memory.find(pattern, start)
+            if pos == -1:
+                break
+            start = pos + 1
+            hits += 1
+            if hits > max_count_hits:
+                print(f"Stopped calibrated RTTI count scan after {max_count_hits} count hits.", flush=True)
+                return []
+            count_address = base + pos
+            group_address = count_address - profile.livery_count_offset
+            if group_address < base:
+                continue
+            vtable = read_u64(pid, group_address)
+            if vtable not in vtables:
+                continue
+            candidate = build_clivery_group_candidate(
+                pid,
+                profile,
+                layer_count,
+                rtti,
+                group_address,
+                vtable,
+                "u16_rtti_calibrated_count",
+            )
+            if candidate:
+                print(
+                    f"calibrated RTTI candidate group=0x{group_address:x} "
+                    f"count=0x{count_address:x} table=0x{candidate['table_address']:x} "
+                    f"validated={candidate['validated_entries']}/{layer_count}",
+                    flush=True,
+                )
+                return [candidate]
+    print(
+        f"Calibrated RTTI count scan checked {scanned // (1024 * 1024)} MB, "
+        f"count hits={hits}, candidates=0.",
+        flush=True,
+    )
+    return []
+
+
+def read_calibrated_group_vector(pid, profile, group_address, vtables, max_vector_count=3000):
+    if not group_address or not is_private_writable_address(pid, group_address):
+        return None
+    try:
+        vtable = read_u64(pid, group_address)
+    except Exception:
+        return None
+    if vtable not in vtables:
+        return None
+    table_address = read_u64(pid, group_address + profile.layer_table_offset)
+    table_end = read_u64(pid, group_address + profile.layer_table_offset + 8)
+    table_capacity = read_u64(pid, group_address + profile.layer_table_offset + 16)
+    count_u16 = read_u16(pid, group_address + profile.livery_count_offset)
+    if not table_address or table_end is None or table_capacity is None:
+        return None
+    if not is_user_pointer(table_address) or not is_private_writable_address(pid, table_address):
+        return None
+    if table_end < table_address or table_capacity < table_end:
+        return None
+    if (table_end - table_address) % 8 or (table_capacity - table_address) % 8:
+        return None
+    vector_count = (table_end - table_address) // 8
+    capacity_count = (table_capacity - table_address) // 8
+    if vector_count <= 0 or vector_count > max_vector_count:
+        return None
+    if capacity_count < vector_count or capacity_count > max(max_vector_count + 10000, max_vector_count * 16):
+        return None
+    if not is_private_writable_address(pid, table_end - 1) or not is_private_writable_address(pid, table_capacity - 1):
+        return None
+    return {
+        "group_address": group_address,
+        "count_address": group_address + profile.livery_count_offset,
+        "table_pointer_field": group_address + profile.layer_table_offset,
+        "table_address": table_address,
+        "table_end": table_end,
+        "table_capacity": table_capacity,
+        "vector_count": vector_count,
+        "capacity_count": capacity_count,
+        "current_u16": count_u16,
+        "current_u32": count_u16,
+        "vtable": vtable,
+    }
+
+
+def flatten_calibrated_group(pid, profile, group_info, vtables, requested_count, depth=0, seen_groups=None):
+    if seen_groups is None:
+        seen_groups = set()
+    group_address = group_info["group_address"]
+    if group_address in seen_groups or depth > 12:
+        return {"shape_count": 0, "invalid_count": 1, "group_count": 0, "max_depth": depth, "samples": []}
+    seen_groups.add(group_address)
+    shape_count = 0
+    invalid_count = 0
+    group_count = 1
+    max_depth = depth
+    samples = []
+    table_address = group_info["table_address"]
+    vector_count = group_info["vector_count"]
+    for index in range(vector_count):
+        ptr = read_pointer(pid, table_address + index * 8)
+        if not is_private_writable_address(pid, ptr):
+            invalid_count += 1
+            continue
+        child_info = read_calibrated_group_vector(pid, profile, ptr, vtables, max_vector_count=max(3000, requested_count))
+        if child_info:
+            child = flatten_calibrated_group(
+                pid,
+                profile,
+                child_info,
+                vtables,
+                requested_count,
+                depth=depth + 1,
+                seen_groups=seen_groups,
+            )
+            shape_count += child["shape_count"]
+            invalid_count += child["invalid_count"]
+            group_count += child["group_count"]
+            max_depth = max(max_depth, child["max_depth"])
+            samples.extend(child["samples"])
+        elif export_layer_pointer_ok(pid, ptr, profile):
+            shape_count += 1
+            if len(samples) < 16:
+                layer_score, checks = score_layer_pointer(pid, ptr, profile)
+                samples.append((shape_count - 1, ptr, max(layer_score, 3), checks or ["export-layer"]))
+        else:
+            invalid_count += 1
+        if shape_count > requested_count and invalid_count:
+            break
+    return {
+        "shape_count": shape_count,
+        "invalid_count": invalid_count,
+        "group_count": group_count,
+        "max_depth": max_depth,
+        "samples": samples,
+    }
+
+
+def locate_clivery_groups_by_calibrated_flattened(pid, profile, layer_count, rtti, max_seconds=45):
+    vtables = set(rtti.get("vtables") or [])
+    if not vtables:
+        return []
+    started = time.monotonic()
+    patterns = [(vtable, struct.pack("<Q", vtable)) for vtable in vtables]
+    scanned = 0
+    hits = 0
+    best_miss = None
+    for region_index, (base, size, _protect, _type) in enumerate(iter_regions(pid, type_filter=MEM_PRIVATE, writable_only=True), start=1):
+        if max_seconds and time.monotonic() - started > max_seconds:
+            print(f"Stopped calibrated flattened-group scan after {max_seconds} seconds.", flush=True)
+            break
+        memory = read_region(pid, base, size)
+        if not memory:
+            continue
+        scanned += len(memory)
+        for vtable, pattern in patterns:
+            start = 0
+            while True:
+                pos = memory.find(pattern, start)
+                if pos == -1:
+                    break
+                start = pos + 8
+                hits += 1
+                group_address = base + pos
+                group_info = read_calibrated_group_vector(pid, profile, group_address, vtables, max_vector_count=max(3000, layer_count))
+                if not group_info:
+                    continue
+                flat = flatten_calibrated_group(pid, profile, group_info, vtables, layer_count)
+                miss = abs(int(flat["shape_count"]) - int(layer_count)) + int(flat["invalid_count"]) * 10
+                if best_miss is None or miss < best_miss[0]:
+                    best_miss = (miss, group_info, flat)
+                if flat["shape_count"] == layer_count and flat["invalid_count"] == 0:
+                    print(
+                        f"calibrated flattened candidate group=0x{group_address:x} "
+                        f"top={group_info['vector_count']} flat={flat['shape_count']} "
+                        f"groups={flat['group_count']} depth={flat['max_depth']}",
+                        flush=True,
+                    )
+                    return [{
+                        "score": 220 + min(layer_count, 3000) + flat["group_count"] * 10,
+                        "group_address": group_info["group_address"],
+                        "count_address": group_info["count_address"],
+                        "table_pointer_field": group_info["table_pointer_field"],
+                        "table_address": group_info["table_address"],
+                        "count_kind": "rtti_flattened_group",
+                        "current_u16": group_info.get("current_u16"),
+                        "current_u32": group_info.get("current_u32"),
+                        "samples": flat["samples"],
+                        "validated_entries": flat["shape_count"],
+                        "vector_count": group_info["vector_count"],
+                        "capacity_count": group_info["capacity_count"],
+                        "top_vector_count": group_info["vector_count"],
+                        "flattened_from_groups": True,
+                        "flattened_group_count": flat["group_count"],
+                        "flattened_max_depth": flat["max_depth"],
+                        "vtable": group_info["vtable"],
+                        "rtti_source": rtti.get("source") or "pattern_scan",
+                        "rtti_update_code": rtti.get("update_code"),
+                        "rtti_descriptor_offset": rtti.get("descriptor_offset"),
+                    }]
+        if region_index % 500 == 0:
+            print(
+                f"Calibrated flattened-group scan checked {scanned // (1024 * 1024)} MB, "
+                f"vtable hits={hits}.",
+                flush=True,
+            )
+    if best_miss:
+        _miss, group_info, flat = best_miss
+        print(
+            f"Best flattened-group miss: group=0x{group_info['group_address']:x} "
+            f"top={group_info['vector_count']} flat={flat['shape_count']} "
+            f"invalid={flat['invalid_count']} groups={flat['group_count']} depth={flat['max_depth']}",
+            flush=True,
+        )
+    print(
+        f"Calibrated flattened-group scan checked {scanned // (1024 * 1024)} MB, "
+        f"vtable hits={hits}, candidates=0.",
+        flush=True,
+    )
+    return []
+
+
 def locate_clivery_groups_by_rtti(pid, profile, layer_count):
-    rtti = locate_clivery_group_rtti(pid)
+    rtti = locate_clivery_group_rtti(pid, profile)
     if not rtti:
+        return []
+
+    if rtti.get("source") == "calibrated_profile":
+        groups = locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti)
+        if groups:
+            return groups
+        groups = locate_clivery_groups_by_calibrated_flattened(pid, profile, layer_count, rtti)
+        if groups:
+            return groups
+        print(
+            "Calibrated RTTI count scan did not find a validated group; "
+            "skipping broad vtable scan to avoid long stale-memory searches.",
+            flush=True,
+        )
         return []
 
     groups = []
@@ -871,53 +1226,17 @@ def locate_clivery_groups_by_rtti(pid, profile, layer_count):
                     break
                 group_address = base + pos
                 start = pos + 8
-                count_address = group_address + profile.livery_count_offset
-                table_field = group_address + profile.layer_table_offset
-                try:
-                    current_count = read_u16(pid, count_address)
-                    table_address = read_u64(pid, table_field)
-                except Exception:
-                    continue
-                if current_count != layer_count:
-                    continue
-                if not table_address or not is_user_pointer(table_address):
-                    continue
-                if not is_private_writable_address(pid, table_address):
-                    continue
-                vector_ok, vector = validate_group_vector(pid, profile, group_address, table_address, layer_count)
-                if not vector_ok:
-                    print(
-                        f"rejected RTTI group=0x{group_address:x} table=0x{table_address:x} "
-                        "because vector metadata did not match the requested layer count",
-                        flush=True,
-                    )
-                    continue
-                score, samples = score_table(pid, profile, table_address, min(layer_count, 64))
-                if score <= 0:
-                    continue
-                ok, checked, valid_entries = validate_table_layer_coverage(pid, profile, table_address, layer_count)
-                if not ok:
-                    print(
-                        f"rejected RTTI group=0x{group_address:x} table=0x{table_address:x} "
-                        f"strictLayers={valid_entries}/{layer_count} scanned={checked}",
-                        flush=True,
-                    )
-                    continue
-                groups.append({
-                    "score": score + 100,
-                    "group_address": group_address,
-                    "count_address": count_address,
-                    "table_pointer_field": table_field,
-                    "table_address": table_address,
-                    "count_kind": "u16_rtti",
-                    "current_u16": current_count,
-                    "current_u32": current_count,
-                    "samples": samples,
-                    "validated_entries": valid_entries,
-                    "vector_count": vector.get("vector_count"),
-                    "capacity_count": vector.get("capacity_count"),
-                    "vtable": vtable,
-                })
+                candidate = build_clivery_group_candidate(
+                    pid,
+                    profile,
+                    layer_count,
+                    rtti,
+                    group_address,
+                    vtable,
+                    "u16_rtti",
+                )
+                if candidate:
+                    groups.append(candidate)
     groups.sort(key=lambda item: item["score"], reverse=True)
     return groups
 
@@ -1046,8 +1365,17 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
             "table_address": winner["table_address"],
             "score": winner["score"],
             "locator": winner["count_kind"],
+            "validated_entries": winner.get("validated_entries"),
             "vector_count": winner.get("vector_count"),
             "capacity_count": winner.get("capacity_count"),
+            "top_vector_count": winner.get("top_vector_count"),
+            "flattened_from_groups": bool(winner.get("flattened_from_groups")),
+            "flattened_group_count": winner.get("flattened_group_count"),
+            "flattened_max_depth": winner.get("flattened_max_depth"),
+            "vtable": winner.get("vtable"),
+            "rtti_source": winner.get("rtti_source"),
+            "rtti_update_code": winner.get("rtti_update_code"),
+            "rtti_descriptor_offset": winner.get("rtti_descriptor_offset"),
             "samples": serialize_samples(winner["samples"]),
         }
         if output_path:
@@ -1266,6 +1594,35 @@ def strict_layer_pointer(pid, pointer, profile):
     if not shape or shape[0] not in (0, 1, 2, 100, 101, 102):
         return False
     if not mask or mask[0] not in (0, 1):
+        return False
+    return True
+
+
+def export_layer_pointer_ok(pid, pointer, profile):
+    if not is_private_writable_address(pid, pointer):
+        return False
+    try:
+        raw = read_process_memory(pid, pointer, max(profile.layer_shape_id_offset + 2, profile.layer_mask_offset + 1, 0x7C))
+    except Exception:
+        return False
+    if len(raw) < 0x7C:
+        return False
+    try:
+        pos = struct.unpack_from("<ff", raw, profile.layer_position_offset)
+        scale = struct.unpack_from("<ff", raw, profile.layer_scale_offset)
+        rotation = struct.unpack_from("<f", raw, profile.layer_rotation_offset)[0]
+        skew = struct.unpack_from("<f", raw, 0x70)[0]
+        shape_word = struct.unpack_from("<H", raw, profile.layer_shape_id_offset)[0]
+        mask = raw[profile.layer_mask_offset]
+    except Exception:
+        return False
+    if not all(-100000.0 < value < 100000.0 for value in (*pos, *scale, rotation, skew)):
+        return False
+    if abs(scale[0]) < 0.0001 and abs(scale[1]) < 0.0001:
+        return False
+    if not 0 <= int(shape_word) <= 0xFFFF:
+        return False
+    if mask not in (0, 1):
         return False
     return True
 

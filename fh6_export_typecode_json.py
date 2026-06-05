@@ -115,7 +115,7 @@ def read_group_metadata(handle, group):
     }
 
 
-def validate_editable_group(metadata, requested_count, expected_table):
+def validate_editable_group(metadata, requested_count, expected_table, allow_flattened=False):
     reasons = []
     try:
         begin = parse_int(metadata.get("table_begin_0x78", "0"))
@@ -124,7 +124,7 @@ def validate_editable_group(metadata, requested_count, expected_table):
     except Exception:
         begin = end = capacity = 0
         reasons.append("group vector addresses could not be parsed")
-    if int(metadata.get("count_u16_0x5a") or -1) != int(requested_count):
+    if not allow_flattened and int(metadata.get("count_u16_0x5a") or -1) != int(requested_count):
         reasons.append(f"group layer count does not match requested count ({metadata.get('count_u16_0x5a')} != {requested_count})")
     if parse_int(metadata.get("group", "0")) < MIN_NORMAL_GROUP_ADDRESS:
         reasons.append("group header address is outside the normal FH6 editable group range")
@@ -132,8 +132,10 @@ def validate_editable_group(metadata, requested_count, expected_table):
         reasons.append("group vector begin/end/capacity is missing")
     elif not (begin < capacity and begin <= end <= capacity):
         reasons.append("group vector begin/end/capacity is not ordered like a readable layer table")
+    vector_count = metadata.get("vector_count")
     capacity_count = metadata.get("capacity_count")
-    if capacity_count is None or int(capacity_count) < int(requested_count):
+    required_capacity = int(vector_count) if allow_flattened and vector_count is not None else int(requested_count)
+    if capacity_count is None or int(capacity_count) < required_capacity:
         reasons.append(f"group vector capacity is smaller than requested count ({capacity_count} < {requested_count})")
     if int(expected_table) != begin:
         reasons.append(f"located table does not match group vector table ({hx(expected_table)} != {hx(begin)})")
@@ -146,6 +148,8 @@ def validate_probe_report(probe_report, requested_count, selected_group, selecte
         probe = json.loads(Path(probe_report).read_text(encoding="utf-8"))
     except Exception as exc:
         return False, [f"locator validation report could not be read: {exc}"]
+    if probe.get("type") == "fh6_session_location_v1":
+        return validate_fast_session_report(probe, requested_count, selected_group, selected_table)
     if int(probe.get("count") or -1) != int(requested_count):
         reasons.append(f"locator report count does not match requested count ({probe.get('count')} != {requested_count})")
     candidates = probe.get("candidates") or []
@@ -186,6 +190,39 @@ def validate_probe_report(probe_report, requested_count, selected_group, selecte
         reasons.append("selected group/table was not confirmed by the locator report")
     elif not selected_strong:
         reasons.append("selected group/table did not pass full pointer/vector validation")
+    return not reasons, reasons
+
+
+def validate_fast_session_report(session, requested_count, selected_group, selected_table):
+    reasons = []
+    if int(session.get("layer_count") or -1) != int(requested_count):
+        reasons.append(f"locator session count does not match requested count ({session.get('layer_count')} != {requested_count})")
+    group = session.get("group_address")
+    table = session.get("table_address")
+    if group is None or table is None:
+        reasons.append("locator session does not contain a group/table address")
+    else:
+        try:
+            selected_seen = int(group) == int(selected_group) and int(table) == int(selected_table)
+        except Exception:
+            selected_seen = False
+        if not selected_seen:
+            reasons.append("selected group/table was not confirmed by the locator session")
+    capacity_count = session.get("capacity_count")
+    vector_count = session.get("vector_count")
+    validated_entries = int(session.get("validated_entries") or 0)
+    flattened = bool(session.get("flattened_from_groups"))
+    if not flattened and vector_count is not None and int(vector_count) != int(requested_count):
+        reasons.append(f"locator session vector count does not match requested count ({vector_count} != {requested_count})")
+    required_capacity = int(vector_count) if flattened and vector_count is not None else int(requested_count)
+    if capacity_count is not None and int(capacity_count) < required_capacity:
+        reasons.append(f"locator session capacity is smaller than requested count ({capacity_count} < {requested_count})")
+    if validated_entries < int(requested_count):
+        reasons.append(f"locator session did not validate every layer pointer ({validated_entries} < {requested_count})")
+    samples = session.get("samples") or []
+    min_sample_ok = min(8, int(requested_count))
+    if len(samples) < min_sample_ok:
+        reasons.append(f"locator session has too few validated sample layers ({len(samples)} < {min_sample_ok})")
     return not reasons, reasons
 
 
@@ -252,6 +289,288 @@ def decode_layer(raw, index, ptr, include_raw=False):
     return shape, layer
 
 
+def read_transform_fields(handle, address):
+    raw = try_read_memory(handle, address, 0x74)
+    if len(raw) < 0x74:
+        return {"x": 0.0, "y": 0.0, "sx": 1.0, "sy": 1.0, "rotation": 0.0, "skew": 0.0}
+    try:
+        x, y = struct.unpack_from("<ff", raw, 0x18)
+        sx, sy = struct.unpack_from("<ff", raw, 0x28)
+        rotation = struct.unpack_from("<f", raw, 0x50)[0]
+        skew = struct.unpack_from("<f", raw, 0x70)[0]
+    except Exception:
+        return {"x": 0.0, "y": 0.0, "sx": 1.0, "sy": 1.0, "rotation": 0.0, "skew": 0.0}
+    if not all(finite(value, 1000000.0) for value in (x, y, sx, sy, rotation, skew)):
+        return {"x": 0.0, "y": 0.0, "sx": 1.0, "sy": 1.0, "rotation": 0.0, "skew": 0.0}
+    return {"x": x, "y": y, "sx": sx, "sy": sy, "rotation": rotation, "skew": skew}
+
+
+IDENTITY_MATRIX = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def multiply_matrix(a, b):
+    return (
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        a[0] * b[4] + a[2] * b[5] + a[4],
+        a[1] * b[4] + a[3] * b[5] + a[5],
+    )
+
+
+def translation_matrix(x, y):
+    return (1.0, 0.0, 0.0, 1.0, float(x), float(y))
+
+
+def scale_matrix(sx, sy):
+    return (float(sx), 0.0, 0.0, float(sy), 0.0, 0.0)
+
+
+def rotation_matrix(degrees):
+    radians = math.radians(float(degrees))
+    cos_v = math.cos(radians)
+    sin_v = math.sin(radians)
+    return (cos_v, sin_v, -sin_v, cos_v, 0.0, 0.0)
+
+
+def skew_x_matrix(value):
+    return (1.0, 0.0, float(value), 1.0, 0.0, 0.0)
+
+
+def fh6_matrix_from_data(data):
+    x = float(data[0]) if len(data) > 0 else 0.0
+    y = float(data[1]) if len(data) > 1 else 0.0
+    sx = float(data[2]) if len(data) > 2 and abs(float(data[2])) > 0.000001 else 1.0
+    sy = float(data[3]) if len(data) > 3 and abs(float(data[3])) > 0.000001 else 1.0
+    rotation = float(data[4]) if len(data) > 4 else 0.0
+    skew = float(data[5]) if len(data) > 5 else 0.0
+    matrix = IDENTITY_MATRIX
+    for item in (
+        translation_matrix(x, -y),
+        rotation_matrix(-rotation),
+        skew_x_matrix(-skew),
+        scale_matrix(sx, sy),
+    ):
+        matrix = multiply_matrix(matrix, item)
+    return matrix
+
+
+def fh6_matrix_from_transform(transform):
+    return fh6_matrix_from_data([
+        transform.get("x", 0.0),
+        transform.get("y", 0.0),
+        transform.get("sx", 1.0),
+        transform.get("sy", 1.0),
+        transform.get("rotation", 0.0),
+        transform.get("skew", 0.0),
+    ])
+
+
+def fh6_data_from_matrix(matrix, preferred_sx_sign=1.0):
+    a, b, c, d, x, y_canvas = [float(value) for value in matrix]
+    sign_x = -1.0 if float(preferred_sx_sign or 1.0) < 0 else 1.0
+    sx = sign_x * (math.hypot(a, b) or 1.0)
+    theta = math.atan2(b / sx, a / sx)
+    det = a * d - b * c
+    sy = det / sx if abs(sx) > 0.000001 else 1.0
+    if abs(sy) < 0.000001:
+        sy = 1.0
+    cos_v = math.cos(-theta)
+    sin_v = math.sin(-theta)
+    local_c = cos_v * c - sin_v * d
+    skew = -(local_c / sy) if abs(sy) > 0.000001 else 0.0
+    rotation = ((-theta * 180.0 / math.pi) % 360.0 + 360.0) % 360.0
+    return [x, -y_canvas, sx, sy, rotation, skew]
+
+
+def matrix_is_identity(matrix):
+    return all(abs(float(value) - IDENTITY_MATRIX[index]) < 0.000001 for index, value in enumerate(matrix))
+
+
+def apply_parent_transform(shape, layer, parent_matrix):
+    if matrix_is_identity(parent_matrix):
+        return
+    original = [float(value) for value in shape["data"][:6]]
+    final_matrix = multiply_matrix(parent_matrix, fh6_matrix_from_data(original))
+    transformed = fh6_data_from_matrix(final_matrix, preferred_sx_sign=original[2])
+    for index, value in enumerate(transformed[:6]):
+        shape["data"][index] = value
+        layer["data"][index] = value
+    layer["applied_parent_transform"] = {
+        "matrix": [round(float(value), 8) for value in parent_matrix],
+        "original_data": original,
+    }
+
+
+def load_locator_report(path):
+    if not path:
+        return {}
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def locator_allows_flattened(locator):
+    return bool(locator.get("type") == "fh6_session_location_v1" and locator.get("flattened_from_groups"))
+
+
+def locator_group_vtable(locator):
+    value = locator.get("vtable")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        try:
+            return parse_int(value)
+        except Exception:
+            return None
+
+
+def metadata_vector_addresses(metadata):
+    try:
+        begin = parse_int(metadata.get("table_begin_0x78", "0"))
+        end = parse_int(metadata.get("table_end_0x80", "0"))
+        capacity = parse_int(metadata.get("table_capacity_0x88", "0"))
+    except Exception:
+        return None
+    if not begin or not end or not capacity or end < begin or capacity < end:
+        return None
+    if (end - begin) % 8 or (capacity - begin) % 8:
+        return None
+    vector_count = (end - begin) // 8
+    capacity_count = (capacity - begin) // 8
+    if vector_count <= 0 or vector_count > 3000:
+        return None
+    if capacity_count < vector_count or capacity_count > max(13000, vector_count * 16):
+        return None
+    return begin, vector_count, capacity_count
+
+
+def read_group_vector_info(handle, group, expected_vtable=None):
+    if expected_vtable is not None:
+        raw_vtable = try_read_memory(handle, group, 8)
+        if len(raw_vtable) != 8 or struct.unpack("<Q", raw_vtable)[0] != int(expected_vtable):
+            return None
+    try:
+        metadata = read_group_metadata(handle, group)
+    except Exception:
+        return None
+    vector = metadata_vector_addresses(metadata)
+    if not vector:
+        return None
+    begin, vector_count, capacity_count = vector
+    # Confirm the pointer table itself can be read before treating the object as a group.
+    if len(try_read_memory(handle, begin, min(vector_count, 8) * 8)) != min(vector_count, 8) * 8:
+        return None
+    return {
+        "group": group,
+        "table": begin,
+        "vector_count": vector_count,
+        "capacity_count": capacity_count,
+        "metadata": metadata,
+    }
+
+
+def layer_pointer_exportable(handle, ptr):
+    raw = try_read_memory(handle, ptr, MIN_LAYER_DECODE_SIZE)
+    if len(raw) < MIN_LAYER_DECODE_SIZE:
+        return False
+    try:
+        x, y = struct.unpack_from("<ff", raw, 0x18)
+        sx, sy = struct.unpack_from("<ff", raw, 0x28)
+        rotation = struct.unpack_from("<f", raw, 0x50)[0]
+        skew = struct.unpack_from("<f", raw, 0x70)[0]
+        mask = raw[0x78]
+    except Exception:
+        return False
+    if not all(finite(value, 1000000.0) for value in (x, y, sx, sy, rotation, skew)):
+        return False
+    if abs(sx) < 0.0001 and abs(sy) < 0.0001:
+        return False
+    return mask in (0, 1)
+
+
+def collect_export_layer_pointers(handle, group, table, requested_count, locator):
+    expected_vtable = locator_group_vtable(locator)
+    flatten = locator_allows_flattened(locator)
+    if not flatten:
+        return [(ptr_at(handle, table, index), IDENTITY_MATRIX) for index in range(int(requested_count))], {
+            "flattened": False,
+            "top_level_count": int(requested_count),
+            "group_count": 0,
+            "max_depth": 0,
+            "invalid_entries": 0,
+        }
+
+    root = read_group_vector_info(handle, group, expected_vtable)
+    if not root:
+        raise RuntimeError("flattened export could not read the selected root group vector")
+    if int(root["table"]) != int(table):
+        raise RuntimeError(f"flattened export root table changed ({hx(root['table'])} != {hx(table)})")
+
+    pointers = []
+    invalid = []
+    seen_groups = set()
+    max_depth = 0
+    group_count = 0
+    group_transforms = []
+
+    def walk(group_info, parent_matrix=None, depth=0):
+        nonlocal max_depth, group_count
+        parent_matrix = parent_matrix or IDENTITY_MATRIX
+        group_address = int(group_info["group"])
+        if group_address in seen_groups:
+            invalid.append({"group": hx(group_address), "reason": "recursive group reference"})
+            return
+        seen_groups.add(group_address)
+        group_count += 1
+        max_depth = max(max_depth, depth)
+        group_transform = read_transform_fields(handle, group_address)
+        group_matrix = fh6_matrix_from_transform(group_transform)
+        current_matrix = multiply_matrix(parent_matrix, group_matrix)
+        if len(group_transforms) < 32:
+            group_transforms.append({
+                "group": hx(group_address),
+                "depth": depth,
+                "vector_count": int(group_info["vector_count"]),
+                "local_translation": [group_transform["x"], group_transform["y"]],
+                "scale": [group_transform["sx"], group_transform["sy"]],
+                "rotation": group_transform["rotation"],
+                "skew": group_transform["skew"],
+                "local_matrix": [round(float(value), 8) for value in group_matrix],
+                "cumulative_matrix": [round(float(value), 8) for value in current_matrix],
+            })
+        for index in range(int(group_info["vector_count"])):
+            ptr = ptr_at(handle, int(group_info["table"]), index)
+            child = read_group_vector_info(handle, ptr, expected_vtable)
+            if child:
+                walk(child, current_matrix, depth + 1)
+            elif layer_pointer_exportable(handle, ptr):
+                pointers.append((ptr, current_matrix))
+            else:
+                invalid.append({"ptr": hx(ptr), "index": index, "depth": depth, "reason": "not a layer or known child group"})
+
+    walk(root)
+    stats = {
+        "flattened": True,
+        "top_level_count": int(root["vector_count"]),
+        "group_count": group_count,
+        "max_depth": max_depth,
+        "invalid_entries": len(invalid),
+        "invalid_samples": invalid[:24],
+        "group_transforms": group_transforms,
+    }
+    if len(pointers) != int(requested_count):
+        raise RuntimeError(
+            f"flattened export resolved {len(pointers)} shape layer(s), expected {requested_count}; "
+            f"groups={group_count}, invalid={len(invalid)}"
+        )
+    return pointers, stats
+
+
 def rounded_values(values, digits=6):
     return [round(float(value), digits) for value in values]
 
@@ -311,10 +630,12 @@ def main():
     table = parse_int(args.table)
     group = parse_int(args.group) if args.group else None
     report_path = Path(args.report) if args.report else Path(args.out).with_suffix(".report.json")
+    locator_report = load_locator_report(args.probe_report)
     handle = open_process(args.pid)
     shapes = []
     layers = []
     failures = []
+    flatten_stats = {}
     try:
         if not args.probe_report:
             write_refusal_report(args, table, group, report_path, reasons=["export requires a locator validation report"])
@@ -331,12 +652,31 @@ def main():
         except Exception as exc:
             write_refusal_report(args, table, group, report_path, reasons=[f"group header could not be read: {exc}"])
             sys.exit(2)
-        editable_ok, editable_reasons = validate_editable_group(group_metadata, int(args.count), table)
+        editable_ok, editable_reasons = validate_editable_group(
+            group_metadata,
+            int(args.count),
+            table,
+            allow_flattened=locator_allows_flattened(locator_report),
+        )
         if not editable_ok:
             write_refusal_report(args, table, group, report_path, metadata=group_metadata, reasons=editable_reasons)
             sys.exit(2)
-        for index in range(int(args.count)):
-            ptr = ptr_at(handle, table, index)
+        try:
+            export_pointers, flatten_stats = collect_export_layer_pointers(
+                handle,
+                group,
+                table,
+                int(args.count),
+                locator_report,
+            )
+        except Exception as exc:
+            write_refusal_report(args, table, group, report_path, metadata=group_metadata, reasons=[str(exc)])
+            sys.exit(2)
+        for index, pointer_item in enumerate(export_pointers):
+            if isinstance(pointer_item, (list, tuple)) and len(pointer_item) == 2:
+                ptr, parent_matrix = pointer_item
+            else:
+                ptr, parent_matrix = pointer_item, IDENTITY_MATRIX
             raw = try_read_memory(handle, ptr, FULL_LAYER_SIZE)
             layer_size = FULL_LAYER_SIZE
             if len(raw) != FULL_LAYER_SIZE:
@@ -351,6 +691,7 @@ def main():
                 })
                 continue
             shape, layer = decode_layer(raw, index, ptr, include_raw=args.include_raw)
+            apply_parent_transform(shape, layer, parent_matrix)
             layer["read_size"] = layer_size
             if len(raw) >= 0xB0:
                 layer["resource_ptr_0xa8"] = hx(struct.unpack_from("<Q", raw, 0xA8)[0])
@@ -377,6 +718,7 @@ def main():
                 "passed": True,
                 "metadata": group_metadata,
             },
+            "flattened_export": flatten_stats,
         },
         "summary": summary,
         "shapes": shapes,
@@ -396,6 +738,7 @@ def main():
             "passed": True,
             "metadata": group_metadata,
         },
+        "flattened_export": flatten_stats,
         "preferred_layer_read_size": hx(FULL_LAYER_SIZE),
         "fallback_layer_read_size": hx(GROUPED_SAFE_LAYER_SIZE),
         "minimum_decode_size": hx(MIN_LAYER_DECODE_SIZE),

@@ -1,8 +1,10 @@
 KFPS FH6 Research Dumper
 
 Purpose:
-This creates a small read-only memory report for the currently open FH6 vinyl/group.
+This creates a read-only memory report for the currently open FH6 vinyl/group.
 It does not import, export, poke, patch, or write anything to the game.
+It also saves raw candidate-local memory chunks around the best detected group,
+table, and layer regions so KFPS import/export locating can be improved later.
 
 Before running:
 1. Open Forza Horizon 6.
@@ -28,11 +30,15 @@ If it fails:
 - If Python is missing, run it from a KFPS standalone folder or install Python 3.12.
 
 What it saves:
-- capture.json: compact scanner details for offline debugging.
+- capture.json: scanner details for offline debugging.
 - candidate-summary.json: short list of likely group/table candidates.
+- raw-region-chunks.json: index of the raw binary chunks.
+- raw-region-chunks/*.bin: larger raw bytes around candidate group/table/layer areas.
 - notes.txt: human-readable summary.
 
 Privacy:
-The report includes FH6 process memory around vinyl candidates. Do not run it while
-private unrelated apps are open if you are worried about memory captures. It is meant
-only for FH6 vinyl/import debugging.
+The report includes FH6 process memory around likely vinyl candidates. The raw chunk
+files can be larger and may include nearby unrelated FH6 process bytes. Do not run it
+while private unrelated apps are open if you are worried about memory captures. It is
+meant only for FH6 vinyl/import debugging and should only be shared with trusted KFPS
+debugging contacts.

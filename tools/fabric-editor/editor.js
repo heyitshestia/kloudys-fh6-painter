@@ -3450,12 +3450,13 @@ function updateSelectionPanel() {
   const selected = selectedVinylObjects();
   syncSelectedShapeOutlines(selected);
   const enabled = selected.length === 1;
-  ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "maskInput"].forEach((id) => {
+  ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput"].forEach((id) => {
     $(id).disabled = !enabled;
   });
   $("colorPicker").disabled = selected.length < 1;
   $("applyFields").disabled = selected.length < 1;
   $("applyColorToSelection").disabled = selected.length < 1;
+  $("makeMaskLayer").disabled = selected.length < 1;
   ["quickDuplicateLayer", "quickDeleteLayer", "quickFitSelected"].forEach((id) => {
     const el = $(id);
     if (el) el.disabled = selected.length < 1;
@@ -3491,7 +3492,6 @@ function updateSelectionPanel() {
   $("syInput").value = round(decoded[3]);
   $("rotInput").value = round(decoded[4]);
   $("skewInput").value = round(obj.skewX || 0);
-  $("maskInput").checked = Boolean(obj.kloudy.mask);
   refreshColorUi();
   refreshLayers();
 }
@@ -3546,19 +3546,53 @@ function applySelectionFields() {
     ...transformProps,
   });
   applyObjectColor(obj, color);
-  obj.kloudy.mask = $("maskInput").checked;
   obj.kloudy.scaleSigns = {
     x: (Number($("sxInput").value) || 1) < 0 ? -1 : 1,
     y: (Number($("syInput").value) || 1) < 0 ? -1 : 1,
   };
-  const maskStroke = obj.kloudy.mask ? "#ff5572" : null;
-  const maskStrokeWidth = obj.kloudy.mask ? 3 : 0;
-  obj.set({ stroke: maskStroke, strokeWidth: maskStrokeWidth });
+  applyMaskVisual(obj);
   obj.setCoords();
   applyLiveOverlayColor(obj);
   canvas.requestRenderAll();
   updateSelectionPanel();
   pushHistory("field edit");
+}
+
+function applyMaskVisual(obj) {
+  if (!obj || !obj.kloudy) return;
+  obj.set({
+    stroke: obj.kloudy.mask ? "#ff5572" : null,
+    strokeWidth: obj.kloudy.mask ? 3 : 0,
+  });
+}
+
+function makeSelectedMaskLayers() {
+  const selected = selectedVinylObjects();
+  if (!selected.length) {
+    setStatus("Select one or more layers first.");
+    return;
+  }
+  const editable = unlockedObjects(selected);
+  if (!editable.length) {
+    setStatus("Selected layers are locked. Unlock them before marking them as masks.");
+    return;
+  }
+  let changed = 0;
+  editable.forEach((obj) => {
+    if (!obj.kloudy) return;
+    if (!obj.kloudy.mask) changed += 1;
+    obj.kloudy.mask = true;
+    applyMaskVisual(obj);
+    obj.setCoords();
+  });
+  canvas.requestRenderAll();
+  updateSelectionPanel();
+  pushHistory("make mask layer");
+  setStatus(
+    changed
+      ? `Marked ${changed} layer(s) as mask layers. They will keep a pink editor border and export with the mask flag.`
+      : "Selected editable layers were already mask layers."
+  );
 }
 
 function equalizeSelectedAlpha() {
@@ -4519,6 +4553,7 @@ function bindUi() {
     const alpha = Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
     applyEditorColor(hexToRgb($("colorPicker")?.value || colorToHex(rememberedColor), alpha), "apply color to selection");
   });
+  $("makeMaskLayer").addEventListener("click", makeSelectedMaskLayers);
   $("colorPicker").addEventListener("input", applySelectionFields);
   $("opacitySlider").addEventListener("input", applySelectionFields);
   $("equalizeAlpha").addEventListener("click", equalizeSelectedAlpha);

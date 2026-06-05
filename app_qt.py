@@ -6147,7 +6147,7 @@ class MainWindow(QMainWindow):
         probe_report = run_dir / f"fallback-{purpose}-probe.json"
         group = None
         table = None
-        use_research_scanner = True
+        use_research_scanner = False
         if not use_research_scanner:
             self.bus.log.emit(f"Fast-locating loaded {game.upper()} group with {template_count} layers...")
             fast_cmd = [
@@ -6433,6 +6433,9 @@ class MainWindow(QMainWindow):
             self.bus.log.emit(f"Universal export run folder: {run_dir}")
             self.bus.log.emit(f"Target game: {game.upper()} pid={pid}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="export-template")
+            fast_report = run_dir / "fast-export-template-session.json"
+            fallback_report = run_dir / "fallback-export-template-probe.json"
+            locator_report = fast_report if fast_report.exists() else fallback_report
             export_cmd = [
                 helper_python(),
                 ROOT / "fh6_export_typecode_json.py",
@@ -6449,7 +6452,7 @@ class MainWindow(QMainWindow):
                 "--report",
                 export_report,
                 "--probe-report",
-                run_dir / "fallback-export-template-probe.json",
+                locator_report,
             ]
             self.bus.log.emit(f"Reading current {game.upper()} group into compatible JSON...")
             code = self.run_subprocess(export_cmd, timeout=240)
