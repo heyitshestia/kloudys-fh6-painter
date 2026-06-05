@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from detail_heatmap import detail_heatmap_preview_bytes
 from geometry_json import drawable_shape_count
 from version_info import get_version
 
@@ -88,6 +89,8 @@ SETTING_KEYS = (
     "alphaSafeCandidatePadding",
     "v2PreprocessMode",
     "v2EnableRepair",
+    "detailHeatmapMode",
+    "detailHeatmapStrength",
 )
 
 
@@ -715,6 +718,10 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
     reserved_import_layers = str(values.get("reservedImportLayers", "0"))
     checkpoint_step = checkpoint_step_from_save_at(values.get("saveAt", ""), target_count)
     preprocess_mode = values.get("v2PreprocessMode", "none")
+    detail_heatmap_mode = str(values.get("detailHeatmapMode", "off")).strip().lower()
+    if detail_heatmap_mode not in ("off", "auto"):
+        detail_heatmap_mode = "off"
+    detail_heatmap_strength = str(values.get("detailHeatmapStrength", "0.10")).strip() or "0.10"
     setting_repair = str(values.get("v2EnableRepair", "false")).strip().lower() in ("1", "true", "yes", "on")
     run_metadata_path = reports_dir / f"{image_path.stem}.v2.run_metadata.json"
     build_info = app_build_info()
@@ -734,6 +741,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         "auto_tune": setting.get("auto_tune"),
         "toggles": {
             "luma_bands": str(preprocess_mode).strip().lower() == "luma_bands",
+            "detail_heatmap": detail_heatmap_mode != "off",
             "quality_overshoot": bool(enable_overshoot),
             "targeted_repair": bool(enable_repair or setting_repair),
             "vroom_boost": bool(setting.get("vroom_boost")),
@@ -744,6 +752,8 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
             "checkpoint_step": checkpoint_step,
             "live_preview_every": "50",
             "preprocess_mode": preprocess_mode,
+            "detail_heatmap_mode": detail_heatmap_mode,
+            "detail_heatmap_strength": detail_heatmap_strength,
             "overshoot_ratio": "1.12" if enable_overshoot else "1.0",
             "overshoot_max_extra": "400" if enable_overshoot else "0",
             "repair_enabled": bool(enable_repair or setting_repair),
@@ -772,6 +782,10 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         str(generator_stop_request_path(image_path, output_dir)),
         "--preprocess-mode",
         preprocess_mode,
+        "--detail-heatmap-mode",
+        detail_heatmap_mode,
+        "--detail-heatmap-strength",
+        detail_heatmap_strength,
         "--run-metadata",
         str(run_metadata_path),
     ]

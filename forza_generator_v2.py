@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 import cv2
 
+from detail_heatmap import apply_detail_guidance, build_detail_heatmap, heatmap_to_rgba
 from version_info import get_version
 
 
@@ -139,6 +140,18 @@ def parse_args() -> argparse.Namespace:
         choices=("none", "luma_bands"),
         default="none",
         help="Optional preprocess mode to simplify the source before generation/scoring.",
+    )
+    parser.add_argument(
+        "--detail-heatmap-mode",
+        choices=("off", "auto"),
+        default="off",
+        help="Guide generation/final scoring with an automatic detail heatmap. Default: off",
+    )
+    parser.add_argument(
+        "--detail-heatmap-strength",
+        type=float,
+        default=0.10,
+        help="Strength of detail-guided source enhancement and scoring emphasis. Default: 0.10",
     )
     parser.add_argument(
         "--enable-repair",
@@ -2351,9 +2364,21 @@ def main() -> int:
     art_profile = source_art_profile(source_rgba)
     prepared_rgba = apply_logo_hard_edges(source_rgba) if logo_hard_edges else source_rgba
     processed_rgba = apply_preprocess(prepared_rgba, args.preprocess_mode)
+    detail_heatmap = None
+    detail_heatmap_output_path = None
+    detail_guided_output_path = None
+    detail_strength = float(np.clip(args.detail_heatmap_strength, 0.0, 1.0))
+    if args.detail_heatmap_mode == "auto":
+        detail_heatmap = build_detail_heatmap(processed_rgba)
+        detail_heatmap_output_path = previews_dir / f"{stem}.detail-heatmap.png"
+        Image.fromarray(heatmap_to_rgba(detail_heatmap, processed_rgba), mode="RGBA").save(detail_heatmap_output_path)
+        if detail_strength > 0:
+            processed_rgba = apply_detail_guidance(processed_rgba, detail_heatmap, detail_strength)
+            detail_guided_output_path = previews_dir / f"{stem}.detail-guided.png"
+            Image.fromarray(np.clip(processed_rgba, 0, 255).astype(np.uint8), mode="RGBA").save(detail_guided_output_path)
     generation_image_path = image_path
     preprocess_output_path = None
-    if alpha_cleanup.get("changed") or logo_hard_edges or args.preprocess_mode != "none":
+    if alpha_cleanup.get("changed") or logo_hard_edges or args.preprocess_mode != "none" or detail_guided_output_path is not None:
         prep_parts = []
         if alpha_cleanup.get("changed"):
             prep_parts.append("alpha-clean")
@@ -2361,6 +2386,8 @@ def main() -> int:
             prep_parts.append("logo-edges")
         if args.preprocess_mode != "none":
             prep_parts.append(args.preprocess_mode.replace("_", "-"))
+        if detail_guided_output_path is not None:
+            prep_parts.append("detail-guided")
         preprocess_output_path = previews_dir / f"{stem}.{'-'.join(prep_parts)}.png"
         Image.fromarray(np.clip(processed_rgba, 0, 255).astype(np.uint8), mode="RGBA").save(preprocess_output_path)
         generation_image_path = preprocess_output_path
@@ -2377,6 +2404,7 @@ def main() -> int:
         print(f"Internal build stop:    {raw_stop}")
     print(f"Using settings:         {settings_path}")
     print(f"Luma Prep mode:         {args.preprocess_mode}")
+    print(f"Detail Heatmap:         {args.detail_heatmap_mode} strength={detail_strength:.2f}")
     if alpha_cleanup.get("changed"):
         print(
             "Alpha cleanup:         removed "
@@ -2393,6 +2421,10 @@ def main() -> int:
     print(f"Source recommendation:  {art_profile['recommendation']}")
     if preprocess_output_path is not None:
         print(f"Preprocessed image:     {preprocess_output_path}")
+    if detail_heatmap_output_path is not None:
+        print(f"Detail Heatmap preview: {detail_heatmap_output_path}")
+    if detail_guided_output_path is not None:
+        print(f"Detail-guided image:    {detail_guided_output_path}")
     if args.finalize_only:
         interrupted = True
         print("RESUME FINALIZE CHECKPOINTS. Reusing existing internal checkpoints; no raw generation will run.", flush=True)
@@ -2420,6 +2452,9 @@ def main() -> int:
     # helper; using it here makes fine details look artificially soft.
     score_rgba = downscale_rgba(source_rgba, args.score_size)
     score_importance = build_importance_map(score_rgba)
+    if detail_heatmap is not None:
+        score_heatmap = cv2.resize(detail_heatmap, (score_rgba.shape[1], score_rgba.shape[0]), interpolation=cv2.INTER_AREA)
+        score_importance = np.clip(score_importance * (1.0 + score_heatmap * (detail_strength * 0.85)), 0.55, 7.0).astype(np.float32)
     print(
         "V5 detail weighting: Finalize Checkpoints protects edges, alpha cuts, saturated detail, and linework during scoring/cleanup.",
         flush=True,
@@ -2848,6 +2883,12 @@ def main() -> int:
             "mode": args.preprocess_mode,
             "output": str(preprocess_output_path) if preprocess_output_path is not None else None,
             "alpha_cleanup": sorted_mapping(alpha_cleanup),
+            "detail_heatmap": {
+                "mode": args.detail_heatmap_mode,
+                "strength": detail_strength,
+                "heatmap_output": str(detail_heatmap_output_path) if detail_heatmap_output_path is not None else None,
+                "guided_output": str(detail_guided_output_path) if detail_guided_output_path is not None else None,
+            },
         },
         "source_art_profile": sorted_mapping(art_profile),
         "preprocess_mode": args.preprocess_mode,
@@ -2861,6 +2902,7 @@ def main() -> int:
         "interrupted": interrupted,
         "score_size": args.score_size,
         "v5_detail_weighting": True,
+        "detail_heatmap_weighting": detail_heatmap is not None,
         "live_preview_every": live_preview_every,
         "prefer_smooth_repair": prefer_smooth_repair,
         "efficiency_tolerance": args.efficiency_tolerance,

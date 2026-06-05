@@ -71,6 +71,7 @@ from generator_backend import (
     best_geometry_jsons,
     build_generator_command,
     delete_user_preset,
+    detail_heatmap_preview_bytes,
     generation_report_path,
     generator_stop_request_path,
     geometry_shape_count,
@@ -1036,6 +1037,14 @@ HELP_TEXT = {
         "Edge Repair",
         "Final pass that tightens transparent holes, cutout edges, and border adherence.\n\n"
         "Normally keep this on. It only affects finalized outputs, not the raw builder checkpoints."
+    ),
+    "detail_heatmap": (
+        "Detail Heatmap",
+        "Automatically detects likely high-detail areas before generation: eyes, linework, hard color changes, alpha cuts, highlights, and tiny local contrast.\n\n"
+        "Use Preview heatmap first. If the red/yellow areas match the detail you care about, enable it before generating. Press the preview button again to return to the original source image.\n\n"
+        "When enabled, the app saves a heatmap preview, gives the raw generator a gently detail-guided source image, and tells Finalize Checkpoints to protect those regions during scoring/cleanup.\n\n"
+        "It does not add more layers. Actual benefit is unclear, results may vary, and very low-layer runs may trade broad-shape accuracy for line detail.\n\n"
+        "For important small details, you are usually better off making or cleaning those sections by hand in the KLOUDY FORZA PAINTER SUITE EXTERNAL VINYL EDITOR."
     ),
     "import_template": (
         "Import Template Layer Count",
@@ -2567,34 +2576,51 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter)
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        left_scroll.setMinimumWidth(640)
+        left_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         left = QWidget()
         left_layout = QVBoxLayout(left)
+        left_layout.setSpacing(12)
+        left.setMinimumWidth(600)
+        left.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         left_scroll.setWidget(left)
         splitter.addWidget(left_scroll)
         right = QWidget()
         right_layout = QVBoxLayout(right)
         splitter.addWidget(right)
-        splitter.setSizes([520, 760])
+        splitter.setSizes([700, 860])
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
 
-        image_group = QGroupBox("Step 1 - Source Art")
+        image_group = QFrame()
+        image_group.setObjectName("dashboardCard")
         image_layout = QVBoxLayout(image_group)
+        image_title = QLabel("Step 1 - Source Art")
+        image_title.setObjectName("dashboardCardTitle")
+        image_layout.addWidget(image_title)
         image_row = QHBoxLayout()
         choose = QPushButton("Choose source image(s)")
         choose.clicked.connect(self.add_image)
-        image_row.addWidget(choose)
+        image_row.addWidget(choose, 1)
         open_out = QPushButton("Open latest vinyl folder")
         open_out.clicked.connect(self.open_output_folder)
-        image_row.addWidget(open_out)
+        image_row.addWidget(open_out, 1)
         image_layout.addLayout(image_row)
         self.image_list = QListWidget()
         self.image_list.setMaximumHeight(118)
         self.image_list.currentRowChanged.connect(self.preview_selected_image)
         image_layout.addWidget(self.image_list)
-        image_group.setMaximumHeight(145)
+        image_group.setMaximumHeight(178)
         left_layout.addWidget(image_group)
 
-        quality_group = QGroupBox("Step 2 - Vinyl Build Preset")
+        quality_group = QFrame()
+        quality_group.setObjectName("dashboardCard")
         quality_layout = QVBoxLayout(quality_group)
+        quality_title = QLabel("Step 2 - Vinyl Build Preset")
+        quality_title.setObjectName("dashboardCardTitle")
+        quality_layout.addWidget(quality_title)
         quality_layout.addWidget(self.label_with_help("Preset", "preset"))
         self.profile_combo = self.make_combo(max_visible=18, min_height=38)
         self.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
@@ -2615,6 +2641,8 @@ class MainWindow(QMainWindow):
         for row, (label, widget, help_key) in enumerate(fields):
             form.addWidget(self.label_with_help(label, help_key), row, 0)
             form.addWidget(widget, row, 1)
+        form.setColumnStretch(0, 0)
+        form.setColumnStretch(1, 1)
         for widget in (self.custom_layers, self.custom_save_at):
             widget.textEdited.connect(self.sync_auto_summary)
         quality_layout.addLayout(form)
@@ -2635,6 +2663,8 @@ class MainWindow(QMainWindow):
             tuning_form.addWidget(widget, row, 1)
             widget.textEdited.connect(self.enable_custom_tuning_from_edit)
             widget.textEdited.connect(self.save_pro_field_values)
+        tuning_form.setColumnStretch(0, 0)
+        tuning_form.setColumnStretch(1, 1)
         quality_layout.addLayout(tuning_form)
         saved_pro_values = self.app_settings.get("generation_pro_values") if isinstance(self.app_settings.get("generation_pro_values"), dict) else {}
         self.custom_resolution.setText(str(saved_pro_values.get("maxResolution", "")))
@@ -2655,13 +2685,29 @@ class MainWindow(QMainWindow):
         preset_actions.addWidget(save_preset)
         preset_actions.addWidget(delete_preset)
         quality_layout.addLayout(preset_actions)
-        self.luma_enabled = QCheckBox("Luma Prep - cleaner broad regions, but can soften tiny detail")
+        self.luma_enabled = QCheckBox("Luma Prep")
         self.luma_enabled.setToolTip("Best for flat logos/liveries and hard color bands. Leave off for most anime, hair, skin, and smooth gradients.")
         self.luma_enabled.setChecked(False)
         self.luma_enabled.stateChanged.connect(self.sync_auto_summary)
         self.luma_row = self.checkbox_with_help(self.luma_enabled, "luma_prep")
         quality_layout.addWidget(self.luma_row)
-        self.repair_enabled = QCheckBox("Edge Repair - clean borders and transparent holes")
+        heatmap_row = QHBoxLayout()
+        self.detail_heatmap_preview_active = False
+        self.detail_heatmap_enabled = QCheckBox("Automatic Detail Heatmap")
+        self.detail_heatmap_enabled.setToolTip(
+            "Preview first. Actual benefit is unclear and results may vary. "
+            "For important small details, you are usually better off making those sections by hand "
+            "in the KLOUDY FORZA PAINTER SUITE EXTERNAL VINYL EDITOR."
+        )
+        self.detail_heatmap_enabled.setChecked(False)
+        self.detail_heatmap_enabled.stateChanged.connect(self.sync_auto_summary)
+        heatmap_row.addWidget(self.checkbox_with_help(self.detail_heatmap_enabled, "detail_heatmap"), 1)
+        self.preview_heatmap_button = QPushButton("Preview heatmap")
+        self.preview_heatmap_button.setMinimumWidth(132)
+        self.preview_heatmap_button.clicked.connect(self.preview_detail_heatmap)
+        heatmap_row.addWidget(self.preview_heatmap_button)
+        quality_layout.addLayout(heatmap_row)
+        self.repair_enabled = QCheckBox("Edge Repair")
         self.repair_enabled.setToolTip("Final pass that tightens borders and transparent holes on the finalized checkpoints.")
         self.repair_enabled.setChecked(True)
         self.repair_enabled.stateChanged.connect(self.sync_auto_summary)
@@ -2669,8 +2715,14 @@ class MainWindow(QMainWindow):
         quality_layout.addWidget(self.repair_row)
         left_layout.addWidget(quality_group)
 
-        run_group = QGroupBox("Step 3 - Generate Final Vinyl")
-        run_layout = QHBoxLayout(run_group)
+        run_group = QFrame()
+        run_group.setObjectName("dashboardCard")
+        run_outer = QVBoxLayout(run_group)
+        run_title = QLabel("Step 3 - Generate Final Vinyl")
+        run_title.setObjectName("dashboardCardTitle")
+        run_outer.addWidget(run_title)
+        run_layout = QHBoxLayout()
+        run_outer.addLayout(run_layout)
         generate = QPushButton("Generate Final Vinyl")
         generate.setObjectName("primaryButton")
         generate.clicked.connect(self.start_generate)
@@ -3617,6 +3669,7 @@ class MainWindow(QMainWindow):
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
             "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
         }
+        values.update(self.detail_heatmap_values())
         if self.custom_enabled.isChecked():
             values.update({
                 "maxResolution": self.custom_resolution.text(),
@@ -3624,6 +3677,12 @@ class MainWindow(QMainWindow):
                 "mutatedSamples": self.custom_mutated.text(),
             })
         return values
+
+    def detail_heatmap_values(self):
+        return {
+            "detailHeatmapMode": "auto" if self.detail_heatmap_enabled.isChecked() else "off",
+            "detailHeatmapStrength": "0.10",
+        }
 
     def pro_custom_values(self):
         if not self.custom_enabled.isChecked():
@@ -3793,6 +3852,7 @@ class MainWindow(QMainWindow):
                 "saveAt": self.custom_save_at.text(),
                 "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
                 "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+                **self.detail_heatmap_values(),
             },
             pro_overrides=self.pro_custom_values(),
             sample_boost=self.vroom.isChecked(),
@@ -3805,6 +3865,7 @@ class MainWindow(QMainWindow):
             "saveAt": self.custom_save_at.text(),
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
             "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+            **self.detail_heatmap_values(),
         }
         base_values = dict(setting_values)
         base_values.update({key: value for key, value in overrides.items() if str(value).strip()})
@@ -3851,6 +3912,7 @@ class MainWindow(QMainWindow):
             "saveAt": self.custom_save_at.text(),
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
             "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
+            **self.detail_heatmap_values(),
         })
         try:
             tuned, summary = auto_generation_values(
@@ -3878,8 +3940,32 @@ class MainWindow(QMainWindow):
         self.images = [Path(file_name) for file_name in file_names]
         self.render_lists()
         self.image_list.setCurrentRow(0)
+        self.detail_heatmap_preview_active = False
+        self.preview_heatmap_button.setText("Preview heatmap")
         self.show_preview_bytes(render_source_image(self.images[0]) or b"")
         self.sync_auto_summary()
+
+    def preview_detail_heatmap(self):
+        if not self.images:
+            self.log_line("Detail Heatmap preview needs a source image first.")
+            return
+        row = self.image_list.currentRow() if hasattr(self, "image_list") else 0
+        if not (0 <= row < len(self.images)):
+            row = 0
+        source = self.images[row]
+        try:
+            if self.detail_heatmap_preview_active:
+                self.preview.set_bytes(render_source_image(source) or b"")
+                self.detail_heatmap_preview_active = False
+                self.preview_heatmap_button.setText("Preview heatmap")
+                self.log_line(f"Source preview: {source.name}")
+            else:
+                self.preview.set_bytes(detail_heatmap_preview_bytes(source))
+                self.detail_heatmap_preview_active = True
+                self.preview_heatmap_button.setText("Show source")
+                self.log_line(f"Detail Heatmap preview: {source.name}")
+        except Exception as exc:
+            self.log_line(f"Detail Heatmap preview failed: {type(exc).__name__}: {exc}")
 
     def choose_luma_image(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Choose image for Luma Band Pass", "", "Images (*.png *.jpg *.jpeg *.bmp);;All files (*.*)")
@@ -4046,6 +4132,10 @@ class MainWindow(QMainWindow):
     def preview_selected_image(self, row: int):
         if 0 <= row < len(self.images):
             self.preview_request_id += 1
+            if hasattr(self, "detail_heatmap_preview_active"):
+                self.detail_heatmap_preview_active = False
+            if hasattr(self, "preview_heatmap_button"):
+                self.preview_heatmap_button.setText("Preview heatmap")
             self.show_preview_bytes(render_source_image(self.images[row]) or b"")
             self.sync_auto_summary()
 
@@ -4220,6 +4310,7 @@ class MainWindow(QMainWindow):
             "v2PreprocessMode": "luma_bands" if self.luma_enabled.isChecked() else "none",
             "v2EnableRepair": "true" if self.repair_enabled.isChecked() else "false",
         }
+        ui_overrides.update(self.detail_heatmap_values())
         pro_overrides = self.pro_custom_values()
         sample_boost = self.vroom.isChecked()
         repair_enabled = self.repair_enabled.isChecked()
@@ -4298,6 +4389,7 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit(f"Target template layers: {values.get('stopAt', 'n/a')}")
                 self.bus.log.emit(f"Finalize at layers: {values.get('saveAt', values.get('stopAt', 'n/a'))}")
                 self.bus.log.emit(f"Preset effort: maxRes={values.get('maxResolution', 'n/a')} random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
+                self.bus.log.emit(f"Detail Heatmap: {values.get('detailHeatmapMode', 'off')}")
                 auto_summary = effective.get("auto_tune") or {}
                 source_summary = auto_summary.get("source") or {}
                 if source_summary:
@@ -4434,6 +4526,8 @@ class MainWindow(QMainWindow):
             "Internal build stop:",
             "Using settings:",
             "Luma Prep mode:",
+            "Detail Heatmap:",
+            "Detail-guided image:",
             "Source profile:",
             "Source recommendation:",
             "Preprocessed image:",
