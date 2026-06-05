@@ -42,6 +42,7 @@
           <button id="redoBtn" title="Redo the last undone editor change.">Redo</button>
           <button id="duplicateLayer" title="Copy the selected layer(s).">Duplicate</button>
           <button id="deleteLayer" title="Remove the selected layer(s).">Delete</button>
+          <button id="shortcutsBtn" title="Open editable editor shortcuts.">Shortcuts</button>
         </div>
         <div class="menuGroup">
           <span>View</span>
@@ -112,6 +113,7 @@
         <button class="toolButton" data-tool-key="i" data-tool="Eyedropper" data-tool-mode="dropper" title="Pick color from an existing vinyl layer or from the overlay.">I<span>Dropper</span></button>
         <button class="toolButton" data-tool-key="g" data-tool="Guides / Snap" data-tool-mode="guides" data-focus-panel="guidesPane" title="Draw editor-only guide lines and snap layers to them while holding Control.">G<span>Guides</span></button>
         <button class="toolButton" data-tool-key="o" data-tool="Overlay / Reference" data-tool-mode="overlay" data-focus-panel="overlayPane" title="Open overlay/reference image controls.">O<span>Overlay</span></button>
+        <button id="maskSelectedTool" class="toolButton toolActionButton" type="button" title="Toggle selected layer(s) as FH mask/cutout layers. Masks punch through lower vinyl layers in the editor preview and export with the mask flag.">M<span>Mask</span></button>
       </aside>
 
       <section class="canvasStage">
@@ -180,7 +182,6 @@
               <label>Alpha <input id="opacitySlider" type="range" min="0" max="255" value="255" disabled></label>
               <button id="applyColorToSelection" type="button" title="Apply the active color and alpha to every selected unlocked layer." disabled>Apply Color To Selection</button>
               <button id="equalizeAlpha" type="button" title="Set every selected layer to the first selected layer's alpha." disabled>Equalize Alpha</button>
-              <button id="makeMaskLayer" type="button" title="Turn the selected unlocked layer(s) into game mask layers. Imported mask layers are still detected automatically." disabled>Make Mask Layer</button>
             </div>
             <div class="propertySection">
               <h3>Transform</h3>
@@ -317,6 +318,12 @@
             </label>
             <label>Opacity <input id="overlayOpacity" type="range" min="0" max="100" value="45"></label>
             <label>Size % <input id="overlayScale" type="range" min="10" max="400" value="100"></label>
+            <label>Layer position
+              <select id="overlayLayerMode" title="Choose whether the source reference draws below or above vinyl layers.">
+                <option value="below" selected>Below vinyl layers</option>
+                <option value="above">Above vinyl layers</option>
+              </select>
+            </label>
             <div class="smallTools">
               <button id="toggleOverlay">Hide / Show</button>
               <button id="removeOverlay">Remove</button>
@@ -464,16 +471,17 @@
         <ul>
           <li><b>Mouse wheel</b>: Zoom.</li>
           <li><b>Middle/right drag</b>: Pan.</li>
-          <li><b>V / S / I / G / O</b>: Select, Shapes, Dropper, Guides, Overlay. These shortcuts are ignored while typing in a text field.</li>
+          <li><b><span data-shortcut-label="selectTool">V</span> / <span data-shortcut-label="shapeLibrary">S</span> / <span data-shortcut-label="dropper">I</span> / <span data-shortcut-label="guides">G</span> / <span data-shortcut-label="overlay">O</span></b>: Select, Shapes, Dropper, Guides, Overlay. These shortcuts are ignored while typing in a text field.</li>
           <li><b>Drag empty canvas in Select mode</b>: Box-select layers.</li>
           <li><b>Hold V while dragging</b>: Force box-select, even if the drag starts on top of a shape.</li>
           <li><b>Control while dragging/editing</b>: Snap to active guides or grid helpers.</li>
           <li><b>Shift while dragging a corner</b>: Uniform/global scale instead of skew.</li>
           <li><b>Delete / Backspace</b>: Delete selected layers.</li>
-          <li><b>Ctrl+D</b>: Duplicate selected layers.</li>
+          <li><b data-shortcut-label="duplicate">Ctrl+D</b>: Duplicate selected layers.</li>
+          <li><b><span data-shortcut-label="flipVertical">F</span> / <span data-shortcut-label="flipHorizontal">Shift+F</span></b>: Flip selected layers vertically / horizontally.</li>
           <li><b>Ctrl+Z / Ctrl+Y</b>: Undo / redo.</li>
           <li><b>Arrow keys</b>: Nudge selection. Hold Shift for larger nudges.</li>
-          <li><b>[ / ]</b>: Move layer order backward / forward.</li>
+          <li><b><span data-shortcut-label="layerBackward">[</span> / <span data-shortcut-label="layerForward">]</span></b>: Move layer order backward / forward.</li>
           <li><b>Enter in transform fields</b>: Apply typed position, scale, rotation, skew, or alpha values.</li>
         </ul>
       </section>
@@ -514,22 +522,24 @@
       <section>
         <h3>Shortcuts</h3>
         <div class="shortcutGrid">
-          <b>V</b><span>Select / Move. Hold while dragging to force box-select from anywhere, even on top of a shape.</span>
-          <b>S</b><span>Shape Library.</span>
-          <b>I</b><span>Eyedropper.</span>
-          <b>G</b><span>Guides / Snap.</span>
-          <b>O</b><span>Overlay / Reference.</span>
+          <b data-shortcut-label="selectTool">V</b><span>Select / Move. Hold while dragging to force box-select from anywhere, even on top of a shape.</span>
+          <b data-shortcut-label="shapeLibrary">S</b><span>Shape Library.</span>
+          <b data-shortcut-label="dropper">I</b><span>Eyedropper.</span>
+          <b data-shortcut-label="guides">G</b><span>Guides / Snap.</span>
+          <b data-shortcut-label="overlay">O</b><span>Overlay / Reference.</span>
           <b>Ctrl</b><span>Snap while moving, scaling, skewing, or reshaping.</span>
           <b>Shift + corner drag</b><span>Uniform/global scale instead of corner skew.</span>
           <b>Mouse wheel</b><span>Zoom.</span>
           <b>Middle/right drag</b><span>Pan.</span>
-          <b>Delete / Backspace</b><span>Delete selected layers.</span>
-          <b>Ctrl+D</b><span>Duplicate selected layers.</span>
-          <b>Ctrl+Z / Ctrl+Y</b><span>Undo / redo.</span>
+          <b data-shortcut-label="delete">Delete</b><span>Delete selected layers.</span>
+          <b data-shortcut-label="duplicate">Ctrl+D</b><span>Duplicate selected layers.</span>
+          <b><span data-shortcut-label="undo">Ctrl+Z</span> / <span data-shortcut-label="redo">Ctrl+Y</span></b><span>Undo / redo.</span>
           <b>Arrow keys</b><span>Nudge selection. Hold Shift for a larger nudge.</span>
-          <b>[ / ]</b><span>Move selected layers backward / forward in layer order.</span>
+          <b><span data-shortcut-label="layerBackward">[</span> / <span data-shortcut-label="layerForward">]</span></b><span>Move selected layers backward / forward in layer order.</span>
+          <b><span data-shortcut-label="flipVertical">F</span> / <span data-shortcut-label="flipHorizontal">Shift+F</span></b><span>Flip selected layers vertically / horizontally.</span>
           <b>Enter in fields</b><span>Apply typed transform or alpha values.</span>
         </div>
+        <button id="openShortcutsFromHelp" type="button">Open Shortcut Menu</button>
       </section>
       <section class="startupConfirmBox">
         <label>
@@ -540,6 +550,26 @@
         <p>The full help menu is always available from the <b>Help</b> button in the top toolbar, near the File actions.</p>
         <p>This confirmation is saved in this KFPS app folder, so it stays hidden for future launches from this copy.</p>
       </section>
+    </div>
+  </dialog>
+
+  <dialog id="shortcutsDialog" class="shortcutsDialog">
+    <div class="helpHeader">
+      <div>
+        <h2>Editor Shortcuts</h2>
+        <p>Click a shortcut box, then press a one-key or two-key combo. Saved locally for this browser/app instance.</p>
+      </div>
+      <button id="closeShortcuts" type="button">Close</button>
+    </div>
+    <div class="shortcutEditor">
+      <div class="shortcutEditorHeader">
+        <div>
+          <h4>Customize Shortcuts</h4>
+          <p>Examples: <b>F</b>, <b>Shift+F</b>, <b>Ctrl+D</b>. Text fields ignore editor shortcuts.</p>
+        </div>
+        <button id="resetShortcuts" type="button">Reset Defaults</button>
+      </div>
+      <div id="shortcutEditorList" class="shortcutEditorList"></div>
     </div>
   </dialog>
 

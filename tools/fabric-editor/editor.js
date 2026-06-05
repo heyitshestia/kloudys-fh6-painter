@@ -14,6 +14,42 @@ const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
 const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
 const JSON_FILE_API = "/api/fabric-editor/json-file";
+const SHORTCUTS_KEY = "kloudyFabricShortcuts";
+const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
+
+const DEFAULT_SHORTCUTS = {
+  selectTool: "V",
+  shapeLibrary: "S",
+  dropper: "I",
+  guides: "G",
+  overlay: "O",
+  delete: "Delete",
+  duplicate: "Ctrl+D",
+  undo: "Ctrl+Z",
+  redo: "Ctrl+Y",
+  layerForward: "]",
+  layerBackward: "[",
+  flipVertical: "F",
+  flipHorizontal: "Shift+F",
+  makeMask: "M",
+};
+
+const SHORTCUT_LABELS = {
+  selectTool: "Select / Move",
+  shapeLibrary: "Shape Library",
+  dropper: "Eyedropper",
+  guides: "Guides / Snap",
+  overlay: "Overlay / Reference",
+  delete: "Delete selected",
+  duplicate: "Duplicate selected",
+  undo: "Undo",
+  redo: "Redo",
+  layerForward: "Layer forward",
+  layerBackward: "Layer backward",
+  flipVertical: "Flip vertical",
+  flipHorizontal: "Flip horizontal",
+  makeMask: "Toggle mask layer",
+};
 
 const VINYL_TYPE_BASES = {
   Primitives: 1048677,
@@ -94,6 +130,15 @@ let selectionInvertLocked = false;
 let pendingDialogColor = null;
 let dialogColorFrame = null;
 let vBoxSelectActive = false;
+let shortcuts = loadShortcuts();
+let overlayLayerMode = normalizeOverlayLayerMode(localStorage.getItem(OVERLAY_LAYER_MODE_KEY));
+let maskPreviewOutlines = new Map();
+let maskPreviewCutouts = new Map();
+let layerListRows = new Map();
+let layerDragState = null;
+let layerDragGhost = null;
+let suppressLayerClick = false;
+let nextLayerListObjectId = 1;
 let jsonBrowserState = {
   source: "generated",
   groups: [],
@@ -121,6 +166,168 @@ function setText(id, value) {
 function setHidden(id, hidden) {
   const el = $(id);
   if (el) el.hidden = hidden;
+}
+
+function normalizeShortcutKey(key) {
+  const raw = String(key || "").trim();
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  const aliases = {
+    " ": "Space",
+    spacebar: "Space",
+    esc: "Escape",
+    del: "Delete",
+    return: "Enter",
+    arrowleft: "ArrowLeft",
+    arrowright: "ArrowRight",
+    arrowup: "ArrowUp",
+    arrowdown: "ArrowDown",
+    backspace: "Backspace",
+    delete: "Delete",
+    tab: "Tab",
+    enter: "Enter",
+    escape: "Escape",
+  };
+  if (aliases[lower]) return aliases[lower];
+  if (raw.length === 1) return raw.toUpperCase();
+  return raw[0].toUpperCase() + raw.slice(1);
+}
+
+function normalizeShortcutCombo(value) {
+  const parts = String(value || "").split("+").map((part) => part.trim()).filter(Boolean);
+  const modifiers = new Set();
+  let key = "";
+  parts.forEach((part) => {
+    const lower = part.toLowerCase();
+    if (lower === "ctrl" || lower === "control") modifiers.add("Ctrl");
+    else if (lower === "shift") modifiers.add("Shift");
+    else if (lower === "alt" || lower === "option") modifiers.add("Alt");
+    else if (lower === "meta" || lower === "cmd" || lower === "command") modifiers.add("Meta");
+    else key = normalizeShortcutKey(part);
+  });
+  if (!key) return "";
+  return [...["Ctrl", "Shift", "Alt", "Meta"].filter((mod) => modifiers.has(mod)), key].join("+");
+}
+
+function eventToShortcutCombo(event) {
+  const key = normalizeShortcutKey(event.key);
+  if (!key || ["Control", "Shift", "Alt", "Meta"].includes(key)) return "";
+  const parts = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.shiftKey) parts.push("Shift");
+  if (event.altKey) parts.push("Alt");
+  if (event.metaKey) parts.push("Meta");
+  parts.push(key);
+  return parts.join("+");
+}
+
+function loadShortcuts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SHORTCUTS_KEY) || "{}");
+    const merged = { ...DEFAULT_SHORTCUTS };
+    Object.keys(DEFAULT_SHORTCUTS).forEach((action) => {
+      const combo = normalizeShortcutCombo(saved[action]);
+      if (combo) merged[action] = combo;
+    });
+    return merged;
+  } catch (_err) {
+    return { ...DEFAULT_SHORTCUTS };
+  }
+}
+
+function saveShortcuts() {
+  localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(shortcuts));
+}
+
+function shortcutFor(action) {
+  return normalizeShortcutCombo(shortcuts[action] || DEFAULT_SHORTCUTS[action]);
+}
+
+function shortcutMatches(event, action) {
+  return eventToShortcutCombo(event) === shortcutFor(action);
+}
+
+function shortcutPrimaryKey(action) {
+  const combo = shortcutFor(action);
+  return combo.split("+").pop() || "";
+}
+
+function resetShortcuts() {
+  shortcuts = { ...DEFAULT_SHORTCUTS };
+  saveShortcuts();
+  renderShortcutEditor();
+  updateShortcutLabels();
+  setStatus("Editor shortcuts reset to defaults.");
+}
+
+function setShortcut(action, combo) {
+  const normalized = normalizeShortcutCombo(combo);
+  if (!normalized || !DEFAULT_SHORTCUTS[action]) return;
+  shortcuts[action] = normalized;
+  saveShortcuts();
+  renderShortcutEditor();
+  updateShortcutLabels();
+  setStatus(`${SHORTCUT_LABELS[action] || action} shortcut set to ${normalized}.`);
+}
+
+function updateShortcutLabels() {
+  document.querySelectorAll("[data-shortcut-label]").forEach((el) => {
+    const action = el.dataset.shortcutLabel;
+    if (action) el.textContent = shortcutFor(action);
+  });
+  const toolMap = {
+    selectTool: "v",
+    shapeLibrary: "s",
+    dropper: "i",
+    guides: "g",
+    overlay: "o",
+  };
+  Object.entries(toolMap).forEach(([action, toolKey]) => {
+    const button = document.querySelector(`.toolButton[data-tool-key="${toolKey}"]`);
+    if (button?.firstChild) button.firstChild.nodeValue = shortcutFor(action);
+  });
+  const maskButton = $("maskSelectedTool");
+  if (maskButton?.firstChild) maskButton.firstChild.nodeValue = shortcutFor("makeMask");
+}
+
+function renderShortcutEditor() {
+  const list = $("shortcutEditorList");
+  if (!list) return;
+  list.innerHTML = "";
+  Object.keys(DEFAULT_SHORTCUTS).forEach((action) => {
+    const row = document.createElement("label");
+    row.className = "shortcutEditRow";
+    row.innerHTML = `
+      <span>${escapeHtml(SHORTCUT_LABELS[action] || action)}</span>
+      <input class="shortcutCapture" data-shortcut-action="${escapeHtml(action)}" readonly value="${escapeHtml(shortcutFor(action))}" title="Click, then press a new shortcut.">
+    `;
+    const input = row.querySelector("input");
+    input.addEventListener("focus", () => {
+      input.classList.add("capturing");
+      input.value = "Press keys...";
+    });
+    input.addEventListener("blur", () => {
+      input.classList.remove("capturing");
+      input.value = shortcutFor(action);
+    });
+    input.addEventListener("keydown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        input.blur();
+        return;
+      }
+      const combo = eventToShortcutCombo(event);
+      if (!combo) return;
+      setShortcut(action, combo);
+      input.blur();
+    });
+    list.appendChild(row);
+  });
+}
+
+function normalizeOverlayLayerMode(value) {
+  return value === "above" ? "above" : "below";
 }
 
 function defaultGuideState() {
@@ -188,6 +395,12 @@ function applyObjectColor(object, color) {
   if (!object) return;
   const normalized = normalizeColor(color);
   const hex = colorToHex(normalized);
+  if (object.kloudy?.mask) {
+    object.kloudy.maskOriginalColor = normalized.slice();
+    object.set({ fill: hex, opacity: normalized[3] / 255 });
+    applyMaskVisual(object);
+    return;
+  }
   object.set({ fill: hex, opacity: normalized[3] / 255 });
   if (isGradientObject(object) && fabric?.Image?.filters?.BlendColor) {
     object.filters = [new fabric.Image.filters.BlendColor({
@@ -217,11 +430,48 @@ function styleObjectTransformControls(object) {
     cornerStrokeColor: colors.cornerStroke,
     cornerStyle: "circle",
     transparentCorners: false,
-    cornerSize: 13,
-    touchCornerSize: 28,
+    cornerSize: 18,
+    touchCornerSize: 48,
     borderScaleFactor: 2.4,
-    padding: 3,
+    padding: 10,
   });
+}
+
+function adaptiveControlOffset(name, object) {
+  const zoom = Math.max(0.001, object?.canvas?.getZoom?.() || canvas?.getZoom?.() || 1);
+  const screenWidth = Math.abs((object?.getScaledWidth?.() || 0) * zoom);
+  const screenHeight = Math.abs((object?.getScaledHeight?.() || 0) * zoom);
+  const smallX = Math.max(0, Math.min(1, (96 - screenWidth) / 96));
+  const smallY = Math.max(0, Math.min(1, (96 - screenHeight) / 96));
+  const small = Math.max(smallX, smallY);
+  const sidePush = 6 + 18 * small;
+  const rotatePush = 40 + 16 * small;
+  switch (name) {
+    case "ml":
+      return { x: -sidePush, y: 0 };
+    case "mr":
+      return { x: sidePush, y: 0 };
+    case "mt":
+      return { x: 0, y: -sidePush };
+    case "mb":
+      return { x: 0, y: sidePush };
+    case "mtr":
+      return { x: 0, y: -rotatePush };
+    default:
+      return { x: 0, y: 0 };
+  }
+}
+
+function adaptiveControlPositionHandler(name) {
+  return function positionHandler(dim, finalMatrix, fabricObject, control) {
+    const activeControl = control || this || {};
+    const point = fabric.util.transformPoint(
+      new fabric.Point((activeControl.x || 0) * dim.x, (activeControl.y || 0) * dim.y),
+      finalMatrix
+    );
+    const offset = adaptiveControlOffset(name, fabricObject);
+    return new fabric.Point(point.x + offset.x, point.y + offset.y);
+  };
 }
 
 function rgbFromCssColor(color) {
@@ -303,6 +553,12 @@ function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
   canvas.requestRenderAll();
 }
 
+function styledActiveSelection(objects) {
+  const selection = new fabric.ActiveSelection(objects, { canvas });
+  styleObjectTransformControls(selection);
+  return selection;
+}
+
 function styleAllTransformControls() {
   if (!canvas) return;
   canvas.getObjects().forEach(styleObjectTransformControls);
@@ -333,7 +589,7 @@ function editorSideScaleCursorStyleHandler(_eventData, control) {
 
 function renderSkewCornerControl(ctx, left, top, styleOverride, fabricObject) {
   const colors = editorTransformColors();
-  const size = this.sizeX || this.sizeY || styleOverride.cornerSize || fabricObject.cornerSize || 13;
+  const size = styleOverride.cornerSize || fabricObject.cornerSize || 13;
   ctx.save();
   ctx.translate(left, top);
   ctx.rotate(fabric.util.degreesToRadians(fabricObject.angle || 0));
@@ -354,9 +610,17 @@ function renderSkewCornerControl(ctx, left, top, styleOverride, fabricObject) {
 function configureEditorTransformControls() {
   if (!fabric?.Control || !fabric?.Object?.prototype?.controls || !fabric.controlsUtils) return;
   const controls = fabric.Object.prototype.controls;
+  const generousHitArea = {
+    sizeX: 30,
+    sizeY: 30,
+    touchSizeX: 56,
+    touchSizeY: 56,
+  };
   controls.ml = new fabric.Control({
     x: -0.5,
     y: 0,
+    ...generousHitArea,
+    positionHandler: adaptiveControlPositionHandler("ml"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingX,
     actionName: "scaleX",
@@ -364,6 +628,8 @@ function configureEditorTransformControls() {
   controls.mr = new fabric.Control({
     x: 0.5,
     y: 0,
+    ...generousHitArea,
+    positionHandler: adaptiveControlPositionHandler("mr"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingX,
     actionName: "scaleX",
@@ -371,6 +637,8 @@ function configureEditorTransformControls() {
   controls.mt = new fabric.Control({
     x: 0,
     y: -0.5,
+    ...generousHitArea,
+    positionHandler: adaptiveControlPositionHandler("mt"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingY,
     actionName: "scaleY",
@@ -378,6 +646,8 @@ function configureEditorTransformControls() {
   controls.mb = new fabric.Control({
     x: 0,
     y: 0.5,
+    ...generousHitArea,
+    positionHandler: adaptiveControlPositionHandler("mb"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingY,
     actionName: "scaleY",
@@ -386,10 +656,23 @@ function configureEditorTransformControls() {
     controls[name] = new fabric.Control({
       x,
       y,
+      ...generousHitArea,
       cursorStyleHandler: editorCornerTransformCursorStyleHandler,
       actionHandler: editorCornerTransformHandler,
       getActionName: editorCornerTransformActionName,
       render: renderSkewCornerControl,
+    });
+  }
+  if (fabric.controlsUtils.rotationWithSnapping) {
+    controls.mtr = new fabric.Control({
+      x: 0,
+      y: -0.5,
+      ...generousHitArea,
+      positionHandler: adaptiveControlPositionHandler("mtr"),
+      cursorStyleHandler: fabric.controlsUtils.rotationStyleHandler,
+      actionHandler: fabric.controlsUtils.rotationWithSnapping,
+      actionName: "rotate",
+      withConnection: true,
     });
   }
 }
@@ -836,8 +1119,8 @@ async function makeFabricObject(shape, name = null) {
     originX: "center",
     originY: "center",
     ...fabricPropsFromFh6Data(data),
-    stroke: shape.mask ? "#ff5572" : null,
-    strokeWidth: shape.mask ? 3 : 0,
+    stroke: null,
+    strokeWidth: 0,
     objectCaching: false,
     noScaleCache: true,
     perPixelTargetFind: true,
@@ -866,6 +1149,7 @@ async function makeFabricObject(shape, name = null) {
     score: Number(shape.score) || 0,
     extra: data.slice(5),
     mask: Boolean(shape.mask || data[6]),
+    maskOriginalColor: Boolean(shape.mask || data[6]) ? color.slice() : null,
     locked: Boolean(shape.editor_locked),
     group_id: shape.editor_group_id ? String(shape.editor_group_id) : null,
     group_name: shape.editor_group_name ? String(shape.editor_group_name) : null,
@@ -875,6 +1159,7 @@ async function makeFabricObject(shape, name = null) {
     },
   };
   applyObjectColor(object, color);
+  applyMaskVisual(object);
   if (shape.editor_hidden) object.visible = false;
   if (object.kloudy.locked) setObjectLocked(object, true);
   styleObjectTransformControls(object);
@@ -951,6 +1236,9 @@ function rememberColor(color) {
 function currentPanelColor() {
   const selected = selectedVinylObjects();
   if (selected.length === 1) {
+    if (selected[0].kloudy?.mask && Array.isArray(selected[0].kloudy.maskOriginalColor)) {
+      return normalizeColor(selected[0].kloudy.maskOriginalColor);
+    }
     return hexToRgb(selected[0].fill || "#ffffff", (selected[0].opacity ?? 1) * 255);
   }
   return rememberedColor;
@@ -1091,6 +1379,9 @@ function applyEditorColor(color, reason = "color") {
 }
 
 function alphaForObject(object) {
+  if (object?.kloudy?.mask && Array.isArray(object.kloudy.maskOriginalColor)) {
+    return normalizeColor(object.kloudy.maskOriginalColor)[3];
+  }
   return Math.round((object?.opacity ?? 1) * 255);
 }
 
@@ -1331,7 +1622,9 @@ function fh6DataFromObject(object, preferredSigns = null) {
 function objectToShape(object, options = {}) {
   const includeEditorMeta = options.includeEditorMeta !== false;
   const meta = object.kloudy || {};
-  const color = hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
+  const color = meta.mask && Array.isArray(meta.maskOriginalColor)
+    ? normalizeColor(meta.maskOriginalColor)
+    : hexToRgb(object.fill || "#ffffff", (object.opacity ?? 1) * 255);
   const extra = Array.isArray(meta.extra) ? meta.extra.slice() : [];
   updateObjectScaleSigns(object);
   const decoded = fh6DataFromObject(object, currentScaleSigns(object));
@@ -1468,11 +1761,16 @@ function initCanvas() {
     clearSnapOverlay();
     updateSelectionPanel();
   });
+  canvas.on("object:added", (event) => {
+    if (event.target?.kloudy) styleObjectTransformControls(event.target);
+  });
   canvas.on("object:modified", () => {
+    mirrorActiveMaskProxyToOwner();
     transformAnchorSnapshot = null;
     clearSnapOverlay();
     selectedVinylObjects().forEach(updateObjectScaleSigns);
     selectedVinylObjects().forEach(rememberFontShapeTransform);
+    syncMaskPreviewOutlines();
     if ($("autoOverlayColor")?.checked) {
       selectedVinylObjects().forEach((obj) => applyOverlayColorToObject(obj, { remember: true, silent: true }));
     }
@@ -1482,21 +1780,30 @@ function initCanvas() {
   });
   canvas.on("object:moving", (event) => {
     leaveGuideModeForLayerEdit();
-    snapTargetToGuides(event.target, { ...event, kloudyTransformAction: "move" });
-    scheduleLiveOverlayColor(event.target);
+    const target = interactiveVinylTarget(event.target);
+    if (target !== event.target) mirrorMaskProxyToOwner(event.target);
+    snapTargetToGuides(target, { ...event, kloudyTransformAction: "move" });
+    syncMaskPreviewOutlines();
+    scheduleLiveOverlayColor(target);
   });
   ["object:scaling", "object:skewing"].forEach((eventName) => {
     canvas.on(eventName, (event) => {
       leaveGuideModeForLayerEdit();
-      snapTargetToGuides(event.target, { ...event, kloudyTransformAction: eventName === "object:scaling" ? "scale" : "skew" });
-      scheduleLiveOverlayColor(event.target);
+      const target = interactiveVinylTarget(event.target);
+      if (target !== event.target) mirrorMaskProxyToOwner(event.target);
+      snapTargetToGuides(target, { ...event, kloudyTransformAction: eventName === "object:scaling" ? "scale" : "skew" });
+      syncMaskPreviewOutlines();
+      scheduleLiveOverlayColor(target);
     });
   });
   canvas.on("object:rotating", (event) => {
     leaveGuideModeForLayerEdit();
-    snapRotationToNotches(event.target, event);
-    renderRotationNotchOverlay(event.target, event);
-    scheduleLiveOverlayColor(event.target);
+    const target = interactiveVinylTarget(event.target);
+    if (target !== event.target) mirrorMaskProxyToOwner(event.target);
+    snapRotationToNotches(target, event);
+    renderRotationNotchOverlay(target, event);
+    syncMaskPreviewOutlines();
+    scheduleLiveOverlayColor(target);
   });
   canvas.on("mouse:wheel", (opt) => {
     const delta = opt.e.deltaY;
@@ -1545,8 +1852,8 @@ function initCanvas() {
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
       canvas.selection = false;
       transformAnchorSnapshot = null;
-    } else if (opt.target?.kloudy || opt.target?.type === "activeSelection" || opt.target?.type === "activeselection") {
-      captureTransformAnchorSnapshot(opt.target, opt);
+    } else if (interactiveVinylTarget(opt.target)?.kloudy || opt.target?.type === "activeSelection" || opt.target?.type === "activeselection") {
+      captureTransformAnchorSnapshot(interactiveVinylTarget(opt.target), opt);
     } else {
       transformAnchorSnapshot = null;
     }
@@ -1817,12 +2124,25 @@ function queueGuideRender() {
 }
 
 function layerEditorHelpers() {
-  if (overlayImage && canvas.getObjects().includes(overlayImage)) overlayImage.sendToBack();
+  if (overlayImage && canvas.getObjects().includes(overlayImage)) {
+    if (overlayLayerMode === "above") overlayImage.bringToFront();
+    else overlayImage.sendToBack();
+  }
+  syncMaskPreviewOutlines();
   editorGuideObjects().forEach((obj) => obj.bringToFront());
 }
 
 function bringGuidesToBack() {
   layerEditorHelpers();
+}
+
+function setOverlayLayerMode(mode) {
+  overlayLayerMode = normalizeOverlayLayerMode(mode);
+  localStorage.setItem(OVERLAY_LAYER_MODE_KEY, overlayLayerMode);
+  if ($("overlayLayerMode")) $("overlayLayerMode").value = overlayLayerMode;
+  layerEditorHelpers();
+  canvas?.requestRenderAll();
+  setStatus(`Overlay draws ${overlayLayerMode === "above" ? "above" : "below"} vinyl layers.`);
 }
 
 function cancelFabricGroupSelection() {
@@ -3198,6 +3518,10 @@ async function loadPayload(payload) {
 function clearVinylObjects() {
   selectedShapeOutlineObjects.forEach(restoreSelectionOutline);
   selectedShapeOutlineObjects.clear();
+  maskPreviewOutlines.forEach((outline) => canvas.remove(outline));
+  maskPreviewOutlines.clear();
+  maskPreviewCutouts.forEach((cutout) => canvas.remove(cutout));
+  maskPreviewCutouts.clear();
   vinylObjects().forEach((obj) => canvas.remove(obj));
   collapsedLayerGroups.clear();
   lastLayerListObject = null;
@@ -3205,14 +3529,46 @@ function clearVinylObjects() {
 }
 
 function vinylObjects() {
-  return canvas.getObjects().filter((obj) => obj.kloudy && !obj.kloudyGuide);
+  return canvas.getObjects().filter((obj) => obj.kloudy && !obj.kloudyGuide && !obj.kloudyMaskOutline && !obj.kloudyMaskCutout);
+}
+
+function interactiveVinylTarget(target) {
+  return target?.kloudyMaskOwner || target;
+}
+
+function copyTransform(source, target) {
+  if (!source || !target) return;
+  target.set({
+    left: source.left,
+    top: source.top,
+    scaleX: source.scaleX,
+    scaleY: source.scaleY,
+    angle: source.angle,
+    skewX: source.skewX,
+    skewY: source.skewY,
+    flipX: source.flipX,
+    flipY: source.flipY,
+  });
+  target.setCoords();
+}
+
+function mirrorMaskProxyToOwner(proxy) {
+  const owner = proxy?.kloudyMaskOwner;
+  if (!owner) return null;
+  copyTransform(proxy, owner);
+  return owner;
+}
+
+function mirrorActiveMaskProxyToOwner() {
+  return mirrorMaskProxyToOwner(canvas?.getActiveObject?.());
 }
 
 function selectedVinylObjects() {
   const active = canvas.getActiveObject();
   if (!active) return [];
+  if (active.kloudyMaskOwner) return [active.kloudyMaskOwner];
   if ((active.type === "activeSelection" || active.type === "activeselection") && Array.isArray(active._objects)) {
-    return active._objects.filter((obj) => obj.kloudy && !obj.kloudyGuide);
+    return [...new Set(active._objects.map(interactiveVinylTarget).filter((obj) => obj.kloudy && !obj.kloudyGuide))];
   }
   return active.kloudy && !active.kloudyGuide ? [active] : [];
 }
@@ -3241,7 +3597,7 @@ function invertCurrentSelection(event = null) {
   }
   selectionInvertLocked = true;
   if (inverted.length === 1) canvas.setActiveObject(inverted[0]);
-  else canvas.setActiveObject(new fabric.ActiveSelection(inverted, { canvas }));
+  else canvas.setActiveObject(styledActiveSelection(inverted));
   selectionInvertLocked = false;
   canvas.requestRenderAll();
   setStatus(`Invert box selected ${inverted.length} layer(s) outside the drag box.`);
@@ -3254,6 +3610,8 @@ function handleSelectionChanged(event = null) {
     refreshLayers();
     return;
   }
+  const active = canvas?.getActiveObject();
+  if (active) styleObjectTransformControls(active);
   updateSelectionPanel();
 }
 
@@ -3318,9 +3676,251 @@ function selectLayerListRange(displayObjects, fromObject, toObject) {
   return true;
 }
 
+function layerListObjectKey(object) {
+  if (!object) return "";
+  if (!object.__kloudyLayerListId) {
+    object.__kloudyLayerListId = `layer-${nextLayerListObjectId++}`;
+  }
+  return object.__kloudyLayerListId;
+}
+
+function registerLayerListRow(element, key, objects, displayIndex) {
+  element.dataset.layerListKey = key;
+  element.draggable = false;
+  layerListRows.set(key, {
+    key,
+    objects: objects.filter(Boolean),
+    displayIndex,
+    element,
+  });
+  element.addEventListener("pointerdown", handleLayerPointerDown);
+  element.addEventListener("pointermove", handleLayerPointerMove);
+  element.addEventListener("pointerup", handleLayerPointerUp);
+  element.addEventListener("pointercancel", cancelLayerDrag);
+}
+
+function layerRowFromEventTarget(target) {
+  return target?.closest?.("[data-layer-list-key]") || null;
+}
+
+function isLayerControlTarget(target) {
+  return Boolean(target?.closest?.("button, input, select, textarea, .layerGroupBadge"));
+}
+
+function layerDragLabel(objects = []) {
+  if (objects.length > 1) {
+    const groupName = objects[0]?.kloudy?.group_id && objects.every((obj) => obj.kloudy?.group_id === objects[0].kloudy.group_id)
+      ? groupNameForObject(objects[0])
+      : null;
+    return groupName ? `${groupName} (${objects.length})` : `${objects.length} layers`;
+  }
+  return objects[0]?.kloudy?.name || "1 layer";
+}
+
+function layerDragModeLabel(mode) {
+  return mode === "group" ? "Group layers" : "Move depth";
+}
+
+function ensureLayerDragGhost(state) {
+  if (layerDragGhost) return layerDragGhost;
+  layerDragGhost = document.createElement("div");
+  layerDragGhost.className = "layerDragGhost";
+  layerDragGhost.innerHTML = `
+    <b>${escapeHtml(layerDragLabel(state.objects))}</b>
+    <span>${escapeHtml(layerDragModeLabel(state.mode))}</span>
+  `;
+  document.body.appendChild(layerDragGhost);
+  return layerDragGhost;
+}
+
+function updateLayerDragGhost(event) {
+  if (!layerDragState) return;
+  const ghost = ensureLayerDragGhost(layerDragState);
+  ghost.style.left = `${event.clientX + 16}px`;
+  ghost.style.top = `${event.clientY + 14}px`;
+}
+
+function clearLayerDropPreview() {
+  document.querySelectorAll(".layerDropTarget, .layerDropBefore, .layerDropAfter").forEach((el) => {
+    el.classList.remove("layerDropTarget", "layerDropBefore", "layerDropAfter");
+  });
+}
+
+function layerScrollPane() {
+  return $("layersPane");
+}
+
+function layerRowAtPoint(x, y) {
+  const direct = layerRowFromEventTarget(document.elementFromPoint(x, y));
+  if (direct) return direct;
+  const pane = layerScrollPane();
+  const paneRect = pane?.getBoundingClientRect();
+  if (!paneRect || x < paneRect.left || x > paneRect.right || y < paneRect.top || y > paneRect.bottom) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  document.querySelectorAll("#layers [data-layer-list-key]").forEach((row) => {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom < paneRect.top || rect.top > paneRect.bottom) return;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.abs(centerY - y);
+    if (distance < bestDistance) {
+      best = row;
+      bestDistance = distance;
+    }
+  });
+  return best;
+}
+
+function updateLayerDropPreview(event) {
+  if (!layerDragState) return null;
+  clearLayerDropPreview();
+  const row = layerRowAtPoint(event.clientX, event.clientY);
+  if (!row || row.dataset.layerListKey === layerDragState.key) return null;
+  row.classList.add("layerDropTarget");
+  if (layerDragState.mode === "reorder") {
+    const rect = row.getBoundingClientRect();
+    row.classList.add(event.clientY > rect.top + rect.height / 2 ? "layerDropAfter" : "layerDropBefore");
+  }
+  return row;
+}
+
+function scrollLayerPaneDuringDrag(clientY) {
+  const pane = layerScrollPane();
+  if (!pane) return;
+  const rect = pane.getBoundingClientRect();
+  const edge = 42;
+  if (clientY < rect.top + edge) pane.scrollTop -= Math.max(8, Math.round((rect.top + edge - clientY) * 0.55));
+  else if (clientY > rect.bottom - edge) pane.scrollTop += Math.max(8, Math.round((clientY - (rect.bottom - edge)) * 0.55));
+}
+
+function handleLayerDragWheel(event) {
+  if (!layerDragState) return;
+  const pane = layerScrollPane();
+  if (!pane) return;
+  pane.scrollTop += event.deltaY;
+  updateLayerDropPreview(event);
+  event.preventDefault();
+}
+
+function selectLayerEntry(entry) {
+  if (!entry?.objects?.length) return;
+  if (entry.objects.length === 1) selectObjects(entry.objects, "layer");
+  else selectObjects(entry.objects, "layer group");
+}
+
+function displayObjectsFromCurrentStack() {
+  return vinylObjects().slice().reverse();
+}
+
+function groupDisplayRange(startKey, endKey) {
+  const start = layerListRows.get(startKey);
+  const end = layerListRows.get(endKey);
+  if (!start || !end) return false;
+  const displayObjects = displayObjectsFromCurrentStack();
+  const a = Math.max(0, Math.min(start.displayIndex, end.displayIndex));
+  const b = Math.min(displayObjects.length - 1, Math.max(start.displayIndex, end.displayIndex));
+  const range = displayObjects.slice(a, b + 1);
+  if (range.length < 2) {
+    setStatus("Drag across at least two layers to create an editor group.");
+    return false;
+  }
+  selectObjects(range, "layer drag group");
+  groupSelectedLayers();
+  return true;
+}
+
+function dropLayerBlockOnTarget(dragObjects, targetKey, pointerY) {
+  const target = layerListRows.get(targetKey);
+  const selectedSet = new Set(dragObjects || []);
+  if (!selectedSet.size || !target) return false;
+  if (target.objects.some((obj) => selectedSet.has(obj))) return false;
+  const displayObjects = displayObjectsFromCurrentStack();
+  const blockDisplay = displayObjects.filter((obj) => selectedSet.has(obj));
+  if (!blockDisplay.length) return false;
+  const reducedDisplay = displayObjects.filter((obj) => !selectedSet.has(obj));
+  const targetIndex = reducedDisplay.findIndex((obj) => target.objects.includes(obj));
+  if (targetIndex < 0) return false;
+  const rect = target.element.getBoundingClientRect();
+  const insertAfter = pointerY > rect.top + rect.height / 2;
+  const insertIndex = targetIndex + (insertAfter ? 1 : 0);
+  reducedDisplay.splice(insertIndex, 0, ...blockDisplay);
+  setVinylStackOrder(reducedDisplay.slice().reverse());
+  selectObjects([...selectedSet], selectedSet.size > 1 ? "moved layer group" : "moved layer");
+  refreshLayers();
+  pushHistory("layer drag reorder");
+  setStatus(`Moved ${selectedSet.size > 1 ? `${selectedSet.size} layers` : "1 layer"} in the layer stack.`);
+  return true;
+}
+
+function handleLayerPointerDown(event) {
+  if (event.button !== 0 || isLayerControlTarget(event.target)) return;
+  const row = layerRowFromEventTarget(event.target);
+  const key = row?.dataset.layerListKey;
+  const entry = layerListRows.get(key);
+  if (!row || !entry) return;
+  event.preventDefault();
+  row.setPointerCapture?.(event.pointerId);
+  layerDragState = {
+    key,
+    objects: entry.objects.slice(),
+    sourceElement: row,
+    mode: event.shiftKey ? "group" : "reorder",
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    active: false,
+  };
+  document.body.classList.add("layerDragMaybe");
+}
+
+function handleLayerPointerMove(event) {
+  if (!layerDragState || layerDragState.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(event.clientX - layerDragState.startX, event.clientY - layerDragState.startY);
+  if (distance < 5) return;
+  layerDragState.active = true;
+  suppressLayerClick = true;
+  layerDragState.sourceElement?.classList.add("layerDragSource");
+  ensureLayerDragGhost(layerDragState);
+  updateLayerDragGhost(event);
+  document.body.classList.toggle("layerGroupingActive", layerDragState.mode === "group");
+  document.body.classList.toggle("layerReorderActive", layerDragState.mode === "reorder");
+  updateLayerDropPreview(event);
+  scrollLayerPaneDuringDrag(event.clientY);
+  event.preventDefault();
+}
+
+function handleLayerPointerUp(event) {
+  if (!layerDragState || layerDragState.pointerId !== event.pointerId) return;
+  const state = layerDragState;
+  const targetRow = layerRowAtPoint(event.clientX, event.clientY);
+  const targetKey = targetRow?.dataset.layerListKey;
+  cancelLayerDrag();
+  if (!state.active) {
+    selectLayerEntry({ objects: state.objects });
+    return;
+  }
+  if (!targetKey) return;
+  if (state.mode === "group") groupDisplayRange(state.key, targetKey);
+  else dropLayerBlockOnTarget(state.objects, targetKey, event.clientY);
+  event.preventDefault();
+}
+
+function cancelLayerDrag() {
+  layerDragState = null;
+  document.body.classList.remove("layerDragMaybe", "layerGroupingActive", "layerReorderActive");
+  clearLayerDropPreview();
+  document.querySelectorAll(".layerDragSource").forEach((el) => el.classList.remove("layerDragSource"));
+  if (layerDragGhost) {
+    layerDragGhost.remove();
+    layerDragGhost = null;
+  }
+  setTimeout(() => { suppressLayerClick = false; }, 0);
+}
+
 function refreshLayers() {
   const list = $("layers");
   list.innerHTML = "";
+  layerListRows = new Map();
   const objects = vinylObjects();
   const activeSet = new Set(selectedVinylObjects());
   const filter = ($("layerSearch")?.value || "").trim().toLowerCase();
@@ -3384,7 +3984,11 @@ function refreshLayers() {
         selectObjects(groupMembers, groupName);
         toggleSelectedGroupLock();
       });
-      groupLi.addEventListener("click", () => selectObjects(groupMembers, groupName));
+      registerLayerListRow(groupLi, `group:${groupId}`, groupMembers, reverseIndex);
+      groupLi.addEventListener("click", () => {
+        if (suppressLayerClick) return;
+        selectObjects(groupMembers, groupName);
+      });
       list.appendChild(groupLi);
     }
     if (groupId && collapsedLayerGroups.has(groupId)) return;
@@ -3428,16 +4032,15 @@ function refreshLayers() {
       pushHistory("layer lock");
     });
     li.addEventListener("click", (event) => {
+      if (suppressLayerClick) return;
       if (event.shiftKey && lastLayerListObject && selectLayerListRange(displayObjects, lastLayerListObject, obj)) {
         lastLayerListObject = obj;
         return;
       }
       lastLayerListObject = obj;
-      canvas.setActiveObject(obj);
-      canvas.requestRenderAll();
-      updateSelectionPanel();
-      refreshLayers();
+      selectObjects([obj], "layer row");
     });
+    registerLayerListRow(li, layerListObjectKey(obj), [obj], reverseIndex);
     list.appendChild(li);
   });
   setText("exportWarningCount", "0");
@@ -3456,7 +4059,8 @@ function updateSelectionPanel() {
   $("colorPicker").disabled = selected.length < 1;
   $("applyFields").disabled = selected.length < 1;
   $("applyColorToSelection").disabled = selected.length < 1;
-  $("makeMaskLayer").disabled = selected.length < 1;
+  const maskTool = $("maskSelectedTool");
+  if (maskTool) maskTool.disabled = selected.length < 1;
   ["quickDuplicateLayer", "quickDeleteLayer", "quickFitSelected"].forEach((id) => {
     const el = $(id);
     if (el) el.disabled = selected.length < 1;
@@ -3482,7 +4086,7 @@ function updateSelectionPanel() {
   const obj = selected[0];
   $("selectedShapeName").textContent = obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0);
   $("selectedShapeCode").textContent = `Type ${obj.kloudy?.type || "unknown"}${obj.kloudy?.mask ? " / mask" : ""}`;
-  $("colorPicker").value = obj.fill || "#ffffff";
+  $("colorPicker").value = colorToHex(currentPanelColor());
   $("opacitySlider").value = alphaForObject(obj);
   updateObjectScaleSigns(obj);
   const decoded = fh6DataFromObject(obj, currentScaleSigns(obj));
@@ -3560,13 +4164,159 @@ function applySelectionFields() {
 
 function applyMaskVisual(obj) {
   if (!obj || !obj.kloudy) return;
-  obj.set({
-    stroke: obj.kloudy.mask ? "#ff5572" : null,
-    strokeWidth: obj.kloudy.mask ? 3 : 0,
+  if (obj.kloudy.mask) {
+    if (!Array.isArray(obj.kloudy.maskOriginalColor)) {
+      obj.kloudy.maskOriginalColor = hexToRgb(obj.fill || "#ffffff", (obj.opacity ?? 1) * 255);
+    }
+    obj.set({
+      fill: "rgba(255,36,79,0.001)",
+      opacity: 1,
+      stroke: null,
+      strokeWidth: 0,
+      globalCompositeOperation: "source-over",
+      selectable: !obj.kloudy?.locked,
+      evented: !obj.kloudy?.locked,
+      perPixelTargetFind: false,
+      targetFindTolerance: 18,
+    });
+  } else {
+    if (Array.isArray(obj.kloudy.maskOriginalColor)) {
+      const color = normalizeColor(obj.kloudy.maskOriginalColor);
+      obj.set({
+        fill: colorToHex(color),
+        opacity: color[3] / 255,
+      });
+    }
+    obj.set({
+      stroke: null,
+      strokeWidth: 0,
+      globalCompositeOperation: "source-over",
+      selectable: !obj.kloudy?.locked,
+      evented: !obj.kloudy?.locked,
+      perPixelTargetFind: $("boxVisibleOnly")?.checked ?? true,
+      targetFindTolerance: ($("boxVisibleOnly")?.checked ?? true) ? 3 : 0,
+    });
+    obj.kloudy.maskOriginalColor = null;
+  }
+  syncMaskPreviewOutlines();
+}
+
+function makeMaskHelperBaseForObject(obj) {
+  const base = obj?.type === "path" && Array.isArray(obj.path)
+    ? new fabric.Path(obj.path, { originX: "center", originY: "center" })
+    : new fabric.Rect({
+      originX: "center",
+      originY: "center",
+      width: Math.max(1, Number(obj?.width) || 1),
+      height: Math.max(1, Number(obj?.height) || 1),
+    });
+  base.set({
+    objectCaching: false,
+    excludeFromExport: true,
+  });
+  return base;
+}
+
+function makeMaskCutoutForObject(obj) {
+  const base = makeMaskHelperBaseForObject(obj);
+  base.set({
+    fill: "#000000",
+    opacity: 1,
+    stroke: null,
+    strokeWidth: 0,
+    globalCompositeOperation: "destination-out",
+    selectable: false,
+    evented: false,
+  });
+  base.kloudyMaskCutout = true;
+  return base;
+}
+
+function makeMaskOutlineForObject(obj) {
+  const base = makeMaskHelperBaseForObject(obj);
+  base.set({
+    fill: "rgba(255,36,79,0.001)",
+    stroke: "#ff244f",
+    strokeWidth: 4,
+    strokeUniform: true,
+    selectable: true,
+    evented: true,
+    perPixelTargetFind: false,
+    targetFindTolerance: 18,
+    objectCaching: false,
+    excludeFromExport: true,
+    globalCompositeOperation: "source-over",
+    hoverCursor: "move",
+    moveCursor: "move",
+  });
+  base.kloudyMaskOutline = true;
+  base.kloudyMaskOwner = obj;
+  styleObjectTransformControls(base);
+  return base;
+}
+
+function syncMaskHelperTransform(obj, helper) {
+  if (!obj || !helper) return;
+  const locked = Boolean(obj.kloudy?.locked);
+  helper.set({
+    left: obj.left,
+    top: obj.top,
+    scaleX: obj.scaleX,
+    scaleY: obj.scaleY,
+    angle: obj.angle,
+    skewX: obj.skewX,
+    skewY: obj.skewY,
+    flipX: obj.flipX,
+    flipY: obj.flipY,
+    visible: obj.visible !== false && Boolean(obj.kloudy?.mask),
+    selectable: !locked && Boolean(helper.kloudyMaskOutline),
+    evented: !locked && Boolean(helper.kloudyMaskOutline),
+    hasControls: !locked && Boolean(helper.kloudyMaskOutline),
+    lockMovementX: locked,
+    lockMovementY: locked,
+    lockScalingX: locked,
+    lockScalingY: locked,
+    lockRotation: locked,
+  });
+  helper.setCoords();
+}
+
+function syncMaskPreviewOutlines() {
+  if (!canvas) return;
+  const wanted = new Set(vinylObjects().filter((obj) => obj.kloudy?.mask));
+  maskPreviewCutouts.forEach((cutout, obj) => {
+    if (!wanted.has(obj) || !canvas.getObjects().includes(obj)) {
+      canvas.remove(cutout);
+      maskPreviewCutouts.delete(obj);
+    }
+  });
+  maskPreviewOutlines.forEach((outline, obj) => {
+    if (!wanted.has(obj) || !canvas.getObjects().includes(obj)) {
+      canvas.remove(outline);
+      maskPreviewOutlines.delete(obj);
+    }
+  });
+  wanted.forEach((obj) => {
+    let cutout = maskPreviewCutouts.get(obj);
+    if (!cutout) {
+      cutout = makeMaskCutoutForObject(obj);
+      maskPreviewCutouts.set(obj, cutout);
+      canvas.add(cutout);
+    }
+    let outline = maskPreviewOutlines.get(obj);
+    if (!outline) {
+      outline = makeMaskOutlineForObject(obj);
+      maskPreviewOutlines.set(obj, outline);
+      canvas.add(outline);
+    }
+    syncMaskHelperTransform(obj, cutout);
+    syncMaskHelperTransform(obj, outline);
+    cutout.bringToFront();
+    outline.bringToFront();
   });
 }
 
-function makeSelectedMaskLayers() {
+function toggleSelectedMaskLayers() {
   const selected = selectedVinylObjects();
   if (!selected.length) {
     setStatus("Select one or more layers first.");
@@ -3577,21 +4327,22 @@ function makeSelectedMaskLayers() {
     setStatus("Selected layers are locked. Unlock them before marking them as masks.");
     return;
   }
+  const shouldMask = editable.some((obj) => !obj.kloudy?.mask);
   let changed = 0;
   editable.forEach((obj) => {
     if (!obj.kloudy) return;
-    if (!obj.kloudy.mask) changed += 1;
-    obj.kloudy.mask = true;
+    if (Boolean(obj.kloudy.mask) !== shouldMask) changed += 1;
+    obj.kloudy.mask = shouldMask;
     applyMaskVisual(obj);
     obj.setCoords();
   });
   canvas.requestRenderAll();
   updateSelectionPanel();
-  pushHistory("make mask layer");
+  pushHistory(shouldMask ? "make mask layer" : "clear mask layer");
   setStatus(
     changed
-      ? `Marked ${changed} layer(s) as mask layers. They will keep a pink editor border and export with the mask flag.`
-      : "Selected editable layers were already mask layers."
+      ? `${shouldMask ? "Marked" : "Cleared"} ${changed} layer(s) ${shouldMask ? "as mask/cutout layers" : "back to normal vinyl layers"}.`
+      : `Selected editable layers were already ${shouldMask ? "mask layers" : "normal layers"}.`
   );
 }
 
@@ -3834,6 +4585,7 @@ async function replaceSelectedShapes(family, index) {
     replacement.moveTo(Math.max(0, oldIndex));
     if (isFontFamily(family)) rememberFontShapeTransform(replacement);
   });
+  syncMaskPreviewOutlines();
   bringGuidesToBack();
   selectObjects(replacements.map((item) => item.replacement), "shape replacement");
   canvas.requestRenderAll();
@@ -3988,6 +4740,10 @@ function duplicateSelected() {
   Promise.all(objects.map((obj) => new Promise((resolve) => {
     obj.clone((clone) => {
       clone.set({ left: (obj.left || 0) + 30, top: (obj.top || 0) + 30 });
+      if (obj.__kloudySelectionOutline) {
+        clone.set({ shadow: obj.__kloudySelectionOutline.shadow || null });
+      }
+      delete clone.__kloudySelectionOutline;
       clone.kloudy = JSON.parse(JSON.stringify(obj.kloudy));
       if (clone.kloudy?.group_id) {
         const newGroupId = duplicateGroupMap.get(clone.kloudy.group_id);
@@ -3995,10 +4751,12 @@ function duplicateSelected() {
         clone.kloudy.group_name = newGroupId ? duplicateGroupNameMap.get(obj.kloudy.group_id) : null;
       }
       if (clone.kloudy?.locked) setObjectLocked(clone, false);
+      applyMaskVisual(clone);
       clone.perPixelTargetFind = $("pixelSelect").checked;
       clone.targetFindTolerance = $("pixelSelect").checked ? 3 : 0;
       clone.hoverCursor = "pointer";
       clone.moveCursor = "move";
+      styleObjectTransformControls(clone);
       resolve(clone);
     });
   }))).then((clones) => {
@@ -4007,7 +4765,7 @@ function duplicateSelected() {
     if (clones.length === 1) {
       canvas.setActiveObject(clones[0]);
     } else {
-      canvas.setActiveObject(new fabric.ActiveSelection(clones, { canvas }));
+      canvas.setActiveObject(styledActiveSelection(clones));
     }
     bringGuidesToBack();
     refreshLayers();
@@ -4027,6 +4785,7 @@ function deleteSelected() {
     return;
   }
   objects.forEach((obj) => canvas.remove(obj));
+  syncMaskPreviewOutlines();
   canvas.discardActiveObject();
   canvas.requestRenderAll();
   refreshLayers();
@@ -4042,14 +4801,65 @@ function moveSelected(direction) {
     setStatus("Selected layers are locked. Unlock them before changing layer order.");
     return;
   }
-  objects.forEach((obj) => {
-    if (direction > 0) obj.bringForward();
-    else obj.sendBackwards();
-  });
-  bringGuidesToBack();
+  const moved = moveLayerBlock(objects, direction);
+  if (!moved) {
+    setStatus(`Selected layer(s) are already at the ${direction > 0 ? "front" : "back"} of the vinyl stack.`);
+    return;
+  }
   refreshLayers();
   pushHistory("layer order");
-  if (objects.length !== selected.length) setStatus(`Moved ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
+  setStatus(`Moved ${objects.length} unlocked layer(s) ${direction > 0 ? "forward" : "backward"}.${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
+}
+
+function setVinylStackOrder(order) {
+  order.forEach((obj) => obj.bringToFront());
+  layerEditorHelpers();
+  canvas.requestRenderAll();
+}
+
+function moveLayerBlock(objects, direction) {
+  const selectedSet = new Set(objects);
+  const order = vinylObjects();
+  if (!order.some((obj) => selectedSet.has(obj))) return false;
+  let moved = false;
+  if (direction > 0) {
+    for (let index = order.length - 2; index >= 0; index--) {
+      if (selectedSet.has(order[index]) && !selectedSet.has(order[index + 1])) {
+        [order[index], order[index + 1]] = [order[index + 1], order[index]];
+        moved = true;
+      }
+    }
+  } else {
+    for (let index = 1; index < order.length; index++) {
+      if (selectedSet.has(order[index]) && !selectedSet.has(order[index - 1])) {
+        [order[index - 1], order[index]] = [order[index], order[index - 1]];
+        moved = true;
+      }
+    }
+  }
+  if (moved) setVinylStackOrder(order);
+  return moved;
+}
+
+function flipSelected(axis) {
+  const selected = selectedVinylObjects();
+  const objects = unlockedObjects(selected);
+  if (!selected.length) return;
+  if (!objects.length) {
+    setStatus("Selected layers are locked. Unlock them before flipping.");
+    return;
+  }
+  objects.forEach((obj) => {
+    if (axis === "x") obj.set("flipX", !obj.flipX);
+    else obj.set("flipY", !obj.flipY);
+    updateObjectScaleSigns(obj);
+    obj.setCoords();
+  });
+  canvas.requestRenderAll();
+  updateSelectionPanel();
+  refreshLayers();
+  pushHistory(axis === "x" ? "flip horizontal" : "flip vertical");
+  setStatus(`Flipped ${objects.length} layer(s) ${axis === "x" ? "horizontally" : "vertically"}.${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
 }
 
 function selectObjects(objects, reason) {
@@ -4058,7 +4868,7 @@ function selectObjects(objects, reason) {
     return;
   }
   if (objects.length === 1) canvas.setActiveObject(objects[0]);
-  else canvas.setActiveObject(new fabric.ActiveSelection(objects, { canvas }));
+  else canvas.setActiveObject(styledActiveSelection(objects));
   canvas.requestRenderAll();
   updateSelectionPanel();
   refreshLayers();
@@ -4168,6 +4978,11 @@ function setPixelSelection(enabled) {
   canvas.perPixelTargetFind = enabled;
   canvas.targetFindTolerance = enabled ? 3 : 0;
   vinylObjects().forEach((obj) => {
+    if (obj.kloudy?.mask) {
+      obj.perPixelTargetFind = false;
+      obj.targetFindTolerance = 12;
+      return;
+    }
     obj.perPixelTargetFind = enabled;
     obj.targetFindTolerance = enabled ? 3 : 0;
   });
@@ -4362,8 +5177,7 @@ function addOverlayFile(file) {
       const fit = 1800 / Math.max(img.width, img.height);
       overlayImage.set({ scaleX: fit, scaleY: fit });
       canvas.add(overlayImage);
-      overlayImage.sendToBack();
-      bringGuidesToBack();
+      layerEditorHelpers();
       canvas.requestRenderAll();
       setStatus(`Overlay loaded: ${file.name}`);
       updateHud();
@@ -4383,6 +5197,7 @@ function updateOverlay() {
     scaleX: base * factor,
     scaleY: base * factor,
   });
+  layerEditorHelpers();
   canvas.requestRenderAll();
 }
 
@@ -4497,6 +5312,12 @@ function bindUi() {
   $("redoBtn").addEventListener("click", redo);
   $("helpBtn").addEventListener("click", () => $("helpDialog").showModal());
   $("closeHelp").addEventListener("click", () => $("helpDialog").close());
+  $("shortcutsBtn")?.addEventListener("click", () => $("shortcutsDialog")?.showModal());
+  $("openShortcutsFromHelp")?.addEventListener("click", () => {
+    $("helpDialog")?.close();
+    $("shortcutsDialog")?.showModal();
+  });
+  $("closeShortcuts")?.addEventListener("click", () => $("shortcutsDialog")?.close());
   $("startupHelpConfirm")?.addEventListener("click", async () => {
     if ($("startupHelpDontShow")?.checked) {
       const marker = await writeStartupHelpConfirmed();
@@ -4553,7 +5374,7 @@ function bindUi() {
     const alpha = Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
     applyEditorColor(hexToRgb($("colorPicker")?.value || colorToHex(rememberedColor), alpha), "apply color to selection");
   });
-  $("makeMaskLayer").addEventListener("click", makeSelectedMaskLayers);
+  $("maskSelectedTool")?.addEventListener("click", toggleSelectedMaskLayers);
   $("colorPicker").addEventListener("input", applySelectionFields);
   $("opacitySlider").addEventListener("input", applySelectionFields);
   $("equalizeAlpha").addEventListener("click", equalizeSelectedAlpha);
@@ -4568,6 +5389,10 @@ function bindUi() {
   });
   $("overlayOpacity").addEventListener("input", updateOverlay);
   $("overlayScale").addEventListener("input", updateOverlay);
+  if ($("overlayLayerMode")) {
+    $("overlayLayerMode").value = overlayLayerMode;
+    $("overlayLayerMode").addEventListener("change", (event) => setOverlayLayerMode(event.target.value));
+  }
   $("overlaySampleMode").addEventListener("change", () => {
     if ($("autoOverlayColor")?.checked) sampleOverlayColorForSelected();
   });
@@ -4617,22 +5442,36 @@ function bindUi() {
     button.addEventListener("click", () => activateDockPanel(button.dataset.panel));
   });
   document.querySelectorAll(".toolButton").forEach((button) => {
+    if (button.classList.contains("toolActionButton")) return;
     button.addEventListener("click", () => setActiveTool(button));
   });
+  $("resetShortcuts")?.addEventListener("click", resetShortcuts);
+  renderShortcutEditor();
+  updateShortcutLabels();
   document.addEventListener("keydown", (event) => {
+    if (event.target && event.target.classList?.contains("shortcutCapture")) return;
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
-    const shortcutKey = event.key.toLowerCase();
-    if (!event.ctrlKey && !event.metaKey && !event.altKey && ["v", "s", "i", "g", "o"].includes(shortcutKey)) {
+    const toolAction = ["selectTool", "shapeLibrary", "dropper", "guides", "overlay"].find((action) => shortcutMatches(event, action));
+    if (toolAction) {
       event.preventDefault();
-      if (!event.repeat) activateToolShortcut(shortcutKey);
-      if (shortcutKey === "v" && !vBoxSelectActive) {
+      if (!event.repeat) {
+        const toolKey = {
+          selectTool: "v",
+          shapeLibrary: "s",
+          dropper: "i",
+          guides: "g",
+          overlay: "o",
+        }[toolAction];
+        activateToolShortcut(toolKey);
+      }
+      if (toolAction === "selectTool" && !vBoxSelectActive) {
         event.preventDefault();
         setVBoxSelectActive(true);
-        setStatus("Hold V: box-select override active. Drag from anywhere, even on top of a shape.");
+        setStatus("Hold Select shortcut: box-select override active. Drag from anywhere, even on top of a shape.");
       }
       return;
     }
-    if (event.key === "Delete" || event.key === "Backspace") {
+    if (shortcutMatches(event, "delete") || event.key === "Backspace") {
       event.preventDefault();
       if (activeToolMode === "guides" && selectedGuideId && !selectedVinylObjects().length) {
         deleteSelectedGuide();
@@ -4645,19 +5484,34 @@ function bindUi() {
       deleteSelected();
       return;
     }
-    if (event.ctrlKey && event.key.toLowerCase() === "z") {
+    if (shortcutMatches(event, "undo")) {
       event.preventDefault();
       undo();
       return;
     }
-    if (event.ctrlKey && event.key.toLowerCase() === "y") {
+    if (shortcutMatches(event, "redo")) {
       event.preventDefault();
       redo();
       return;
     }
-    if (event.ctrlKey && event.key.toLowerCase() === "d") {
+    if (shortcutMatches(event, "duplicate")) {
       event.preventDefault();
       duplicateSelected();
+      return;
+    }
+    if (shortcutMatches(event, "flipHorizontal")) {
+      event.preventDefault();
+      flipSelected("x");
+      return;
+    }
+    if (shortcutMatches(event, "flipVertical")) {
+      event.preventDefault();
+      flipSelected("y");
+      return;
+    }
+    if (shortcutMatches(event, "makeMask")) {
+      event.preventDefault();
+      toggleSelectedMaskLayers();
       return;
     }
     const step = (Number($("nudgeStep").value) || 1) * (event.shiftKey ? 10 : 1);
@@ -4673,22 +5527,23 @@ function bindUi() {
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
       nudgeSelected(0, step);
-    } else if (event.key === "]") {
+    } else if (shortcutMatches(event, "layerForward")) {
       event.preventDefault();
       moveSelected(1);
-    } else if (event.key === "[") {
+    } else if (shortcutMatches(event, "layerBackward")) {
       event.preventDefault();
       moveSelected(-1);
     }
   });
   document.addEventListener("keyup", (event) => {
-    if (event.key.toLowerCase() !== "v") return;
+    if (normalizeShortcutKey(event.key) !== shortcutPrimaryKey("selectTool")) return;
     if (vBoxSelectActive) {
       event.preventDefault();
       setVBoxSelectActive(false);
       setStatus("Box-select override released.");
     }
   });
+  document.addEventListener("wheel", handleLayerDragWheel, { passive: false });
   window.addEventListener("blur", () => {
     if (vBoxSelectActive) setVBoxSelectActive(false);
   });

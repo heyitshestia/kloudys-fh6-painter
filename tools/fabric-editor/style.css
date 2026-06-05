@@ -508,16 +508,6 @@ button.primary {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.20), rgba(var(--accent2-rgb), 0.32));
 }
 
-#makeMaskLayer {
-  border-color: rgba(255, 85, 114, 0.48);
-  background: linear-gradient(135deg, rgba(255, 85, 114, 0.12), rgba(var(--surface-rgb), 0.72));
-}
-
-#makeMaskLayer:hover {
-  border-color: #ff5572;
-  color: #ff8da2;
-}
-
 .fileButton input {
   display: none;
 }
@@ -814,11 +804,22 @@ body.guideMode #canvas {
   cursor: crosshair;
 }
 
+.toolActionButton {
+  border-color: rgba(var(--danger-rgb), 0.42);
+}
+
+.toolActionButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 #layers {
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
   max-height: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .layerRow {
@@ -853,6 +854,95 @@ body.guideMode #canvas {
 .layerRow:hover {
   border-color: var(--line2);
   color: var(--text);
+}
+
+.layerRow.layerDropTarget,
+.layerGroupRow.layerDropTarget {
+  border-color: rgba(var(--danger-rgb), 0.9);
+  box-shadow: 0 0 0 2px rgba(var(--danger-rgb), 0.18);
+}
+
+.layerRow.layerDragSource,
+.layerGroupRow.layerDragSource {
+  opacity: 0.42;
+  transform: scale(0.985);
+}
+
+.layerRow.layerDropBefore::before,
+.layerRow.layerDropAfter::before,
+.layerGroupRow.layerDropBefore::before,
+.layerGroupRow.layerDropAfter::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--danger);
+  box-shadow: 0 0 12px rgba(var(--danger-rgb), 0.45);
+  z-index: 2;
+}
+
+.layerRow.layerDropBefore::before,
+.layerGroupRow.layerDropBefore::before {
+  top: -5px;
+  bottom: auto;
+  width: auto;
+}
+
+.layerRow.layerDropAfter::before,
+.layerGroupRow.layerDropAfter::before {
+  top: auto;
+  bottom: -5px;
+  width: auto;
+}
+
+body.layerReorderActive #layers,
+body.layerGroupingActive #layers {
+  cursor: grabbing;
+}
+
+body.layerGroupingActive .layerRow.layerDropTarget,
+body.layerGroupingActive .layerGroupRow.layerDropTarget {
+  border-color: rgba(var(--accent-rgb), 0.95);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.20);
+}
+
+.layerDragGhost {
+  position: fixed;
+  z-index: 99999;
+  min-width: 170px;
+  max-width: 280px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.58);
+  border-radius: 14px;
+  color: var(--text);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.18), rgba(var(--accent2-rgb), 0.16)),
+    rgba(var(--panel-rgb), 0.96);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.layerDragGhost b,
+.layerDragGhost span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layerDragGhost b {
+  font-size: 12px;
+}
+
+.layerDragGhost span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .layerRow.active {
@@ -1175,6 +1265,11 @@ dialog::backdrop {
   background: rgba(0, 0, 0, 0.62);
 }
 
+.shortcutsDialog {
+  width: min(760px, 92vw);
+  max-height: 86vh;
+}
+
 .helpHeader {
   position: sticky;
   top: 0;
@@ -1248,6 +1343,71 @@ dialog::backdrop {
 .shortcutGrid span {
   color: var(--muted);
   line-height: 1.45;
+}
+
+.shortcutEditor {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-rgb), 0.26);
+  border-radius: 18px;
+  background: rgba(var(--surface-rgb), 0.56);
+}
+
+.shortcutEditorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcutEditorHeader h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.shortcutEditorHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shortcutEditorList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.shortcutEditRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcutEditRow span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shortcutCapture {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.38);
+  border-radius: 10px;
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.12);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.shortcutCapture.capturing {
+  border-color: rgba(var(--danger-rgb), 0.62);
+  background: rgba(var(--danger-rgb), 0.14);
 }
 
 .startupConfirmBox {

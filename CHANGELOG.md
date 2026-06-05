@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.19
+
+- Improved Fabric editor mask handling, layer editing, shortcuts, and small-shape transform controls.
+
 ## 2.0.18
 
 - Improved diagnostic log privacy for import/export troubleshooting.
