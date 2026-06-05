@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.16
+
+- Added a basic FH5/FH6 target switch for import/export testing.
+- Added a small FH5 compatibility notice in the importer and exporter.
+- Improved shared JSON preview handling for generated, handmade, editor, and exported JSONs.
+- Improved Fabric editor JSON browser and editor startup behavior.
+
 ## 2.0.10
 
 - Fixed the native Windows launcher opening the launcher window behind other windows.

@@ -28,10 +28,8 @@
       <nav class="appMenus" aria-label="Editor actions">
         <div class="menuGroup">
           <span>File</span>
-          <label class="fileButton">
-            Import JSON
-            <input id="jsonInput" type="file" accept=".json,application/json">
-          </label>
+          <button id="openJsonBrowser" title="Open the KFPS JSON browser for generated finals and handmade JSONs.">Import JSON</button>
+          <input id="jsonInput" class="hiddenFileInput" type="file" accept=".json,application/json">
           <label class="fileButton">
             Load Project
             <input id="projectInput" type="file" accept=".json,application/json">
@@ -541,6 +539,49 @@
         <button id="startupHelpConfirm" type="button">Confirm And Open Editor</button>
         <p>The full help menu is always available from the <b>Help</b> button in the top toolbar, near the File actions.</p>
         <p>This confirmation is saved in this KFPS app folder, so it stays hidden for future launches from this copy.</p>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="jsonBrowserDialog" class="jsonBrowserDialog">
+    <div class="helpHeader">
+      <div>
+        <h2>Open Vinyl JSON</h2>
+        <p>Choose a generated final or a JSON dropped into imgs/handmade.</p>
+      </div>
+      <button id="closeJsonBrowser">Close</button>
+    </div>
+    <div class="jsonBrowserToolbar">
+      <label>Source
+        <select id="jsonBrowserSource">
+          <option value="generated" selected>Generated finals</option>
+          <option value="handmade">Handmade folder</option>
+        </select>
+      </label>
+      <button id="refreshJsonBrowser" type="button">Refresh</button>
+      <button id="importJsonFromDisk" type="button" title="Fallback for one-off JSON files outside the app folders.">Import From Disk</button>
+      <span id="jsonBrowserSummary">No JSONs loaded.</span>
+    </div>
+    <div class="jsonBrowserBody">
+      <section class="jsonBrowserSources" aria-label="Available sources">
+        <div id="jsonBrowserGroups" class="jsonBrowserGrid"></div>
+      </section>
+      <section class="jsonBrowserDetails" aria-label="JSON checkpoints">
+        <div class="jsonBrowserPreview">
+          <div class="jsonBrowserPreviewImageWrap">
+            <img id="jsonBrowserPreviewImage" alt="Selected vinyl preview" hidden>
+            <span id="jsonBrowserPreviewEmpty">No preview selected</span>
+          </div>
+          <div>
+            <b id="jsonBrowserTitle">Select a source</b>
+            <p id="jsonBrowserMeta">Generated runs are sorted newest first. Checkpoints are sorted high layer count to low.</p>
+          </div>
+        </div>
+        <div id="jsonBrowserEntries" class="jsonBrowserEntries"></div>
+        <div class="jsonBrowserActions">
+          <p id="jsonBrowserStatus">Choose a JSON, then click Select.</p>
+          <button id="selectJsonBrowserEntry" class="primary" type="button" disabled>Select JSON</button>
+        </div>
       </section>
     </div>
   </dialog>

@@ -12,6 +12,8 @@ const VINYL_RESOURCE_BASES = [
 ];
 const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
+const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
+const JSON_FILE_API = "/api/fabric-editor/json-file";
 
 const VINYL_TYPE_BASES = {
   Primitives: 1048677,
@@ -92,6 +94,13 @@ let selectionInvertLocked = false;
 let pendingDialogColor = null;
 let dialogColorFrame = null;
 let vBoxSelectActive = false;
+let jsonBrowserState = {
+  source: "generated",
+  groups: [],
+  selectedGroupIndex: -1,
+  selectedEntryIndex: -1,
+  loading: false,
+};
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -2941,6 +2950,212 @@ async function loadJsonFile(file) {
   }
 }
 
+function formatBrowserDate(mtime) {
+  const numeric = Number(mtime);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "unknown date";
+  return new Date(numeric * 1000).toLocaleString();
+}
+
+function layerLabel(count) {
+  const numeric = Number(count) || 0;
+  return `${numeric.toLocaleString()} layer${numeric === 1 ? "" : "s"}`;
+}
+
+function selectedJsonBrowserGroup() {
+  return jsonBrowserState.groups[jsonBrowserState.selectedGroupIndex] || null;
+}
+
+function selectedJsonBrowserEntry() {
+  const group = selectedJsonBrowserGroup();
+  return group?.entries?.[jsonBrowserState.selectedEntryIndex] || null;
+}
+
+function setJsonBrowserStatus(message) {
+  setText("jsonBrowserStatus", message);
+}
+
+function setJsonBrowserPreview(entry = null) {
+  const image = $("jsonBrowserPreviewImage");
+  const empty = $("jsonBrowserPreviewEmpty");
+  if (!image || !empty) return;
+  image.onerror = () => {
+    image.hidden = true;
+    empty.hidden = false;
+    empty.textContent = "Preview unavailable";
+  };
+  if (!entry?.preview_url) {
+    image.hidden = true;
+    empty.hidden = false;
+    empty.textContent = "No preview selected";
+    image.removeAttribute("src");
+    return;
+  }
+  empty.hidden = true;
+  image.hidden = false;
+  image.src = `${entry.preview_url}${entry.preview_url.includes("?") ? "&" : "?"}t=${encodeURIComponent(String(entry.mtime || Date.now()))}`;
+}
+
+function renderJsonBrowserGroups() {
+  const container = $("jsonBrowserGroups");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!jsonBrowserState.groups.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = jsonBrowserState.source === "handmade"
+      ? "No handmade JSONs found. Drop files into imgs/handmade, then click Refresh."
+      : "No generated final JSONs found yet. Generate a vinyl first, then click Refresh.";
+    container.appendChild(empty);
+    return;
+  }
+  jsonBrowserState.groups.forEach((group, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `jsonBrowserCard${index === jsonBrowserState.selectedGroupIndex ? " active" : ""}`;
+    const previewEntry = group.entries?.[0] || null;
+    const thumb = document.createElement("img");
+    thumb.className = "jsonBrowserThumb";
+    thumb.loading = "lazy";
+    thumb.alt = `${group.title || group.key || "JSON"} preview`;
+    if (previewEntry?.preview_url) {
+      thumb.src = previewEntry.preview_url;
+    } else {
+      thumb.hidden = true;
+    }
+    thumb.onerror = () => {
+      thumb.style.display = "none";
+    };
+    const title = document.createElement("b");
+    title.title = group.title || group.key || "";
+    title.textContent = group.title || group.key || "Untitled JSON";
+    const kind = document.createElement("span");
+    kind.textContent = group.source === "handmade"
+      ? "Handmade JSON"
+      : `${group.count || 0} finalized JSON${group.count === 1 ? "" : "s"}`;
+    const layers = document.createElement("span");
+    layers.textContent = `${layerLabel(group.max_layers || 0)} max`;
+    const modified = document.createElement("span");
+    modified.textContent = formatBrowserDate(group.mtime);
+    button.append(thumb, title, kind, layers, modified);
+    button.addEventListener("click", () => {
+      jsonBrowserState.selectedGroupIndex = index;
+      jsonBrowserState.selectedEntryIndex = group.entries?.length ? 0 : -1;
+      renderJsonBrowserGroups();
+      renderJsonBrowserEntries();
+    });
+    container.appendChild(button);
+  });
+}
+
+function renderJsonBrowserEntries() {
+  const group = selectedJsonBrowserGroup();
+  const container = $("jsonBrowserEntries");
+  if (!container) return;
+  container.innerHTML = "";
+  $("selectJsonBrowserEntry").disabled = !selectedJsonBrowserEntry();
+  if (!group) {
+    setText("jsonBrowserTitle", "Select a source");
+    setText("jsonBrowserMeta", "Generated runs are sorted newest first. Checkpoints are sorted high layer count to low.");
+    setJsonBrowserPreview(null);
+    setJsonBrowserStatus("Choose a source on the left.");
+    return;
+  }
+  setText("jsonBrowserTitle", group.title || group.key);
+  setText("jsonBrowserMeta", `${group.source === "handmade" ? "Handmade JSON" : "Generated final run"} - ${formatBrowserDate(group.mtime)} - select any checkpoint below to preview and import it.`);
+  setJsonBrowserPreview(selectedJsonBrowserEntry());
+  (group.entries || []).forEach((entry, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `jsonBrowserEntry${index === jsonBrowserState.selectedEntryIndex ? " active" : ""}`;
+    const textWrap = document.createElement("span");
+    const name = document.createElement("b");
+    name.title = entry.name || "";
+    name.textContent = entry.name || "Untitled JSON";
+    const path = document.createElement("span");
+    path.textContent = entry.id || "";
+    textWrap.append(name, path);
+    const layers = document.createElement("span");
+    layers.className = "jsonBrowserLayerPill";
+    layers.textContent = layerLabel(entry.layers);
+    button.append(textWrap, layers);
+    button.addEventListener("click", () => {
+      jsonBrowserState.selectedEntryIndex = index;
+      renderJsonBrowserEntries();
+    });
+    button.addEventListener("dblclick", () => importSelectedBrowserJson());
+    container.appendChild(button);
+  });
+  $("selectJsonBrowserEntry").disabled = !selectedJsonBrowserEntry();
+  setJsonBrowserStatus(selectedJsonBrowserEntry() ? "Choose Select JSON or double-click a row." : "This source has no JSON entries.");
+}
+
+async function refreshJsonBrowser() {
+  if (jsonBrowserState.loading) return;
+  jsonBrowserState.loading = true;
+  setText("jsonBrowserSummary", "Loading JSON browser...");
+  setJsonBrowserStatus("Scanning app folders...");
+  try {
+    const source = $("jsonBrowserSource")?.value || "generated";
+    jsonBrowserState.source = source;
+    const response = await fetch(`${JSON_BROWSER_API}?source=${encodeURIComponent(source)}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    jsonBrowserState.groups = Array.isArray(data.groups) ? data.groups : [];
+    jsonBrowserState.selectedGroupIndex = jsonBrowserState.groups.length ? 0 : -1;
+    jsonBrowserState.selectedEntryIndex = jsonBrowserState.groups[0]?.entries?.length ? 0 : -1;
+    setText("jsonBrowserSummary", `${data.total_entries || 0} JSON${data.total_entries === 1 ? "" : "s"} found in ${source === "handmade" ? "imgs/handmade" : "imgs/generated"}.`);
+    renderJsonBrowserGroups();
+    renderJsonBrowserEntries();
+  } catch (err) {
+    console.error(err);
+    jsonBrowserState.groups = [];
+    jsonBrowserState.selectedGroupIndex = -1;
+    jsonBrowserState.selectedEntryIndex = -1;
+    renderJsonBrowserGroups();
+    renderJsonBrowserEntries();
+    setText("jsonBrowserSummary", "JSON browser failed to load.");
+    setJsonBrowserStatus(err.message || String(err));
+  } finally {
+    jsonBrowserState.loading = false;
+  }
+}
+
+async function openJsonBrowser() {
+  const dialog = $("jsonBrowserDialog");
+  if (!dialog) return;
+  try {
+    if (!dialog.open) dialog.showModal();
+  } catch (_err) {
+    dialog.setAttribute("open", "");
+  }
+  await refreshJsonBrowser();
+}
+
+async function importSelectedBrowserJson() {
+  const entry = selectedJsonBrowserEntry();
+  if (!entry) {
+    setJsonBrowserStatus("Select a JSON first.");
+    return;
+  }
+  setJsonBrowserStatus(`Loading ${entry.name}...`);
+  setBusy(`Loading JSON: ${entry.name}`);
+  await nextFrame();
+  const previousName = loadedName;
+  loadedName = cleanProjectBaseName(entry.name, "vinyl");
+  try {
+    const response = await fetch(`${JSON_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadPayload(data.payload);
+    $("jsonBrowserDialog")?.close();
+    setStatus(`Imported ${entry.name} from ${jsonBrowserState.source === "handmade" ? "handmade folder" : "generated finals"}.`);
+  } catch (err) {
+    loadedName = previousName;
+    showError("JSON browser import failed", err);
+    setJsonBrowserStatus(err.message || String(err));
+  }
+}
+
 async function loadPayload(payload) {
   const shapes = Array.isArray(payload.shapes) ? payload.shapes : null;
   if (!shapes) throw new Error("JSON must contain a shapes list.");
@@ -4217,11 +4432,18 @@ async function maybeShowStartupHelp() {
 function bindUi() {
   applyEditorTheme(localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme);
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
+  $("openJsonBrowser")?.addEventListener("click", openJsonBrowser);
+  $("closeJsonBrowser")?.addEventListener("click", () => $("jsonBrowserDialog")?.close());
+  $("refreshJsonBrowser")?.addEventListener("click", refreshJsonBrowser);
+  $("jsonBrowserSource")?.addEventListener("change", refreshJsonBrowser);
+  $("selectJsonBrowserEntry")?.addEventListener("click", importSelectedBrowserJson);
+  $("importJsonFromDisk")?.addEventListener("click", () => $("jsonInput")?.click());
   $("jsonInput").addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setBusy(`Selected JSON: ${file.name}`);
     loadJsonFile(file)
+      .then(() => $("jsonBrowserDialog")?.close())
       .catch((err) => showError("JSON import failed", err))
       .finally(() => { event.target.value = ""; });
   });

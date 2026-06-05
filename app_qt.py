@@ -83,6 +83,7 @@ from generator_backend import (
     write_custom_settings,
 )
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
+from json_preview_renderer import render_json_preview
 from version_info import get_version
 
 
@@ -668,6 +669,15 @@ def token_theme_stylesheet(tokens: dict[str, str]) -> str:
             color: {tokens["hint"]};
             font-size: 8pt;
             font-weight: 900;
+        }}
+        QLabel#subtleWarningLabel {{
+            background: {tokens["panel_alt"]};
+            color: {tokens["hint"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 9pt;
+            font-weight: 750;
         }}
         QFrame#editorWipPanel {{
             background: {tokens["panel_alt"]};
@@ -1652,6 +1662,9 @@ def load_preview_geometry(path: Path) -> dict:
 
 
 def render_geometry_json(path: Path, max_size: int = PREVIEW_MAX) -> bytes | None:
+    shared = render_json_preview(path, max_size=max_size)
+    if shared:
+        return shared
     loaded = load_cv2()
     if not loaded:
         return None
@@ -3211,10 +3224,13 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setSizes([760, 820])
 
-        game = QGroupBox("Step 1 - FH6 Session")
+        game = QGroupBox("Step 1 - Forza Session")
         game_layout = QGridLayout(game)
         self.game_combo = self.make_combo(list(PROFILES.keys()), max_visible=12)
+        self.game_combo.setCurrentText("fh6")
+        self.game_combo.currentTextChanged.connect(self.update_game_compatibility_notices)
         self.pid_combo = self.make_combo(max_visible=12, editable=True)
+        self.pid_combo.currentIndexChanged.connect(lambda _index: self.sync_game_from_pid_combo(self.pid_combo, self.game_combo))
         refresh = QPushButton("Refresh")
         refresh.clicked.connect(self.refresh_processes)
         game_layout.addWidget(QLabel("Game"), 0, 0)
@@ -3223,6 +3239,13 @@ class MainWindow(QMainWindow):
         game_layout.addWidget(self.pid_combo, 1, 1)
         game_layout.addWidget(refresh, 1, 2)
         left_layout.addWidget(game)
+        self.import_game_notice = QLabel(
+            "FH5 import/export is provided as-is. KFPS focuses on FH6; FH5 may be reviewed later once the app is in a steadier state."
+        )
+        self.import_game_notice.setObjectName("subtleWarningLabel")
+        self.import_game_notice.setWordWrap(True)
+        self.import_game_notice.setVisible(False)
+        left_layout.addWidget(self.import_game_notice)
 
         template = QGroupBox("Step 2 - Vinyl Template")
         template_layout = QGridLayout(template)
@@ -3290,7 +3313,7 @@ class MainWindow(QMainWindow):
 
         import_group = QGroupBox("Step 4 - Import JSON")
         import_layout = QVBoxLayout(import_group)
-        import_layout.addWidget(QLabel("Keep FH6 in Vinyl Group Editor and do not switch menus during import."))
+        import_layout.addWidget(QLabel("Keep the selected game in Vinyl Group Editor and do not switch menus during import."))
         self.selected_json_label = QLabel("Selected JSON: none")
         self.selected_json_label.setWordWrap(False)
         self.selected_json_label.setMaximumHeight(28)
@@ -3298,12 +3321,12 @@ class MainWindow(QMainWindow):
         import_layout.addWidget(self.selected_json_label)
         self.import_clear_unused = QCheckBox("Clear unused template layers before trimming")
         self.import_clear_unused.setChecked(True)
-        self.import_clear_unused.setToolTip("Recommended. Clears old template layers that are not used by the imported JSON before trimming the FH6 group count.")
+        self.import_clear_unused.setToolTip("Recommended. Clears old template layers that are not used by the imported JSON before trimming the game group count.")
         import_layout.addWidget(self.checkbox_with_help(self.import_clear_unused, "clear_unused"))
-        import_btn = QPushButton("Import JSON into FH6")
+        import_btn = QPushButton("Import JSON into selected game")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
-        auto_btn = QPushButton("Auto-locate FH6 template")
+        auto_btn = QPushButton("Auto-locate template")
         auto_btn.clicked.connect(self.start_auto_locate)
         import_layout.addWidget(import_btn)
         auto_row = QHBoxLayout()
@@ -3316,7 +3339,7 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.import_preview, 1)
         notes = QLabel(
             "One importer handles generated finals, Fabric editor exports, hand-edited full-shape JSONs, and game exports. "
-            "Use a saved/reopened 3000 plain white circle template, ungroup it, import once, then save and reload in FH6."
+            "Use a saved/reopened 3000 plain white circle template, ungroup it, import once, then save and reload in game."
         )
         notes.setWordWrap(True)
         right_layout.addWidget(notes)
@@ -3336,31 +3359,44 @@ class MainWindow(QMainWindow):
         splitter.setSizes([620, 660])
 
         intro = QLabel(
-            "Export the currently open FH6 vinyl group into compatible JSON. "
+            "Export the currently open Forza vinyl group into compatible JSON. "
             "This is read-only and only works on normal editable user-owned groups. "
             "Locked/community-highlight work is refused."
         )
         intro.setWordWrap(True)
         left_layout.addWidget(intro)
 
-        game = QGroupBox("Step 1 - FH6 Session")
+        game = QGroupBox("Step 1 - Forza Session")
         game_layout = QGridLayout(game)
+        self.export_game_combo = self.make_combo(list(PROFILES.keys()), max_visible=12)
+        self.export_game_combo.setCurrentText("fh6")
+        self.export_game_combo.currentTextChanged.connect(self.update_game_compatibility_notices)
         self.export_pid_combo = self.make_combo(max_visible=12, editable=True)
-        export_refresh = QPushButton("Refresh FH6")
+        self.export_pid_combo.currentIndexChanged.connect(lambda _index: self.sync_game_from_pid_combo(self.export_pid_combo, self.export_game_combo))
+        export_refresh = QPushButton("Refresh")
         export_refresh.clicked.connect(self.refresh_processes)
-        game_layout.addWidget(QLabel("Process"), 0, 0)
-        game_layout.addWidget(self.export_pid_combo, 0, 1)
-        game_layout.addWidget(export_refresh, 0, 2)
+        game_layout.addWidget(QLabel("Game"), 0, 0)
+        game_layout.addWidget(self.export_game_combo, 0, 1)
+        game_layout.addWidget(QLabel("Process"), 1, 0)
+        game_layout.addWidget(self.export_pid_combo, 1, 1)
+        game_layout.addWidget(export_refresh, 1, 2)
         left_layout.addWidget(game)
+        self.export_game_notice = QLabel(
+            "FH5 import/export is provided as-is. KFPS focuses on FH6; FH5 may be reviewed later once the app is in a steadier state."
+        )
+        self.export_game_notice.setObjectName("subtleWarningLabel")
+        self.export_game_notice.setWordWrap(True)
+        self.export_game_notice.setVisible(False)
+        left_layout.addWidget(self.export_game_notice)
 
         template = QGroupBox("Step 2 - Current Open Group")
         template_layout = QGridLayout(template)
         self.export_template_count = QLineEdit("3000")
-        self.export_template_count.setToolTip("Enter the exact layer count of the currently open editable FH6 group.")
+        self.export_template_count.setToolTip("Enter the exact layer count of the currently open editable game group.")
         template_layout.addWidget(self.label_with_help("Current group layer count", "export_template"), 0, 0)
         template_layout.addWidget(self.export_template_count, 0, 1)
         template_help = QLabel(
-            "Keep the group open and do not switch FH6 menus while exporting. "
+            "Keep the group open and do not switch game menus while exporting. "
             "The exporter validates the live editable layer table before writing any JSON."
         )
         template_help.setWordWrap(True)
@@ -3369,7 +3405,7 @@ class MainWindow(QMainWindow):
 
         run_group = QGroupBox("Step 3 - Export")
         run_layout = QVBoxLayout(run_group)
-        export_btn = QPushButton("Export Current FH6 Group")
+        export_btn = QPushButton("Export Current Group")
         export_btn.setObjectName("primaryButton")
         export_btn.clicked.connect(self.start_game_export)
         run_layout.addWidget(export_btn)
@@ -4771,6 +4807,10 @@ class MainWindow(QMainWindow):
         combos = [self.pid_combo]
         if hasattr(self, "export_pid_combo"):
             combos.append(self.export_pid_combo)
+        game_combos = [self.game_combo]
+        if hasattr(self, "export_game_combo"):
+            game_combos.append(self.export_game_combo)
+        selected_games = {combo: combo.currentText() for combo in game_combos}
         for combo in combos:
             combo.blockSignals(True)
             combo.clear()
@@ -4778,12 +4818,29 @@ class MainWindow(QMainWindow):
             for item in self.processes:
                 for combo in combos:
                     combo.addItem(item["label"], item)
-            self.game_combo.setCurrentText(self.processes[0]["profile"])
+            for game_combo in game_combos:
+                preferred = selected_games.get(game_combo)
+                game_combo.setCurrentText(preferred if preferred in PROFILES else "fh6")
         else:
             for combo in combos:
                 combo.addItem("No supported game process detected", None)
         for combo in combos:
             combo.blockSignals(False)
+        self.sync_game_from_pid_combo(self.pid_combo, self.game_combo)
+        if hasattr(self, "export_pid_combo") and hasattr(self, "export_game_combo"):
+            self.sync_game_from_pid_combo(self.export_pid_combo, self.export_game_combo)
+        self.update_game_compatibility_notices()
+
+    def sync_game_from_pid_combo(self, pid_combo: QComboBox, game_combo: QComboBox):
+        data = pid_combo.currentData()
+        if data and data.get("profile") in PROFILES:
+            game_combo.setCurrentText(data["profile"])
+
+    def update_game_compatibility_notices(self):
+        if hasattr(self, "import_game_notice"):
+            self.import_game_notice.setVisible((self.game_combo.currentText() or "").strip().lower() == "fh5")
+        if hasattr(self, "export_game_notice") and hasattr(self, "export_game_combo"):
+            self.export_game_notice.setVisible((self.export_game_combo.currentText() or "").strip().lower() == "fh5")
 
     def selected_pid_value(self, combo: QComboBox | None = None) -> int | None:
         combo = combo or self.pid_combo
@@ -4798,6 +4855,11 @@ class MainWindow(QMainWindow):
             return int(raw.strip())
         except ValueError:
             return None
+
+    def selected_game_value(self, combo: QComboBox | None = None) -> str:
+        combo = combo or self.game_combo
+        game = (combo.currentText() or "fh6").strip().lower()
+        return game if game in PROFILES else "fh6"
 
     def start_generate(self):
         if not self.images:
@@ -5664,7 +5726,7 @@ class MainWindow(QMainWindow):
         self.exported_game_json_entries = self.exported_game_json_candidates()
         self.exported_game_json_list.clear()
         if not self.exported_game_json_entries:
-            self.exported_game_json_list.addItem("No exported FH6 group JSONs found yet.")
+            self.exported_game_json_list.addItem("No exported game group JSONs found yet.")
             if hasattr(self, "export_preview"):
                 self.export_preview.clear("Export a game group or select an exported JSON to preview it here.")
             return
@@ -5915,17 +5977,17 @@ class MainWindow(QMainWindow):
     def friendly_command_name(self, cmd):
         joined = " ".join(str(x) for x in cmd)
         if "fh6_probe.py" in joined and "--auto-locate" in joined:
-            return "Finding current FH6 template..."
+            return "Finding current game template..."
         if "fh6_group1000_probe.py" in joined:
-            return "Locating loaded FH6 group..."
+            return "Locating loaded game group..."
         if "fh6_import_typecode_json.py" in joined:
-            return "Importing JSON into FH6..."
+            return "Importing JSON into game..."
         if "fh6_export_typecode_json.py" in joined:
-            return "Exporting current FH6 group to compatible JSON..."
+            return "Exporting current game group to compatible JSON..."
         if "fh6_trim_group_count.py" in joined:
-            return "Trimming FH6 import layer count..."
+            return "Trimming game import layer count..."
         if "main.py" in joined:
-            return "Importing JSON into FH6..."
+            return "Importing JSON into game..."
         return "Starting helper..."
 
     def friendly_subprocess_line(self, line):
@@ -5956,7 +6018,7 @@ class MainWindow(QMainWindow):
     def start_auto_locate(self):
         pid = self.selected_pid_value()
         layer_count = self.layer_count.text().strip()
-        game = self.game_combo.currentText() or "fh6"
+        game = self.selected_game_value(self.game_combo)
         if not pid or not layer_count:
             self.log_line("PID and template layer count are required.")
             return
@@ -6010,7 +6072,7 @@ class MainWindow(QMainWindow):
                     game,
                 )
             elif session:
-                self.bus.log.emit("Ignoring stale FH6 auto-locate session from an earlier scan.")
+                self.bus.log.emit(f"Ignoring stale {game.upper()} auto-locate session from an earlier scan.")
         if update_status:
             self.bus.status.emit("Done" if code == 0 else "Failed")
         return located_session
@@ -6023,7 +6085,7 @@ class MainWindow(QMainWindow):
             "pid": str(pid),
             "game": str(game),
         }
-        self.log_line(f"Auto-located FH6 count/table: count={count_address}, table={table_address}")
+        self.log_line(f"Auto-located {str(game).upper()} count/table: count={count_address}, table={table_address}")
 
     def auto_located_context_matches(self, count_address, table_address, layer_count, pid, game):
         context = self.auto_located_context
@@ -6041,8 +6103,9 @@ class MainWindow(QMainWindow):
             self.log_line("No JSON selected.")
             return
         pid = self.selected_pid_value()
+        game = self.selected_game_value(self.game_combo)
         if not pid:
-            self.log_line("Select or refresh the FH6 process before importing.")
+            self.log_line("Select or refresh the game process before importing.")
             return
         try:
             template_count = int(self.layer_count.text().strip())
@@ -6065,10 +6128,11 @@ class MainWindow(QMainWindow):
             self.log_line(f"Import JSON has too many shapes for the loaded template. JSON={shape_count}, template={template_count}")
             return
         self.set_status("Importing")
-        self.set_phase("importing", "Importing JSON into FH6, then trimming unused template layers.")
+        self.set_phase("importing", f"Importing JSON into {game.upper()}, then trimming unused template layers.")
         threading.Thread(
             target=self.unified_import_worker,
             args=(
+                game,
                 pid,
                 template_count,
                 shape_count,
@@ -6078,19 +6142,19 @@ class MainWindow(QMainWindow):
             daemon=True,
         ).start()
 
-    def locate_universal_template(self, pid, template_count, run_dir, purpose="template"):
+    def locate_universal_template(self, game, pid, template_count, run_dir, purpose="template"):
         session_report = run_dir / f"fast-{purpose}-session.json"
         probe_report = run_dir / f"fallback-{purpose}-probe.json"
         group = None
         table = None
         use_research_scanner = True
         if not use_research_scanner:
-            self.bus.log.emit(f"Fast-locating loaded FH6 group with {template_count} layers...")
+            self.bus.log.emit(f"Fast-locating loaded {game.upper()} group with {template_count} layers...")
             fast_cmd = [
                 helper_python(),
                 ROOT / "fh6_probe.py",
                 "--game",
-                "fh6",
+                game,
                 "--pid",
                 str(pid),
                 "--layer-count",
@@ -6122,7 +6186,7 @@ class MainWindow(QMainWindow):
                             group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
                         else:
                             group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
-                        self.bus.log.emit(f"FH6 group fast-located: group={group}, table={table}, layers={template_count}")
+                        self.bus.log.emit(f"{game.upper()} group fast-located: group={group}, table={table}, layers={template_count}")
             if group and table:
                 return group, table
             self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
@@ -6152,7 +6216,7 @@ class MainWindow(QMainWindow):
         probe = json.loads(probe_report.read_text(encoding="utf-8"))
         candidates = probe.get("candidates") or []
         if not candidates:
-            raise RuntimeError("no matching loaded FH6 group was found")
+            raise RuntimeError(f"no matching loaded {game.upper()} group was found")
         min_sample_ok = min(8, template_count)
         requires_fresh_circle_template = purpose.startswith("import")
         min_circle_count = int(template_count * 0.90) if requires_fresh_circle_template else 0
@@ -6246,7 +6310,7 @@ class MainWindow(QMainWindow):
             detail = "; ".join(rejected[:5]) if rejected else "no candidates"
             if requires_fresh_circle_template:
                 raise RuntimeError(
-                    "no safe fresh FH6 import template was found. Load the saved/reopened 3000-layer plain white "
+                    f"no safe fresh {game.upper()} import template was found. Load the saved/reopened 3000-layer plain white "
                     f"circle template, stay in the Vinyl Group Editor, and import only once per fresh template ({detail})"
                 )
             raise RuntimeError(f"located group did not validate strongly enough ({detail})")
@@ -6254,10 +6318,10 @@ class MainWindow(QMainWindow):
         if index > 1:
             self.bus.log.emit(f"Skipped {index - 1} weaker fallback candidate(s): {'; '.join(rejected[:3])}")
         circle_suffix = f", circle_template={circle_count}/{template_count}" if requires_fresh_circle_template else ""
-        self.bus.log.emit(f"FH6 group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
+        self.bus.log.emit(f"{game.upper()} group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
         return group, table
 
-    def unified_import_worker(self, pid, template_count, shape_count, json_path, clear_unused=True):
+    def unified_import_worker(self, game, pid, template_count, shape_count, json_path, clear_unused=True):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"{json_path.stem}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -6266,8 +6330,9 @@ class MainWindow(QMainWindow):
         trim_backup = run_dir / "trim-backup.json"
         try:
             self.bus.log.emit(f"Universal import run folder: {run_dir}")
+            self.bus.log.emit(f"Target game: {game.upper()} pid={pid}")
             self.bus.log.emit(f"Import JSON visible shapes: {shape_count}")
-            group, table = self.locate_universal_template(pid, template_count, run_dir, purpose="import-template")
+            group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="import-template")
             import_cmd = [
                 helper_python(),
                 ROOT / "fh6_import_typecode_json.py",
@@ -6289,7 +6354,7 @@ class MainWindow(QMainWindow):
             ]
             if clear_unused:
                 import_cmd.append("--clear-unused")
-            self.bus.log.emit("Writing JSON shapes into FH6...")
+            self.bus.log.emit(f"Writing JSON shapes into {game.upper()}...")
             code = self.run_subprocess(import_cmd, timeout=240)
             if code != 0:
                 self.bus.log.emit("Universal import failed while writing layers.")
@@ -6307,7 +6372,7 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit("Universal import failed: no layers were imported.")
                 self.bus.status.emit("Failed")
                 return
-            self.bus.log.emit(f"Imported {imported} shape layers. Trimming FH6 group count...")
+            self.bus.log.emit(f"Imported {imported} shape layers. Trimming {game.upper()} group count...")
             trim_cmd = [
                 helper_python(),
                 ROOT / "fh6_trim_group_count.py",
@@ -6331,15 +6396,16 @@ class MainWindow(QMainWindow):
                 return
             self.bus.log.emit(f"Universal import complete: {imported} layers. Save and reload the vinyl group to verify.")
             self.bus.status.emit("Done")
-            self.bus.phase.emit("done", "JSON imported and layer count trimmed. Save/reload in FH6 to verify.")
+            self.bus.phase.emit("done", f"JSON imported and layer count trimmed. Save/reload in {game.upper()} to verify.")
         except Exception as exc:
             self.bus.log.emit(f"Universal import failed: {exc}")
             self.bus.status.emit("Failed")
 
     def start_game_export(self):
         pid = self.selected_pid_value(self.export_pid_combo)
+        game = self.selected_game_value(self.export_game_combo if hasattr(self, "export_game_combo") else None)
         if not pid:
-            self.log_line("Select or refresh the FH6 process before export.")
+            self.log_line("Select or refresh the game process before export.")
             return
         try:
             template_count = int(self.export_template_count.text().strip())
@@ -6350,22 +6416,23 @@ class MainWindow(QMainWindow):
             self.log_line("Loaded template layer count must be greater than zero.")
             return
         self.set_status("Exporting")
-        self.set_phase("importing", "Exporting current FH6 group into compatible JSON.")
+        self.set_phase("importing", f"Exporting current {game.upper()} group into compatible JSON.")
         threading.Thread(
             target=self.game_export_worker,
-            args=(pid, template_count),
+            args=(game, pid, template_count),
             daemon=True,
         ).start()
 
-    def game_export_worker(self, pid, template_count):
+    def game_export_worker(self, game, pid, template_count):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"export-current-group-{template_count}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
-        export_json = run_dir / f"fh6-current-group-{template_count}-{timestamp}.json"
-        export_report = run_dir / f"fh6-current-group-{template_count}-{timestamp}.report.json"
+        export_json = run_dir / f"{game}-current-group-{template_count}-{timestamp}.json"
+        export_report = run_dir / f"{game}-current-group-{template_count}-{timestamp}.report.json"
         try:
             self.bus.log.emit(f"Universal export run folder: {run_dir}")
-            group, table = self.locate_universal_template(pid, template_count, run_dir, purpose="export-template")
+            self.bus.log.emit(f"Target game: {game.upper()} pid={pid}")
+            group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="export-template")
             export_cmd = [
                 helper_python(),
                 ROOT / "fh6_export_typecode_json.py",
@@ -6384,7 +6451,7 @@ class MainWindow(QMainWindow):
                 "--probe-report",
                 run_dir / "fallback-export-template-probe.json",
             ]
-            self.bus.log.emit("Reading current FH6 group into compatible JSON...")
+            self.bus.log.emit(f"Reading current {game.upper()} group into compatible JSON...")
             code = self.run_subprocess(export_cmd, timeout=240)
             if code != 0:
                 if export_report.exists():
@@ -6412,7 +6479,7 @@ class MainWindow(QMainWindow):
             if failures:
                 self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
             self.bus.status.emit("Done")
-            self.bus.phase.emit("done", "Current FH6 group exported to compatible JSON.")
+            self.bus.phase.emit("done", f"Current {game.upper()} group exported to compatible JSON.")
             self.bus.ui_call.emit(self.refresh_game_export_browser)
             self.bus.ui_call.emit(lambda: self.select_exported_path_after_refresh(export_json))
         except Exception as exc:

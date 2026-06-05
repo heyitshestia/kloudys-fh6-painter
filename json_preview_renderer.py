@@ -1,41 +1,25 @@
-#!/usr/bin/env python3
-"""Serve the local KFPS Fabric editor."""
+"""Shared KFPS JSON preview renderer.
+
+This renders FH5-style primitive geometry and FH6/editor type-code JSONs into
+small PNG thumbnails without writing preview files. It is used by both the Qt app
+and the Fabric editor browser so JSON previews stay consistent.
+"""
 
 from __future__ import annotations
 
-import http.server
 import io
 import json
 import math
-import re
-import socket
-import socketserver
-import sys
-import threading
-import time
-import webbrowser
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
-
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
-from json_preview_renderer import render_json_preview as shared_render_json_preview
 
-EDITOR = ROOT / "tools" / "fabric-editor" / "index.html"
-STARTUP_HELP_MARKER = ROOT / "runtime" / "fabric-editor" / "startup-help-confirmed.json"
-STARTUP_HELP_API = "/api/fabric-editor/startup-help-confirmed"
-JSON_BROWSER_API = "/api/fabric-editor/json-browser"
-JSON_FILE_API = "/api/fabric-editor/json-file"
-JSON_PREVIEW_API = "/api/fabric-editor/json-preview"
-GENERATED_ROOT = ROOT / "imgs" / "generated"
-HANDMADE_ROOT = ROOT / "imgs" / "handmade"
+
+ROOT = Path(__file__).resolve().parent
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 PREVIEW_MAX = 420
+
 VINYL_TYPE_BASES = {
     "Primitives": 1048677,
     "Community_Vinyls_1": 1050677,
@@ -73,183 +57,14 @@ VINYL_TYPE_BASES = {
     "Upper_Letters_11": 1052277,
     "Lower_Letters_11": 1052377,
 }
+
 VINYL_RESOURCE_CACHE: dict[tuple[str, int], list[list[tuple[float, float]]]] = {}
 SHAPE_WORD_RESOURCE_CACHE: dict[int, tuple[str, int] | None] | None = None
 
 
-def _safe_relpath(path: Path) -> str:
-    return path.resolve().relative_to(ROOT.resolve()).as_posix()
-
-
-def _resolve_browser_id(path_id: str) -> Path:
-    if not path_id or "\x00" in path_id:
-        raise ValueError("missing JSON id")
-    candidate = (ROOT / path_id).resolve()
-    allowed_roots = [GENERATED_ROOT.resolve(), HANDMADE_ROOT.resolve()]
-    if not any(candidate.is_relative_to(root) for root in allowed_roots):
-        raise ValueError("JSON path is outside the editable browser roots")
-    if candidate.suffix.lower() != ".json" or not candidate.is_file():
-        raise ValueError("JSON file was not found")
-    return candidate
-
-
-def _is_internal_json(path: Path) -> bool:
-    lower = path.name.lower()
-    internal_tokens = (
-        ".v2.report.",
-        ".v2.settings.",
-        ".v2.preprocess.",
-        ".v2.run_metadata.",
-        ".fh6.",
-        ".probe.",
-    )
-    return any(token in lower for token in internal_tokens)
-
-
-def _looks_like_final_json(path: Path) -> bool:
-    if path.parent.name.lower() == "finals":
-        return True
-    lower = path.name.lower()
-    return lower.endswith("v2.json") or ".final" in lower
-
-
-def _shape_count(path: Path) -> int:
-    checkpoint_match = re.search(r"\.(\d+)v2\.json$", path.name.lower())
-    if checkpoint_match:
-        return int(checkpoint_match.group(1))
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return 0
-    shapes = payload.get("shapes") if isinstance(payload, dict) else None
-    return len(shapes) if isinstance(shapes, list) else 0
-
-
-def _preview_url(path: Path) -> str:
-    return f"{JSON_PREVIEW_API}?id={quote(_safe_relpath(path))}"
-
-
-def _json_entry(path: Path, source: str) -> dict:
-    stat = path.stat()
-    count = _shape_count(path)
-    return {
-        "id": _safe_relpath(path),
-        "name": path.name,
-        "source": source,
-        "layers": count,
-        "mtime": stat.st_mtime,
-        "mtime_label": f"{stat.st_mtime:.0f}",
-        "preview_url": _preview_url(path),
-    }
-
-
-def _generated_groups() -> list[dict]:
-    groups: dict[str, dict] = {}
-    if not GENERATED_ROOT.exists():
-        return []
-    for path in GENERATED_ROOT.rglob("*.json"):
-        if _is_internal_json(path) or not _looks_like_final_json(path):
-            continue
-        try:
-            rel = path.relative_to(GENERATED_ROOT)
-        except ValueError:
-            continue
-        if not rel.parts:
-            continue
-        run_key = rel.parts[0]
-        entry = _json_entry(path, "generated")
-        group = groups.setdefault(run_key, {
-            "key": run_key,
-            "title": run_key,
-            "source": "generated",
-            "mtime": 0.0,
-            "entries": [],
-        })
-        group["entries"].append(entry)
-        group["mtime"] = max(group["mtime"], entry["mtime"])
-    for group in groups.values():
-        group["entries"].sort(key=lambda item: (item["layers"], item["mtime"], item["name"]), reverse=True)
-        group["count"] = len(group["entries"])
-        group["max_layers"] = max((item["layers"] for item in group["entries"]), default=0)
-    return sorted(groups.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
-
-
-def _handmade_groups() -> list[dict]:
-    groups = []
-    if not HANDMADE_ROOT.exists():
-        return groups
-    for path in HANDMADE_ROOT.rglob("*.json"):
-        if _is_internal_json(path):
-            continue
-        entry = _json_entry(path, "handmade")
-        rel_parent = path.parent.relative_to(HANDMADE_ROOT)
-        folder = "" if str(rel_parent) == "." else rel_parent.as_posix()
-        title = path.name if not folder else f"{folder}/{path.name}"
-        groups.append({
-            "key": entry["id"],
-            "title": title,
-            "source": "handmade",
-            "mtime": entry["mtime"],
-            "count": 1,
-            "max_layers": entry["layers"],
-            "entries": [entry],
-        })
-    return sorted(groups, key=lambda item: (item["mtime"], item["title"]), reverse=True)
-
-
-def _read_stable_file_bytes(path: Path, checks: int = 2, delay: float = 0.035) -> bytes | None:
-    previous_size = None
-    for attempt in range(max(1, checks)):
-        try:
-            size = path.stat().st_size
-        except OSError:
-            return None
-        if size <= 0:
-            return None
-        if previous_size == size or attempt == checks - 1:
-            try:
-                data = path.read_bytes()
-            except OSError:
-                return None
-            return data if len(data) == size else None
-        previous_size = size
-        time.sleep(delay)
-    return None
-
-
-def _tag_from_final_json(path: Path) -> str | None:
-    name = path.name
-    match = re.search(r"\.([A-Za-z0-9_-]+)v2\.json$", name)
-    if match:
-        return f"{match.group(1)}v2"
-    match = re.search(r"\.([A-Za-z0-9_-]+)\.json$", name)
-    return match.group(1) if match else None
-
-
-def _existing_generated_preview(path: Path) -> Path | None:
-    try:
-        rel = path.relative_to(GENERATED_ROOT)
-    except ValueError:
-        return None
-    if not rel.parts:
-        return None
-    run_dir = GENERATED_ROOT / rel.parts[0]
-    previews = run_dir / "previews"
-    candidates: list[Path] = [
-        path.with_suffix(".png"),
-        path.with_name(f"{path.stem}.png"),
-        path.with_name(f"{path.stem}.preview.png"),
-    ]
-    tag = _tag_from_final_json(path)
-    if previews.exists():
-        if tag:
-            candidates.extend(previews.glob(f"*.preview.{tag}.png"))
-            candidates.extend(previews.glob(f"*{tag}*.png"))
-        candidates.extend(previews.glob(f"*{path.stem}*.png"))
-    valid = [candidate for candidate in candidates if candidate.exists() and candidate.is_file()]
-    if not valid:
-        return None
-    return max(valid, key=lambda item: item.stat().st_mtime)
+def render_json_preview(path: Path | str, max_size: int = PREVIEW_MAX) -> bytes | None:
+    path = Path(path)
+    return _render_primitive_preview(path, max_size) or _render_typecode_preview(path, max_size)
 
 
 def _checkerboard(size: tuple[int, int]):
@@ -474,7 +289,7 @@ def _render_polygons(polygons: list[dict], max_size: int = PREVIEW_MAX) -> bytes
     return out.getvalue()
 
 
-def _render_primitive_preview(path: Path) -> bytes | None:
+def _render_primitive_preview(path: Path, max_size: int = PREVIEW_MAX) -> bytes | None:
     try:
         data = load_normalized_geometry(path)
         shapes = data["shapes"]
@@ -501,14 +316,14 @@ def _render_primitive_preview(path: Path) -> bytes | None:
             poly = _ellipse_points(x, -y, abs(width), abs(height), -rot)
         polygons.append({"polygons": [poly], "color": color})
     if polygons:
-        return _render_polygons(polygons)
+        return _render_polygons(polygons, max_size=max_size)
     color = _color_tuple(background.get("color"))
     if color and color[3] > 0:
-        return _render_polygons([{"polygons": [[(-1, -1), (1, -1), (1, 1), (-1, 1)]], "color": color}])
+        return _render_polygons([{"polygons": [[(-1, -1), (1, -1), (1, 1), (-1, 1)]], "color": color}], max_size=max_size)
     return None
 
 
-def _render_typecode_preview(path: Path) -> bytes | None:
+def _render_typecode_preview(path: Path, max_size: int = PREVIEW_MAX) -> bytes | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -541,128 +356,4 @@ def _render_typecode_preview(path: Path) -> bytes | None:
         transformed = [_transform_resource_polygon(poly, data) for poly in triangles]
         if transformed:
             polygons.append({"polygons": transformed, "color": color})
-    return _render_polygons(polygons) if polygons else None
-
-
-def _render_json_preview(path: Path) -> bytes | None:
-    return shared_render_json_preview(path, max_size=PREVIEW_MAX)
-
-
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
-
-    def _send_json(self, payload: dict, status: int = 200) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _send_png(self, body: bytes, status: int = 200) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == STARTUP_HELP_API:
-            self._send_json({
-                "confirmed": STARTUP_HELP_MARKER.exists(),
-                "marker": str(STARTUP_HELP_MARKER),
-            })
-            return
-        if parsed.path == JSON_BROWSER_API:
-            query = parse_qs(parsed.query)
-            source = (query.get("source") or ["generated"])[0]
-            if source == "handmade":
-                groups = _handmade_groups()
-            else:
-                source = "generated"
-                groups = _generated_groups()
-            self._send_json({
-                "source": source,
-                "groups": groups,
-                "total_entries": sum(len(group["entries"]) for group in groups),
-            })
-            return
-        if parsed.path == JSON_FILE_API:
-            query = parse_qs(parsed.query)
-            try:
-                path = _resolve_browser_id((query.get("id") or [""])[0])
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception as err:
-                self._send_json({"error": str(err)}, status=400)
-                return
-            self._send_json({
-                "id": _safe_relpath(path),
-                "name": path.name,
-                "payload": payload,
-            })
-            return
-        if parsed.path == JSON_PREVIEW_API:
-            query = parse_qs(parsed.query)
-            try:
-                path = _resolve_browser_id((query.get("id") or [""])[0])
-                preview_path = _existing_generated_preview(path)
-                body = _read_stable_file_bytes(preview_path) if preview_path else None
-                if not body:
-                    body = _render_json_preview(path)
-                if not body:
-                    raise ValueError("JSON preview could not be rendered")
-            except Exception as err:
-                self._send_json({"error": str(err)}, status=400)
-                return
-            self._send_png(body)
-            return
-        super().do_GET()
-
-    def do_POST(self) -> None:
-        if urlparse(self.path).path == STARTUP_HELP_API:
-            STARTUP_HELP_MARKER.parent.mkdir(parents=True, exist_ok=True)
-            STARTUP_HELP_MARKER.write_text(
-                json.dumps({"confirmed": True}, indent=2),
-                encoding="utf-8",
-            )
-            self._send_json({
-                "confirmed": True,
-                "marker": str(STARTUP_HELP_MARKER),
-            })
-            return
-        self._send_json({"error": "not found"}, status=404)
-
-    def log_message(self, fmt, *args):
-        print(fmt % args, flush=True)
-
-
-def find_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
-def main() -> int:
-    if not EDITOR.exists():
-        print(f"Missing editor: {EDITOR}")
-        return 1
-    port = find_port()
-    with socketserver.TCPServer(("127.0.0.1", port), Handler) as httpd:
-        url = f"http://127.0.0.1:{port}/tools/fabric-editor/index.html"
-        print("KFPS Fabric editor")
-        print(f"Serving: {ROOT}")
-        print(f"Open:    {url}")
-        threading.Timer(0.35, lambda: webbrowser.open(url)).start()
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nStopped.")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    return _render_polygons(polygons, max_size=max_size) if polygons else None
