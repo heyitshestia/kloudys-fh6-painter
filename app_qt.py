@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QPoint, QRectF, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QBrush, QColor, QDesktopServices, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -1696,6 +1696,245 @@ class PreviewView(QGraphicsView):
         super().mouseDoubleClickEvent(event)
 
 
+class FinalJsonBrowserDialog(QDialog):
+    def __init__(self, app: "MainWindow", entries: list[dict]):
+        super().__init__(app)
+        self.app = app
+        self.entries = entries
+        self.selected_entry: dict | None = None
+        self.run_groups: dict[str, list[dict]] = {}
+        self.run_mtimes: dict[str, float] = {}
+        self.run_folders: dict[str, Path] = {}
+        self.run_buttons: dict[str, QToolButton] = {}
+        self.setWindowTitle("Browse Finalized JSONs")
+        self.resize(1420, 860)
+        self.setMinimumSize(1180, 760)
+
+        layout = QVBoxLayout(self)
+        intro = QLabel("Choose a generated run, preview its finalized checkpoints, then click Select. The selected JSON will be locked into the importer.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter, 1)
+
+        run_panel = QWidget()
+        run_layout = QVBoxLayout(run_panel)
+        run_layout.setContentsMargins(0, 0, 0, 0)
+        run_layout.addWidget(QLabel("Generated runs"))
+        self.run_scroll = QScrollArea()
+        self.run_scroll.setWidgetResizable(True)
+        self.run_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.run_grid_host = QWidget()
+        self.run_grid = QGridLayout(self.run_grid_host)
+        self.run_grid.setSpacing(8)
+        self.run_scroll.setWidget(self.run_grid_host)
+        run_layout.addWidget(self.run_scroll, 1)
+        splitter.addWidget(run_panel)
+
+        detail_panel = QWidget()
+        detail_layout = QVBoxLayout(detail_panel)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        self.run_title = QLabel("Select a generated run")
+        self.run_title.setWordWrap(True)
+        detail_layout.addWidget(self.run_title)
+        preview_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.final_preview = PreviewView("Final checkpoint preview appears here.")
+        self.final_preview.setMinimumHeight(300)
+        self.checkpoint_list = QListWidget()
+        self.checkpoint_list.setObjectName("finalJsonDialogCheckpointList")
+        self.checkpoint_list.setIconSize(QSize(180, 112))
+        self.checkpoint_list.setMinimumHeight(320)
+        self.checkpoint_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.checkpoint_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.checkpoint_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.checkpoint_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.checkpoint_list.setWordWrap(True)
+        self.checkpoint_list.currentRowChanged.connect(self.select_checkpoint_row)
+        preview_splitter.addWidget(self.final_preview)
+        preview_splitter.addWidget(self.checkpoint_list)
+        preview_splitter.setSizes([390, 430])
+        detail_layout.addWidget(preview_splitter, 1)
+        splitter.addWidget(detail_panel)
+        splitter.setSizes([580, 840])
+
+        buttons = QHBoxLayout()
+        self.selection_label = QLabel("Selected: none")
+        self.selection_label.setWordWrap(True)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        self.select_button = QPushButton("Select")
+        self.select_button.setObjectName("primaryButton")
+        self.select_button.setEnabled(False)
+        self.select_button.clicked.connect(self.accept_selected)
+        buttons.addWidget(self.selection_label, 1)
+        buttons.addWidget(cancel)
+        buttons.addWidget(self.select_button)
+        layout.addLayout(buttons)
+
+        self.prepare_runs()
+        self.populate_runs()
+
+    def prepare_runs(self):
+        for entry in self.entries:
+            run_key = entry.get("run_key") or str(Path(entry["path"]).parent.resolve())
+            self.run_groups.setdefault(run_key, []).append(entry)
+            self.run_mtimes[run_key] = max(float(self.run_mtimes.get(run_key, 0)), float(entry.get("run_mtime") or 0))
+            self.run_folders[run_key] = Path(entry.get("run_folder") or Path(entry["path"]).parent)
+        for run_key, group in list(self.run_groups.items()):
+            self.run_groups[run_key] = self.sort_checkpoints(group)
+
+    @staticmethod
+    def sort_checkpoints(entries: list[dict]) -> list[dict]:
+        return sorted(
+            entries,
+            key=lambda entry: (
+                -int(entry.get("layers") or 0),
+                -int(entry.get("step_number") or 0),
+                str(entry.get("path", "")).lower(),
+            ),
+        )
+
+    def populate_runs(self):
+        run_order = sorted(self.run_groups, key=lambda key: self.run_mtimes.get(key, 0), reverse=True)
+        if not run_order:
+            label = QLabel("No finalized JSONs found yet.")
+            label.setWordWrap(True)
+            self.run_grid.addWidget(label, 0, 0)
+            return
+        for index, run_key in enumerate(run_order):
+            button = QToolButton()
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            button.setIconSize(QSize(138, 88))
+            button.setMinimumSize(165, 150)
+            button.setMaximumWidth(190)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            entries = self.run_groups[run_key]
+            best_layers = max((int(entry.get("layers") or 0) for entry in entries), default=0)
+            label = self.run_button_label(run_key, entries, best_layers)
+            button.setText(label)
+            source_path = self.source_image_path(entries[0])
+            pixmap = self.thumbnail_pixmap(source_path, QSize(150, 96))
+            if not pixmap.isNull():
+                button.setIcon(QIcon(pixmap))
+            button.clicked.connect(lambda _checked=False, key=run_key: self.select_run(key))
+            row, column = divmod(index, 3)
+            self.run_grid.addWidget(button, row, column)
+            self.run_buttons[run_key] = button
+        for column in range(3):
+            self.run_grid.setColumnStretch(column, 1)
+        self.select_run(run_order[0])
+
+    def run_button_label(self, run_key: str, entries: list[dict], best_layers: int) -> str:
+        run_folder = self.run_folders.get(run_key) or Path(entries[0]["path"]).parent
+        source_name = entries[0].get("source_image") or entries[0].get("source") or run_folder.name
+        try:
+            stamp = datetime.fromtimestamp(run_folder.stat().st_mtime).strftime("%m-%d %H:%M")
+        except Exception:
+            stamp = "unknown time"
+        return f"{source_name}\n{len(entries)} finals | top {best_layers} layers\n{stamp}"
+
+    def source_image_path(self, entry: dict) -> Path | None:
+        run_folder = Path(entry.get("run_folder") or Path(entry["path"]).parent)
+        source_name = entry.get("source_image")
+        if source_name:
+            candidate = run_folder / source_name
+            if candidate.exists():
+                return candidate
+            matches = list(run_folder.glob(source_name))
+            if matches:
+                return matches[0]
+        suffixes = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+        for path in sorted(run_folder.iterdir() if run_folder.exists() else [], key=lambda item: item.name.lower()):
+            if path.is_file() and path.suffix.lower() in suffixes and ".preview" not in path.name.lower():
+                return path
+        return None
+
+    def thumbnail_pixmap(self, path: Path | None, size: QSize) -> QPixmap:
+        if not path:
+            return QPixmap()
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            data = render_source_image(path)
+            if data:
+                pixmap.loadFromData(data)
+        if pixmap.isNull():
+            return pixmap
+        return pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+    def select_run(self, run_key: str):
+        for key, button in self.run_buttons.items():
+            button.setChecked(key == run_key)
+        entries = self.run_groups.get(run_key, [])
+        run_folder = self.run_folders.get(run_key)
+        if run_folder:
+            try:
+                rel = run_folder.relative_to(ROOT)
+            except ValueError:
+                rel = run_folder
+            self.run_title.setText(f"Run: {rel}")
+        self.populate_checkpoints(entries)
+
+    def populate_checkpoints(self, entries: list[dict]):
+        self.checkpoint_list.blockSignals(True)
+        self.checkpoint_list.clear()
+        for entry in entries:
+            item = QListWidgetItem(self.checkpoint_label(entry))
+            item.setSizeHint(QSize(0, 132))
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            preview = self.app.preview_path_for_json(entry["path"])
+            pixmap = self.thumbnail_pixmap(preview, QSize(180, 112)) if preview else QPixmap()
+            if not pixmap.isNull():
+                item.setIcon(QIcon(pixmap))
+            self.checkpoint_list.addItem(item)
+        self.checkpoint_list.blockSignals(False)
+        if self.checkpoint_list.count() > 0:
+            self.checkpoint_list.setCurrentRow(0)
+            self.select_checkpoint_row(0)
+        else:
+            self.selected_entry = None
+            self.select_button.setEnabled(False)
+            self.final_preview.clear("No finalized checkpoints in this run.")
+
+    def checkpoint_label(self, entry: dict) -> str:
+        tags = ", ".join(entry.get("tags") or [])
+        if tags:
+            tags = f" | {tags}"
+        error = entry.get("error")
+        error_text = f" | error {float(error):.3f}" if isinstance(error, (int, float)) else ""
+        preset = entry.get("preset") or "unknown preset"
+        return f"{entry.get('layers') or 0} layers - {entry.get('type') or 'Final JSON'}{tags}{error_text}\n{preset}\n{Path(entry['path']).name}"
+
+    def select_checkpoint_row(self, row: int):
+        item = self.checkpoint_list.item(row)
+        entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+        self.selected_entry = entry
+        self.select_button.setEnabled(bool(entry and entry.get("import_safe", True)))
+        if not entry:
+            self.selection_label.setText("Selected: none")
+            self.final_preview.clear("Select a finalized checkpoint.")
+            return
+        status = "ready to import" if entry.get("import_safe", True) else "over layer budget"
+        self.selection_label.setText(f"Selected: {Path(entry['path']).name} ({entry.get('layers') or 0} layers, {status})")
+        preview = self.app.preview_path_for_json(entry["path"])
+        if preview and preview.exists():
+            self.final_preview.set_file(preview)
+        else:
+            data = render_geometry_json(entry["path"])
+            self.final_preview.set_bytes(data)
+
+    def accept_selected(self):
+        if self.selected_entry and self.selected_entry.get("import_safe", True):
+            self.accept()
+
+    @property
+    def selected_path(self) -> Path | None:
+        if not self.selected_entry:
+            return None
+        return Path(self.selected_entry["path"])
+
+
 class AnimatedThemeBackground(QWidget):
     def __init__(self):
         super().__init__()
@@ -2783,38 +3022,38 @@ class MainWindow(QMainWindow):
         template_layout.addWidget(template_help, 1, 0, 1, 2)
         left_layout.addWidget(template)
 
-        json_group = QGroupBox("Step 3 - Pick JSON")
+        json_group = QGroupBox("Step 3 - Pick Final JSON")
         json_layout = QVBoxLayout(json_group)
-        controls = QGridLayout()
-        add_json = QPushButton("Choose any JSON...")
-        add_json.clicked.connect(self.manual_add_json)
-        refresh_jsons = QPushButton("Refresh")
-        refresh_jsons.clicked.connect(self.refresh_generated_browser)
-        add_recommended = QPushButton("Use best safe final")
-        add_recommended.clicked.connect(self.select_recommended_generated_json)
-        compare_btn = QPushButton("Compare selected with best")
-        compare_btn.clicked.connect(self.compare_selected_checkpoint)
-        resume_btn = QPushButton("Resume unfinished finalize")
-        resume_btn.clicked.connect(self.start_resume_finalization)
-        for button in (add_json, add_recommended, compare_btn, resume_btn):
-            button.setMinimumWidth(170)
-        refresh_jsons.setMinimumWidth(96)
-        controls.addWidget(add_json, 0, 0)
-        controls.addWidget(refresh_jsons, 0, 1)
-        controls.addWidget(add_recommended, 0, 2)
-        controls.addWidget(compare_btn, 1, 0, 1, 2)
-        controls.addWidget(resume_btn, 1, 2)
-        controls.setColumnStretch(0, 1)
-        controls.setColumnStretch(1, 1)
-        controls.setColumnStretch(2, 1)
-        json_layout.addLayout(controls)
-        self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
-        self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
-        json_layout.addWidget(self.label_with_help("Generated vinyl run", "final_json_browser"))
-        json_intro = QLabel("Pick a finalized checkpoint below, or choose any compatible editor, hand-edited, or exported JSON manually. The highlighted JSON is the one that will import.")
+        json_intro = QLabel("Pick from the latest generation below, or use Browse Finals to visually choose older runs by source image and final preview.")
         json_intro.setWordWrap(True)
         json_layout.addWidget(json_intro)
-        json_layout.addWidget(self.generated_folder_combo)
+        latest_row = QHBoxLayout()
+        self.latest_final_combo = self.make_combo(max_visible=18, min_height=42)
+        self.latest_final_combo.currentIndexChanged.connect(self.select_latest_final_combo_entry)
+        browse_jsons = QPushButton("Browse Finals...")
+        browse_jsons.setObjectName("primaryButton")
+        browse_jsons.clicked.connect(self.open_final_json_browser)
+        latest_row.addWidget(self.latest_final_combo, 1)
+        latest_row.addWidget(browse_jsons)
+        json_layout.addLayout(latest_row)
+        controls = QGridLayout()
+        refresh_jsons = QPushButton("Refresh")
+        refresh_jsons.clicked.connect(self.refresh_generated_browser)
+        add_json = QPushButton("Choose any JSON...")
+        add_json.clicked.connect(self.manual_add_json)
+        for button in (refresh_jsons, add_json):
+            button.setMinimumWidth(150)
+        controls.addWidget(refresh_jsons, 0, 0)
+        controls.addWidget(add_json, 0, 1)
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+        json_layout.addLayout(controls)
+        latest_hint = QLabel("Latest generation dropdown is sorted by layer count from high to low. Browse Finals shows older runs with image thumbnails and final previews.")
+        latest_hint.setWordWrap(True)
+        json_layout.addWidget(latest_hint)
+        self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
+        self.generated_folder_combo.currentTextChanged.connect(self.populate_generated_checkpoint_list)
+        self.generated_folder_combo.setVisible(False)
         self.generated_checkpoint_list = QListWidget()
         self.generated_checkpoint_list.setObjectName("finalizedCheckpointList")
         self.generated_checkpoint_list.setMinimumHeight(320)
@@ -2825,9 +3064,11 @@ class MainWindow(QMainWindow):
         self.generated_checkpoint_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.generated_checkpoint_list.setWordWrap(True)
         self.generated_checkpoint_list.currentRowChanged.connect(self.select_generated_checkpoint)
-        json_layout.addWidget(QLabel("Finalized checkpoints"))
-        json_layout.addWidget(self.generated_checkpoint_list, 2)
-        left_layout.addWidget(json_group, 1)
+        self.generated_checkpoint_list.setVisible(False)
+        json_layout.addWidget(self.generated_folder_combo)
+        json_layout.addWidget(self.generated_checkpoint_list)
+        left_layout.addWidget(json_group)
+        left_layout.addStretch(1)
 
         import_group = QGroupBox("Step 4 - Import JSON")
         import_layout = QVBoxLayout(import_group)
@@ -4929,6 +5170,97 @@ class MainWindow(QMainWindow):
 
         return sorted(entries, key=rank)
 
+    def sort_generated_entries_for_latest_combo(self, entries):
+        return sorted(
+            entries,
+            key=lambda entry: (
+                -int(entry.get("layers") or 0),
+                -int(entry.get("step_number") or 0),
+                str(entry.get("path", "")).lower(),
+            ),
+        )
+
+    def latest_final_combo_label(self, entry):
+        tags = []
+        if entry.get("recommended"):
+            tags.append("best safe")
+        if entry.get("tags"):
+            for tag in entry["tags"]:
+                if tag in {"Best score", "Latest", "Lowest layers"} and tag.lower() not in tags:
+                    tags.append(tag.lower())
+        tag_text = f" - {', '.join(tags)}" if tags else ""
+        source = entry.get("source_image") or entry.get("source") or "latest source"
+        return f"{entry.get('layers') or 0} layers - {Path(entry['path']).name}{tag_text} | {source}"
+
+    def populate_latest_final_combo(self, run_groups: dict[str, list[dict]], run_order: list[str]):
+        if not hasattr(self, "latest_final_combo"):
+            return
+        self.latest_final_combo.blockSignals(True)
+        self.latest_final_combo.clear()
+        self.latest_final_entries = []
+        if not run_order:
+            self.latest_final_combo.addItem("No finalized JSONs found yet.", None)
+            self.latest_final_combo.blockSignals(False)
+            return
+        latest_entries = self.sort_generated_entries_for_latest_combo(run_groups.get(run_order[0], []))
+        self.latest_final_entries = latest_entries
+        for entry in latest_entries:
+            self.latest_final_combo.addItem(self.latest_final_combo_label(entry), entry)
+        if latest_entries:
+            self.latest_final_combo.setCurrentIndex(0)
+        self.latest_final_combo.blockSignals(False)
+        if latest_entries:
+            self.select_generated_entry_for_import(latest_entries[0])
+
+    def select_latest_final_combo_entry(self, index: int):
+        if not hasattr(self, "latest_final_combo"):
+            return
+        entry = self.latest_final_combo.itemData(index)
+        if isinstance(entry, dict):
+            self.select_generated_entry_for_import(entry)
+            self.set_hidden_generated_selection(entry["path"])
+
+    def set_latest_final_combo_to_path(self, path: Path):
+        if not hasattr(self, "latest_final_combo"):
+            return
+        target = Path(path)
+        for index in range(self.latest_final_combo.count()):
+            entry = self.latest_final_combo.itemData(index)
+            if isinstance(entry, dict) and Path(entry["path"]) == target:
+                self.latest_final_combo.blockSignals(True)
+                self.latest_final_combo.setCurrentIndex(index)
+                self.latest_final_combo.blockSignals(False)
+                break
+
+    def set_hidden_generated_selection(self, path: Path):
+        if not hasattr(self, "generated_checkpoint_list"):
+            return
+        target = Path(path)
+        for row in range(self.generated_checkpoint_list.count()):
+            item = self.generated_checkpoint_list.item(row)
+            entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if isinstance(entry, dict) and Path(entry["path"]) == target:
+                self.generated_checkpoint_list.blockSignals(True)
+                self.generated_checkpoint_list.setCurrentRow(row)
+                self.generated_checkpoint_list.blockSignals(False)
+                return
+
+    def open_final_json_browser(self):
+        entries = self.checkpoint_candidates()
+        if not entries:
+            QMessageBox.information(self, "Browse Finals", "No finalized JSONs were found in imgs/generated yet.")
+            return
+        dialog = FinalJsonBrowserDialog(self, entries)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_path:
+            selected_path = dialog.selected_path
+            selected_entry = next((entry for entry in entries if Path(entry["path"]) == selected_path), None)
+            if selected_entry:
+                self.select_generated_entry_for_import(selected_entry)
+                self.set_latest_final_combo_to_path(selected_path)
+                self.set_hidden_generated_selection(selected_path)
+            else:
+                self.select_import_json(selected_path, "visual finalized checkpoint")
+
     def refresh_generated_browser(self):
         entries = self.checkpoint_candidates()
         run_groups = {}
@@ -4948,6 +5280,7 @@ class MainWindow(QMainWindow):
             groups[label] = self.sort_generated_entries_for_picker(run_groups[run_key])
             order.append(label)
         self.generated_folder_entries = groups
+        self.populate_latest_final_combo(run_groups, run_order)
         self.generated_folder_combo.blockSignals(True)
         self.generated_folder_combo.clear()
         self.generated_folder_combo.addItems(order)
