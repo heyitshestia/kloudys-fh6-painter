@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.20
+
+- Relaxed grouped vinyl export validation to reduce false refusals and improved parent negative-scale handling during grouped export flattening.
+
 ## 2.0.19
 
 - Improved Fabric editor mask handling, layer editing, shortcuts, and small-shape transform controls.

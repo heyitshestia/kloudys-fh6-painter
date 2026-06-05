@@ -34,6 +34,10 @@ EXPORT_REFUSAL_MESSAGE = (
     "Kloudy's FH6 Painter will not export locked/community-highlight work. "
     "The FH creator community does not condone copying or redistributing another creator's design without permission."
 )
+EXPORT_VALIDATION_WARNING = (
+    "Export validation warning: the located group did not match every old editable-table assumption. "
+    "Continuing because a live group/table was located; only export designs you own or have permission to export."
+)
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.OpenProcess.restype = wintypes.HANDLE
@@ -391,18 +395,26 @@ def matrix_is_identity(matrix):
     return all(abs(float(value) - IDENTITY_MATRIX[index]) < 0.000001 for index, value in enumerate(matrix))
 
 
-def apply_parent_transform(shape, layer, parent_matrix):
+def sign_for(value):
+    try:
+        return -1.0 if float(value) < 0 else 1.0
+    except Exception:
+        return 1.0
+
+
+def apply_parent_transform(shape, layer, parent_matrix, parent_sx_sign=1.0):
     if matrix_is_identity(parent_matrix):
         return
     original = [float(value) for value in shape["data"][:6]]
     final_matrix = multiply_matrix(parent_matrix, fh6_matrix_from_data(original))
-    transformed = fh6_data_from_matrix(final_matrix, preferred_sx_sign=original[2])
+    transformed = fh6_data_from_matrix(final_matrix, preferred_sx_sign=original[2] * parent_sx_sign)
     for index, value in enumerate(transformed[:6]):
         shape["data"][index] = value
         layer["data"][index] = value
     layer["applied_parent_transform"] = {
         "matrix": [round(float(value), 8) for value in parent_matrix],
         "original_data": original,
+        "parent_sx_sign": parent_sx_sign,
     }
 
 
@@ -521,7 +533,7 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
     group_count = 0
     group_transforms = []
 
-    def walk(group_info, parent_matrix=None, depth=0):
+    def walk(group_info, parent_matrix=None, parent_sx_sign=1.0, depth=0):
         nonlocal max_depth, group_count
         parent_matrix = parent_matrix or IDENTITY_MATRIX
         group_address = int(group_info["group"])
@@ -534,6 +546,7 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
         group_transform = read_transform_fields(handle, group_address)
         group_matrix = fh6_matrix_from_transform(group_transform)
         current_matrix = multiply_matrix(parent_matrix, group_matrix)
+        current_sx_sign = parent_sx_sign * sign_for(group_transform.get("sx", 1.0))
         if len(group_transforms) < 32:
             group_transforms.append({
                 "group": hx(group_address),
@@ -543,6 +556,7 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
                 "scale": [group_transform["sx"], group_transform["sy"]],
                 "rotation": group_transform["rotation"],
                 "skew": group_transform["skew"],
+                "cumulative_sx_sign": current_sx_sign,
                 "local_matrix": [round(float(value), 8) for value in group_matrix],
                 "cumulative_matrix": [round(float(value), 8) for value in current_matrix],
             })
@@ -550,9 +564,9 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
             ptr = ptr_at(handle, int(group_info["table"]), index)
             child = read_group_vector_info(handle, ptr, expected_vtable)
             if child:
-                walk(child, current_matrix, depth + 1)
+                walk(child, current_matrix, current_sx_sign, depth + 1)
             elif layer_pointer_exportable(handle, ptr):
-                pointers.append((ptr, current_matrix))
+                pointers.append((ptr, current_matrix, current_sx_sign))
             else:
                 invalid.append({"ptr": hx(ptr), "index": index, "depth": depth, "reason": "not a layer or known child group"})
 
@@ -567,10 +581,18 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
         "group_transforms": group_transforms,
     }
     if len(pointers) != int(requested_count):
-        raise RuntimeError(
-            f"flattened export resolved {len(pointers)} shape layer(s), expected {requested_count}; "
-            f"groups={group_count}, invalid={len(invalid)}"
-        )
+        stats["count_mismatch"] = {
+            "resolved_shape_layers": len(pointers),
+            "requested_count": int(requested_count),
+            "group_count": group_count,
+            "invalid_entries": len(invalid),
+            "note": "Export continued with the resolved shape layers instead of aborting on visible-count mismatch.",
+        }
+        if not pointers:
+            raise RuntimeError(
+                f"flattened export resolved 0 shape layers, expected {requested_count}; "
+                f"groups={group_count}, invalid={len(invalid)}"
+            )
     return pointers, stats
 
 
@@ -639,14 +661,15 @@ def main():
     layers = []
     failures = []
     flatten_stats = {}
+    validation_warnings = []
     try:
         if not args.probe_report:
             write_refusal_report(args, table, group, report_path, reasons=["export requires a locator validation report"])
             sys.exit(2)
         probe_ok, probe_reasons = validate_probe_report(args.probe_report, int(args.count), group or 0, table)
         if not probe_ok:
-            write_refusal_report(args, table, group, report_path, reasons=probe_reasons)
-            sys.exit(2)
+            validation_warnings.extend(probe_reasons)
+            log(EXPORT_VALIDATION_WARNING)
         if group is None:
             write_refusal_report(args, table, group, report_path, reasons=["export requires a located FH6 group header"])
             sys.exit(2)
@@ -662,8 +685,8 @@ def main():
             allow_flattened=locator_allows_flattened(locator_report),
         )
         if not editable_ok:
-            write_refusal_report(args, table, group, report_path, metadata=group_metadata, reasons=editable_reasons)
-            sys.exit(2)
+            validation_warnings.extend(editable_reasons)
+            log(EXPORT_VALIDATION_WARNING)
         try:
             export_pointers, flatten_stats = collect_export_layer_pointers(
                 handle,
@@ -673,10 +696,13 @@ def main():
                 locator_report,
             )
         except Exception as exc:
-            write_refusal_report(args, table, group, report_path, metadata=group_metadata, reasons=[str(exc)])
+            write_refusal_report(args, table, group, report_path, metadata=group_metadata, reasons=validation_warnings + [str(exc)])
             sys.exit(2)
         for index, pointer_item in enumerate(export_pointers):
-            if isinstance(pointer_item, (list, tuple)) and len(pointer_item) == 2:
+            parent_sx_sign = 1.0
+            if isinstance(pointer_item, (list, tuple)) and len(pointer_item) == 3:
+                ptr, parent_matrix, parent_sx_sign = pointer_item
+            elif isinstance(pointer_item, (list, tuple)) and len(pointer_item) == 2:
                 ptr, parent_matrix = pointer_item
             else:
                 ptr, parent_matrix = pointer_item, IDENTITY_MATRIX
@@ -694,7 +720,7 @@ def main():
                 })
                 continue
             shape, layer = decode_layer(raw, index, ptr, include_raw=args.include_raw)
-            apply_parent_transform(shape, layer, parent_matrix)
+            apply_parent_transform(shape, layer, parent_matrix, parent_sx_sign)
             layer["read_size"] = layer_size
             if len(raw) >= 0xB0:
                 layer["resource_ptr_0xa8"] = hx(struct.unpack_from("<Q", raw, 0xA8)[0])
@@ -718,8 +744,9 @@ def main():
             "coordinate_model": "fh6_live_layer_offsets",
             "type_model": "type = 0x100000 + uint16_at_layer_0x7A; importer writes low uint16 back to 0x7A",
             "editable_group_check": {
-                "passed": True,
+                "passed": bool(probe_ok and editable_ok),
                 "metadata": group_metadata,
+                "warnings": validation_warnings,
             },
             "flattened_export": flatten_stats,
         },
@@ -738,9 +765,11 @@ def main():
         "table": hx(table),
         "requested_count": int(args.count),
         "editable_group_check": {
-            "passed": True,
+            "passed": bool(probe_ok and editable_ok),
             "metadata": group_metadata,
+            "warnings": validation_warnings,
         },
+        "validation_warnings": validation_warnings,
         "flattened_export": flatten_stats,
         "preferred_layer_read_size": hx(FULL_LAYER_SIZE),
         "fallback_layer_read_size": hx(GROUPED_SAFE_LAYER_SIZE),

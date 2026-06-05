@@ -1109,8 +1109,8 @@ HELP_TEXT = {
     "export_template": (
         "Export Layer Count",
         "Enter the exact layer count of the currently open FH6 group.\n\n"
-        "Exporter is read-only and only supports normal editable user-owned groups. It refuses groups that do not expose "
-        "a standard editable layer table, records a content fingerprint/summary, and saves compatible JSON."
+        "Exporter is read-only. It records validation warnings in the saved report if a grouped vinyl does not match the old flat table assumptions.\n\n"
+        "Only export designs you own or have permission to export."
     ),
     "luma_tab": (
         "Fabric FH6 Editor",
@@ -3360,8 +3360,8 @@ class MainWindow(QMainWindow):
 
         intro = QLabel(
             "Export the currently open Forza vinyl group into compatible JSON. "
-            "This is read-only and only works on normal editable user-owned groups. "
-            "Locked/community-highlight work is refused."
+            "This is read-only. Grouped vinyls may export with validation warnings in the saved report. "
+            "Only export designs you own or have permission to export."
         )
         intro.setWordWrap(True)
         left_layout.addWidget(intro)
@@ -6477,8 +6477,11 @@ class MainWindow(QMainWindow):
             report = json.loads(export_report.read_text(encoding="utf-8"))
             exported = int(report.get("exported_shape_count") or 0)
             failures = int(report.get("failure_count") or 0)
+            warnings = report.get("validation_warnings") or report.get("editable_group_check", {}).get("warnings") or []
             self.selected_import_json_path = export_json
             self.bus.log.emit(f"Universal export complete: {exported} layers -> {export_json}")
+            if warnings:
+                self.bus.log.emit("Export validation warning: grouped vinyl did not match every old flat-table assumption; see report.")
             if failures:
                 self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
             self.bus.status.emit("Done")
