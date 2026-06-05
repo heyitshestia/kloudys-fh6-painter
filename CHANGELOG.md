@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.21
+
+- Fixed shared JSON preview transforms for exported vinyls with negative scale and skew.
+- Improved grouped export flattening so unresolved child groups are not exported as blank drawable shapes.
+
 ## 2.0.20
 
 - Relaxed grouped vinyl export validation to reduce false refusals and improved parent negative-scale handling during grouped export flattening.

@@ -237,7 +237,7 @@ def _transform_resource_polygon(points: list[tuple[float, float]], data: list) -
     y = float(data[1]) if len(data) > 1 else 0.0
     sx = float(data[2]) if len(data) > 2 else 1.0
     sy = float(data[3]) if len(data) > 3 else 1.0
-    rot = math.radians(float(data[4]) if len(data) > 4 else 0.0)
+    rot = math.radians(-(float(data[4]) if len(data) > 4 else 0.0))
     skew = float(data[5]) if len(data) > 5 else 0.0
     cos_r = math.cos(rot)
     sin_r = math.sin(rot)
@@ -246,8 +246,11 @@ def _transform_resource_polygon(points: list[tuple[float, float]], data: list) -
         lx = float(px) * sx
         ly = float(py) * sy
         if skew:
-            lx += float(py) * sy * skew
-        transformed.append((x + lx * cos_r - ly * sin_r, y + lx * sin_r + ly * cos_r))
+            lx += float(py) * sy * -skew
+        editor_x = x + lx * cos_r - ly * sin_r
+        editor_y = -y + lx * sin_r + ly * cos_r
+        # _render_polygons is y-up; the editor matrix above is y-down.
+        transformed.append((editor_x, -editor_y))
     return transformed
 
 

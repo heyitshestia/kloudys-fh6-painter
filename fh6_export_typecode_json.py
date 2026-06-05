@@ -489,6 +489,23 @@ def read_group_vector_info(handle, group, expected_vtable=None):
     }
 
 
+def pointer_has_group_signature(handle, ptr, expected_vtable=None):
+    if expected_vtable is not None:
+        raw_vtable = try_read_memory(handle, ptr, 8)
+        if len(raw_vtable) == 8 and struct.unpack("<Q", raw_vtable)[0] == int(expected_vtable):
+            return True
+    try:
+        metadata = read_group_metadata(handle, ptr)
+    except Exception:
+        return False
+    vector = metadata_vector_addresses(metadata)
+    if not vector:
+        return False
+    begin, vector_count, _capacity_count = vector
+    sample_count = min(vector_count, 8)
+    return len(try_read_memory(handle, begin, sample_count * 8)) == sample_count * 8
+
+
 def layer_pointer_exportable(handle, ptr):
     raw = try_read_memory(handle, ptr, MIN_LAYER_DECODE_SIZE)
     if len(raw) < MIN_LAYER_DECODE_SIZE:
@@ -531,10 +548,11 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
     seen_groups = set()
     max_depth = 0
     group_count = 0
+    relaxed_child_group_count = 0
     group_transforms = []
 
     def walk(group_info, parent_matrix=None, parent_sx_sign=1.0, depth=0):
-        nonlocal max_depth, group_count
+        nonlocal max_depth, group_count, relaxed_child_group_count
         parent_matrix = parent_matrix or IDENTITY_MATRIX
         group_address = int(group_info["group"])
         if group_address in seen_groups:
@@ -563,8 +581,15 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
         for index in range(int(group_info["vector_count"])):
             ptr = ptr_at(handle, int(group_info["table"]), index)
             child = read_group_vector_info(handle, ptr, expected_vtable)
+            if not child and expected_vtable is not None:
+                relaxed_child = read_group_vector_info(handle, ptr, None)
+                if relaxed_child:
+                    relaxed_child_group_count += 1
+                    child = relaxed_child
             if child:
                 walk(child, current_matrix, current_sx_sign, depth + 1)
+            elif pointer_has_group_signature(handle, ptr, expected_vtable):
+                invalid.append({"ptr": hx(ptr), "index": index, "depth": depth, "reason": "unresolved child group"})
             elif layer_pointer_exportable(handle, ptr):
                 pointers.append((ptr, current_matrix, current_sx_sign))
             else:
@@ -575,6 +600,7 @@ def collect_export_layer_pointers(handle, group, table, requested_count, locator
         "flattened": True,
         "top_level_count": int(root["vector_count"]),
         "group_count": group_count,
+        "relaxed_child_group_count": relaxed_child_group_count,
         "max_depth": max_depth,
         "invalid_entries": len(invalid),
         "invalid_samples": invalid[:24],
