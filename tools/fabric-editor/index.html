@@ -314,7 +314,7 @@
             </div>
             <label class="fileButton wide">
               Add / Replace Overlay
-              <input id="overlayInput" type="file" accept="image/*">
+              <input id="overlayInput" type="file" accept="image/*,.svg,image/svg+xml">
             </label>
             <label>Opacity <input id="overlayOpacity" type="range" min="0" max="100" value="45"></label>
             <label>Size % <input id="overlayScale" type="range" min="10" max="400" value="100"></label>
@@ -324,6 +324,28 @@
                 <option value="above">Above vinyl layers</option>
               </select>
             </label>
+            <div id="layeredOverlayControls" class="layeredOverlayControls" hidden>
+              <div class="propertySection compactSection">
+                <h3>Layered SVG</h3>
+                <label>View mode
+                  <select id="overlaySvgViewMode" title="Choose how layered SVG overlay layers are displayed.">
+                    <option value="original">Original visibility</option>
+                    <option value="selected">Selected layer only</option>
+                    <option value="selected_reference">Selected + reference</option>
+                    <option value="selected_edge">Selected + edge guide</option>
+                    <option value="color_layers">All color layers</option>
+                  </select>
+                </label>
+                <label>SVG layer
+                  <select id="overlaySvgLayerSelect" title="Choose the SVG layer to show when using a selected-layer mode."></select>
+                </label>
+                <div class="smallTools">
+                  <button id="overlaySvgPrevLayer" type="button">Previous Layer</button>
+                  <button id="overlaySvgNextLayer" type="button">Next Layer</button>
+                </div>
+                <p id="overlaySvgLayerInfo" class="hint">Load a layered SVG to flip through its reference, guide, and color layers.</p>
+              </div>
+            </div>
             <div class="smallTools">
               <button id="toggleOverlay">Hide / Show</button>
               <button id="removeOverlay">Remove</button>

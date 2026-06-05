@@ -111,6 +111,7 @@ let selectedFavoriteColorSlot = 0;
 let shapeEyedropperActive = false;
 let activeToolMode = "select";
 let overlaySampler = null;
+let layeredOverlayState = null;
 let liveOverlayColorFrame = null;
 let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
 let collapsedLayerGroups = new Set();
@@ -428,50 +429,115 @@ function styleObjectTransformControls(object) {
     borderColor: colors.border,
     cornerColor: colors.corner,
     cornerStrokeColor: colors.cornerStroke,
-    cornerStyle: "circle",
+    cornerStyle: "rect",
     transparentCorners: false,
-    cornerSize: 18,
-    touchCornerSize: 48,
-    borderScaleFactor: 2.4,
-    padding: 10,
+    cornerSize: 16,
+    touchCornerSize: 56,
+    borderScaleFactor: 2.0,
+    padding: 12,
   });
 }
 
-function adaptiveControlOffset(name, object) {
+function figmaControlSmallFactor(object) {
   const zoom = Math.max(0.001, object?.canvas?.getZoom?.() || canvas?.getZoom?.() || 1);
   const screenWidth = Math.abs((object?.getScaledWidth?.() || 0) * zoom);
   const screenHeight = Math.abs((object?.getScaledHeight?.() || 0) * zoom);
   const smallX = Math.max(0, Math.min(1, (96 - screenWidth) / 96));
   const smallY = Math.max(0, Math.min(1, (96 - screenHeight) / 96));
-  const small = Math.max(smallX, smallY);
-  const sidePush = 6 + 18 * small;
-  const rotatePush = 40 + 16 * small;
+  return Math.max(smallX, smallY);
+}
+
+function figmaControlPushDistance(name, object) {
+  const small = figmaControlSmallFactor(object);
   switch (name) {
+    case "tl":
+    case "tr":
+    case "bl":
+    case "br":
+      return 5 + 11 * small;
     case "ml":
-      return { x: -sidePush, y: 0 };
     case "mr":
-      return { x: sidePush, y: 0 };
     case "mt":
-      return { x: 0, y: -sidePush };
     case "mb":
-      return { x: 0, y: sidePush };
+      return 9 + 22 * small;
     case "mtr":
-      return { x: 0, y: -rotatePush };
+      return 46 + 24 * small;
     default:
-      return { x: 0, y: 0 };
+      return 0;
   }
 }
 
-function adaptiveControlPositionHandler(name) {
+function fallbackControlVector(name, fabricObject) {
+  const angle = fabric.util.degreesToRadians(Number(fabricObject?.angle) || 0);
+  const axisX = { x: Math.cos(angle), y: Math.sin(angle) };
+  const axisY = { x: -Math.sin(angle), y: Math.cos(angle) };
+  switch (name) {
+    case "tl":
+      return { x: -axisX.x - axisY.x, y: -axisX.y - axisY.y };
+    case "tr":
+      return { x: axisX.x - axisY.x, y: axisX.y - axisY.y };
+    case "bl":
+      return { x: -axisX.x + axisY.x, y: -axisX.y + axisY.y };
+    case "br":
+      return { x: axisX.x + axisY.x, y: axisX.y + axisY.y };
+    case "ml":
+      return { x: -axisX.x, y: -axisX.y };
+    case "mr":
+      return axisX;
+    case "mt":
+    case "mtr":
+      return { x: -axisY.x, y: -axisY.y };
+    case "mb":
+      return axisY;
+    default:
+      return { x: 0, y: -1 };
+  }
+}
+
+function normalizedControlVector(name, point, center, fabricObject) {
+  let dx = point.x - center.x;
+  let dy = point.y - center.y;
+  let length = Math.hypot(dx, dy);
+  if (length < 0.01) {
+    const fallback = fallbackControlVector(name, fabricObject);
+    dx = fallback.x;
+    dy = fallback.y;
+    length = Math.hypot(dx, dy) || 1;
+  }
+  return { x: dx / length, y: dy / length };
+}
+
+function figmaControlPositionHandler(name) {
   return function positionHandler(dim, finalMatrix, fabricObject, control) {
     const activeControl = control || this || {};
     const point = fabric.util.transformPoint(
       new fabric.Point((activeControl.x || 0) * dim.x, (activeControl.y || 0) * dim.y),
       finalMatrix
     );
-    const offset = adaptiveControlOffset(name, fabricObject);
-    return new fabric.Point(point.x + offset.x, point.y + offset.y);
+    const center = fabric.util.transformPoint(new fabric.Point(0, 0), finalMatrix);
+    const vector = normalizedControlVector(name, point, center, fabricObject);
+    const push = figmaControlPushDistance(name, fabricObject);
+    return new fabric.Point(point.x + vector.x * push, point.y + vector.y * push);
   };
+}
+
+function figmaRotatePositionHandler(dim, finalMatrix, fabricObject) {
+  const halfX = dim.x * 0.5;
+  const halfY = dim.y * 0.5;
+  const points = [
+    new fabric.Point(-halfX, -halfY),
+    new fabric.Point(halfX, -halfY),
+    new fabric.Point(halfX, halfY),
+    new fabric.Point(-halfX, halfY),
+  ].map((point) => fabric.util.transformPoint(point, finalMatrix));
+  const minY = Math.min(...points.map((point) => point.y));
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const topPoints = points.filter((point) => Math.abs(point.y - minY) < 2.5);
+  const x = topPoints.length
+    ? topPoints.reduce((sum, point) => sum + point.x, 0) / topPoints.length
+    : (minX + maxX) / 2;
+  return new fabric.Point(x, minY - figmaControlPushDistance("mtr", fabricObject));
 }
 
 function rgbFromCssColor(color) {
@@ -537,15 +603,10 @@ function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
   });
   next.forEach((obj) => {
     storeSelectionOutlineOriginal(obj);
-    const halo = selectedShapeHalo(obj);
+    // Fabric shadows are extremely expensive on complex vinyl paths while
+    // panning or dragging. Keep selection indication on the transform box.
     obj.set({
-      shadow: new fabric.Shadow({
-        color: halo.color,
-        blur: halo.blur,
-        offsetX: 0,
-        offsetY: 0,
-        affectStroke: false,
-      }),
+      shadow: null,
     });
     obj.dirty = true;
   });
@@ -587,22 +648,70 @@ function editorSideScaleCursorStyleHandler(_eventData, control) {
   return control?.x ? "ew-resize" : "ns-resize";
 }
 
-function renderSkewCornerControl(ctx, left, top, styleOverride, fabricObject) {
+function roundedRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, Math.abs(width) / 2, Math.abs(height) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function renderFigmaCornerControl(ctx, left, top, styleOverride, fabricObject) {
   const colors = editorTransformColors();
-  const size = styleOverride.cornerSize || fabricObject.cornerSize || 13;
+  const size = Math.max(14, styleOverride.cornerSize || fabricObject.cornerSize || 16);
   ctx.save();
   ctx.translate(left, top);
-  ctx.rotate(fabric.util.degreesToRadians(fabricObject.angle || 0));
-  ctx.fillStyle = colors.skewCorner;
+  ctx.fillStyle = colors.corner;
   ctx.strokeStyle = colors.cornerStroke;
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(0, -size / 2);
-  ctx.lineTo(size / 2, 0);
-  ctx.lineTo(0, size / 2);
-  ctx.lineTo(-size / 2, 0);
-  ctx.closePath();
+  ctx.lineWidth = 2;
+  roundedRectPath(ctx, -size / 2, -size / 2, size, size, 3);
   ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function renderFigmaSideControl(name) {
+  return function renderSide(ctx, left, top, styleOverride, fabricObject) {
+    const colors = editorTransformColors();
+    const base = Math.max(15, styleOverride.cornerSize || fabricObject.cornerSize || 16);
+    const vertical = name === "ml" || name === "mr";
+    const width = vertical ? Math.max(9, base * 0.62) : Math.max(21, base * 1.45);
+    const height = vertical ? Math.max(21, base * 1.45) : Math.max(9, base * 0.62);
+    ctx.save();
+    ctx.translate(left, top);
+    ctx.fillStyle = colors.corner;
+    ctx.strokeStyle = colors.cornerStroke;
+    ctx.lineWidth = 2;
+    roundedRectPath(ctx, -width / 2, -height / 2, width, height, Math.min(width, height) / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+}
+
+function renderFigmaRotateControl(ctx, left, top, styleOverride, fabricObject) {
+  const colors = editorTransformColors();
+  const size = Math.max(17, styleOverride.cornerSize || fabricObject.cornerSize || 16);
+  ctx.save();
+  ctx.translate(left, top);
+  ctx.fillStyle = colors.corner;
+  ctx.strokeStyle = colors.cornerStroke;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = colors.skewCorner;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.25, -0.7, Math.PI * 1.25);
   ctx.stroke();
   ctx.restore();
 }
@@ -611,56 +720,61 @@ function configureEditorTransformControls() {
   if (!fabric?.Control || !fabric?.Object?.prototype?.controls || !fabric.controlsUtils) return;
   const controls = fabric.Object.prototype.controls;
   const generousHitArea = {
-    sizeX: 30,
-    sizeY: 30,
-    touchSizeX: 56,
-    touchSizeY: 56,
+    sizeX: 34,
+    sizeY: 34,
+    touchSizeX: 64,
+    touchSizeY: 64,
   };
   controls.ml = new fabric.Control({
     x: -0.5,
     y: 0,
     ...generousHitArea,
-    positionHandler: adaptiveControlPositionHandler("ml"),
+    positionHandler: figmaControlPositionHandler("ml"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingX,
     actionName: "scaleX",
+    render: renderFigmaSideControl("ml"),
   });
   controls.mr = new fabric.Control({
     x: 0.5,
     y: 0,
     ...generousHitArea,
-    positionHandler: adaptiveControlPositionHandler("mr"),
+    positionHandler: figmaControlPositionHandler("mr"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingX,
     actionName: "scaleX",
+    render: renderFigmaSideControl("mr"),
   });
   controls.mt = new fabric.Control({
     x: 0,
     y: -0.5,
     ...generousHitArea,
-    positionHandler: adaptiveControlPositionHandler("mt"),
+    positionHandler: figmaControlPositionHandler("mt"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingY,
     actionName: "scaleY",
+    render: renderFigmaSideControl("mt"),
   });
   controls.mb = new fabric.Control({
     x: 0,
     y: 0.5,
     ...generousHitArea,
-    positionHandler: adaptiveControlPositionHandler("mb"),
+    positionHandler: figmaControlPositionHandler("mb"),
     cursorStyleHandler: editorSideScaleCursorStyleHandler,
     actionHandler: fabric.controlsUtils.scalingY,
     actionName: "scaleY",
+    render: renderFigmaSideControl("mb"),
   });
   for (const [name, x, y] of [["tl", -0.5, -0.5], ["tr", 0.5, -0.5], ["bl", -0.5, 0.5], ["br", 0.5, 0.5]]) {
     controls[name] = new fabric.Control({
       x,
       y,
       ...generousHitArea,
+      positionHandler: figmaControlPositionHandler(name),
       cursorStyleHandler: editorCornerTransformCursorStyleHandler,
       actionHandler: editorCornerTransformHandler,
       getActionName: editorCornerTransformActionName,
-      render: renderSkewCornerControl,
+      render: renderFigmaCornerControl,
     });
   }
   if (fabric.controlsUtils.rotationWithSnapping) {
@@ -668,11 +782,12 @@ function configureEditorTransformControls() {
       x: 0,
       y: -0.5,
       ...generousHitArea,
-      positionHandler: adaptiveControlPositionHandler("mtr"),
+      positionHandler: figmaRotatePositionHandler,
       cursorStyleHandler: fabric.controlsUtils.rotationStyleHandler,
       actionHandler: fabric.controlsUtils.rotationWithSnapping,
       actionName: "rotate",
-      withConnection: true,
+      withConnection: false,
+      render: renderFigmaRotateControl,
     });
   }
 }
@@ -1833,6 +1948,7 @@ function initCanvas() {
         isPanning = true;
         lastPan = { x: opt.e.clientX, y: opt.e.clientY };
         canvas.selection = false;
+        canvas.skipTargetFind = true;
         transformAnchorSnapshot = null;
         setGuideStatus("Guide mode: panning canvas. Left-drag still draws guide lines.");
         return;
@@ -1851,6 +1967,7 @@ function initCanvas() {
       isPanning = true;
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
       canvas.selection = false;
+      canvas.skipTargetFind = true;
       transformAnchorSnapshot = null;
     } else if (interactiveVinylTarget(opt.target)?.kloudy || opt.target?.type === "activeSelection" || opt.target?.type === "activeselection") {
       captureTransformAnchorSnapshot(interactiveVinylTarget(opt.target), opt);
@@ -1867,7 +1984,7 @@ function initCanvas() {
       canvas.requestRenderAll();
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
       updateHud(canvas.getPointer(opt.e));
-      setHoverHud(opt.target);
+      setText("hudHover", "panning");
       return;
     }
     if (guideDraft && activeToolMode === "guides") {
@@ -3036,16 +3153,20 @@ function snapTargetToGuides(target, event = null) {
   const frozenContactKind = transformAction === "move" && transformAnchorSnapshot?.target === target
     ? transformAnchorSnapshot.contactKind
     : null;
-  const contact = guideContactForTarget(target, event, frozenContactKind);
   const allowAngledRotation = transformAction === "move";
   const snapAllowed = !guideState.snapCtrlOnly || eventHasSnapModifier(event);
+  const anchoredResize = transformAction === "scale" || transformAction === "skew";
+  const snappingEnabled = guideState.snapGuides || (guideState.gridEnabled && guideState.snapGrid);
+  if (!anchoredResize && (!snappingEnabled || !snapAllowed)) {
+    clearSnapOverlay();
+    return false;
+  }
+  const contact = guideContactForTarget(target, event, frozenContactKind);
   const pointer = canvasPointFromEvent(event);
   target.setCoords();
   const zoom = Math.max(canvas.getZoom() || 1, 0.001);
   const threshold = guideState.snapThreshold / zoom;
   const cursorThreshold = (guideState.snapThreshold * 1.45) / zoom;
-  const anchoredResize = transformAction === "scale" || transformAction === "skew";
-  const snappingEnabled = guideState.snapGuides || (guideState.gridEnabled && guideState.snapGrid);
   if (anchoredResize) {
     if (!snappingEnabled || !snapAllowed) {
       clearSnapOverlay();
@@ -3070,11 +3191,11 @@ function snapTargetToGuides(target, event = null) {
     return false;
   }
   if (!snappingEnabled) {
-    renderSnapOverlayForTarget(target, contact, null);
+    clearSnapOverlay();
     return false;
   }
   if (!snapAllowed) {
-    renderSnapOverlayForTarget(target, contact, null);
+    clearSnapOverlay();
     return false;
   }
   const rect = target.getBoundingRect(true, true);
@@ -5003,6 +5124,176 @@ function rebuildOverlaySampler(img) {
   };
 }
 
+function clearLayeredOverlayState() {
+  layeredOverlayState = null;
+  setHidden("layeredOverlayControls", true);
+  const select = $("overlaySvgLayerSelect");
+  if (select) select.innerHTML = "";
+  setText("overlaySvgLayerInfo", "Load a layered SVG to flip through its reference, guide, and color layers.");
+}
+
+function svgLayerLabel(group) {
+  return (
+    group.getAttribute("inkscape:label") ||
+    group.getAttributeNS?.("http://www.inkscape.org/namespaces/inkscape", "label") ||
+    group.getAttribute("label") ||
+    group.id ||
+    "Layer"
+  );
+}
+
+function styleHasDisplayNone(style) {
+  return /(^|;)\s*display\s*:\s*none\s*(;|$)/i.test(String(style || ""));
+}
+
+function setSvgElementVisible(element, visible) {
+  let style = element.getAttribute("style") || "";
+  style = style.replace(/(^|;)\s*display\s*:\s*none\s*;?/ig, ";").replace(/^;+|;+$/g, "").trim();
+  if (!visible) style = `${style ? `${style};` : ""}display:none`;
+  if (style) element.setAttribute("style", style);
+  else element.removeAttribute("style");
+  if (visible) element.removeAttribute("display");
+  else element.setAttribute("display", "none");
+}
+
+function parseLayeredSvg(text, fileName = "overlay.svg") {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, "image/svg+xml");
+  if (doc.querySelector("parsererror")) throw new Error("SVG parser rejected the file.");
+  const svg = doc.documentElement;
+  const groups = Array.from(svg.querySelectorAll("g")).filter((group) => {
+    const label = svgLayerLabel(group);
+    return group.id || label;
+  });
+  const layers = groups.map((group, index) => {
+    const label = svgLayerLabel(group);
+    const id = group.id || `svg_layer_${index}`;
+    const labelLower = label.toLowerCase();
+    const idLower = id.toLowerCase();
+    const hidden = group.getAttribute("display") === "none" || styleHasDisplayNone(group.getAttribute("style"));
+    const kind = idLower.includes("reference") || labelLower.includes("reference")
+      ? "reference"
+      : idLower.includes("grid") || labelLower.includes("grid")
+        ? "grid"
+        : idLower.includes("line") || labelLower.includes("line_art") || labelLower.includes("edge")
+          ? "edge"
+          : idLower.includes("canvas") || labelLower.includes("canvas")
+            ? "canvas"
+            : labelLower.includes("_color_") || idLower.includes("_color_") || /^l\d+_color_/.test(idLower)
+              ? "color"
+              : idLower.includes("glow") || labelLower.startsWith("fx_") || idLower.includes("fx")
+                ? "guide"
+                : "other";
+    return { id, label, index, hidden, kind };
+  });
+  return {
+    fileName,
+    sourceText: text,
+    width: Number(svg.getAttribute("width")?.replace(/[^\d.]/g, "")) || Number(svg.viewBox?.baseVal?.width) || 1920,
+    height: Number(svg.getAttribute("height")?.replace(/[^\d.]/g, "")) || Number(svg.viewBox?.baseVal?.height) || 1080,
+    layers,
+    selectedIndex: Math.max(0, layers.findIndex((layer) => layer.kind === "color")),
+    viewMode: "original",
+  };
+}
+
+function selectedLayeredOverlayLayer() {
+  if (!layeredOverlayState?.layers?.length) return null;
+  return layeredOverlayState.layers[Math.max(0, Math.min(layeredOverlayState.selectedIndex, layeredOverlayState.layers.length - 1))];
+}
+
+function shouldShowSvgLayer(layer, mode, selectedLayer) {
+  if (mode === "original") return !layer.hidden;
+  if (mode === "color_layers") return layer.kind === "color";
+  if (mode === "selected") return layer.id === selectedLayer?.id;
+  if (mode === "selected_reference") return layer.id === selectedLayer?.id || layer.kind === "reference";
+  if (mode === "selected_edge") return layer.id === selectedLayer?.id || layer.kind === "edge";
+  return !layer.hidden;
+}
+
+function layeredSvgDataUrl() {
+  if (!layeredOverlayState) return null;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(layeredOverlayState.sourceText, "image/svg+xml");
+  if (doc.querySelector("parsererror")) return null;
+  const selectedLayer = selectedLayeredOverlayLayer();
+  doc.querySelectorAll("g").forEach((group) => {
+    const id = group.id || "";
+    const layer = layeredOverlayState.layers.find((item) => item.id === id || item.label === svgLayerLabel(group));
+    if (!layer) return;
+    setSvgElementVisible(group, shouldShowSvgLayer(layer, layeredOverlayState.viewMode, selectedLayer));
+  });
+  const serializer = new XMLSerializer();
+  const text = serializer.serializeToString(doc);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`;
+}
+
+function populateLayeredOverlayControls() {
+  const controls = $("layeredOverlayControls");
+  const select = $("overlaySvgLayerSelect");
+  const modeSelect = $("overlaySvgViewMode");
+  if (!controls || !select || !modeSelect || !layeredOverlayState) return;
+  controls.hidden = false;
+  select.innerHTML = "";
+  layeredOverlayState.layers.forEach((layer, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    const suffix = layer.kind !== "color" ? ` (${layer.kind})` : "";
+    option.textContent = `${String(index + 1).padStart(2, "0")} ${layer.label}${suffix}`;
+    select.appendChild(option);
+  });
+  select.value = String(layeredOverlayState.selectedIndex);
+  modeSelect.value = layeredOverlayState.viewMode;
+  updateLayeredOverlayInfo();
+}
+
+function updateLayeredOverlayInfo() {
+  if (!layeredOverlayState) return;
+  const layer = selectedLayeredOverlayLayer();
+  const colorCount = layeredOverlayState.layers.filter((item) => item.kind === "color").length;
+  setText(
+    "overlaySvgLayerInfo",
+    `${layeredOverlayState.fileName}: ${layeredOverlayState.layers.length} layer(s), ${colorCount} color layer(s). Showing ${layer?.label || "original visibility"}.`
+  );
+}
+
+function setLayeredOverlayLayer(index) {
+  if (!layeredOverlayState?.layers?.length) return;
+  const count = layeredOverlayState.layers.length;
+  layeredOverlayState.selectedIndex = ((Number(index) % count) + count) % count;
+  if ($("overlaySvgLayerSelect")) $("overlaySvgLayerSelect").value = String(layeredOverlayState.selectedIndex);
+  refreshLayeredOverlayImage();
+}
+
+function setLayeredOverlayViewMode(mode) {
+  if (!layeredOverlayState) return;
+  layeredOverlayState.viewMode = String(mode || "original");
+  refreshLayeredOverlayImage();
+}
+
+function refreshLayeredOverlayImage() {
+  if (!layeredOverlayState || !overlayImage) return;
+  const url = layeredSvgDataUrl();
+  if (!url) {
+    setStatus("Layered SVG overlay refresh failed.");
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    rebuildOverlaySampler(img);
+    overlayImage.setElement(img);
+    overlayImage.set({
+      width: img.width || layeredOverlayState.width,
+      height: img.height || layeredOverlayState.height,
+    });
+    updateOverlay();
+    updateLayeredOverlayInfo();
+    canvas.requestRenderAll();
+  };
+  img.onerror = () => setStatus("Layered SVG overlay refresh failed.");
+  img.src = url;
+}
+
 function canvasPointToOverlayPixel(x, y) {
   if (!overlayImage || !overlaySampler) return null;
   const inverse = fabric.util.invertTransform(overlayImage.calcTransformMatrix());
@@ -5155,36 +5446,61 @@ function sampleOverlayColorForSelected() {
   }
 }
 
+function loadOverlayImageFromUrl(url, fileName) {
+  const img = new Image();
+  img.onload = () => {
+    if (overlayImage) canvas.remove(overlayImage);
+    rebuildOverlaySampler(img);
+    overlayImage = new fabric.Image(img, {
+      originX: "center",
+      originY: "center",
+      left: 0,
+      top: 0,
+      opacity: Number($("overlayOpacity").value) / 100,
+      selectable: false,
+      evented: false,
+      excludeFromExport: true,
+    });
+    overlayImage.kloudyOverlay = true;
+    const fit = 1800 / Math.max(img.width, img.height);
+    overlayImage.set({ scaleX: fit, scaleY: fit });
+    canvas.add(overlayImage);
+    if (layeredOverlayState) populateLayeredOverlayControls();
+    layerEditorHelpers();
+    canvas.requestRenderAll();
+    setStatus(layeredOverlayState ? `Layered SVG overlay loaded: ${fileName}` : `Overlay loaded: ${fileName}`);
+    updateHud();
+  };
+  img.onerror = () => setStatus(`Overlay load failed: ${fileName} is not a usable image.`);
+  img.src = url;
+}
+
 function addOverlayFile(file) {
+  const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name || "");
   const reader = new FileReader();
   reader.onerror = () => setStatus(`Overlay load failed: could not read ${file.name}.`);
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => {
-      if (overlayImage) canvas.remove(overlayImage);
-      rebuildOverlaySampler(img);
-      overlayImage = new fabric.Image(img, {
-        originX: "center",
-        originY: "center",
-        left: 0,
-        top: 0,
-        opacity: Number($("overlayOpacity").value) / 100,
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-      });
-      overlayImage.kloudyOverlay = true;
-      const fit = 1800 / Math.max(img.width, img.height);
-      overlayImage.set({ scaleX: fit, scaleY: fit });
-      canvas.add(overlayImage);
-      layerEditorHelpers();
-      canvas.requestRenderAll();
-      setStatus(`Overlay loaded: ${file.name}`);
-      updateHud();
+  if (isSvg) {
+    reader.onload = () => {
+      try {
+        layeredOverlayState = parseLayeredSvg(String(reader.result || ""), file.name);
+      } catch (err) {
+        clearLayeredOverlayState();
+        setStatus(`Overlay load failed: ${err.message || "SVG could not be parsed."}`);
+        return;
+      }
+      const url = layeredSvgDataUrl();
+      if (!url) {
+        clearLayeredOverlayState();
+        setStatus(`Overlay load failed: ${file.name} could not be rendered.`);
+        return;
+      }
+      loadOverlayImageFromUrl(url, file.name);
     };
-    img.onerror = () => setStatus(`Overlay load failed: ${file.name} is not a usable image.`);
-    img.src = reader.result;
-  };
+    reader.readAsText(file);
+    return;
+  }
+  clearLayeredOverlayState();
+  reader.onload = () => loadOverlayImageFromUrl(reader.result, file.name);
   reader.readAsDataURL(file);
 }
 
@@ -5219,6 +5535,7 @@ function removeOverlay() {
   canvas.remove(overlayImage);
   overlayImage = null;
   overlaySampler = null;
+  clearLayeredOverlayState();
   canvas.requestRenderAll();
   updateHud();
   setStatus("Overlay removed.");
@@ -5393,6 +5710,10 @@ function bindUi() {
     $("overlayLayerMode").value = overlayLayerMode;
     $("overlayLayerMode").addEventListener("change", (event) => setOverlayLayerMode(event.target.value));
   }
+  $("overlaySvgViewMode")?.addEventListener("change", (event) => setLayeredOverlayViewMode(event.target.value));
+  $("overlaySvgLayerSelect")?.addEventListener("change", (event) => setLayeredOverlayLayer(Number(event.target.value)));
+  $("overlaySvgPrevLayer")?.addEventListener("click", () => setLayeredOverlayLayer((layeredOverlayState?.selectedIndex || 0) - 1));
+  $("overlaySvgNextLayer")?.addEventListener("click", () => setLayeredOverlayLayer((layeredOverlayState?.selectedIndex || 0) + 1));
   $("overlaySampleMode").addEventListener("change", () => {
     if ($("autoOverlayColor")?.checked) sampleOverlayColorForSelected();
   });

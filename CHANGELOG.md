@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.22
+
+- Improved Fabric editor transform handles with more usable Figma-style corner, side, and rotate controls.
+- Improved Fabric editor drag and pan performance by removing expensive selected-shape shadows and avoiding inactive snap overlay work.
+- Added layered SVG overlay controls for flipping through reference, guide, and color layers.
+- Removed internal development notes from the public package.
+
 ## 2.0.21
 
 - Fixed shared JSON preview transforms for exported vinyls with negative scale and skew.
