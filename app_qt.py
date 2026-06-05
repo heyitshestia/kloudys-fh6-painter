@@ -68,7 +68,6 @@ from generator_backend import (
     GENERATOR_EXE,
     GENERATED_ROOT,
     auto_generation_values,
-    best_geometry_jsons,
     build_generator_command,
     delete_user_preset,
     detail_heatmap_preview_bytes,
@@ -76,7 +75,6 @@ from generator_backend import (
     generator_stop_request_path,
     geometry_shape_count,
     import_drawable_budget,
-    is_import_safe_geometry_json,
     is_internal_generator_json,
     load_settings,
     next_generator_output_dir,
@@ -103,9 +101,39 @@ MEMORY_SNAPSHOT_LIMIT_MB = 2048
 UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
+HANDMADE_JSON_ROOT = ROOT / "imgs" / "handmade"
 FABRIC_EDITOR_SCRIPT = ROOT / "tools" / "fabric-editor" / "start_fabric_editor.py"
+VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
+SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 STANDALONE_APP_FOLDER_NAME = "KloudysFH6Painter"
 USER_IMAGES_ROOT = ROOT.parent / "Images" if ROOT.name.lower() == STANDALONE_APP_FOLDER_NAME.lower() else ROOT / "Images"
+VINYL_TYPE_BASES = {
+    "Primitives": 1048677,
+    "Community_Vinyls_1": 1050677,
+    "Community_Vinyls_2": 1050777,
+    "Community_Vinyls_3": 1050877,
+    "Community_Vinyls_4": 1050977,
+    "Gradient_Shapes": 1048777,
+    "Stripes": 1048877,
+    "Tears": 1048977,
+    "Racing_Icons": 1049077,
+    "Flames": 1049177,
+    "Paint_Splats": 1049277,
+    "Tribal": 1049377,
+    "Nature": 1049477,
+    "Upper_Letters_1": 1049577,
+    "Upper_Letters_2": 1049677,
+    "Upper_Letters_3": 1049777,
+    "Upper_Letters_4": 1049877,
+    "Upper_Letters_5": 1049977,
+    "Lower_Letters_1": 1050077,
+    "Lower_Letters_2": 1050177,
+    "Lower_Letters_3": 1050277,
+    "Lower_Letters_4": 1050377,
+    "Lower_Letters_5": 1050477,
+}
+VINYL_RESOURCE_CACHE: dict[tuple[str, int], list[tuple[float, float]]] = {}
+SHAPE_WORD_RESOURCE_CACHE: dict[int, tuple[str, int] | None] | None = None
 THEMES = {
     "Pastel Bloom": "pastel",
     "Sakura Glass": "sakura",
@@ -1083,7 +1111,7 @@ HELP_TEXT = {
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, HANDMADE_JSON_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -1449,6 +1477,108 @@ def compensated_ellipse_size(w, h):
     return max(1.0, w * uniform_scale), max(1.0, h * uniform_scale * major_axis_scale)
 
 
+def shape_word_resource_map() -> dict[int, tuple[str, int] | None]:
+    global SHAPE_WORD_RESOURCE_CACHE
+    if SHAPE_WORD_RESOURCE_CACHE is not None:
+        return SHAPE_WORD_RESOURCE_CACHE
+    mapping: dict[int, tuple[str, int] | None] = {}
+    if SHAPE_WORDS_PATH.exists():
+        try:
+            payload = json.loads(SHAPE_WORDS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        for family, values in (payload.get("families") or {}).items():
+            if not isinstance(values, dict):
+                continue
+            for index, word in values.items():
+                try:
+                    mapping[int(word) & 0xFFFF] = (family, int(index))
+                except (TypeError, ValueError):
+                    continue
+    for family, base in VINYL_TYPE_BASES.items():
+        base_word = int(base) & 0xFFFF
+        for index in range(1, 41):
+            mapping.setdefault((base_word + index - 1) & 0xFFFF, (family, index))
+            if not family.endswith("Letters"):
+                mapping.setdefault((base_word + (index - 1) * 4) & 0xFFFF, (family, index))
+    for index in range(1, 41):
+        mapping.setdefault((100 + index) & 0xFFFF, ("Primitives", index))
+    SHAPE_WORD_RESOURCE_CACHE = mapping
+    return mapping
+
+
+def resolve_vinyl_resource(type_code: int, shape: dict | None = None) -> tuple[str, int] | None:
+    shape = shape or {}
+    family = shape.get("resource_family")
+    index = shape.get("resource_index")
+    if family and index:
+        try:
+            return str(family), int(index)
+        except (TypeError, ValueError):
+            pass
+    word = int(shape.get("type_word", int(type_code) & 0xFFFF)) & 0xFFFF
+    return shape_word_resource_map().get(word)
+
+
+def load_vinyl_resource_points(family: str, index: int) -> list[tuple[float, float]] | None:
+    key = (family, int(index))
+    if key in VINYL_RESOURCE_CACHE:
+        return VINYL_RESOURCE_CACHE[key]
+    path = VINYL_RESOURCE_ROOT / family / str(index)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    vertices = payload.get("Vertices") or []
+    indices = payload.get("Indices") or []
+    points: list[tuple[float, float]] = []
+    for idx in indices:
+        try:
+            vertex = vertices[int(idx)]
+            points.append((float(vertex.get("X", 0.0)), float(vertex.get("Y", 0.0))))
+        except (TypeError, ValueError, IndexError, AttributeError):
+            continue
+    if not points:
+        for vertex in vertices:
+            try:
+                points.append((float(vertex.get("X", 0.0)), float(vertex.get("Y", 0.0))))
+            except (TypeError, ValueError, AttributeError):
+                continue
+    if not points:
+        return None
+    VINYL_RESOURCE_CACHE[key] = points
+    return points
+
+
+def fallback_resource_points_for_word(word: int) -> list[tuple[float, float]]:
+    if (int(word) & 0xFFFF) == 0x65:
+        return [(-64.0, -64.0), (64.0, -64.0), (64.0, 64.0), (-64.0, 64.0)]
+    return [(math.cos(math.tau * step / 32) * 64.0, math.sin(math.tau * step / 32) * 64.0) for step in range(32)]
+
+
+def transform_fh6_resource_points(points: list[tuple[float, float]], data: list) -> list[tuple[float, float]]:
+    x = float(data[0]) if len(data) > 0 else 0.0
+    y = float(data[1]) if len(data) > 1 else 0.0
+    sx = float(data[2]) if len(data) > 2 else 1.0
+    sy = float(data[3]) if len(data) > 3 else 1.0
+    rot = math.radians(float(data[4]) if len(data) > 4 else 0.0)
+    skew = float(data[5]) if len(data) > 5 else 0.0
+    cos_r = math.cos(rot)
+    sin_r = math.sin(rot)
+    transformed = []
+    for px, py in points:
+        lx = float(px) * sx
+        ly = float(py) * sy
+        if skew:
+            lx += float(py) * sy * skew
+        wx = x + lx * cos_r - ly * sin_r
+        wy = y + lx * sin_r + ly * cos_r
+        transformed.append((wx, wy))
+    return transformed
+
+
 def load_preview_geometry(path: Path) -> dict:
     try:
         return load_normalized_geometry(path)
@@ -1461,9 +1591,11 @@ def load_preview_geometry(path: Path) -> dict:
     if not isinstance(shapes_in, list) or not shapes_in:
         raise ValueError("JSON does not contain previewable shapes.")
 
-    drawables = []
-    max_x = 1.0
-    max_y = 1.0
+    preview_items = []
+    min_x = math.inf
+    min_y = math.inf
+    max_x = -math.inf
+    max_y = -math.inf
     for item in shapes_in:
         if not isinstance(item, dict):
             continue
@@ -1472,8 +1604,7 @@ def load_preview_geometry(path: Path) -> dict:
         if len(data) < 4 or len(color) < 4:
             continue
         try:
-            x, y, w, h = [float(v) for v in data[:4]]
-            rot = float(data[4]) if len(data) >= 5 else 0.0
+            [float(v) for v in data[:4]]
             rgba = [max(0, min(255, int(round(float(v))))) for v in color[:4]]
         except (TypeError, ValueError):
             continue
@@ -1481,24 +1612,41 @@ def load_preview_geometry(path: Path) -> dict:
             continue
         type_code = int(item.get("type", ROTATED_ELLIPSE))
         word = int(item.get("type_word", type_code & 0xFFFF))
-        shape_type = ROTATED_ELLIPSE
-        out_data = [round(x), round(y), max(1, round(w)), max(1, round(h)), round(rot) % 360]
-        if word == 0x65:  # FH primitive square
-            shape_type = ROTATED_RECTANGLE
-            out_data = [round(x), round(y), max(1, round(w)), max(1, round(h)), round(rot) % 360]
-        elif word in (0x66, 0x88):  # circle / ellipse
-            shape_type = ROTATED_ELLIPSE
-        drawables.append({"type": shape_type, "data": out_data, "color": rgba, "score": item.get("score", 0)})
-        max_x = max(max_x, x + abs(w) + 64)
-        max_y = max(max_y, y + abs(h) + 64)
+        resource = resolve_vinyl_resource(type_code, item)
+        points = load_vinyl_resource_points(*resource) if resource else None
+        if not points:
+            points = fallback_resource_points_for_word(word)
+        world_points = transform_fh6_resource_points(points, data)
+        if not world_points:
+            continue
+        for px, py in world_points:
+            min_x = min(min_x, px)
+            min_y = min(min_y, py)
+            max_x = max(max_x, px)
+            max_y = max(max_y, py)
+        preview_items.append({
+            "world_points": world_points,
+            "color": rgba,
+            "score": item.get("score", 0),
+        })
 
-    if not drawables:
+    if not preview_items or not math.isfinite(min_x) or not math.isfinite(max_x):
         raise ValueError("JSON does not contain visible previewable layers.")
+    padding = max(24.0, min(160.0, max(max_x - min_x, max_y - min_y) * 0.04))
     src_size = source.get("canvas_size") or source.get("size") if isinstance(source, dict) else None
     if isinstance(src_size, list) and len(src_size) >= 2:
-        width, height = int(src_size[0]), int(src_size[1])
+        width, height = max(1, int(src_size[0])), max(1, int(src_size[1]))
+        offset_x = width / 2.0
+        offset_y = height / 2.0
     else:
-        width, height = max(1, int(math.ceil(max_x))), max(1, int(math.ceil(max_y)))
+        width = max(1, int(math.ceil((max_x - min_x) + padding * 2.0)))
+        height = max(1, int(math.ceil((max_y - min_y) + padding * 2.0)))
+        offset_x = -min_x + padding
+        offset_y = max_y + padding
+    drawables = []
+    for item in preview_items:
+        canvas_points = [[round(px + offset_x, 3), round(offset_y - py, 3)] for px, py in item["world_points"]]
+        drawables.append({"type": "polygon", "points": canvas_points, "color": item["color"], "score": item.get("score", 0)})
     background = {"type": RECTANGLE, "data": [0, 0, width, height], "color": [0, 0, 0, 0], "score": 0}
     return {"shapes": [background] + drawables}
 
@@ -1541,16 +1689,28 @@ def render_geometry_json(path: Path, max_size: int = PREVIEW_MAX) -> bytes | Non
             alpha = max(0.0, min(1.0, float(a) / 255.0))
             if alpha <= 0:
                 continue
-            shape_type = int(shape.get("type", 0))
             mask = np.zeros((render_h, render_w), np.uint8)
-            if shape_type in (ELLIPSE, ROTATED_ELLIPSE):
+            if shape.get("points"):
+                shape_type = 0
+                try:
+                    points = np.array(
+                        [[int(round(float(px) * scale)), int(round(float(py) * scale))] for px, py in shape.get("points", [])],
+                        dtype=np.int32,
+                    )
+                except (TypeError, ValueError):
+                    points = np.empty((0, 2), dtype=np.int32)
+                if len(points) >= 3:
+                    cv2.fillPoly(mask, [points], 255)
+            else:
+                shape_type = int(shape.get("type", 0))
+            if not mask.any() and shape_type in (ELLIPSE, ROTATED_ELLIPSE):
                 x, y, w, h, rot_deg = shape["data"]
                 if shape_type == ELLIPSE:
                     rot_deg = 0
                 adj_w, adj_h = compensated_ellipse_size(w, h)
                 axes = (max(1, int(round(adj_h * scale))), max(1, int(round(adj_w * scale))))
                 cv2.ellipse(mask, (int(round(x * scale)), int(round(y * scale))), axes, -90 + float(rot_deg), 0.0, 360.0, 255, thickness=-1)
-            elif shape_type in (RECTANGLE, ROTATED_RECTANGLE):
+            elif not mask.any() and shape_type in (RECTANGLE, ROTATED_RECTANGLE):
                 if shape_type == ROTATED_RECTANGLE:
                     x, y, w, h, rot_deg = shape["data"]
                     rect = ((float(x) * scale, float(y) * scale), (max(1.0, float(w) * scale), max(1.0, float(h) * scale)), float(rot_deg))
@@ -1706,6 +1866,7 @@ class FinalJsonBrowserDialog(QDialog):
         self.run_mtimes: dict[str, float] = {}
         self.run_folders: dict[str, Path] = {}
         self.run_buttons: dict[str, QToolButton] = {}
+        self.dialog_preview_request_id = 0
         self.setWindowTitle("Browse Finalized JSONs")
         self.resize(1420, 860)
         self.setMinimumSize(1180, 760)
@@ -1854,6 +2015,13 @@ class FinalJsonBrowserDialog(QDialog):
     def thumbnail_pixmap(self, path: Path | None, size: QSize) -> QPixmap:
         if not path:
             return QPixmap()
+        try:
+            stat = path.stat()
+            cache_key = (str(path.resolve()), int(stat.st_mtime_ns), int(stat.st_size), size.width(), size.height())
+        except OSError:
+            cache_key = None
+        if cache_key and cache_key in self.app.thumbnail_pixmap_cache:
+            return self.app.thumbnail_pixmap_cache[cache_key]
         pixmap = QPixmap(str(path))
         if pixmap.isNull():
             data = render_source_image(path)
@@ -1861,7 +2029,10 @@ class FinalJsonBrowserDialog(QDialog):
                 pixmap.loadFromData(data)
         if pixmap.isNull():
             return pixmap
-        return pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled = pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        if cache_key:
+            self.app.thumbnail_pixmap_cache[cache_key] = scaled
+        return scaled
 
     def select_run(self, run_key: str):
         for key, button in self.run_buttons.items():
@@ -1917,11 +2088,50 @@ class FinalJsonBrowserDialog(QDialog):
             return
         status = "ready to import" if entry.get("import_safe", True) else "over layer budget"
         self.selection_label.setText(f"Selected: {Path(entry['path']).name} ({entry.get('layers') or 0} layers, {status})")
+        self.show_entry_preview(entry)
+
+    def show_entry_preview(self, entry: dict):
         preview = self.app.preview_path_for_json(entry["path"])
         if preview and preview.exists():
             self.final_preview.set_file(preview)
+            return
+        cache_path = self.app.rendered_preview_cache_path(entry["path"])
+        try:
+            if cache_path.exists() and cache_path.stat().st_mtime >= Path(entry["path"]).stat().st_mtime:
+                self.final_preview.set_file(cache_path)
+                return
+        except OSError:
+            pass
+        self.dialog_preview_request_id += 1
+        request_id = self.dialog_preview_request_id
+        path = Path(entry["path"])
+        self.final_preview.clear("Rendering preview in the background...")
+        threading.Thread(target=self.render_entry_preview_worker, args=(request_id, path), daemon=True).start()
+
+    def render_entry_preview_worker(self, request_id: int, path: Path):
+        cache_path = self.app.rendered_preview_cache_path(path)
+        data = None
+        try:
+            if cache_path.exists() and cache_path.stat().st_mtime >= path.stat().st_mtime:
+                self.app.bus.ui_call.emit(lambda rid=request_id, p=cache_path: self.apply_entry_preview(rid, p, None))
+                return
+        except OSError:
+            pass
+        data = render_geometry_json(path)
+        if data:
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_bytes(data)
+            except OSError:
+                pass
+        self.app.bus.ui_call.emit(lambda rid=request_id, p=cache_path, payload=data: self.apply_entry_preview(rid, p, payload))
+
+    def apply_entry_preview(self, request_id: int, cache_path: Path, data: bytes | None):
+        if request_id != self.dialog_preview_request_id:
+            return
+        if cache_path.exists():
+            self.final_preview.set_file(cache_path)
         else:
-            data = render_geometry_json(entry["path"])
             self.final_preview.set_bytes(data)
 
     def accept_selected(self):
@@ -2487,6 +2697,8 @@ class MainWindow(QMainWindow):
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
         self.exported_game_json_entries: list[dict] = []
+        self.geometry_count_cache: dict[str, tuple[int, int, int]] = {}
+        self.thumbnail_pixmap_cache: dict[tuple[str, int, int, int, int], QPixmap] = {}
         self.preview_request_id = 0
         self.export_preview_request_id = 0
         self._all_combos: list[QComboBox] = []
@@ -3027,10 +3239,16 @@ class MainWindow(QMainWindow):
         json_intro = QLabel("Pick from the latest generation below, or use Browse Finals to visually choose older runs by source image and final preview.")
         json_intro.setWordWrap(True)
         json_layout.addWidget(json_intro)
+        source_row = QHBoxLayout()
+        source_row.addWidget(QLabel("JSON source"))
+        self.json_source_combo = self.make_combo(["Generated finals", "Handmade folder"], max_visible=2, min_height=38)
+        self.json_source_combo.currentTextChanged.connect(lambda _text: self.refresh_generated_browser())
+        source_row.addWidget(self.json_source_combo, 1)
+        json_layout.addLayout(source_row)
         latest_row = QHBoxLayout()
         self.latest_final_combo = self.make_combo(max_visible=18, min_height=42)
         self.latest_final_combo.currentIndexChanged.connect(self.select_latest_final_combo_entry)
-        browse_jsons = QPushButton("Browse Finals...")
+        browse_jsons = QPushButton("Browse JSONs...")
         browse_jsons.setObjectName("primaryButton")
         browse_jsons.clicked.connect(self.open_final_json_browser)
         latest_row.addWidget(self.latest_final_combo, 1)
@@ -3048,7 +3266,7 @@ class MainWindow(QMainWindow):
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         json_layout.addLayout(controls)
-        latest_hint = QLabel("Latest generation dropdown is sorted by layer count from high to low. Browse Finals shows older runs with image thumbnails and final previews.")
+        latest_hint = QLabel("Generated mode shows the latest run by layer count. Handmade mode reads JSONs from imgs/handmade so downloaded or shared files have a safe drop folder.")
         latest_hint.setWordWrap(True)
         json_layout.addWidget(latest_hint)
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
@@ -4911,6 +5129,24 @@ class MainWindow(QMainWindow):
         except OSError:
             return None
 
+    def cached_geometry_shape_count(self, path: Path) -> int:
+        path = Path(path)
+        try:
+            stat = path.stat()
+        except OSError:
+            return 0
+        key = str(path.resolve())
+        cached = self.geometry_count_cache.get(key)
+        fingerprint = (int(stat.st_mtime_ns), int(stat.st_size))
+        if cached and cached[:2] == fingerprint:
+            return cached[2]
+        try:
+            count = geometry_shape_count(path)
+        except Exception:
+            count = 0
+        self.geometry_count_cache[key] = (fingerprint[0], fingerprint[1], count)
+        return count
+
     def run_json_files(self, run_dir):
         run_dir = Path(run_dir)
         if not run_dir.exists():
@@ -5018,6 +5254,47 @@ class MainWindow(QMainWindow):
                     candidates.add(path.resolve())
         return candidates
 
+    def handmade_json_candidates(self) -> list[dict]:
+        entries = []
+        if not HANDMADE_JSON_ROOT.exists():
+            return entries
+        paths = [
+            path for path in HANDMADE_JSON_ROOT.rglob("*")
+            if path.is_file() and path.suffix.lower() == ".json"
+        ]
+        for path in sorted(paths, key=lambda item: self.safe_path_mtime(item) or 0, reverse=True):
+            if is_internal_generator_json(path):
+                continue
+            count = self.cached_geometry_shape_count(path)
+            folder = path.parent
+            try:
+                run_mtime = path.stat().st_mtime
+            except OSError:
+                run_mtime = self.safe_path_mtime(path) or 0
+            source = path.stem
+            entries.append({
+                "path": path.resolve(),
+                "source": source,
+                "folder": self.checkpoint_folder_label(path),
+                "run_folder": folder,
+                "run_key": str(path.resolve()),
+                "run_mtime": run_mtime,
+                "checkpoint": path.stem,
+                "step_number": count,
+                "step_variant": 0,
+                "type": "Handmade JSON",
+                "layers": count,
+                "import_safe": True,
+                "import_budget": None,
+                "recommended": False,
+                "tags": ["Handmade"],
+                "error": None,
+                "preset": "handmade/downloaded",
+                "source_image": None,
+            })
+        entries.sort(key=lambda item: (-item["run_mtime"], -int(item.get("layers") or 0), item["path"].name.lower()))
+        return entries
+
     def is_v2_output_json(self, path):
         path = Path(path)
         name = path.name.lower()
@@ -5031,15 +5308,12 @@ class MainWindow(QMainWindow):
     def checkpoint_candidates(self):
         candidates = set(self.all_generated_final_jsons())
         candidates = sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True)
-        recommended = {path.resolve() for path in best_geometry_jsons(candidates)} if candidates else set()
         entries = []
         for path in candidates:
-            try:
-                count = geometry_shape_count(path)
-            except Exception:
-                count = 0
+            count = self.cached_geometry_shape_count(path)
             step_number, step_variant, checkpoint_label = self.checkpoint_step_info(path)
-            safe = is_import_safe_geometry_json(path)
+            budget = import_drawable_budget(path)
+            safe = count <= budget if budget is not None else True
             run_folder = self.checkpoint_run_folder(path)
             try:
                 run_mtime = run_folder.stat().st_mtime
@@ -5047,8 +5321,6 @@ class MainWindow(QMainWindow):
                 run_mtime = path.stat().st_mtime
             report = self.final_json_report_info(path)
             tags = []
-            if safe and path.resolve() in recommended:
-                tags.append("Best safe")
             if report.get("best_score"):
                 tags.append("Best score")
             if report.get("latest_checkpoint"):
@@ -5069,13 +5341,16 @@ class MainWindow(QMainWindow):
                 "type": self.json_display_type(path),
                 "layers": count,
                 "import_safe": safe,
-                "import_budget": import_drawable_budget(path),
-                "recommended": safe and path.resolve() in recommended,
+                "import_budget": budget,
+                "recommended": False,
                 "tags": tags,
                 "error": report.get("error"),
                 "preset": report.get("preset"),
                 "source_image": report.get("source_image"),
             })
+        for entry in entries:
+            if entry.get("import_safe") and ("Best score" in entry.get("tags", []) or "Latest" in entry.get("tags", [])):
+                entry["recommended"] = True
         safe_layers = [entry["layers"] for entry in entries if entry.get("import_safe") and entry.get("layers")]
         if safe_layers:
             lowest = min(safe_layers)
@@ -5180,6 +5455,11 @@ class MainWindow(QMainWindow):
             ),
         )
 
+    def current_json_browser_mode(self) -> str:
+        if hasattr(self, "json_source_combo") and self.json_source_combo.currentText().lower().startswith("handmade"):
+            return "handmade"
+        return "generated"
+
     def latest_final_combo_label(self, entry):
         tags = []
         if entry.get("recommended"):
@@ -5192,17 +5472,21 @@ class MainWindow(QMainWindow):
         source = entry.get("source_image") or entry.get("source") or "latest source"
         return f"{entry.get('layers') or 0} layers - {Path(entry['path']).name}{tag_text} | {source}"
 
-    def populate_latest_final_combo(self, run_groups: dict[str, list[dict]], run_order: list[str]):
+    def populate_latest_final_combo(self, run_groups: dict[str, list[dict]], run_order: list[str], mode: str = "generated"):
         if not hasattr(self, "latest_final_combo"):
             return
         self.latest_final_combo.blockSignals(True)
         self.latest_final_combo.clear()
         self.latest_final_entries = []
         if not run_order:
-            self.latest_final_combo.addItem("No finalized JSONs found yet.", None)
+            message = "No handmade JSONs found in imgs/handmade." if mode == "handmade" else "No finalized JSONs found yet."
+            self.latest_final_combo.addItem(message, None)
             self.latest_final_combo.blockSignals(False)
             return
-        latest_entries = self.sort_generated_entries_for_latest_combo(run_groups.get(run_order[0], []))
+        if mode == "handmade":
+            latest_entries = self.sort_generated_entries_for_latest_combo([entry for group in run_groups.values() for entry in group])
+        else:
+            latest_entries = self.sort_generated_entries_for_latest_combo(run_groups.get(run_order[0], []))
         self.latest_final_entries = latest_entries
         for entry in latest_entries:
             self.latest_final_combo.addItem(self.latest_final_combo_label(entry), entry)
@@ -5246,9 +5530,11 @@ class MainWindow(QMainWindow):
                 return
 
     def open_final_json_browser(self):
-        entries = self.checkpoint_candidates()
+        mode = self.current_json_browser_mode()
+        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
         if not entries:
-            QMessageBox.information(self, "Browse Finals", "No finalized JSONs were found in imgs/generated yet.")
+            folder = HANDMADE_JSON_ROOT if mode == "handmade" else GENERATED_ROOT
+            QMessageBox.information(self, "Browse JSONs", f"No JSONs were found in {folder.relative_to(ROOT)} yet.")
             return
         dialog = FinalJsonBrowserDialog(self, entries)
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_path:
@@ -5259,10 +5545,11 @@ class MainWindow(QMainWindow):
                 self.set_latest_final_combo_to_path(selected_path)
                 self.set_hidden_generated_selection(selected_path)
             else:
-                self.select_import_json(selected_path, "visual finalized checkpoint")
+                self.select_import_json(selected_path, "visual JSON browser")
 
     def refresh_generated_browser(self):
-        entries = self.checkpoint_candidates()
+        mode = self.current_json_browser_mode()
+        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
         run_groups = {}
         run_mtimes = {}
         run_folders = {}
@@ -5275,12 +5562,19 @@ class MainWindow(QMainWindow):
         groups = {}
         order = []
         for index, run_key in enumerate(run_order):
-            prefix = "Latest run" if index == 0 else "Previous run"
+            if mode == "handmade":
+                prefix = "Handmade folder"
+            else:
+                prefix = "Latest run" if index == 0 else "Previous run"
             label = self.checkpoint_run_label(run_folders[run_key], prefix=prefix)
-            groups[label] = self.sort_generated_entries_for_picker(run_groups[run_key])
+            groups[label] = (
+                self.sort_generated_entries_for_latest_combo(run_groups[run_key])
+                if mode == "handmade"
+                else self.sort_generated_entries_for_picker(run_groups[run_key])
+            )
             order.append(label)
         self.generated_folder_entries = groups
-        self.populate_latest_final_combo(run_groups, run_order)
+        self.populate_latest_final_combo(run_groups, run_order, mode=mode)
         self.generated_folder_combo.blockSignals(True)
         self.generated_folder_combo.clear()
         self.generated_folder_combo.addItems(order)
