@@ -6186,7 +6186,7 @@ class MainWindow(QMainWindow):
                             group = f"0x{int(group_value):x}" if isinstance(group_value, int) else str(group_value)
                         else:
                             group = f"0x{int(count_value) - 0x5A:x}" if isinstance(count_value, int) else f"0x{int(str(count_value), 0) - 0x5A:x}"
-                        self.bus.log.emit(f"{game.upper()} group fast-located: group={group}, table={table}, layers={template_count}")
+                        self.bus.log.emit(f"{game.upper()} group fast-located and validated for {template_count} layer(s).")
             if group and table:
                 return group, table
             self.bus.log.emit("Fast locate did not produce a usable group/table. Falling back to research scanner.")
@@ -6316,9 +6316,9 @@ class MainWindow(QMainWindow):
             raise RuntimeError(f"located group did not validate strongly enough ({detail})")
         index, group, table, valid_ptrs, sample_ok, circle_count = selected
         if index > 1:
-            self.bus.log.emit(f"Skipped {index - 1} weaker fallback candidate(s): {'; '.join(rejected[:3])}")
+            self.bus.log.emit(f"Skipped {index - 1} weaker fallback candidate(s).")
         circle_suffix = f", circle_template={circle_count}/{template_count}" if requires_fresh_circle_template else ""
-        self.bus.log.emit(f"{game.upper()} group fallback-located: candidate #{index}, group={group}, table={table}, layers={template_count}, valid_ptrs={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
+        self.bus.log.emit(f"{game.upper()} group fallback-located and validated: layers={template_count}, validated={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
         return group, table
 
     def unified_import_worker(self, game, pid, template_count, shape_count, json_path, clear_unused=True):
@@ -6330,7 +6330,7 @@ class MainWindow(QMainWindow):
         trim_backup = run_dir / "trim-backup.json"
         try:
             self.bus.log.emit(f"Universal import run folder: {run_dir}")
-            self.bus.log.emit(f"Target game: {game.upper()} pid={pid}")
+            self.bus.log.emit(f"Target game: {game.upper()}")
             self.bus.log.emit(f"Import JSON visible shapes: {shape_count}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="import-template")
             import_cmd = [
@@ -6431,7 +6431,7 @@ class MainWindow(QMainWindow):
         export_report = run_dir / f"{game}-current-group-{template_count}-{timestamp}.report.json"
         try:
             self.bus.log.emit(f"Universal export run folder: {run_dir}")
-            self.bus.log.emit(f"Target game: {game.upper()} pid={pid}")
+            self.bus.log.emit(f"Target game: {game.upper()}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="export-template")
             fast_report = run_dir / "fast-export-template-session.json"
             fallback_report = run_dir / "fallback-export-template-probe.json"
@@ -6465,7 +6465,7 @@ class MainWindow(QMainWindow):
                         if refusal:
                             self.bus.log.emit(str(refusal))
                             if reasons:
-                                self.bus.log.emit("Export validation: " + "; ".join(str(reason) for reason in reasons[:4]))
+                                self.bus.log.emit("Export validation failed. See the saved report for technical details.")
                         else:
                             self.bus.log.emit("Universal export failed while reading layers.")
                     except Exception:

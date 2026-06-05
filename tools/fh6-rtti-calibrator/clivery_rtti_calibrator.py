@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only CLiveryGroup RTTI calibrator for KFPS.
+"""Read-only FH6 fast-locator calibrator for KFPS.
 
-This tool is intentionally standalone. It tries to rediscover the RTTI/vtable
-path used by the fast FH6 importer/exporter after game updates move addresses.
+This tool is intentionally standalone. It tries to rediscover the fast locator
+path used by the FH6 importer/exporter after game updates move addresses.
 It never writes to the game process.
 """
 
@@ -135,7 +135,12 @@ k32.QueryFullProcessImageNameW.argtypes = (
 
 
 def log(message: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+    text = re.sub(r"0x[0-9a-fA-F]+", "<detail>", str(message))
+    text = text.replace("RTTI", "locator")
+    text = text.replace("rtti", "locator")
+    text = text.replace("vtables", "type candidates")
+    text = text.replace("vtable", "type candidate")
+    print(f"[{time.strftime('%H:%M:%S')}] {text}", flush=True)
 
 
 def hx(value: int | None) -> str | None:
@@ -180,7 +185,7 @@ def find_forza_pid() -> tuple[int, str | None]:
     if not pids:
         raise RuntimeError("forzahorizon6.exe was not found. Open FH6 and the vinyl editor first.")
     if len(pids) > 1:
-        log(f"Multiple FH6 processes found; using pid={pids[0]} from {pids}.")
+        log("Multiple FH6 processes found; using the first detected process.")
     pid = pids[0]
     return pid, process_image_path(pid)
 
@@ -780,9 +785,9 @@ def continuous_search(layer_count: int, sleep_seconds: int = 4) -> int:
     if not module:
         raise RuntimeError("Could not identify the FH6 main module.")
     out_dir = Path("calibration-results") / safe_name(f"fh6_{layer_count}_{time.strftime('%Y%m%d-%H%M%S')}")
-    log(f"Using pid={pid}")
-    log(f"Main module: {module['name']} base=0x{module['base']:x} size={module['size']}")
-    log("Press Ctrl+C to stop. The tool will save automatically when a plausible RTTI path is found.")
+    log("Using detected FH6 process.")
+    log(f"Main module: {module['name']} size={module['size']}")
+    log("Press Ctrl+C to stop. The tool will save automatically when a plausible locator path is found.")
 
     attempt = 0
     while True:
@@ -794,15 +799,15 @@ def continuous_search(layer_count: int, sleep_seconds: int = 4) -> int:
             image_contains = build_contains(image_regions)
             rw_contains = build_contains(rw_regions)
 
-            log(f"Attempt {attempt}: fast descriptor scan...")
+            log(f"Attempt {attempt}: fast locator scan...")
             rtti, matches = fast_descriptor_search(handle, image_regions, image_contains, int(module["base"]))
             if rtti:
                 result = build_result(pid, exe, module, rtti, "fast_descriptor_pattern")
                 path = save_result(out_dir, result)
-                log(f"Saved RTTI calibration: {path}")
-                log(f"Type name: {rtti.get('type_name')}")
+                log(f"Saved locator calibration: {path}")
+                log("Calibration identity saved to file.")
                 return 0
-            log(f"Descriptor scan did not produce vtables. Pattern hits={len(matches)}")
+            log(f"Locator scan did not produce type candidates. Pattern hits={len(matches)}")
 
             log(f"Attempt {attempt}: scanning current {layer_count}-layer group candidates...")
             candidates = scan_layout_candidates(handle, rw_regions, rw_contains, layer_count, max_seconds=45)
@@ -822,14 +827,14 @@ def continuous_search(layer_count: int, sleep_seconds: int = 4) -> int:
                 rtti["confidence"] = confidence
                 result = build_result(pid, exe, module, rtti, f"live_{layer_count}_layer_group_{confidence}", candidates)
                 path = save_result(out_dir, result)
-                log(f"Saved RTTI calibration: {path}")
-                log(f"Type name: {type_name or '<unreadable>'}")
+                log(f"Saved locator calibration: {path}")
+                log("Calibration identity saved to file.")
                 log(f"Confidence: {confidence}")
                 return 0
         finally:
             close_handle(handle)
 
-        log(f"No RTTI path found yet. Confirm the {layer_count}-layer group is open; retrying in {sleep_seconds}s.")
+        log(f"No locator path found yet. Confirm the {layer_count}-layer group is open; retrying in {sleep_seconds}s.")
         time.sleep(sleep_seconds)
 
 
@@ -849,8 +854,8 @@ def guided_count_change(required_scans: int = 3) -> int:
     latest_candidates: list[dict] = []
     saved_keys: set[str] = set()
     step = 0
-    log(f"Using pid={pid}")
-    log(f"Main module: {module['name']} base=0x{module['base']:x} size={module['size']}")
+    log("Using detected FH6 process.")
+    log(f"Main module: {module['name']} size={module['size']}")
 
     while True:
         step += 1
@@ -865,7 +870,7 @@ def guided_count_change(required_scans: int = 3) -> int:
         latest_candidates = candidates
         log(
             f"Scan {step}: layer_count={current_count}, layout_candidates={len(candidates)}, "
-            f"pattern_hits={pattern_hits}, rtti_hits={len(evidence)}"
+            f"pattern_hits={pattern_hits}, locator_hits={len(evidence)}"
         )
         for item in evidence:
             observations_by_key.setdefault(item["key"], []).append(item)
@@ -874,7 +879,7 @@ def guided_count_change(required_scans: int = 3) -> int:
         for key, observations in observations_by_key.items():
             summary = observation_summary(observations)
             log(
-                f"  evidence {key}: scans={summary['scans']} "
+                f"  evidence candidate: scans={summary['scans']} "
                 f"counts={','.join(str(c) for c in summary['distinct_counts']) or 'none'}"
             )
             if summary["scans"] >= required_scans and len(summary["distinct_counts"]) >= 2:
@@ -884,10 +889,10 @@ def guided_count_change(required_scans: int = 3) -> int:
             result = build_locked_result(pid, exe, module, key, observations, latest_candidates)
             path = save_result(out_dir, result)
             if key in saved_keys:
-                log(f"Updated locked RTTI with {len(observations)} confirming scan(s): {path}")
+                log(f"Updated locked locator with {len(observations)} confirming scan(s): {path}")
             else:
                 saved_keys.add(key)
-                log(f"LOCKED RTTI after {len(observations)} confirming scan(s): {path}")
+                log(f"LOCKED locator after {len(observations)} confirming scan(s): {path}")
             log(f"Confidence: {result['rtti'].get('confidence')}")
 
         print()
@@ -951,8 +956,8 @@ def suggested_next_count(current_count: int) -> int:
 def menu() -> int:
     while True:
         print()
-        print("KFPS CLiveryGroup RTTI Calibrator")
-        print("1. Guided scan/change/scan RTTI lock-on")
+        print("KFPS FH6 Fast Locator Calibrator")
+        print("1. Guided scan/change/scan locator lock-on")
         print("2. Single-count continuous search")
         print("3. Single-count continuous search with custom layer count")
         print("4. Exit")

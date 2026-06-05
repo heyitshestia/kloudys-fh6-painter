@@ -8,6 +8,7 @@ import ctypes
 import hashlib
 import json
 import math
+import re
 import struct
 import sys
 import time
@@ -49,7 +50,9 @@ k32.ReadProcessMemory.argtypes = (
 
 
 def log(message):
-    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+    text = re.sub(r"0x[0-9a-fA-F]+", "<detail>", str(message))
+    text = re.sub(r"\b(group|table|count|descriptor|vtable|ptr|pointer)=<detail>", r"\1=<detail>", text)
+    print(f"[{time.strftime('%H:%M:%S')}] {text}", flush=True)
 
 
 def hx(value):
@@ -251,7 +254,7 @@ def write_refusal_report(args, table, group, report_path, metadata=None, reasons
     Path(report_path).write_text(json.dumps(report, indent=2), encoding="utf-8")
     log(EXPORT_REFUSAL_MESSAGE)
     if reasons:
-        log("Validation details: " + "; ".join(str(reason) for reason in reasons[:4]))
+        log("Technical validation details were written to the saved report.")
 
 
 def decode_layer(raw, index, ptr, include_raw=False):

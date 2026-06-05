@@ -152,7 +152,7 @@ def find_forza_pid() -> tuple[int, str | None]:
     if not pids:
         raise RuntimeError("forzahorizon6.exe was not found. Open FH6 and the vinyl editor first.")
     if len(pids) > 1:
-        log(f"Multiple FH6 processes found; using pid={pids[0]} from {pids}.")
+        log(f"Multiple FH6 processes found; using the first detected process.")
     pid = pids[0]
     return pid, process_image_path(pid)
 
@@ -507,7 +507,7 @@ def scan_vector_headers(handle, regions, contains, count, max_seconds, report_la
                 candidates.sort(key=lambda x: x["score"], reverse=True)
                 del candidates[50:]
         if idx % 200 == 0:
-            log(f"vector-header scan {idx}/{len(regions)} regions, {scanned_mb:.0f} MB, candidates={len(candidates)}")
+            log(f"group-metadata scan {idx}/{len(regions)} regions, {scanned_mb:.0f} MB, candidates={len(candidates)}")
     return candidates, {"scanned_mb": scanned_mb, "vector_triple_hits": triple_hits, "unique_groups": len(seen)}
 
 
@@ -710,7 +710,7 @@ def main() -> int:
     state = safe_name(args.state_name or f"group_{args.count}")
     out_dir = Path(args.out_root) / f"{timestamp}_{state}_{args.count}layers"
     out_dir.mkdir(parents=True, exist_ok=True)
-    log(f"Capturing FH6 state '{state}' count={args.count} pid={pid}")
+    log(f"Capturing FH6 state '{state}' count={args.count}")
     log(f"Output: {out_dir}")
     handle = open_process(pid, read=True)
     raw_chunk_metadata = []
@@ -732,7 +732,7 @@ def main() -> int:
         log(f"Candidates found: {len(candidates)}")
         deep_candidates = []
         for index, candidate in enumerate(candidates[: max(1, args.top)], start=1):
-            log(f"Deep dumping candidate {index}/{min(len(candidates), args.top)} score={candidate.get('score')} group={candidate.get('group')}")
+            log(f"Deep dumping candidate {index}/{min(len(candidates), args.top)} score={candidate.get('score')}; metadata saved to files")
             deep = deepen_candidate(handle, regions, contains, candidate, args.count, args.deep_layers, args.full)
             deep_candidates.append(deep)
             raw_chunk_metadata.extend(dump_candidate_raw_chunks(handle, regions, out_dir, deep, args.count, index))

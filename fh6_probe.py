@@ -173,12 +173,12 @@ def inspect_layer_blob(raw):
 
 
 def inspect_table(pid, table_address, layer_count, blob_size, max_layers, start_index=0):
-    print(f"Inspecting table=0x{table_address:x} layers={layer_count} start={start_index}")
+    print(f"Inspecting located layer table: layers={layer_count} start={start_index}")
     valid = 0
     end_index = min(layer_count, start_index + max_layers)
     for index in range(start_index, end_index):
         pointer = read_pointer(pid, table_address + index * 8)
-        print(f"table[{index}] @0x{table_address + index * 8:x} -> 0x{pointer:x}")
+        print(f"table[{index}] pointer detail omitted")
         if not is_user_pointer(pointer):
             continue
         raw = read_process_memory(pid, pointer, blob_size)
@@ -189,13 +189,13 @@ def inspect_table(pid, table_address, layer_count, blob_size, max_layers, start_
         float_hits, byte_hits, u32_hits = inspect_layer_blob(raw)
         print("  float-pair candidates:")
         for offset, a, b in float_hits[:24]:
-            print(f"    +0x{offset:02x}: {a:.6g}, {b:.6g}")
+            print(f"    offset {offset}: {a:.6g}, {b:.6g}")
         if not float_hits:
             print("    none")
-        print("  byte candidates:", " ".join(f"+0x{offset:02x}={value}" for offset, value in byte_hits[:32]) or "none")
-        print("  u32 candidates:", " ".join(f"+0x{offset:02x}={value}" for offset, value in u32_hits[:24]) or "none")
+        print("  byte candidates:", " ".join(f"offset{offset}={value}" for offset, value in byte_hits[:32]) or "none")
+        print("  u32 candidates:", " ".join(f"offset{offset}={value}" for offset, value in u32_hits[:24]) or "none")
         print("  raw:")
-        print(format_bytes(raw[:min(len(raw), 0x80)]))
+        print("    raw byte preview omitted")
     print(f"Valid pointer entries inspected: {valid}")
 
 
@@ -589,16 +589,15 @@ def validate_group_vector(pid, profile, group_address, table_address, layer_coun
 
 
 def inspect_count_address(pid, profile, count_address, layer_count, radius, blob_size):
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
-    print(f"Inspecting count address 0x{count_address:x} for layer count {layer_count}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
+    print(f"Inspecting count candidate for layer count {layer_count}")
     print(f"Current values: {read_current_count_values(pid, count_address)}")
 
     raw_start = max(0x10000, count_address - min(radius, 0x100))
     raw = read_process_memory(pid, raw_start, min(radius * 2, 0x240))
     if raw:
-        print(f"Neighborhood raw bytes from 0x{raw_start:x}:")
-        print(format_bytes(raw[:min(len(raw), 0x200)]))
+        print("Neighborhood raw bytes:")
+        print("raw byte preview omitted")
 
     print("Nearby scalar count-like fields:")
     for address in range(count_address - radius, count_address + radius + 1):
@@ -613,7 +612,7 @@ def inspect_count_address(pid, profile, count_address, layer_count, radius, blob
         if u32 in (layer_count, layer_count - 1, layer_count + 1):
             hits.append(f"u32={u32}")
         if hits:
-            print(f"  0x{address:x} rel={address - count_address:+#x} {' '.join(hits)}")
+            print(f"  relative={address - count_address:+#x} {' '.join(hits)}")
 
     print("Nearby pointer fields and possible layer tables:")
     pointer_hits = []
@@ -630,15 +629,15 @@ def inspect_count_address(pid, profile, count_address, layer_count, radius, blob
         pointer_hits.append((score, address, value, samples))
     pointer_hits.sort(key=lambda item: item[0], reverse=True)
     for score, field_address, value, samples in pointer_hits[:40]:
-        print(f"  field=0x{field_address:x} rel={field_address - count_address:+#x} ptr=0x{value:x} tableScore={score}")
+        print(f"  field relative={field_address - count_address:+#x} tableScore={score}")
         for index, ptr, layer_score, checks in samples[:4]:
-            print(f"    table[{index}] ptr=0x{ptr:x} score={layer_score} {'; '.join(checks)}")
+            print(f"    table[{index}] score={layer_score} {'; '.join(checks)}")
 
     best_tables = [item for item in pointer_hits if item[0] > 0]
     if best_tables:
         print("Best table candidate detail:")
         _score, field_address, table_address, _samples = best_tables[0]
-        print(f"  table field 0x{field_address:x} rel={field_address - count_address:+#x} -> 0x{table_address:x}")
+        print(f"  table field relative={field_address - count_address:+#x}")
         inspect_table(pid, table_address, min(layer_count, 16), blob_size, 8)
     else:
         print("No nearby table-like pointers scored with current FH5-style layer offsets.")
@@ -817,18 +816,8 @@ def locate_calibrated_clivery_group_rtti(pid, profile):
     except Exception:
         found_code = b""
     if found_code and found_code != update_code.rstrip(b"\x00 "):
-        print(
-            f"Calibrated CLiveryGroup update-code mismatch at descriptor offset "
-            f"0x{FH6_CALIBRATED_RTTI_PROFILE['descriptor_offset']:x}: "
-            f"found={found_code.decode('ascii', 'replace')}",
-            flush=True,
-        )
-    print(
-        f"Using calibrated FH6 CLiveryGroup RTTI: update_code="
-        f"{update_code.decode('ascii', 'replace')} descriptor=0x{descriptor_address:x} "
-        f"vtables={', '.join('0x%x' % v for v in vtables)}",
-        flush=True,
-    )
+        print("Calibrated FH6 locator profile did not match this game build; trying fallback locator.", flush=True)
+    print("Using calibrated FH6 group locator profile.", flush=True)
     return {
         "descriptor_address": descriptor_address,
         "descriptor_offset": FH6_CALIBRATED_RTTI_PROFILE["descriptor_offset"],
@@ -844,23 +833,19 @@ def locate_clivery_group_rtti(pid, profile=None):
     if calibrated:
         return calibrated
     patterns = load_update_code_patterns()
-    print(f"Loaded {len(patterns)} CLiveryGroup update-code patterns.", flush=True)
+    print(f"Loaded {len(patterns)} FH6 group locator pattern(s).", flush=True)
     descriptor_match, descriptor_pattern = find_first_pattern_in_typed_regions(pid, patterns, MEM_IMAGE)
     descriptor_address = descriptor_match - 0x10 if descriptor_match else None
     if not descriptor_address:
-        print("CLiveryGroup descriptor pattern was not found; trying layout-count fallback.", flush=True)
+        print("Fast locator pattern was not found; trying layout-count fallback.", flush=True)
         return None
 
     module_base = get_base_address(pid)
     descriptor_offset = descriptor_address - module_base
     if not 0 <= descriptor_offset <= 0xFFFFFFFF:
-        print(f"Descriptor address 0x{descriptor_address:x} is outside the main module.", flush=True)
+        print("Fast locator candidate is outside the main module.", flush=True)
         return None
-    print(
-        f"Descriptor @ 0x{descriptor_address:x} offset=0x{descriptor_offset:x} "
-        f"pattern={descriptor_pattern.decode('ascii', 'replace')}",
-        flush=True,
-    )
+    print("Fast locator candidate found.", flush=True)
 
     info_pattern = struct.pack("<I", descriptor_offset)
     info_addresses = []
@@ -884,7 +869,7 @@ def locate_clivery_group_rtti(pid, profile=None):
         for address in scan_typed_regions(pid, pattern, MEM_IMAGE, writable_only=False, alignment=8):
             vtables.append(address + 8)
     vtables = sorted(set(vtables))
-    print(f"VTP found: {len(vtables)}", flush=True)
+    print(f"Group type candidates found: {len(vtables)}", flush=True)
     if not vtables:
         return None
 
@@ -919,8 +904,7 @@ def build_clivery_group_candidate(pid, profile, layer_count, rtti, group_address
     ok, checked, valid_entries = validate_table_layer_coverage(pid, profile, table_address, layer_count)
     if not ok:
         print(
-            f"rejected RTTI group=0x{group_address:x} table=0x{table_address:x} "
-            f"strictLayers={valid_entries}/{layer_count} scanned={checked}",
+            f"Rejected calibrated group candidate: strict layer validation {valid_entries}/{layer_count}, scanned={checked}",
             flush=True,
         )
         return None
@@ -956,7 +940,7 @@ def locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti, m
     next_progress = 512 * 1024 * 1024
     for base, size, _protect, _type in iter_regions(pid, type_filter=MEM_PRIVATE, writable_only=True):
         if max_seconds and time.monotonic() - started > max_seconds:
-            print(f"Stopped calibrated RTTI count scan after {max_seconds} seconds.", flush=True)
+            print(f"Stopped calibrated locator count scan after {max_seconds} seconds.", flush=True)
             break
         memory = read_region(pid, base, size)
         if not memory:
@@ -964,7 +948,7 @@ def locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti, m
         scanned += len(memory)
         if scanned >= next_progress:
             print(
-                f"Calibrated RTTI count scan checked {scanned // (1024 * 1024)} MB, "
+                f"Calibrated locator count scan checked {scanned // (1024 * 1024)} MB, "
                 f"count hits={hits}.",
                 flush=True,
             )
@@ -977,7 +961,7 @@ def locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti, m
             start = pos + 1
             hits += 1
             if hits > max_count_hits:
-                print(f"Stopped calibrated RTTI count scan after {max_count_hits} count hits.", flush=True)
+                print(f"Stopped calibrated locator count scan after {max_count_hits} count hits.", flush=True)
                 return []
             count_address = base + pos
             group_address = count_address - profile.livery_count_offset
@@ -997,14 +981,12 @@ def locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti, m
             )
             if candidate:
                 print(
-                    f"calibrated RTTI candidate group=0x{group_address:x} "
-                    f"count=0x{count_address:x} table=0x{candidate['table_address']:x} "
-                    f"validated={candidate['validated_entries']}/{layer_count}",
+                    f"Calibrated group candidate validated {candidate['validated_entries']}/{layer_count} layer(s).",
                     flush=True,
                 )
                 return [candidate]
     print(
-        f"Calibrated RTTI count scan checked {scanned // (1024 * 1024)} MB, "
+        f"Calibrated locator count scan checked {scanned // (1024 * 1024)} MB, "
         f"count hits={hits}, candidates=0.",
         flush=True,
     )
@@ -1143,8 +1125,7 @@ def locate_clivery_groups_by_calibrated_flattened(pid, profile, layer_count, rtt
                     best_miss = (miss, group_info, flat)
                 if flat["shape_count"] == layer_count and flat["invalid_count"] == 0:
                     print(
-                        f"calibrated flattened candidate group=0x{group_address:x} "
-                        f"top={group_info['vector_count']} flat={flat['shape_count']} "
+                        f"Calibrated grouped candidate validated: top={group_info['vector_count']} flat={flat['shape_count']} "
                         f"groups={flat['group_count']} depth={flat['max_depth']}",
                         flush=True,
                     )
@@ -1172,21 +1153,20 @@ def locate_clivery_groups_by_calibrated_flattened(pid, profile, layer_count, rtt
                     }]
         if region_index % 500 == 0:
             print(
-                f"Calibrated flattened-group scan checked {scanned // (1024 * 1024)} MB, "
-                f"vtable hits={hits}.",
+                f"Calibrated grouped scan checked {scanned // (1024 * 1024)} MB, "
+                f"type hits={hits}.",
                 flush=True,
             )
     if best_miss:
         _miss, group_info, flat = best_miss
         print(
-            f"Best flattened-group miss: group=0x{group_info['group_address']:x} "
-            f"top={group_info['vector_count']} flat={flat['shape_count']} "
+            f"Best grouped candidate miss: top={group_info['vector_count']} flat={flat['shape_count']} "
             f"invalid={flat['invalid_count']} groups={flat['group_count']} depth={flat['max_depth']}",
             flush=True,
         )
     print(
-        f"Calibrated flattened-group scan checked {scanned // (1024 * 1024)} MB, "
-        f"vtable hits={hits}, candidates=0.",
+        f"Calibrated grouped scan checked {scanned // (1024 * 1024)} MB, "
+        f"type hits={hits}, candidates=0.",
         flush=True,
     )
     return []
@@ -1205,8 +1185,8 @@ def locate_clivery_groups_by_rtti(pid, profile, layer_count):
         if groups:
             return groups
         print(
-            "Calibrated RTTI count scan did not find a validated group; "
-            "skipping broad vtable scan to avoid long stale-memory searches.",
+            "Calibrated locator count scan did not find a validated group; "
+            "skipping broad type scan to avoid long stale-memory searches.",
             flush=True,
         )
         return []
@@ -1302,8 +1282,7 @@ def locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds
                 "capacity_count": vector.get("capacity_count"),
             })
             print(
-                f"layout candidate group=0x{group_address:x} count=0x{count_address:x} "
-                f"table=0x{table_address:x} validated={valid_entries}/{layer_count}",
+                f"Layout candidate validated {valid_entries}/{layer_count} layer(s).",
                 flush=True,
             )
         if groups:
@@ -1326,8 +1305,7 @@ def serialize_samples(samples):
 
 
 def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, progress_every, radius, output_path=None, max_seconds=None):
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
     print(f"Auto-locating FH6 layer count/table for count {layer_count}...")
     started = time.monotonic()
 
@@ -1345,14 +1323,11 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
         best = fast_groups
         for item in best[:10]:
             print(
-                f"candidate score={item['score']} group=0x{item.get('group_address', 0):x} "
-                f"count=0x{item['count_address']:x} kind={item['count_kind']} "
-                f"tableField=0x{item['table_pointer_field']:x} table=0x{item['table_address']:x} "
-                f"validated={item['validated_entries']}",
+                f"candidate score={item['score']} kind={item['count_kind']} validated={item['validated_entries']}",
                 flush=True,
             )
             for index, ptr, layer_score, checks in item["samples"][:4]:
-                print(f"  table[{index}] ptr=0x{ptr:x} score={layer_score} {'; '.join(checks)}")
+                print(f"  sample[{index}] score={layer_score} {'; '.join(checks)}")
         payload = {
             "type": "fh6_session_location_v1",
             "pid": pid,
@@ -1450,10 +1425,9 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
             if not vector_ok:
                 rejected += 1
                 print(
-                    f"rejected candidate score={table['score']} count=0x{table['count_address']:x} "
-                    f"table=0x{table['table_address']:x} because vector metadata did not match the active group",
-                    flush=True,
-                )
+                f"Rejected fallback candidate score={table['score']} because group metadata did not match the active editor state.",
+                flush=True,
+            )
                 continue
             table["group_address"] = group_address
             table["vector_count"] = vector.get("vector_count")
@@ -1463,16 +1437,14 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
             rejected += 1
             best_rejected_strict = max(best_rejected_strict, valid_entries)
             print(
-                f"rejected candidate score={table['score']} count=0x{table['count_address']:x} "
-                f"table=0x{table['table_address']:x} strictLayers={valid_entries}/{layer_count} scanned={checked}",
+                f"Rejected fallback candidate score={table['score']}: strict layer validation {valid_entries}/{layer_count}, scanned={checked}",
                 flush=True,
             )
             continue
         table["validated_entries"] = valid_entries
         best.append(table)
         print(
-            f"candidate score={table['score']} count=0x{table['count_address']:x} kind={table['count_kind']} "
-            f"tableField=0x{table['table_pointer_field']:x} table=0x{table['table_address']:x} validated={checked}",
+            f"Fallback candidate score={table['score']} kind={table['count_kind']} validated={checked}",
             flush=True,
         )
 
@@ -1480,14 +1452,10 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
     print(f"Auto-locate candidates: {len(best)}")
     for item in best[:10]:
         print(
-            f"score={item['score']} count=0x{item['count_address']:x} "
-            f"kind={item['count_kind']} u16={item['current_u16']} u32={item['current_u32']} "
-            f"tableField=0x{item['table_pointer_field']:x} "
-            f"delta=+0x{item['table_pointer_field'] - item['count_address']:x} "
-            f"table=0x{item['table_address']:x}"
+            f"score={item['score']} kind={item['count_kind']} count16={item['current_u16']} count32={item['current_u32']}"
         )
         for index, ptr, layer_score, checks in item["samples"][:4]:
-            print(f"  table[{index}] ptr=0x{ptr:x} score={layer_score} {'; '.join(checks)}")
+            print(f"  sample[{index}] score={layer_score} {'; '.join(checks)}")
 
     if not best:
         if rejected:
@@ -1722,8 +1690,7 @@ def collect_count_addresses(pid, count, limit_mb, max_matches, progress_every):
 
 
 def save_count_snapshot(pid, count, limit_mb, max_matches, progress_every, output_path):
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
     print(f"Saving count snapshot for layer count {count}...")
     results = collect_count_addresses(pid, count, limit_mb, max_matches, progress_every)
     payload = {
@@ -1771,8 +1738,7 @@ def read_current_count_values(pid, address):
 
 
 def compare_count_snapshot(pid, count, limit_mb, max_matches, progress_every, input_path):
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
     with open(input_path, "r", encoding="utf-8") as handle:
         previous = json.load(handle)
     previous_by_address = group_matches_by_address(previous["matches"])
@@ -1786,7 +1752,7 @@ def compare_count_snapshot(pid, count, limit_mb, max_matches, progress_every, in
         previous_kinds = ",".join(sorted(previous_by_address[address]))
         current_kinds = ",".join(sorted(current_by_address[address]))
         values = read_current_count_values(pid, address)
-        print(f"0x{address:x} previousKinds={previous_kinds} currentKinds={current_kinds} current={values}")
+        print(f"candidate detail omitted previousKinds={previous_kinds} currentKinds={current_kinds} current={values}")
     if len(stable_changes) > 200:
         print(f"... {len(stable_changes) - 200} more")
     if not stable_changes:
@@ -1845,8 +1811,7 @@ def validate_live_transition_matches(pid, grouped, expected_by_name):
 
 
 def save_memory_snapshot(pid, count, limit_mb, progress_every, output_path):
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
     print(f"Saving compressed memory snapshot for layer count {count}...")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     chunks = 0
@@ -1875,8 +1840,7 @@ def save_memory_snapshot(pid, count, limit_mb, progress_every, output_path):
 
 
 def collect_memory_transition_matches(pid, count, max_matches, input_path):
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
     matches = []
     chunks = 0
     skipped = 0
@@ -1967,7 +1931,7 @@ def compare_memory_snapshot(pid, count, max_matches, input_path, output_path=Non
     print(f"Compared {chunks} chunks, skipped {skipped} unreadable/moved chunks.")
     print(f"Count-transition candidates from {previous_count} to {count}: {len(grouped)}")
     for address, patterns in sorted(grouped.items())[:300]:
-        print(f"0x{address:x} {','.join(sorted(patterns))} current={read_current_count_values(pid, address)}")
+        print(f"candidate detail omitted {','.join(sorted(patterns))} current={read_current_count_values(pid, address)}")
     if len(grouped) > 300:
         print(f"... {len(grouped) - 300} more")
     print(f"Wrote candidates to {output_path}")
@@ -1977,8 +1941,7 @@ def compare_memory_snapshot(pid, count, max_matches, input_path, output_path=Non
 
 def probe_count(pid, profile, count, limit_mb, max_matches, max_seconds, progress_every):
     started = time.monotonic()
-    print(f"Process: {psutil.Process(pid).name()} pid={pid}")
-    print(f"Base: 0x{get_base_address(pid):x}")
+    print(f"Process: {psutil.Process(pid).name()} detected.")
     print(f"Layer count target: {count}")
     print("Scanning readable/writable memory for count candidates...")
 
@@ -2005,8 +1968,7 @@ def probe_count(pid, profile, count, limit_mb, max_matches, max_seconds, progres
                 if score >= 8:
                     best.append((score, kind, group_base, count_offset, table_offset, table_address, samples))
                     print(
-                        f"candidate score={score} group=0x{group_base:x} "
-                        f"countOffset=0x{count_offset:x} tableOffset=0x{table_offset:x}",
+                        f"candidate score={score} countOffset={count_offset} tableOffset={table_offset}",
                         flush=True,
                     )
 
@@ -2020,12 +1982,11 @@ def probe_count(pid, profile, count, limit_mb, max_matches, max_seconds, progres
     for score, kind, group_base, count_offset, table_offset, table_address, samples in best[:20]:
         current_count = read_int(pid, group_base + count_offset)
         print(
-            f"score={score} countKind={kind} group=0x{group_base:x} "
-            f"countOffset=0x{count_offset:x} count={current_count} "
-            f"tableOffset=0x{table_offset:x} table=0x{table_address:x}"
+            f"score={score} countKind={kind} countOffset={count_offset} count={current_count} "
+            f"tableOffset={table_offset}"
         )
         for index, ptr, layer_score, checks in samples[:4]:
-            print(f"  layer[{index}] ptr=0x{ptr:x} score={layer_score} {'; '.join(checks)}")
+            print(f"  layer[{index}] score={layer_score} {'; '.join(checks)}")
 
 
 def main():
@@ -2163,8 +2124,7 @@ def main():
         )
         return
     if args.inspect_table:
-        print(f"Process: {psutil.Process(args.pid).name()} pid={args.pid}")
-        print(f"Base: 0x{get_base_address(args.pid):x}")
+        print(f"Process: {psutil.Process(args.pid).name()} detected.")
         inspect_table(args.pid, args.inspect_table, args.layer_count, args.blob_size, args.inspect_layers, args.inspect_start)
         return
     probe_count(args.pid, profile, args.layer_count, args.limit_mb, args.max_matches, args.max_seconds, args.progress_every)
