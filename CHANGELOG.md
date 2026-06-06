@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.25
+
+- Improved Fabric editor selected-shape outlines so zoomed-in borders sit outside the vinyl shape instead of covering the shape edge.
+
 ## 2.0.24
 
 - Fixed Fabric editor layer-list Shift-click range selection after scrolling or pointer-drag handling.

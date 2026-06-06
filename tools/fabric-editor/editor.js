@@ -614,6 +614,8 @@ function makeSelectionOutlineHelper(object) {
     opacity: 1,
     stroke: selectedShapeHalo(object).color,
     strokeWidth: 3,
+    strokeLineJoin: "round",
+    strokeLineCap: "round",
     strokeUniform: true,
     selectable: false,
     evented: false,
@@ -626,13 +628,26 @@ function makeSelectionOutlineHelper(object) {
   return helper;
 }
 
+function selectionOutlineScaledValue(objectSize, objectScale, strokeWidth) {
+  const size = Math.max(1, Number(objectSize) || 1);
+  const scale = Number(objectScale) || 1;
+  const zoom = Math.max(0.001, canvas?.getZoom?.() || 1);
+  const sign = scale < 0 ? -1 : 1;
+  const absoluteScale = Math.max(0.000001, Math.abs(scale));
+  // Fabric strokes are centered on the helper path. Expand the helper by half
+  // the screen-space stroke so the inside stroke edge sits on the real shape.
+  const extraScale = (Number(strokeWidth) || 0) / (zoom * size);
+  return sign * (absoluteScale + extraScale);
+}
+
 function syncSelectionOutlineHelper(object, helper) {
   if (!object || !helper) return;
+  const strokeWidth = Number(helper.strokeWidth) || 0;
   helper.set({
     left: object.left,
     top: object.top,
-    scaleX: object.scaleX,
-    scaleY: object.scaleY,
+    scaleX: selectionOutlineScaledValue(object.width, object.scaleX, strokeWidth),
+    scaleY: selectionOutlineScaledValue(object.height, object.scaleY, strokeWidth),
     angle: object.angle,
     skewX: object.skewX,
     skewY: object.skewY,
@@ -2068,6 +2083,7 @@ function initCanvas() {
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.04), 8);
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+    syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
     queueGuideRender();
     updateHud(canvas.getPointer(opt.e));
     requestCanvasRender();
@@ -3604,6 +3620,7 @@ function snapTargetToGuides(target, event = null) {
 function resetView() {
   const zoom = Math.min(canvas.width / 2400, canvas.height / 2400);
   canvas.setViewportTransform([zoom, 0, 0, zoom, canvas.width / 2, canvas.height / 2]);
+  syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
   canvas.requestRenderAll();
   queueGuideRender();
   updateHud();
@@ -3641,6 +3658,7 @@ function fitDesignView() {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
+  syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
   queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
@@ -3677,6 +3695,7 @@ function fitObjectsView(objects) {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
+  syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
   queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
