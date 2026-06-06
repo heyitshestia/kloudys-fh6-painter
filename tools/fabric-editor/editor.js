@@ -23,6 +23,7 @@ const DEFAULT_SHORTCUTS = {
   dropper: "I",
   guides: "G",
   overlay: "O",
+  sourceTool: "R",
   delete: "Delete",
   duplicate: "Ctrl+D",
   undo: "Ctrl+Z",
@@ -40,6 +41,7 @@ const SHORTCUT_LABELS = {
   dropper: "Eyedropper",
   guides: "Guides / Snap",
   overlay: "Overlay / Reference",
+  sourceTool: "Source Move",
   delete: "Delete selected",
   duplicate: "Duplicate selected",
   undo: "Undo",
@@ -127,6 +129,7 @@ let transformAnchorSnapshot = null;
 let reuseLastFontSize = localStorage.getItem("kloudyFabricReuseLastFontSize") === "true";
 let lastFontShapeTransform = loadLastFontShapeTransform();
 let selectedShapeOutlineObjects = new Set();
+let selectedShapeOutlineHelpers = new Map();
 let selectionInvertLocked = false;
 let pendingDialogColor = null;
 let dialogColorFrame = null;
@@ -140,6 +143,8 @@ let layerDragState = null;
 let layerDragGhost = null;
 let suppressLayerClick = false;
 let nextLayerListObjectId = 1;
+let layerRefreshFrame = null;
+let canvasRenderFrame = null;
 let jsonBrowserState = {
   source: "generated",
   groups: [],
@@ -342,7 +347,7 @@ function defaultGuideState() {
     snapCtrlOnly: true,
     snapThreshold: 12,
     guideConstraint: "free",
-    snapGuideAnchor: true,
+    snapGuideAnchor: false,
     snapGuideEnd: false,
     guides: [],
   };
@@ -595,9 +600,78 @@ function storeSelectionOutlineOriginal(object) {
   };
 }
 
+function makeSelectionOutlineHelper(object) {
+  const helper = object?.type === "path" && Array.isArray(object.path)
+    ? new fabric.Path(object.path, { originX: "center", originY: "center" })
+    : new fabric.Rect({
+      originX: "center",
+      originY: "center",
+      width: Math.max(1, Number(object?.width) || 1),
+      height: Math.max(1, Number(object?.height) || 1),
+    });
+  helper.set({
+    fill: "rgba(0,0,0,0)",
+    opacity: 1,
+    stroke: selectedShapeHalo(object).color,
+    strokeWidth: 3,
+    strokeUniform: true,
+    selectable: false,
+    evented: false,
+    excludeFromExport: true,
+    objectCaching: false,
+    globalCompositeOperation: "source-over",
+  });
+  helper.kloudySelectionOutlineHelper = true;
+  helper.kloudySelectionOutlineOwner = object;
+  return helper;
+}
+
+function syncSelectionOutlineHelper(object, helper) {
+  if (!object || !helper) return;
+  helper.set({
+    left: object.left,
+    top: object.top,
+    scaleX: object.scaleX,
+    scaleY: object.scaleY,
+    angle: object.angle,
+    skewX: object.skewX,
+    skewY: object.skewY,
+    flipX: object.flipX,
+    flipY: object.flipY,
+    visible: object.visible !== false,
+    stroke: selectedShapeHalo(object).color,
+  });
+  helper.setCoords();
+}
+
+function syncSelectionOutlineHelpers(selectedSet) {
+  if (!canvas) return;
+  selectedShapeOutlineHelpers.forEach((helper, object) => {
+    if (!selectedSet.has(object) || !canvas.getObjects().includes(object)) {
+      canvas.remove(helper);
+      selectedShapeOutlineHelpers.delete(object);
+    }
+  });
+  selectedSet.forEach((object) => {
+    let helper = selectedShapeOutlineHelpers.get(object);
+    if (!helper) {
+      helper = makeSelectionOutlineHelper(object);
+      selectedShapeOutlineHelpers.set(object, helper);
+      canvas.add(helper);
+    }
+    syncSelectionOutlineHelper(object, helper);
+    const objectIndex = canvas.getObjects().indexOf(object);
+    if (objectIndex >= 0) helper.moveTo(objectIndex + 1);
+  });
+}
+
 function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
   if (!canvas) return;
-  const next = new Set(selected.filter((obj) => obj?.kloudy && !obj.kloudyGuide));
+  const selectable = selected.filter((obj) => obj?.kloudy && !obj.kloudyGuide);
+  const sameStrokeGroup = selectable.length > 1
+    && selectable.every((obj) => String(obj.kloudy?.group_id || "").startsWith("stroke-"))
+    && new Set(selectable.map((obj) => obj.kloudy?.group_id)).size === 1;
+  const next = new Set(sameStrokeGroup ? [] : selectable);
   selectedShapeOutlineObjects.forEach((obj) => {
     if (!next.has(obj)) restoreSelectionOutline(obj);
   });
@@ -611,6 +685,8 @@ function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
     obj.dirty = true;
   });
   selectedShapeOutlineObjects = next;
+  syncSelectionOutlineHelpers(next);
+  bringGuidesToBack();
   canvas.requestRenderAll();
 }
 
@@ -825,6 +901,7 @@ function updateHud(pointer = null) {
 function currentHudMode(selectedCount = 0) {
   if (shapeEyedropperActive || activeToolMode === "dropper") return "Eyedropper";
   if (activeToolMode === "guides") return selectedGuideId ? "Guide selected" : "Draw guides";
+  if (activeToolMode === "source") return overlayImage ? "Move source overlay" : "Source tool - no overlay";
   if (activeToolMode === "shapeLibrary") return "Place from library";
   if (activeToolMode === "overlay") return "Overlay controls";
   return selectedCount ? "Edit selected" : "Select / box-select";
@@ -957,6 +1034,7 @@ function setToolRailMode(mode, label = null) {
   setText("activeToolLabel", label);
   setText("hudMode", currentHudMode(selectedVinylObjects().length));
   updateGuideInteractivity();
+  updateSourceInteractivity();
 }
 
 function setActiveTool(button) {
@@ -971,6 +1049,10 @@ function setActiveTool(button) {
   }
   if (mode === "guides") {
     canvas?.discardActiveObject();
+  } else if (mode === "source") {
+    selectedGuideId = null;
+    renderGuideObjects();
+    updateSourceInteractivity();
   } else if (selectedGuideId) {
     selectedGuideId = null;
     renderGuideObjects();
@@ -980,6 +1062,7 @@ function setActiveTool(button) {
   if (mode === "shapeLibrary") setStatus("Shape Library open. Click a shape tile to place it in the current viewport.");
   if (mode === "guides") setStatus("Guides mode. Drag on the canvas to create editor-only guide lines. Hold Control while moving vinyl layers to snap.");
   if (mode === "overlay") setStatus("Overlay controls open. Overlay images are reference-only and never exported.");
+  if (mode === "source") setStatus(overlayImage ? "Source Move mode. Drag the source overlay only; vinyl layers and guides are ignored. Hold Control to snap it to grid/guides." : "Source Move mode needs an overlay first. Add a source image in Overlay controls.");
 }
 
 function activateToolShortcut(key) {
@@ -993,7 +1076,7 @@ function activateToolShortcut(key) {
 function setVBoxSelectActive(active) {
   vBoxSelectActive = Boolean(active);
   document.body.classList.toggle("forceBoxSelectMode", vBoxSelectActive);
-  if (canvas && !shapeEyedropperActive && activeToolMode !== "guides") {
+  if (canvas && !shapeEyedropperActive && activeToolMode !== "guides" && activeToolMode !== "source") {
     canvas.selection = true;
     canvas.skipTargetFind = vBoxSelectActive;
     canvas.defaultCursor = vBoxSelectActive ? "crosshair" : "default";
@@ -1236,10 +1319,10 @@ async function makeFabricObject(shape, name = null) {
     ...fabricPropsFromFh6Data(data),
     stroke: null,
     strokeWidth: 0,
-    objectCaching: false,
+    objectCaching: true,
     noScaleCache: true,
-    perPixelTargetFind: true,
-    targetFindTolerance: 3,
+    perPixelTargetFind: false,
+    targetFindTolerance: 0,
     hoverCursor: "pointer",
     moveCursor: "move",
     lockScalingFlip: false,
@@ -1578,7 +1661,7 @@ function restoreDropperSelection() {
   }
   canvas.requestRenderAll();
   updateSelectionPanel();
-  refreshLayers();
+  updateLayerSelectionStyles();
 }
 
 function vinylObjectAtCanvasPoint(x, y) {
@@ -1781,6 +1864,14 @@ function snapshotShapes() {
   return vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true }));
 }
 
+function snapshotEditorState() {
+  return {
+    version: 2,
+    shapes: snapshotShapes(),
+    editor_guides: savedGuideState(),
+  };
+}
+
 async function restoreShapes(shapes) {
   historyLocked = true;
   clearVinylObjects();
@@ -1794,6 +1885,14 @@ async function restoreShapes(shapes) {
   canvas.requestRenderAll();
 }
 
+async function restoreEditorState(snapshot) {
+  const state = Array.isArray(snapshot)
+    ? { shapes: snapshot, editor_guides: null }
+    : (snapshot && typeof snapshot === "object" ? snapshot : {});
+  await restoreShapes(Array.isArray(state.shapes) ? state.shapes : []);
+  applySavedGuideState(state.editor_guides || null);
+}
+
 function resetHistory() {
   history = [];
   historyIndex = -1;
@@ -1802,7 +1901,7 @@ function resetHistory() {
 
 function pushHistory(reason = "change") {
   if (historyLocked) return;
-  const snapshot = JSON.stringify(snapshotShapes());
+  const snapshot = JSON.stringify(snapshotEditorState());
   if (history[historyIndex] === snapshot) return;
   history = history.slice(0, historyIndex + 1);
   history.push(snapshot);
@@ -1813,17 +1912,25 @@ function pushHistory(reason = "change") {
   historyIndex = history.length - 1;
   let autosaveOk = true;
   try {
+    const state = JSON.parse(snapshot);
     localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
       name: loadedName,
       created: new Date().toISOString(),
-      shapes: JSON.parse(snapshot),
-      editor_guides: savedGuideState(),
+      shapes: state.shapes || [],
+      editor_guides: state.editor_guides || savedGuideState(),
     }));
   } catch (err) {
     autosaveOk = false;
     console.warn("Autosave skipped.", err);
   }
   setStatus(`Saved ${reason}.${autosaveOk ? " Autosave updated." : " Autosave skipped because browser storage is full."}`);
+}
+
+function ensureHistoryBaseline() {
+  if (historyLocked || historyIndex >= 0) return;
+  history = [JSON.stringify(snapshotEditorState())];
+  historyIndex = 0;
+  protectedHistoryIndex = -1;
 }
 
 async function undo() {
@@ -1833,20 +1940,28 @@ async function undo() {
     return;
   }
   historyIndex--;
-  await restoreShapes(JSON.parse(history[historyIndex]));
+  await restoreEditorState(JSON.parse(history[historyIndex]));
   setStatus("Undo.");
 }
 
 async function redo() {
   if (historyIndex >= history.length - 1) return;
   historyIndex++;
-  await restoreShapes(JSON.parse(history[historyIndex]));
+  await restoreEditorState(JSON.parse(history[historyIndex]));
   setStatus("Redo.");
 }
 
 function round(value) {
   const n = Math.round(Number(value) * 1000000) / 1000000;
   return Math.abs(n - Math.round(n)) < 0.000001 ? Math.round(n) : n;
+}
+
+function requestCanvasRender() {
+  if (!canvas || canvasRenderFrame) return;
+  canvasRenderFrame = requestAnimationFrame(() => {
+    canvasRenderFrame = null;
+    canvas.requestRenderAll();
+  });
 }
 
 function initCanvas() {
@@ -1859,8 +1974,11 @@ function initCanvas() {
     fireRightClick: true,
     stopContextMenu: true,
     backgroundColor: canvasBg,
-    perPixelTargetFind: true,
-    targetFindTolerance: 3,
+    renderOnAddRemove: false,
+    enableRetinaScaling: false,
+    skipOffscreen: true,
+    perPixelTargetFind: false,
+    targetFindTolerance: 0,
     defaultCursor: "default",
     hoverCursor: "default",
     moveCursor: "move",
@@ -1879,7 +1997,14 @@ function initCanvas() {
   canvas.on("object:added", (event) => {
     if (event.target?.kloudy) styleObjectTransformControls(event.target);
   });
-  canvas.on("object:modified", () => {
+  canvas.on("object:modified", (event) => {
+    if (event.target?.kloudyOverlay) {
+      constrainSourceOverlayTransform();
+      clearSnapOverlay();
+      updateHud();
+      setStatus("Source overlay moved. It remains reference-only and will not export.");
+      return;
+    }
     mirrorActiveMaskProxyToOwner();
     transformAnchorSnapshot = null;
     clearSnapOverlay();
@@ -1890,34 +2015,51 @@ function initCanvas() {
       selectedVinylObjects().forEach((obj) => applyOverlayColorToObject(obj, { remember: true, silent: true }));
     }
     updateSelectionPanel();
-    refreshLayers();
+    scheduleRefreshLayers();
     pushHistory("object edit");
   });
   canvas.on("object:moving", (event) => {
+    if (event.target?.kloudyOverlay) {
+      constrainSourceOverlayTransform();
+      snapSourceOverlayToGuides(event);
+      return;
+    }
     leaveGuideModeForLayerEdit();
     const target = interactiveVinylTarget(event.target);
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
     snapTargetToGuides(target, { ...event, kloudyTransformAction: "move" });
-    syncMaskPreviewOutlines();
+    if (target) syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+    syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
   });
   ["object:scaling", "object:skewing"].forEach((eventName) => {
     canvas.on(eventName, (event) => {
+      if (event.target?.kloudyOverlay) {
+        constrainSourceOverlayTransform();
+        snapSourceOverlayToGuides(event);
+        return;
+      }
       leaveGuideModeForLayerEdit();
       const target = interactiveVinylTarget(event.target);
       if (target !== event.target) mirrorMaskProxyToOwner(event.target);
       snapTargetToGuides(target, { ...event, kloudyTransformAction: eventName === "object:scaling" ? "scale" : "skew" });
-      syncMaskPreviewOutlines();
+      if (target) syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+      syncMaskPreviewForTarget(target);
       scheduleLiveOverlayColor(target);
     });
   });
   canvas.on("object:rotating", (event) => {
+    if (event.target?.kloudyOverlay) {
+      constrainSourceOverlayTransform();
+      return;
+    }
     leaveGuideModeForLayerEdit();
     const target = interactiveVinylTarget(event.target);
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
     snapRotationToNotches(target, event);
     renderRotationNotchOverlay(target, event);
-    syncMaskPreviewOutlines();
+    if (target) syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+    syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
   });
   canvas.on("mouse:wheel", (opt) => {
@@ -1928,11 +2070,12 @@ function initCanvas() {
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
     queueGuideRender();
     updateHud(canvas.getPointer(opt.e));
+    requestCanvasRender();
     opt.e.preventDefault();
     opt.e.stopPropagation();
   });
   canvas.on("mouse:down", (opt) => {
-    if (vBoxSelectActive && activeToolMode !== "guides" && !shapeEyedropperActive && opt.e.button === 0) {
+    if (vBoxSelectActive && activeToolMode !== "guides" && activeToolMode !== "source" && !shapeEyedropperActive && opt.e.button === 0) {
       opt.target = null;
       canvas.skipTargetFind = true;
       canvas.selection = true;
@@ -1955,6 +2098,31 @@ function initCanvas() {
       }
       if (selectGuideObject(opt.target)) return;
       beginGuideDraft(opt);
+      return;
+    }
+    if (activeToolMode === "source") {
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+      if (opt.e.button === 1 || opt.e.button === 2) {
+        isPanning = true;
+        lastPan = { x: opt.e.clientX, y: opt.e.clientY };
+        canvas.selection = false;
+        canvas.skipTargetFind = true;
+        transformAnchorSnapshot = null;
+        setStatus("Source Move mode: panning canvas. Left-drag the source overlay to move it.");
+        return;
+      }
+      if (!overlayImage) {
+        canvas.discardActiveObject();
+        setStatus("Source Move mode needs an overlay first. Add one in Overlay controls.");
+        return;
+      }
+      canvas.selection = false;
+      transformAnchorSnapshot = null;
+      if (opt.target !== overlayImage) {
+        canvas.setActiveObject(overlayImage);
+        setStatus("Source Move mode only edits the source overlay. Drag the overlay itself to move it.");
+      }
       return;
     }
     if (shapeEyedropperActive) {
@@ -1981,7 +2149,7 @@ function initCanvas() {
       vpt[4] += opt.e.clientX - lastPan.x;
       vpt[5] += opt.e.clientY - lastPan.y;
       queueGuideRender();
-      canvas.requestRenderAll();
+      requestCanvasRender();
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
       updateHud(canvas.getPointer(opt.e));
       setText("hudHover", "panning");
@@ -2011,7 +2179,7 @@ function initCanvas() {
     transformAnchorSnapshot = null;
     clearSnapOverlay();
     isPanning = false;
-    canvas.selection = !shapeEyedropperActive && activeToolMode !== "guides";
+    canvas.selection = !shapeEyedropperActive && activeToolMode !== "guides" && activeToolMode !== "source";
     canvas.skipTargetFind = vBoxSelectActive;
     canvas.defaultCursor = vBoxSelectActive ? "crosshair" : "default";
     canvas.hoverCursor = vBoxSelectActive ? "crosshair" : "default";
@@ -2120,7 +2288,7 @@ function applySavedGuideState(saved = null) {
     next.snapCtrlOnly = saved.snapCtrlOnly !== false;
     next.snapThreshold = Math.max(4, Math.min(28, Number(saved.snapThreshold) || next.snapThreshold));
     next.guideConstraint = ["free", "horizontal", "vertical"].includes(saved.guideConstraint) ? saved.guideConstraint : next.guideConstraint;
-    next.snapGuideAnchor = saved.snapGuideAnchor !== false;
+    next.snapGuideAnchor = saved.snapGuideAnchor === true;
     next.snapGuideEnd = Boolean(saved.snapGuideEnd);
     next.guides = Array.isArray(saved.guides)
       ? saved.guides.map((guide) => ({
@@ -2159,7 +2327,7 @@ function guideLineStyle(guide, extra = {}) {
     lockMovementX: true,
     lockMovementY: true,
     hoverCursor: manual ? "pointer" : "default",
-    objectCaching: false,
+    objectCaching: true,
     excludeFromExport: true,
     ...extra,
   };
@@ -2281,11 +2449,149 @@ function updateGuideInteractivity() {
         hoverCursor: inGuideMode ? "pointer" : "default",
       });
     });
-    canvas.selection = !shapeEyedropperActive && !inGuideMode;
+    canvas.selection = !shapeEyedropperActive && !inGuideMode && activeToolMode !== "source";
     if (inGuideMode) canvas._groupSelector = null;
     canvas.requestRenderAll();
   }
   updateGuideUi();
+}
+
+function configureOverlayForSourceMode(enabled) {
+  if (!overlayImage) return;
+  overlayImage.set({
+    selectable: Boolean(enabled),
+    evented: Boolean(enabled),
+    hasControls: false,
+    hasBorders: Boolean(enabled),
+    lockMovementX: false,
+    lockMovementY: false,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockSkewingX: true,
+    lockSkewingY: true,
+    lockRotation: true,
+    lockScalingFlip: true,
+    perPixelTargetFind: false,
+    targetFindTolerance: enabled ? 16 : 0,
+    hoverCursor: enabled ? "move" : "default",
+    moveCursor: enabled ? "move" : "move",
+    borderColor: cssColorVar("--editor-guide-selected", "#2b1622"),
+    cornerColor: cssColorVar("--editor-selection-corner", "#ffffff"),
+    cornerStrokeColor: cssColorVar("--editor-selection-corner-stroke", "#2b1622"),
+    cornerStyle: "rect",
+    transparentCorners: false,
+    cornerSize: 16,
+    padding: 8,
+  });
+}
+
+function updateSourceInteractivity() {
+  if (!canvas) return;
+  const inSourceMode = activeToolMode === "source";
+  document.body.classList.toggle("sourceMoveMode", inSourceMode);
+  vinylObjects().forEach((obj) => {
+    const interactive = !inSourceMode && !obj.kloudy?.locked;
+    obj.set({
+      selectable: interactive,
+      evented: interactive,
+      hasControls: interactive,
+      hoverCursor: interactive ? "pointer" : "default",
+      moveCursor: interactive ? "move" : "default",
+    });
+  });
+  maskPreviewOutlines.forEach((helper) => {
+    const owner = helper.kloudyMaskOwner;
+    const interactive = !inSourceMode && !owner?.kloudy?.locked && Boolean(helper.kloudyMaskOutline);
+    helper.set({
+      selectable: interactive,
+      evented: interactive,
+      hasControls: interactive,
+      hoverCursor: interactive ? "move" : "default",
+      moveCursor: interactive ? "move" : "default",
+    });
+  });
+  configureOverlayForSourceMode(inSourceMode);
+  if (inSourceMode) {
+    canvas.selection = false;
+    canvas.skipTargetFind = false;
+    if (overlayImage) canvas.setActiveObject(overlayImage);
+    else canvas.discardActiveObject();
+  }
+  layerEditorHelpers();
+  canvas.requestRenderAll();
+}
+
+function constrainSourceOverlayTransform() {
+  if (!overlayImage) return;
+  const scale = Math.max(0.001, Math.max(Math.abs(Number(overlayImage.scaleX) || 1), Math.abs(Number(overlayImage.scaleY) || 1)));
+  overlayImage.set({
+    scaleX: scale,
+    scaleY: scale,
+    skewX: 0,
+    skewY: 0,
+    flipX: false,
+    flipY: false,
+  });
+  overlayImage.setCoords();
+}
+
+function snapSourceOverlayToGuides(event = null) {
+  if (!overlayImage || activeToolMode !== "source") return false;
+  constrainSourceOverlayTransform();
+  const snappingEnabled = guideState.snapGuides || (guideState.gridEnabled && guideState.snapGrid);
+  if (!snappingEnabled) {
+    clearSnapOverlay();
+    return false;
+  }
+  if (guideState.snapCtrlOnly && !eventHasSnapModifier(event)) {
+    clearSnapOverlay();
+    return false;
+  }
+  const rect = overlayImage.getBoundingRect(true, true);
+  const xPoints = [
+    { kind: "left", value: rect.left },
+    { kind: "center", value: rect.left + rect.width / 2 },
+    { kind: "right", value: rect.left + rect.width },
+  ];
+  const yPoints = [
+    { kind: "top", value: rect.top },
+    { kind: "middle", value: rect.top + rect.height / 2 },
+    { kind: "bottom", value: rect.top + rect.height },
+  ];
+  const threshold = guideState.snapThreshold / Math.max(canvas.getZoom() || 1, 0.001);
+  let bestX = null;
+  let bestY = null;
+  guideSnapLines().forEach((line) => {
+    if (line.axis === "x") {
+      xPoints.forEach((point) => {
+        const delta = line.value - point.value;
+        const abs = Math.abs(delta);
+        if (abs <= threshold && (!bestX || abs < bestX.abs)) bestX = { delta, abs, point: point.kind, source: line.source };
+      });
+    } else if (line.axis === "y") {
+      yPoints.forEach((point) => {
+        const delta = line.value - point.value;
+        const abs = Math.abs(delta);
+        if (abs <= threshold && (!bestY || abs < bestY.abs)) bestY = { delta, abs, point: point.kind, source: line.source };
+      });
+    }
+  });
+  if (!bestX && !bestY) {
+    clearSnapOverlay();
+    return false;
+  }
+  overlayImage.set({
+    left: (overlayImage.left || 0) + (bestX?.delta || 0),
+    top: (overlayImage.top || 0) + (bestY?.delta || 0),
+  });
+  overlayImage.setCoords();
+  clearSnapOverlay();
+  const now = Date.now();
+  if (now - lastSnapMessageAt > 350) {
+    lastSnapMessageAt = now;
+    setText("guideStatus", `Source snapped ${bestX ? bestX.point : ""}${bestX && bestY ? " + " : ""}${bestY ? bestY.point : ""} to ${bestX?.source || bestY?.source}.`);
+  }
+  return true;
 }
 
 function updateGuideUi() {
@@ -2367,11 +2673,12 @@ function finishGuideDraft() {
     y2: guideDraft.y2,
     constraint: guideDraft.constraint,
   };
+  ensureHistoryBaseline();
   guideState.guides.push(guide);
   selectedGuideId = guide.id;
   guideDraft = null;
   renderGuideObjects();
-  saveGuideAutosave();
+  pushHistory("add guide");
   setGuideStatus(`Added ${guide.constraint === "free" ? "free" : guide.constraint} guide. Hold Control while moving shapes to snap.`);
 }
 
@@ -2380,7 +2687,7 @@ function selectGuideObject(object) {
   selectedGuideId = object.kloudyGuideId;
   canvas.discardActiveObject();
   renderGuideObjects();
-  setGuideStatus("Guide selected. Use Delete Selected Guide to remove it.");
+  setGuideStatus("Guide selected. Press Delete or use Delete Selected Guide to remove it.");
   return true;
 }
 
@@ -2389,20 +2696,29 @@ function deleteSelectedGuide() {
     setGuideStatus("No guide selected. Switch to Guides and click a guide line first.");
     return;
   }
+  ensureHistoryBaseline();
   const before = guideState.guides.length;
   guideState.guides = guideState.guides.filter((guide) => guide.id !== selectedGuideId);
   selectedGuideId = null;
   renderGuideObjects();
-  saveGuideAutosave();
-  setGuideStatus(before === guideState.guides.length ? "Selected guide was already gone." : "Deleted selected guide.");
+  if (before !== guideState.guides.length) {
+    pushHistory("delete guide");
+    setGuideStatus("Deleted selected guide.");
+  } else {
+    saveGuideAutosave();
+    setGuideStatus("Selected guide was already gone.");
+  }
 }
 
 function clearGuides() {
+  const hadGuides = guideState.guides.length > 0 || guideDraft;
+  if (hadGuides) ensureHistoryBaseline();
   guideState.guides = [];
   guideDraft = null;
   selectedGuideId = null;
   renderGuideObjects();
-  saveGuideAutosave();
+  if (hadGuides) pushHistory("clear guides");
+  else saveGuideAutosave();
   setGuideStatus("Cleared guide lines. Grid settings were kept.");
 }
 
@@ -3639,6 +3955,8 @@ async function loadPayload(payload) {
 function clearVinylObjects() {
   selectedShapeOutlineObjects.forEach(restoreSelectionOutline);
   selectedShapeOutlineObjects.clear();
+  selectedShapeOutlineHelpers.forEach((helper) => canvas.remove(helper));
+  selectedShapeOutlineHelpers.clear();
   maskPreviewOutlines.forEach((outline) => canvas.remove(outline));
   maskPreviewOutlines.clear();
   maskPreviewCutouts.forEach((cutout) => canvas.remove(cutout));
@@ -3728,7 +4046,7 @@ function invertCurrentSelection(event = null) {
 function handleSelectionChanged(event = null) {
   if (invertCurrentSelection(event)) {
     updateSelectionPanel();
-    refreshLayers();
+    updateLayerSelectionStyles();
     return;
   }
   const active = canvas?.getActiveObject();
@@ -4038,9 +4356,30 @@ function cancelLayerDrag() {
   setTimeout(() => { suppressLayerClick = false; }, 0);
 }
 
+function updateLayerSelectionStyles() {
+  const activeSet = new Set(selectedVinylObjects());
+  layerListRows.forEach((entry) => {
+    const active = entry.objects.some((obj) => activeSet.has(obj));
+    entry.element.classList.toggle("active", active);
+  });
+  updateHud();
+}
+
+function scheduleRefreshLayers() {
+  if (layerRefreshFrame) return;
+  layerRefreshFrame = requestAnimationFrame(() => {
+    layerRefreshFrame = null;
+    refreshLayers();
+  });
+}
+
 function refreshLayers() {
+  if (layerRefreshFrame) {
+    cancelAnimationFrame(layerRefreshFrame);
+    layerRefreshFrame = null;
+  }
   const list = $("layers");
-  list.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   layerListRows = new Map();
   const objects = vinylObjects();
   const activeSet = new Set(selectedVinylObjects());
@@ -4110,7 +4449,7 @@ function refreshLayers() {
         if (suppressLayerClick) return;
         selectObjects(groupMembers, groupName);
       });
-      list.appendChild(groupLi);
+      fragment.appendChild(groupLi);
     }
     if (groupId && collapsedLayerGroups.has(groupId)) return;
     const li = document.createElement("li");
@@ -4162,8 +4501,9 @@ function refreshLayers() {
       selectObjects([obj], "layer row");
     });
     registerLayerListRow(li, layerListObjectKey(obj), [obj], reverseIndex);
-    list.appendChild(li);
+    fragment.appendChild(li);
   });
+  list.replaceChildren(fragment);
   setText("exportWarningCount", "0");
   setText("normalExportStatus", "Compatible");
   setText("exportReadyChip", objects.length ? "Ready" : "No JSON");
@@ -4201,7 +4541,7 @@ function updateSelectionPanel() {
       $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together. Color edits apply to unlocked selected layers.`;
     }
     refreshColorUi();
-    refreshLayers();
+    updateLayerSelectionStyles();
     return;
   }
   const obj = selected[0];
@@ -4218,7 +4558,7 @@ function updateSelectionPanel() {
   $("rotInput").value = round(decoded[4]);
   $("skewInput").value = round(obj.skewX || 0);
   refreshColorUi();
-  refreshLayers();
+  updateLayerSelectionStyles();
 }
 
 function applySelectionFields() {
@@ -4434,6 +4774,18 @@ function syncMaskPreviewOutlines() {
     syncMaskHelperTransform(obj, outline);
     cutout.bringToFront();
     outline.bringToFront();
+  });
+}
+
+function syncMaskPreviewForTarget(target) {
+  if (!target) return;
+  const objects = isActiveSelectionObject(target) ? selectedVinylObjects() : [interactiveVinylTarget(target)];
+  objects.forEach((obj) => {
+    if (!obj?.kloudy?.mask) return;
+    const cutout = maskPreviewCutouts.get(obj);
+    const outline = maskPreviewOutlines.get(obj);
+    if (cutout) syncMaskHelperTransform(obj, cutout);
+    if (outline) syncMaskHelperTransform(obj, outline);
   });
 }
 
@@ -4873,8 +5225,8 @@ function duplicateSelected() {
       }
       if (clone.kloudy?.locked) setObjectLocked(clone, false);
       applyMaskVisual(clone);
-      clone.perPixelTargetFind = $("pixelSelect").checked;
-      clone.targetFindTolerance = $("pixelSelect").checked ? 3 : 0;
+      clone.perPixelTargetFind = $("boxVisibleOnly")?.checked || $("pixelSelect")?.checked || false;
+      clone.targetFindTolerance = clone.perPixelTargetFind ? 3 : 0;
       clone.hoverCursor = "pointer";
       clone.moveCursor = "move";
       styleObjectTransformControls(clone);
@@ -4899,6 +5251,10 @@ function duplicateSelected() {
 
 function deleteSelected() {
   const selected = selectedVinylObjects();
+  if (!selected.length && selectedGuideId) {
+    deleteSelectedGuide();
+    return;
+  }
   const objects = unlockedObjects(selected);
   if (!selected.length) return;
   if (!objects.length) {
@@ -4978,7 +5334,7 @@ function flipSelected(axis) {
   });
   canvas.requestRenderAll();
   updateSelectionPanel();
-  refreshLayers();
+  scheduleRefreshLayers();
   pushHistory(axis === "x" ? "flip horizontal" : "flip vertical");
   setStatus(`Flipped ${objects.length} layer(s) ${axis === "x" ? "horizontally" : "vertically"}.${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
 }
@@ -4992,7 +5348,7 @@ function selectObjects(objects, reason) {
   else canvas.setActiveObject(styledActiveSelection(objects));
   canvas.requestRenderAll();
   updateSelectionPanel();
-  refreshLayers();
+  updateLayerSelectionStyles();
   setStatus(`Selected ${objects.length} layer(s) by ${reason}.`);
 }
 
@@ -5466,7 +5822,8 @@ function loadOverlayImageFromUrl(url, fileName) {
     overlayImage.set({ scaleX: fit, scaleY: fit });
     canvas.add(overlayImage);
     if (layeredOverlayState) populateLayeredOverlayControls();
-    layerEditorHelpers();
+    if (activeToolMode === "source") updateSourceInteractivity();
+    else layerEditorHelpers();
     canvas.requestRenderAll();
     setStatus(layeredOverlayState ? `Layered SVG overlay loaded: ${fileName}` : `Overlay loaded: ${fileName}`);
     updateHud();
@@ -5536,6 +5893,7 @@ function removeOverlay() {
   overlayImage = null;
   overlaySampler = null;
   clearLayeredOverlayState();
+  updateSourceInteractivity();
   canvas.requestRenderAll();
   updateHud();
   setStatus("Overlay removed.");
@@ -5772,7 +6130,7 @@ function bindUi() {
   document.addEventListener("keydown", (event) => {
     if (event.target && event.target.classList?.contains("shortcutCapture")) return;
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
-    const toolAction = ["selectTool", "shapeLibrary", "dropper", "guides", "overlay"].find((action) => shortcutMatches(event, action));
+    const toolAction = ["selectTool", "shapeLibrary", "dropper", "guides", "overlay", "sourceTool"].find((action) => shortcutMatches(event, action));
     if (toolAction) {
       event.preventDefault();
       if (!event.repeat) {
@@ -5782,6 +6140,7 @@ function bindUi() {
           dropper: "i",
           guides: "g",
           overlay: "o",
+          sourceTool: "r",
         }[toolAction];
         activateToolShortcut(toolKey);
       }
@@ -5794,7 +6153,7 @@ function bindUi() {
     }
     if (shortcutMatches(event, "delete") || event.key === "Backspace") {
       event.preventDefault();
-      if (activeToolMode === "guides" && selectedGuideId && !selectedVinylObjects().length) {
+      if (selectedGuideId && !selectedVinylObjects().length) {
         deleteSelectedGuide();
         return;
       }

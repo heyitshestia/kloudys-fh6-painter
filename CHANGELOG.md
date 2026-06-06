@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.23
+
+- Improved Fabric editor responsiveness and selection behavior for dense vinyls.
+- Added source-overlay move controls so reference images can be adjusted without grabbing vinyl layers.
+- Improved guide handling so guide changes participate more reliably in undo/redo.
+
 ## 2.0.22
 
 - Improved Fabric editor transform handles with more usable Figma-style corner, side, and rotate controls.
