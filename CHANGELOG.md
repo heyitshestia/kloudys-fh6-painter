@@ -1,5 +1,13 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.28
+
+- Added an experimental all-shape seed-template import option for WIP importer testing.
+- Added the bundled FH6 all-shape seed JSON used by the experimental template setup.
+- Improved WIP import/export research tooling for faster grouped vinyl locator testing.
+- Added precise source-overlay scale controls in the Fabric editor with a synced slider and editable percent value.
+- Added internal Fabric editor group renaming. Exported vinyl JSON remains flat.
+
 ## 2.0.27
 
 - Changed Fabric editor corner dragging so normal corner drag scales shapes globally by default.

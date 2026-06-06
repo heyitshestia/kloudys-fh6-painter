@@ -2668,6 +2668,27 @@ function constrainSourceOverlayTransform() {
   overlayImage.setCoords();
 }
 
+function overlayScalePercentValue() {
+  const field = $("overlayScalePercent");
+  const slider = $("overlayScale");
+  const raw = field?.value !== "" ? field?.value : slider?.value;
+  return Math.max(1, Math.min(1000, Number(raw) || 100));
+}
+
+function syncOverlayScaleControls(value) {
+  const normalized = Math.max(1, Math.min(1000, Number(value) || 100));
+  const text = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1).replace(/\.0$/, "");
+  if ($("overlayScale")) $("overlayScale").value = text;
+  if ($("overlayScalePercent")) $("overlayScalePercent").value = text;
+  return normalized;
+}
+
+function setOverlayScalePercent(value, options = {}) {
+  const normalized = syncOverlayScaleControls(value);
+  if (!options.skipUpdate) updateOverlay();
+  return normalized;
+}
+
 function snapSourceOverlayToGuides(event = null) {
   if (!overlayImage || activeToolMode !== "source") return false;
   constrainSourceOverlayTransform();
@@ -4252,6 +4273,43 @@ function setCollapsedGroup(groupId, collapsed) {
   refreshLayers();
 }
 
+function renameLayerGroup(groupId, requestedName = null) {
+  if (!groupId) return false;
+  const members = membersForGroupIds([groupId]);
+  if (!members.length) return false;
+  const currentName = groupNameForObject(members[0]);
+  const rawName = requestedName ?? window.prompt("Group name", currentName);
+  if (rawName === null) return false;
+  const cleanName = String(rawName).trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!cleanName) {
+    setStatus("Group name cannot be blank.");
+    return false;
+  }
+  if (cleanName === currentName) return false;
+  members.forEach((obj) => {
+    if (!obj.kloudy) obj.kloudy = {};
+    obj.kloudy.group_name = cleanName;
+  });
+  refreshLayers();
+  updateSelectionPanel();
+  pushHistory("rename group");
+  setStatus(`Renamed editor group to ${cleanName}. Export remains flat.`);
+  return true;
+}
+
+function renameSelectedGroup() {
+  const groupIds = selectedGroupIds();
+  if (!groupIds.length) {
+    setStatus("Select a grouped layer before renaming a group.");
+    return;
+  }
+  if (groupIds.length > 1) {
+    setStatus("Select layers from one group before renaming.");
+    return;
+  }
+  renameLayerGroup(groupIds[0]);
+}
+
 function layerListObjectKey(object) {
   if (!object) return "";
   if (!object.__kloudyLayerListId) {
@@ -4629,6 +4687,7 @@ function refreshLayers() {
         <button class="layerGroupTwist" type="button" title="${collapsed ? "Expand group" : "Collapse group"}">${collapsed ? "+" : "-"}</button>
         <span class="layerGroupTitle">${escapeHtml(groupName)}</span>
         <span class="layerGroupMeta">${groupMembers.length} layers | ${visibility.hidden ? `${visibility.hidden} hidden` : "visible"} | ${locks.locked ? `${locks.locked} locked` : "unlocked"}</span>
+        <button class="layerIcon layerGroupRename" type="button" title="Rename this editor-only group">N</button>
         <button class="layerIcon layerGroupVisibility" type="button" title="Hide/show this group">${visibility.visible ? "V" : "H"}</button>
         <button class="layerIcon layerGroupLock" type="button" title="Lock/unlock this group">${locks.unlocked ? "U" : "L"}</button>
       `;
@@ -4645,6 +4704,11 @@ function refreshLayers() {
         event.stopPropagation();
         selectObjects(groupMembers, groupName);
         toggleSelectedGroupLock();
+      });
+      groupLi.querySelector(".layerGroupRename").addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectObjects(groupMembers, groupName);
+        renameLayerGroup(groupId);
       });
       registerLayerListRow(groupLi, `group:${groupId}`, groupMembers, reverseIndex);
       groupLi.addEventListener("click", (event) => {
@@ -6029,7 +6093,8 @@ function loadOverlayImageFromUrl(url, fileName) {
     });
     overlayImage.kloudyOverlay = true;
     const fit = 1800 / Math.max(img.width, img.height);
-    overlayImage.set({ scaleX: fit, scaleY: fit });
+    const factor = syncOverlayScaleControls(overlayScalePercentValue()) / 100;
+    overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
     canvas.add(overlayImage);
     if (layeredOverlayState) populateLayeredOverlayControls();
     if (activeToolMode === "source") updateSourceInteractivity();
@@ -6074,7 +6139,7 @@ function addOverlayFile(file) {
 function updateOverlay() {
   if (!overlayImage) return;
   const base = 1800 / Math.max(overlayImage.width || 1, overlayImage.height || 1);
-  const factor = Number($("overlayScale").value) / 100;
+  const factor = syncOverlayScaleControls(overlayScalePercentValue()) / 100;
   overlayImage.set({
     opacity: Number($("overlayOpacity").value) / 100,
     scaleX: base * factor,
@@ -6252,6 +6317,7 @@ function bindUi() {
   $("quickFitSelected")?.addEventListener("click", fitSelectedView);
   $("groupSelected").addEventListener("click", groupSelectedLayers);
   $("quickGroupSelected")?.addEventListener("click", groupSelectedLayers);
+  $("renameSelectedGroup")?.addEventListener("click", renameSelectedGroup);
   $("hideSelectedGroup").addEventListener("click", toggleSelectedGroupVisibility);
   $("lockSelectedGroup").addEventListener("click", toggleSelectedGroupLock);
   $("ungroupSelected").addEventListener("click", ungroupSelectedLayers);
@@ -6273,7 +6339,9 @@ function bindUi() {
     event.target.value = "";
   });
   $("overlayOpacity").addEventListener("input", updateOverlay);
-  $("overlayScale").addEventListener("input", updateOverlay);
+  $("overlayScale").addEventListener("input", (event) => setOverlayScalePercent(event.target.value));
+  $("overlayScalePercent")?.addEventListener("input", (event) => setOverlayScalePercent(event.target.value));
+  $("overlayScalePercent")?.addEventListener("change", (event) => setOverlayScalePercent(event.target.value));
   if ($("overlayLayerMode")) {
     $("overlayLayerMode").value = overlayLayerMode;
     $("overlayLayerMode").addEventListener("change", (event) => setOverlayLayerMode(event.target.value));

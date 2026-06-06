@@ -29,6 +29,7 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_VM_READ = 0x0010
 MEM_COMMIT = 0x1000
 MEM_PRIVATE = 0x20000
+MEM_IMAGE = 0x1000000
 PAGE_NOACCESS = 0x01
 PAGE_GUARD = 0x100
 RW_MASK = 0xCC
@@ -51,6 +52,12 @@ RAW_LAYER_MERGE_GAP = 0x1000
 RAW_MAX_FILE_BYTES = 8 * 1024 * 1024
 RAW_MAX_TOTAL_BYTES_PER_CANDIDATE = 64 * 1024 * 1024
 
+FH6_CALIBRATED_GROUP_PROFILE = {
+    "update_code": b"98170067497080",
+    "descriptor_offset": 0x9E17E20,
+    "vtable_offsets": [0x6802470],
+}
+
 
 class MBI(ctypes.Structure):
     _fields_ = [
@@ -61,6 +68,21 @@ class MBI(ctypes.Structure):
         ("State", wintypes.DWORD),
         ("Protect", wintypes.DWORD),
         ("Type", wintypes.DWORD),
+    ]
+
+
+class MODULEENTRY32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("th32ModuleID", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("GlblcntUsage", wintypes.DWORD),
+        ("ProccntUsage", wintypes.DWORD),
+        ("modBaseAddr", ctypes.POINTER(ctypes.c_byte)),
+        ("modBaseSize", wintypes.DWORD),
+        ("hModule", wintypes.HMODULE),
+        ("szModule", wintypes.WCHAR * 256),
+        ("szExePath", wintypes.WCHAR * 260),
     ]
 
 
@@ -83,6 +105,12 @@ k32.VirtualQueryEx.argtypes = (
     ctypes.POINTER(MBI),
     ctypes.c_size_t,
 )
+k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+k32.CreateToolhelp32Snapshot.argtypes = (wintypes.DWORD, wintypes.DWORD)
+k32.Module32FirstW.restype = wintypes.BOOL
+k32.Module32FirstW.argtypes = (wintypes.HANDLE, ctypes.POINTER(MODULEENTRY32W))
+k32.Module32NextW.restype = wintypes.BOOL
+k32.Module32NextW.argtypes = (wintypes.HANDLE, ctypes.POINTER(MODULEENTRY32W))
 k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
 k32.QueryFullProcessImageNameW.argtypes = (
     wintypes.HANDLE,
@@ -155,6 +183,33 @@ def find_forza_pid() -> tuple[int, str | None]:
         log(f"Multiple FH6 processes found; using the first detected process.")
     pid = pids[0]
     return pid, process_image_path(pid)
+
+
+def find_main_module(pid: int) -> dict | None:
+    snap = k32.CreateToolhelp32Snapshot(0x00000008 | 0x00000010, int(pid))
+    if snap == wintypes.HANDLE(-1).value:
+        return None
+    try:
+        entry = MODULEENTRY32W()
+        entry.dwSize = ctypes.sizeof(MODULEENTRY32W)
+        ok = k32.Module32FirstW(snap, ctypes.byref(entry))
+        modules = []
+        while ok:
+            modules.append(
+                {
+                    "name": entry.szModule,
+                    "path": entry.szExePath,
+                    "base": ctypes.cast(entry.modBaseAddr, ctypes.c_void_p).value,
+                    "size": int(entry.modBaseSize),
+                }
+            )
+            ok = k32.Module32NextW(snap, ctypes.byref(entry))
+    finally:
+        close_handle(snap)
+    for module in modules:
+        if module["name"].lower() == "forzahorizon6.exe":
+            return module
+    return modules[0] if modules else None
 
 
 def is_rw(protect: int) -> bool:
@@ -511,6 +566,109 @@ def scan_vector_headers(handle, regions, contains, count, max_seconds, report_la
     return candidates, {"scanned_mb": scanned_mb, "vector_triple_hits": triple_hits, "unique_groups": len(seen)}
 
 
+def resolve_calibrated_group_profile(handle, pid: int) -> tuple[dict | None, dict]:
+    module = find_main_module(pid)
+    stats = {"module": None, "profile_checked": False, "profile_matched": False, "reason": ""}
+    if not module or not module.get("base"):
+        stats["reason"] = "main module not found"
+        return None, stats
+    base = int(module["base"])
+    profile = FH6_CALIBRATED_GROUP_PROFILE
+    descriptor = base + int(profile["descriptor_offset"])
+    update_code = profile["update_code"]
+    found_code = read_memory(handle, descriptor + 0x10, len(update_code)).rstrip(b"\x00 ")
+    stats["module"] = {
+        "name": module.get("name"),
+        "base": hx(base),
+        "size": module.get("size"),
+    }
+    stats["profile_checked"] = True
+    stats["descriptor"] = hx(descriptor)
+    stats["vtable_candidates"] = [hx(base + int(offset)) for offset in profile["vtable_offsets"]]
+    if found_code and found_code != update_code.rstrip(b"\x00 "):
+        stats["reason"] = "calibrated profile update code did not match; still trying vtable validation as weak evidence"
+    else:
+        stats["profile_matched"] = True
+    return {
+        "module_base": base,
+        "descriptor": descriptor,
+        "vtables": [base + int(offset) for offset in profile["vtable_offsets"]],
+        "update_code": update_code.decode("ascii", "replace"),
+    }, stats
+
+
+def scan_calibrated_group_headers(
+    handle,
+    regions,
+    contains,
+    count,
+    max_seconds,
+    report_layers,
+    calibrated: dict | None,
+) -> tuple[list[dict], dict]:
+    stats = {
+        "enabled": bool(calibrated),
+        "scanned_mb": 0.0,
+        "count_hits": 0,
+        "vtable_matches": 0,
+        "unique_groups": 0,
+    }
+    if not calibrated:
+        return [], stats
+    vtables = {int(v) for v in calibrated.get("vtables") or []}
+    if not vtables:
+        return [], stats
+    pattern = struct.pack("<H", count)
+    candidates = []
+    seen = set()
+    start = time.time()
+    for idx, region in enumerate(regions, 1):
+        if max_seconds and time.time() - start > max_seconds:
+            break
+        raw = read_memory(handle, region["base"], min(region["size"], 128 * 1024 * 1024))
+        stats["scanned_mb"] += len(raw) / (1024 * 1024)
+        pos = 0
+        while raw:
+            hit = raw.find(pattern, pos)
+            if hit < 0:
+                break
+            pos = hit + 1
+            stats["count_hits"] += 1
+            group = region["base"] + hit - GROUP_COUNT_OFF
+            if group in seen:
+                continue
+            seen.add(group)
+            stats["unique_groups"] = len(seen)
+            vtable = read_u64(handle, group)
+            if vtable not in vtables:
+                continue
+            stats["vtable_matches"] += 1
+            table = read_u64(handle, group + GROUP_TABLE_OFF)
+            item = candidate_from_group(
+                handle,
+                regions,
+                contains,
+                group,
+                table,
+                count,
+                "calibrated_rtti_count_header",
+                report_layers,
+            )
+            if item:
+                item["score"] += 2500
+                item["calibrated_vtable"] = hx(vtable)
+                item["calibrated_descriptor"] = hx(calibrated.get("descriptor"))
+                candidates.append(item)
+                candidates.sort(key=lambda x: x["score"], reverse=True)
+                del candidates[20:]
+        if idx % 200 == 0:
+            log(
+                f"calibrated scan {idx}/{len(regions)} regions, "
+                f"{stats['scanned_mb']:.0f} MB, candidates={len(candidates)}"
+            )
+    return candidates, stats
+
+
 def dedupe_candidates(candidates: list[dict]) -> list[dict]:
     best = {}
     for item in candidates:
@@ -726,9 +884,23 @@ def main() -> int:
             ],
         }
         log(f"RW private regions: {region_summary['count']} / {region_summary['total_mb']:.0f} MB")
+        calibrated, calibrated_profile_stats = resolve_calibrated_group_profile(handle, pid)
+        if calibrated:
+            log("Calibrated group locator profile available; trying it before fallback scans.")
+        else:
+            log("Calibrated group locator profile unavailable; using fallback scans only.")
+        calibrated_candidates, calibrated_stats = scan_calibrated_group_headers(
+            handle,
+            regions,
+            contains,
+            args.count,
+            args.max_seconds,
+            args.report_layers,
+            calibrated,
+        )
         count_candidates, count_stats = scan_count_headers(handle, regions, contains, args.count, args.max_seconds, args.report_layers)
         vector_candidates, vector_stats = scan_vector_headers(handle, regions, contains, args.count, args.max_seconds, args.report_layers)
-        candidates = dedupe_candidates(count_candidates + vector_candidates)
+        candidates = dedupe_candidates(calibrated_candidates + count_candidates + vector_candidates)
         log(f"Candidates found: {len(candidates)}")
         deep_candidates = []
         for index, candidate in enumerate(candidates[: max(1, args.top)], start=1):
@@ -747,6 +919,8 @@ def main() -> int:
         "pid": pid,
         "process": {"name": "forzahorizon6.exe", "exe": exe},
         "scanner": {
+            "calibrated_profile": calibrated_profile_stats,
+            "calibrated_count_header": calibrated_stats,
             "count_header": count_stats,
             "vector_header": vector_stats,
             "max_seconds_each": args.max_seconds,

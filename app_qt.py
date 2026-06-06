@@ -97,6 +97,7 @@ EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
 SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
+FH6_RESOURCE_SEED_JSON = ROOT / "data" / "fh6_all_shapes_resource_seed.json"
 PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
 UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
@@ -2731,6 +2732,10 @@ class MainWindow(QMainWindow):
         self.editor_wip_timer = QTimer(self)
         self.editor_wip_timer.setInterval(520)
         self.editor_wip_timer.timeout.connect(self.toggle_editor_wip_blink)
+        self.seed_import_blink_on = True
+        self.seed_import_blink_timer = QTimer(self)
+        self.seed_import_blink_timer.setInterval(520)
+        self.seed_import_blink_timer.timeout.connect(self.toggle_seed_import_blink)
         self.bus = UiBus()
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
@@ -2748,6 +2753,7 @@ class MainWindow(QMainWindow):
         self._build()
         self.apply_theme()
         self.apply_editor_wip_style()
+        self.update_experimental_import_ui()
         self.editor_wip_timer.start()
         self.set_phase("ready", "Choose a source image or select a finalized JSON to import.")
         self.refresh_processes()
@@ -2897,6 +2903,53 @@ class MainWindow(QMainWindow):
             }}
             """
         )
+
+    def toggle_seed_import_blink(self):
+        self.seed_import_blink_on = not self.seed_import_blink_on
+        self.apply_seed_import_button_style()
+
+    def apply_seed_import_button_style(self):
+        if not hasattr(self, "seed_template_import_btn"):
+            return
+        if self.seed_import_blink_on:
+            background = "#ff1010"
+            color = "#ffffff"
+            border = "#ffffff"
+        else:
+            background = "#3a0000"
+            color = "#ffb3b3"
+            border = "#ff4040"
+        self.seed_template_import_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {background};
+                color: {color};
+                border: 2px solid {border};
+                border-radius: 10px;
+                padding: 12px 14px;
+                font-weight: 950;
+                min-height: 34px;
+            }}
+            QPushButton:hover {{
+                background: #ff3b3b;
+                color: #ffffff;
+                border-color: #ffffff;
+            }}
+            """
+        )
+
+    def update_experimental_import_ui(self, *_args):
+        enabled = settings_bool(self.app_settings.get("experimental_seed_import"), False)
+        if hasattr(self, "experimental_seed_import_enabled"):
+            enabled = bool(self.experimental_seed_import_enabled.isChecked())
+        if hasattr(self, "seed_template_import_btn"):
+            self.seed_template_import_btn.setVisible(enabled)
+            self.apply_seed_import_button_style()
+        if enabled:
+            if not self.seed_import_blink_timer.isActive():
+                self.seed_import_blink_timer.start()
+        else:
+            self.seed_import_blink_timer.stop()
 
     def help_button(self, key: str) -> QToolButton:
         title, body = HELP_TEXT[key]
@@ -3326,12 +3379,24 @@ class MainWindow(QMainWindow):
         import_btn = QPushButton("Import JSON into selected game")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
+        self.seed_template_import_btn = QPushButton("WIP: Import all-shape seed template")
+        self.seed_template_import_btn.setToolTip(
+            "Experimental. Imports the bundled all-shape resource seed into the loaded 3000-layer template, "
+            "does not trim/cull, then you save and reload that vinyl once."
+        )
+        self.seed_template_import_btn.clicked.connect(self.start_seed_template_import)
         auto_btn = QPushButton("Auto-locate template")
         auto_btn.clicked.connect(self.start_auto_locate)
+        auto_btn.setVisible(False)
+        self.auto_locate_button = auto_btn
         import_layout.addWidget(import_btn)
+        import_layout.addWidget(self.seed_template_import_btn)
         auto_row = QHBoxLayout()
         auto_row.addWidget(auto_btn, 1)
-        auto_row.addWidget(self.help_button("auto_locate"))
+        auto_help = self.help_button("auto_locate")
+        auto_help.setVisible(False)
+        self.auto_locate_help_button = auto_help
+        auto_row.addWidget(auto_help)
         import_layout.addLayout(auto_row)
         right_layout.addWidget(import_group)
         right_layout.addWidget(QLabel("JSON Preview"))
@@ -3718,12 +3783,35 @@ class MainWindow(QMainWindow):
         generator_layout.addWidget(self.blue_terminal_dialup_enabled)
         layout.addWidget(generator)
 
+        importer = QGroupBox("Importer Experimental WIP")
+        importer_layout = QVBoxLayout(importer)
+        self.experimental_seed_import_enabled = QCheckBox("Show all-shape seed-template import button")
+        self.experimental_seed_import_enabled.setToolTip(
+            "WIP. Reveals a red seed import button on the Import JSON tab. "
+            "Use it once on a 3000-circle template, then save/reload that vinyl as a reusable seeded template."
+        )
+        self.experimental_seed_import_enabled.setChecked(settings_bool(self.app_settings.get("experimental_seed_import"), False))
+        self.experimental_seed_import_enabled.stateChanged.connect(self.save_importer_experimental_settings)
+        self.experimental_seed_import_enabled.stateChanged.connect(self.update_experimental_import_ui)
+        importer_layout.addWidget(self.experimental_seed_import_enabled)
+        importer_note = QLabel(
+            "Seeded templates are optional. Plain circle templates still import correctly, but first preview/thumbnail may look wrong until save/reload."
+        )
+        importer_note.setWordWrap(True)
+        importer_layout.addWidget(importer_note)
+        layout.addWidget(importer)
+
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
 
     def save_generator_settings(self, *_args):
         if hasattr(self, "blue_terminal_dialup_enabled"):
             self.app_settings["blue_terminal_dialup_sound"] = bool(self.blue_terminal_dialup_enabled.isChecked())
+            save_app_settings(self.app_settings)
+
+    def save_importer_experimental_settings(self, *_args):
+        if hasattr(self, "experimental_seed_import_enabled"):
+            self.app_settings["experimental_seed_import"] = bool(self.experimental_seed_import_enabled.isChecked())
             save_app_settings(self.app_settings)
 
     def build_bug_report_text(self) -> str:
@@ -6142,6 +6230,58 @@ class MainWindow(QMainWindow):
             daemon=True,
         ).start()
 
+    def start_seed_template_import(self):
+        pid = self.selected_pid_value()
+        game = self.selected_game_value(self.game_combo)
+        if not pid:
+            self.log_line("Select or refresh the game process before importing the seed template.")
+            return
+        try:
+            template_count = int(self.layer_count.text().strip())
+        except ValueError:
+            self.log_line("Template layer count must be a number.")
+            return
+        if template_count <= 0:
+            self.log_line("Template layer count must be greater than zero.")
+            return
+        if not FH6_RESOURCE_SEED_JSON.exists():
+            self.log_line(f"Seed template JSON is missing: {FH6_RESOURCE_SEED_JSON}")
+            return
+        try:
+            shape_count = import_json_shape_count(FH6_RESOURCE_SEED_JSON)
+        except Exception as exc:
+            self.log_line(f"Seed template JSON is invalid: {exc}")
+            return
+        if shape_count <= 0:
+            self.log_line("Seed template JSON has no visible shapes.")
+            return
+        if shape_count > template_count:
+            self.log_line(f"Seed template needs {shape_count} layers, but the loaded template only has {template_count}.")
+            return
+        self.set_status("Importing")
+        self.set_phase(
+            "importing",
+            "WIP seed import: writing every known FH6 shape resource while keeping the template layer count unchanged.",
+        )
+        self.log_line(
+            "WIP seed import: load a saved/reopened plain 3000 white-circle template first. "
+            "This writes the all-shape resource seed and intentionally does not trim/cull the template."
+        )
+        threading.Thread(
+            target=self.unified_import_worker,
+            args=(
+                game,
+                pid,
+                template_count,
+                shape_count,
+                FH6_RESOURCE_SEED_JSON,
+                True,
+                False,
+                "All-shape seed import",
+            ),
+            daemon=True,
+        ).start()
+
     def locate_universal_template(self, game, pid, template_count, run_dir, purpose="template"):
         session_report = run_dir / f"fast-{purpose}-session.json"
         probe_report = run_dir / f"fallback-{purpose}-probe.json"
@@ -6321,7 +6461,7 @@ class MainWindow(QMainWindow):
         self.bus.log.emit(f"{game.upper()} group fallback-located and validated: layers={template_count}, validated={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
         return group, table
 
-    def unified_import_worker(self, game, pid, template_count, shape_count, json_path, clear_unused=True):
+    def unified_import_worker(self, game, pid, template_count, shape_count, json_path, clear_unused=True, trim_after_import=True, import_label="Universal import"):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"{json_path.stem}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -6329,7 +6469,7 @@ class MainWindow(QMainWindow):
         import_report = run_dir / "import-report.json"
         trim_backup = run_dir / "trim-backup.json"
         try:
-            self.bus.log.emit(f"Universal import run folder: {run_dir}")
+            self.bus.log.emit(f"{import_label} run folder: {run_dir}")
             self.bus.log.emit(f"Target game: {game.upper()}")
             self.bus.log.emit(f"Import JSON visible shapes: {shape_count}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="import-template")
@@ -6371,6 +6511,14 @@ class MainWindow(QMainWindow):
             if imported <= 0:
                 self.bus.log.emit("Universal import failed: no layers were imported.")
                 self.bus.status.emit("Failed")
+                return
+            if not trim_after_import:
+                self.bus.log.emit(
+                    f"{import_label} complete: wrote {imported} seed layers and kept the loaded template at "
+                    f"{template_count} layers. Save and reload this vinyl once, then reuse it as the seeded import template."
+                )
+                self.bus.status.emit("Done")
+                self.bus.phase.emit("done", "Seed template written. Save/reload it once before using it for imports.")
                 return
             self.bus.log.emit(f"Imported {imported} shape layers. Trimming {game.upper()} group count...")
             trim_cmd = [

@@ -589,6 +589,24 @@ input[type="range"] {
   min-width: 0;
 }
 
+.rangeNumberPair {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) 70px auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.rangeNumberPair input[type="range"] {
+  min-width: 0;
+}
+
+.percentInput {
+  width: 70px;
+  min-width: 0;
+  text-align: right;
+}
+
 #layerSearch,
 #shapeSearch,
 #shapeFamily {
@@ -1038,7 +1056,7 @@ body.layerGroupingActive .layerGroupRow.layerDropTarget {
 .layerGroupRow {
   position: relative;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1.15fr) minmax(0, 1fr) 26px 26px;
+  grid-template-columns: 26px minmax(0, 1.15fr) minmax(0, 1fr) 26px 26px 26px;
   gap: 8px;
   align-items: center;
   padding: 8px 10px;

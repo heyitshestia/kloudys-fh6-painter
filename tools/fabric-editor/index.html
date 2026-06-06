@@ -153,6 +153,7 @@
               <button id="bringForward" title="Move selected layer(s) one step toward the top/front.">Forward</button>
               <button id="sendBackward" title="Move selected layer(s) one step toward the bottom/back.">Back</button>
               <button id="groupSelected" title="Create an editor-only group from the selected layers. Exports stay flat.">Group</button>
+              <button id="renameSelectedGroup" title="Rename the selected editor-only group. Exports stay flat.">Rename Group</button>
               <button id="hideSelectedGroup" title="Hide or show every layer in the selected editor group.">Hide Group</button>
               <button id="lockSelectedGroup" title="Lock or unlock every layer in the selected editor group.">Lock Group</button>
               <button id="ungroupSelected" title="Remove selected layers from their editor-only group.">Ungroup</button>
@@ -318,7 +319,13 @@
               <input id="overlayInput" type="file" accept="image/*,.svg,image/svg+xml">
             </label>
             <label>Opacity <input id="overlayOpacity" type="range" min="0" max="100" value="45"></label>
-            <label>Size % <input id="overlayScale" type="range" min="10" max="400" value="100"></label>
+            <label>Source scale
+              <span class="rangeNumberPair">
+                <input id="overlayScale" type="range" min="1" max="1000" step="0.1" value="100">
+                <input id="overlayScalePercent" class="percentInput" type="number" min="1" max="1000" step="0.1" value="100" title="Exact overlay scale percent. 100% uses the editor's fitted overlay baseline.">
+                <span>%</span>
+              </span>
+            </label>
             <label>Layer position
               <select id="overlayLayerMode" title="Choose whether the source reference draws below or above vinyl layers.">
                 <option value="below" selected>Below vinyl layers</option>
