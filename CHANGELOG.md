@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.27
+
+- Changed Fabric editor corner dragging so normal corner drag scales shapes globally by default.
+- Changed Fabric editor Shift+corner drag to skew shapes instead of scaling them.
+- Reworked single-shape selection visuals so unselected shapes stay flat and selected shapes use an internal clipped rim instead of an outside halo.
+- Reduced high-zoom manipulation UI clutter while keeping large invisible hit areas for easier grabbing.
+
 ## 2.0.26
 
 - Added Ctrl-click layer-list multi-select in the Fabric editor so individual non-contiguous layers can be selected together.

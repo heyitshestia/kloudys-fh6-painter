@@ -431,22 +431,38 @@ function editorTransformColors() {
   };
 }
 
+function editorVisualScaleForZoom(zoom = canvas?.getZoom?.() || 1) {
+  const z = Math.max(0.001, Number(zoom) || 1);
+  if (z <= 1.25) return 1;
+  return Math.max(0.5, 1 / (1 + (z - 1.25) * 0.22));
+}
+
+function editorVisualScaleForObject(object) {
+  return editorVisualScaleForZoom(object?.canvas?.getZoom?.() || canvas?.getZoom?.() || 1);
+}
+
+function editorBorderWidthForZoom(zoom = canvas?.getZoom?.() || 1) {
+  const visualScale = editorVisualScaleForZoom(zoom);
+  return Math.max(1.15, 1.15 + 0.85 * visualScale);
+}
+
 function styleObjectTransformControls(object) {
   if (!object) return;
   const colors = editorTransformColors();
-  const borderWidth = 2.0;
+  const visualScale = editorVisualScaleForObject(object);
+  const borderWidth = editorBorderWidthForZoom(object?.canvas?.getZoom?.() || canvas?.getZoom?.() || 1);
   const singleShapeGap = 2.0;
   const isMultiSelection = object.type === "activeSelection" || object.type === "activeselection";
   object.set({
-    borderColor: colors.border,
+    borderColor: isMultiSelection ? colors.border : "rgba(0,0,0,0)",
     cornerColor: colors.corner,
     cornerStrokeColor: colors.cornerStroke,
     cornerStyle: "rect",
     transparentCorners: false,
-    cornerSize: 16,
+    cornerSize: Math.max(9, 16 * visualScale),
     touchCornerSize: 56,
-    borderScaleFactor: borderWidth,
-    padding: isMultiSelection ? 12 : borderWidth / 2 + singleShapeGap,
+    borderScaleFactor: isMultiSelection ? borderWidth : 1,
+    padding: isMultiSelection ? Math.max(7, 12 * visualScale) : borderWidth / 2 + singleShapeGap * visualScale,
   });
 }
 
@@ -461,19 +477,20 @@ function figmaControlSmallFactor(object) {
 
 function figmaControlPushDistance(name, object) {
   const small = figmaControlSmallFactor(object);
+  const visualScale = editorVisualScaleForObject(object);
   switch (name) {
     case "tl":
     case "tr":
     case "bl":
     case "br":
-      return 5 + 11 * small;
+      return (5 + 11 * small) * visualScale;
     case "ml":
     case "mr":
     case "mt":
     case "mb":
-      return 9 + 22 * small;
+      return (9 + 22 * small) * visualScale;
     case "mtr":
-      return 46 + 24 * small;
+      return (46 + 24 * small) * visualScale;
     default:
       return 0;
   }
@@ -615,6 +632,22 @@ function makeSelectionOutlineHelper(object) {
       originY: "center",
       width: Math.max(1, Number(object?.width) || 1),
       height: Math.max(1, Number(object?.height) || 1),
+    });
+  const clipPath = object?.kloudy?.mesh_path
+    ? new fabric.Path(object.kloudy.mesh_path, { originX: "center", originY: "center" })
+    : new fabric.Rect({
+      originX: "center",
+      originY: "center",
+      width: Math.max(1, Number(object?.width) || 1),
+      height: Math.max(1, Number(object?.height) || 1),
+    });
+  clipPath.set({
+    fill: "#000",
+    stroke: null,
+    strokeWidth: 0,
+    selectable: false,
+    evented: false,
+    objectCaching: false,
   });
   helper.set({
     fill: "rgba(0,0,0,0)",
@@ -629,32 +662,30 @@ function makeSelectionOutlineHelper(object) {
     excludeFromExport: true,
     objectCaching: false,
     globalCompositeOperation: "source-over",
+    clipPath,
   });
   helper.kloudySelectionOutlineHelper = true;
   helper.kloudySelectionOutlineOwner = object;
   return helper;
 }
 
-function selectionOutlineScaledValue(objectSize, objectScale) {
-  const size = Math.max(1, Number(objectSize) || 1);
+function selectionOutlineScaledValue(objectScale) {
   const scale = Number(objectScale) || 1;
-  const zoom = Math.max(0.001, canvas?.getZoom?.() || 1);
   const sign = scale < 0 ? -1 : 1;
   const absoluteScale = Math.max(0.000001, Math.abs(scale));
-  // The helper path contains only mesh boundary edges. Grow it in screen space
-  // so the centered stroke sits outside the actual vinyl edge.
-  const outsideHalo = 7;
-  const extraScale = outsideHalo / (zoom * size);
-  return sign * (absoluteScale + extraScale);
+  // The selected rim is clipped by the shape itself, so it must not be expanded.
+  return sign * absoluteScale;
 }
 
 function syncSelectionOutlineHelper(object, helper) {
   if (!object || !helper) return;
+  const zoom = Math.max(0.001, canvas?.getZoom?.() || 1);
+  const strokeWidth = Math.max(1.25, 1.25 + 1.25 * editorVisualScaleForZoom(zoom));
   helper.set({
     left: object.left,
     top: object.top,
-    scaleX: selectionOutlineScaledValue(object.width, object.scaleX),
-    scaleY: selectionOutlineScaledValue(object.height, object.scaleY),
+    scaleX: selectionOutlineScaledValue(object.scaleX),
+    scaleY: selectionOutlineScaledValue(object.scaleY),
     angle: object.angle,
     skewX: object.skewX,
     skewY: object.skewY,
@@ -662,6 +693,7 @@ function syncSelectionOutlineHelper(object, helper) {
     flipY: object.flipY,
     visible: object.visible !== false,
     stroke: selectedShapeHalo(object).color,
+    strokeWidth,
   });
   helper.setCoords();
 }
@@ -726,7 +758,7 @@ function styleAllTransformControls() {
 }
 
 function editorCornerTransformHandler(eventData, transform, x, y) {
-  if (eventData?.shiftKey && fabric?.controlsUtils?.scalingEqually) {
+  if (!eventData?.shiftKey && fabric?.controlsUtils?.scalingEqually) {
     return fabric.controlsUtils.scalingEqually(eventData, transform, x, y);
   }
   if (!fabric?.controlsUtils?.skewHandlerX) return false;
@@ -734,11 +766,11 @@ function editorCornerTransformHandler(eventData, transform, x, y) {
 }
 
 function editorCornerTransformActionName(eventData) {
-  return eventData?.shiftKey ? "scale" : "skewX";
+  return eventData?.shiftKey ? "skewX" : "scale";
 }
 
 function editorCornerTransformCursorStyleHandler(eventData, control) {
-  if (eventData?.shiftKey) return "nwse-resize";
+  if (!eventData?.shiftKey) return "nwse-resize";
   return control?.x === control?.y ? "nesw-resize" : "nwse-resize";
 }
 
@@ -1410,6 +1442,7 @@ async function makeFabricObject(shape, name = null) {
     locked: Boolean(shape.editor_locked),
     group_id: shape.editor_group_id ? String(shape.editor_group_id) : null,
     group_name: shape.editor_group_name ? String(shape.editor_group_name) : null,
+    mesh_path: d || null,
     outline_path: outlinePath || null,
     scaleSigns: {
       x: (Number(data[2]) || 1) < 0 ? -1 : 1,
@@ -2160,6 +2193,7 @@ function initCanvas() {
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.04), 8);
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+    styleAllTransformControls();
     syncSelectedShapeOutlines();
     queueGuideRender();
     updateHud(canvas.getPointer(opt.e));
@@ -3707,6 +3741,7 @@ function snapTargetToGuides(target, event = null) {
 function resetView() {
   const zoom = Math.min(canvas.width / 2400, canvas.height / 2400);
   canvas.setViewportTransform([zoom, 0, 0, zoom, canvas.width / 2, canvas.height / 2]);
+  styleAllTransformControls();
   syncCanvasObjectCoords();
   syncSelectedShapeOutlines();
   canvas.requestRenderAll();
@@ -3746,6 +3781,7 @@ function fitDesignView() {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
+  styleAllTransformControls();
   syncCanvasObjectCoords();
   syncSelectedShapeOutlines();
   queueGuideRender();
@@ -3784,6 +3820,7 @@ function fitObjectsView(objects) {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
+  styleAllTransformControls();
   syncCanvasObjectCoords();
   syncSelectedShapeOutlines();
   queueGuideRender();
