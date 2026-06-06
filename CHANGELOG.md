@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.26
+
+- Added Ctrl-click layer-list multi-select in the Fabric editor so individual non-contiguous layers can be selected together.
+- Fixed multi-selected layers moving unpredictably by normalizing Fabric selections before rebuilding them.
+- Fixed drifting or stale editor hit boxes by syncing Fabric canvas geometry after layout changes, imports, shape creation, duplication, replacement, and transforms.
+- Improved selected-shape highlighting so it uses a boundary-only outer edge outline without internal mesh geometry or flashing filled interiors.
+
 ## 2.0.25
 
 - Improved Fabric editor selected-shape outlines so zoomed-in borders sit outside the vinyl shape instead of covering the shape edge.

@@ -94,6 +94,7 @@ const VINYL_TYPE_BASES = {
 const FAMILY_ORDER = Object.keys(VINYL_TYPE_BASES);
 const FAVORITE_COLOR_SLOTS = 16;
 const resourceCache = new Map();
+const resourceOutlineCache = new Map();
 let canvas;
 let isPanning = false;
 let lastPan = null;
@@ -145,6 +146,9 @@ let suppressLayerClick = false;
 let nextLayerListObjectId = 1;
 let layerRefreshFrame = null;
 let canvasRenderFrame = null;
+let canvasGeometryFrame = null;
+let canvasResizeObserver = null;
+let lastCanvasSize = { width: 0, height: 0 };
 let jsonBrowserState = {
   source: "generated",
   groups: [],
@@ -430,6 +434,9 @@ function editorTransformColors() {
 function styleObjectTransformControls(object) {
   if (!object) return;
   const colors = editorTransformColors();
+  const borderWidth = 2.0;
+  const singleShapeGap = 2.0;
+  const isMultiSelection = object.type === "activeSelection" || object.type === "activeselection";
   object.set({
     borderColor: colors.border,
     cornerColor: colors.corner,
@@ -438,8 +445,8 @@ function styleObjectTransformControls(object) {
     transparentCorners: false,
     cornerSize: 16,
     touchCornerSize: 56,
-    borderScaleFactor: 2.0,
-    padding: 12,
+    borderScaleFactor: borderWidth,
+    padding: isMultiSelection ? 12 : borderWidth / 2 + singleShapeGap,
   });
 }
 
@@ -601,14 +608,14 @@ function storeSelectionOutlineOriginal(object) {
 }
 
 function makeSelectionOutlineHelper(object) {
-  const helper = object?.type === "path" && Array.isArray(object.path)
-    ? new fabric.Path(object.path, { originX: "center", originY: "center" })
+  const helper = object?.kloudy?.outline_path
+    ? new fabric.Path(object.kloudy.outline_path, { originX: "center", originY: "center" })
     : new fabric.Rect({
       originX: "center",
       originY: "center",
       width: Math.max(1, Number(object?.width) || 1),
       height: Math.max(1, Number(object?.height) || 1),
-    });
+  });
   helper.set({
     fill: "rgba(0,0,0,0)",
     opacity: 1,
@@ -628,26 +635,26 @@ function makeSelectionOutlineHelper(object) {
   return helper;
 }
 
-function selectionOutlineScaledValue(objectSize, objectScale, strokeWidth) {
+function selectionOutlineScaledValue(objectSize, objectScale) {
   const size = Math.max(1, Number(objectSize) || 1);
   const scale = Number(objectScale) || 1;
   const zoom = Math.max(0.001, canvas?.getZoom?.() || 1);
   const sign = scale < 0 ? -1 : 1;
   const absoluteScale = Math.max(0.000001, Math.abs(scale));
-  // Fabric strokes are centered on the helper path. Expand the helper by half
-  // the screen-space stroke so the inside stroke edge sits on the real shape.
-  const extraScale = (Number(strokeWidth) || 0) / (zoom * size);
+  // The helper path contains only mesh boundary edges. Grow it in screen space
+  // so the centered stroke sits outside the actual vinyl edge.
+  const outsideHalo = 7;
+  const extraScale = outsideHalo / (zoom * size);
   return sign * (absoluteScale + extraScale);
 }
 
 function syncSelectionOutlineHelper(object, helper) {
   if (!object || !helper) return;
-  const strokeWidth = Number(helper.strokeWidth) || 0;
   helper.set({
     left: object.left,
     top: object.top,
-    scaleX: selectionOutlineScaledValue(object.width, object.scaleX, strokeWidth),
-    scaleY: selectionOutlineScaledValue(object.height, object.scaleY, strokeWidth),
+    scaleX: selectionOutlineScaledValue(object.width, object.scaleX),
+    scaleY: selectionOutlineScaledValue(object.height, object.scaleY),
     angle: object.angle,
     skewX: object.skewX,
     skewY: object.skewY,
@@ -683,10 +690,10 @@ function syncSelectionOutlineHelpers(selectedSet) {
 function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
   if (!canvas) return;
   const selectable = selected.filter((obj) => obj?.kloudy && !obj.kloudyGuide);
-  const sameStrokeGroup = selectable.length > 1
-    && selectable.every((obj) => String(obj.kloudy?.group_id || "").startsWith("stroke-"))
-    && new Set(selectable.map((obj) => obj.kloudy?.group_id)).size === 1;
-  const next = new Set(sameStrokeGroup ? [] : selectable);
+  // Fabric moves ActiveSelection wrappers before committing child coordinates.
+  // Per-shape helper outlines drift during that phase, so only use them for a
+  // single selected shape and let Fabric's selection box represent multi-selects.
+  const next = new Set(selectable.length === 1 ? selectable : []);
   selectedShapeOutlineObjects.forEach((obj) => {
     if (!next.has(obj)) restoreSelectionOutline(obj);
   });
@@ -1183,6 +1190,42 @@ async function loadResourcePathForResolved(resolved) {
   return d;
 }
 
+function edgeKey(a, b) {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+async function loadResourceOutlinePathForResolved(resolved) {
+  const cacheKey = `${resolved.family}:${resolved.index}:${resolved.typeCode || ""}`;
+  if (resourceOutlineCache.has(cacheKey)) return resourceOutlineCache.get(cacheKey);
+  const url = await resolveVinylResourceUrl(resolved.family, resolved.index, "");
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Missing shape resource: ${url}`);
+  const payload = await response.json();
+  const vertices = payload.Vertices || [];
+  const indices = payload.Indices || [];
+  const edges = new Map();
+  for (let i = 0; i + 2 < indices.length; i += 3) {
+    const tri = [indices[i], indices[i + 1], indices[i + 2]];
+    for (const [a, b] of [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]]) {
+      if (!vertices[a] || !vertices[b]) continue;
+      const key = edgeKey(a, b);
+      const current = edges.get(key);
+      if (current) current.count += 1;
+      else edges.set(key, { a, b, count: 1 });
+    }
+  }
+  const chunks = [];
+  edges.forEach((edge) => {
+    if (edge.count !== 1) return;
+    const p0 = vertices[edge.a];
+    const p1 = vertices[edge.b];
+    chunks.push(`M ${fmt(p0.X)} ${fmt(p0.Y)} L ${fmt(p1.X)} ${fmt(p1.Y)}`);
+  });
+  const d = chunks.join(" ");
+  resourceOutlineCache.set(cacheKey, d);
+  return d;
+}
+
 function loadFabricImage(url) {
   return new Promise((resolve, reject) => {
     fabric.Image.fromURL(url, (image) => {
@@ -1323,6 +1366,7 @@ async function makeFabricObject(shape, name = null) {
   const color = normalizeColor(shape.color);
   const data = shape.data || [0, 0, 1, 1, 0, 0, 0];
   const resolved = explicitResource || typeCodeToResource(typeCode);
+  const outlinePath = resolved ? await loadResourceOutlinePathForResolved(resolved).catch(() => "") : "";
   const gradientResource = isGradientResource(resolved);
   const shapePathForBounds = gradientResource ? new fabric.Path(d, { originX: "center", originY: "center" }) : null;
   const object = gradientResource
@@ -1366,6 +1410,7 @@ async function makeFabricObject(shape, name = null) {
     locked: Boolean(shape.editor_locked),
     group_id: shape.editor_group_id ? String(shape.editor_group_id) : null,
     group_name: shape.editor_group_name ? String(shape.editor_group_name) : null,
+    outline_path: outlinePath || null,
     scaleSigns: {
       x: (Number(data[2]) || 1) < 0 ? -1 : 1,
       y: (Number(data[3]) || 1) < 0 ? -1 : 1,
@@ -1897,6 +1942,7 @@ async function restoreShapes(shapes) {
   bringGuidesToBack();
   historyLocked = false;
   refreshLayers();
+  syncCanvasObjectCoords();
   canvas.requestRenderAll();
 }
 
@@ -1979,6 +2025,24 @@ function requestCanvasRender() {
   });
 }
 
+function syncCanvasObjectCoords() {
+  if (!canvas) return;
+  canvas.calcOffset();
+  canvas.getObjects().forEach((object) => object.setCoords?.());
+  canvas.getActiveObject()?.setCoords?.();
+}
+
+function scheduleCanvasGeometrySync() {
+  if (!canvas || canvasGeometryFrame) return;
+  canvasGeometryFrame = requestAnimationFrame(() => {
+    canvasGeometryFrame = null;
+    resizeCanvas();
+    syncCanvasObjectCoords();
+    canvas.requestRenderAll();
+    updateHud();
+  });
+}
+
 function initCanvas() {
   configureEditorTransformControls();
   const canvasBg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
@@ -2002,6 +2066,15 @@ function initCanvas() {
   styleAllTransformControls();
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
+  const wrap = document.querySelector(".canvasStage") || document.querySelector(".canvasWrap");
+  if (window.ResizeObserver && wrap) {
+    canvasResizeObserver?.disconnect?.();
+    canvasResizeObserver = new ResizeObserver(() => scheduleCanvasGeometrySync());
+    canvasResizeObserver.observe(wrap);
+  }
+  ["mousedown", "pointerdown", "touchstart"].forEach((eventName) => {
+    canvas.upperCanvasEl?.addEventListener(eventName, () => canvas.calcOffset(), { capture: true, passive: true });
+  });
   resetView();
   canvas.on("selection:created", handleSelectionChanged);
   canvas.on("selection:updated", handleSelectionChanged);
@@ -2010,7 +2083,10 @@ function initCanvas() {
     updateSelectionPanel();
   });
   canvas.on("object:added", (event) => {
-    if (event.target?.kloudy) styleObjectTransformControls(event.target);
+    if (event.target?.kloudy) {
+      styleObjectTransformControls(event.target);
+      event.target.setCoords();
+    }
   });
   canvas.on("object:modified", (event) => {
     if (event.target?.kloudyOverlay) {
@@ -2023,6 +2099,7 @@ function initCanvas() {
     mirrorActiveMaskProxyToOwner();
     transformAnchorSnapshot = null;
     clearSnapOverlay();
+    syncCanvasObjectCoords();
     selectedVinylObjects().forEach(updateObjectScaleSigns);
     selectedVinylObjects().forEach(rememberFontShapeTransform);
     syncMaskPreviewOutlines();
@@ -2043,7 +2120,7 @@ function initCanvas() {
     const target = interactiveVinylTarget(event.target);
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
     snapTargetToGuides(target, { ...event, kloudyTransformAction: "move" });
-    if (target) syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+    if (target) syncSelectedShapeOutlines();
     syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
   });
@@ -2058,7 +2135,7 @@ function initCanvas() {
       const target = interactiveVinylTarget(event.target);
       if (target !== event.target) mirrorMaskProxyToOwner(event.target);
       snapTargetToGuides(target, { ...event, kloudyTransformAction: eventName === "object:scaling" ? "scale" : "skew" });
-      if (target) syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+      if (target) syncSelectedShapeOutlines();
       syncMaskPreviewForTarget(target);
       scheduleLiveOverlayColor(target);
     });
@@ -2073,7 +2150,7 @@ function initCanvas() {
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
     snapRotationToNotches(target, event);
     renderRotationNotchOverlay(target, event);
-    if (target) syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+    if (target) syncSelectedShapeOutlines();
     syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
   });
@@ -2083,7 +2160,7 @@ function initCanvas() {
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.04), 8);
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
-    syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+    syncSelectedShapeOutlines();
     queueGuideRender();
     updateHud(canvas.getPointer(opt.e));
     requestCanvasRender();
@@ -2207,7 +2284,13 @@ function resizeCanvas() {
   const wrap = document.querySelector(".canvasStage") || document.querySelector(".canvasWrap");
   if (!wrap || !canvas) return;
   const rect = wrap.getBoundingClientRect();
-  canvas.setDimensions({ width: rect.width, height: rect.height });
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  if (width !== lastCanvasSize.width || height !== lastCanvasSize.height) {
+    canvas.setDimensions({ width, height });
+    lastCanvasSize = { width, height };
+  }
+  syncCanvasObjectCoords();
   queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
@@ -3478,6 +3561,10 @@ function applyAngledGuideSnap(target, contact, line, options = {}) {
 
 function snapTargetToGuides(target, event = null) {
   if (!target || target.kloudyGuide || target.kloudyOverlay) return false;
+  if (isActiveSelectionObject(target)) {
+    clearSnapOverlay();
+    return false;
+  }
   const selected = selectedVinylObjects();
   if (selected.length && unlockedObjects(selected).length !== selected.length) return false;
   if (target.kloudy?.locked) return false;
@@ -3620,7 +3707,8 @@ function snapTargetToGuides(target, event = null) {
 function resetView() {
   const zoom = Math.min(canvas.width / 2400, canvas.height / 2400);
   canvas.setViewportTransform([zoom, 0, 0, zoom, canvas.width / 2, canvas.height / 2]);
-  syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+  syncCanvasObjectCoords();
+  syncSelectedShapeOutlines();
   canvas.requestRenderAll();
   queueGuideRender();
   updateHud();
@@ -3658,7 +3746,8 @@ function fitDesignView() {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
-  syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+  syncCanvasObjectCoords();
+  syncSelectedShapeOutlines();
   queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
@@ -3695,7 +3784,8 @@ function fitObjectsView(objects) {
     canvas.width / 2 - centerX * zoom,
     canvas.height / 2 - centerY * zoom,
   ]);
-  syncSelectionOutlineHelpers(new Set(selectedVinylObjects()));
+  syncCanvasObjectCoords();
+  syncSelectedShapeOutlines();
   queueGuideRender();
   canvas.requestRenderAll();
   updateHud();
@@ -3964,6 +4054,7 @@ async function loadPayload(payload) {
   resetHistory();
   builtObjects.forEach((object) => canvas.add(object));
   bringGuidesToBack();
+  syncCanvasObjectCoords();
   refreshLayers();
   fitDesignView();
   pushHistory("import");
@@ -4265,6 +4356,36 @@ function selectLayerEntryByKey(key, reason = "layer") {
   return true;
 }
 
+function clearLayerSelection(reason = "layer multi-select") {
+  canvas.discardActiveObject();
+  canvas.requestRenderAll();
+  updateSelectionPanel();
+  updateLayerSelectionStyles();
+  setStatus(`Cleared selection by ${reason}.`);
+}
+
+function selectLayerToggleByKey(key, reason = "layer multi-select") {
+  const entry = layerListRows.get(key);
+  if (!entry?.objects?.length) return false;
+  const current = new Set(selectedVinylObjects());
+  const allEntrySelected = entry.objects.every((object) => current.has(object));
+  if (allEntrySelected) {
+    entry.objects.forEach((object) => current.delete(object));
+  } else {
+    entry.objects.forEach((object) => current.add(object));
+  }
+  const canvasOrder = vinylObjects();
+  const next = canvasOrder.filter((object) => current.has(object));
+  lastLayerListKey = key;
+  if (!next.length) {
+    clearLayerSelection(reason);
+    return true;
+  }
+  selectObjects(next, reason);
+  setStatus(`Selected ${next.length} layer(s) by ${reason}.`);
+  return true;
+}
+
 function displayObjectsFromCurrentStack() {
   return vinylObjects().slice().reverse();
 }
@@ -4371,6 +4492,10 @@ function handleLayerPointerUp(event) {
     suppressLayerClick = true;
     setTimeout(() => { suppressLayerClick = false; }, 0);
     if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, state.key)) {
+      event.preventDefault();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(state.key, "layer multi-select")) {
       event.preventDefault();
       return;
     }
@@ -4488,6 +4613,7 @@ function refreshLayers() {
       groupLi.addEventListener("click", (event) => {
         if (suppressLayerClick) return;
         if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, `group:${groupId}`)) return;
+        if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(`group:${groupId}`, "layer multi-select")) return;
         selectObjects(groupMembers, groupName);
         lastLayerListKey = `group:${groupId}`;
       });
@@ -4537,6 +4663,7 @@ function refreshLayers() {
       if (suppressLayerClick) return;
       const key = layerListObjectKey(obj);
       if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, key)) return;
+      if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(key, "layer multi-select")) return;
       selectLayerEntryByKey(key, "layer row");
     });
     registerLayerListRow(li, layerListObjectKey(obj), [obj], reverseIndex);
@@ -5099,6 +5226,7 @@ async function replaceSelectedShapes(family, index) {
   });
   syncMaskPreviewOutlines();
   bringGuidesToBack();
+  syncCanvasObjectCoords();
   selectObjects(replacements.map((item) => item.replacement), "shape replacement");
   canvas.requestRenderAll();
   refreshLayers();
@@ -5133,6 +5261,7 @@ async function addShape(family, index) {
   applyLiveOverlayColor(object);
   if (isFontFamily(family)) rememberFontShapeTransform(object);
   bringGuidesToBack();
+  syncCanvasObjectCoords();
   canvas.requestRenderAll();
   refreshLayers();
   updateSelectionPanel();
@@ -5280,6 +5409,7 @@ function duplicateSelected() {
       canvas.setActiveObject(styledActiveSelection(clones));
     }
     bringGuidesToBack();
+    syncCanvasObjectCoords();
     refreshLayers();
     canvas.requestRenderAll();
     pushHistory(placement === "top" ? "duplicate" : `duplicate ${placement}`);
@@ -5379,16 +5509,20 @@ function flipSelected(axis) {
 }
 
 function selectObjects(objects, reason) {
-  if (!objects.length) {
+  const normalized = [...new Set(objects.map(interactiveVinylTarget).filter((obj) => obj?.kloudy && !obj.kloudyGuide))];
+  if (!normalized.length) {
     setStatus(`No layers found for ${reason}.`);
     return;
   }
-  if (objects.length === 1) canvas.setActiveObject(objects[0]);
-  else canvas.setActiveObject(styledActiveSelection(objects));
+  const active = canvas.getActiveObject();
+  if (isActiveSelectionObject(active)) canvas.discardActiveObject();
+  normalized.forEach((obj) => obj.setCoords());
+  if (normalized.length === 1) canvas.setActiveObject(normalized[0]);
+  else canvas.setActiveObject(styledActiveSelection(normalized));
   canvas.requestRenderAll();
   updateSelectionPanel();
   updateLayerSelectionStyles();
-  setStatus(`Selected ${objects.length} layer(s) by ${reason}.`);
+  setStatus(`Selected ${normalized.length} layer(s) by ${reason}.`);
 }
 
 function nextLayerGroupName() {
