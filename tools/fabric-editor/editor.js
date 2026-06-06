@@ -117,7 +117,6 @@ let layeredOverlayState = null;
 let liveOverlayColorFrame = null;
 let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
 let collapsedLayerGroups = new Set();
-let lastLayerListObject = null;
 let dropperPreservedActiveObject = null;
 let guideState = defaultGuideState();
 let guideDraft = null;
@@ -139,6 +138,7 @@ let overlayLayerMode = normalizeOverlayLayerMode(localStorage.getItem(OVERLAY_LA
 let maskPreviewOutlines = new Map();
 let maskPreviewCutouts = new Map();
 let layerListRows = new Map();
+let lastLayerListKey = null;
 let layerDragState = null;
 let layerDragGhost = null;
 let suppressLayerClick = false;
@@ -3963,7 +3963,7 @@ function clearVinylObjects() {
   maskPreviewCutouts.clear();
   vinylObjects().forEach((obj) => canvas.remove(obj));
   collapsedLayerGroups.clear();
-  lastLayerListObject = null;
+  lastLayerListKey = null;
   dropperPreservedActiveObject = null;
 }
 
@@ -4105,16 +4105,6 @@ function setCollapsedGroup(groupId, collapsed) {
   refreshLayers();
 }
 
-function selectLayerListRange(displayObjects, fromObject, toObject) {
-  const from = displayObjects.indexOf(fromObject);
-  const to = displayObjects.indexOf(toObject);
-  if (from < 0 || to < 0) return false;
-  const start = Math.min(from, to);
-  const end = Math.max(from, to);
-  selectObjects(displayObjects.slice(start, end + 1), "layer range");
-  return true;
-}
-
 function layerListObjectKey(object) {
   if (!object) return "";
   if (!object.__kloudyLayerListId) {
@@ -4247,8 +4237,32 @@ function selectLayerEntry(entry) {
   else selectObjects(entry.objects, "layer group");
 }
 
+function selectLayerEntryByKey(key, reason = "layer") {
+  const entry = layerListRows.get(key);
+  if (!entry) return false;
+  selectLayerEntry(entry);
+  lastLayerListKey = key;
+  setStatus(entry.objects.length > 1 ? `Selected ${entry.objects.length} layer(s) by ${reason}.` : `Selected 1 layer by ${reason}.`);
+  return true;
+}
+
 function displayObjectsFromCurrentStack() {
   return vinylObjects().slice().reverse();
+}
+
+function selectLayerRangeByKeys(startKey, endKey) {
+  const start = layerListRows.get(startKey);
+  const end = layerListRows.get(endKey);
+  if (!start || !end) return false;
+  const displayObjects = displayObjectsFromCurrentStack();
+  const a = Math.max(0, Math.min(start.displayIndex, end.displayIndex));
+  const b = Math.min(displayObjects.length - 1, Math.max(start.displayIndex, end.displayIndex));
+  const selected = displayObjects.slice(a, b + 1);
+  if (!selected.length) return false;
+  selectObjects(selected, "layer range");
+  lastLayerListKey = endKey;
+  setStatus(`Selected layer range: ${selected.length} layer(s).`);
+  return true;
 }
 
 function groupDisplayRange(startKey, endKey) {
@@ -4335,7 +4349,14 @@ function handleLayerPointerUp(event) {
   const targetKey = targetRow?.dataset.layerListKey;
   cancelLayerDrag();
   if (!state.active) {
-    selectLayerEntry({ objects: state.objects });
+    suppressLayerClick = true;
+    setTimeout(() => { suppressLayerClick = false; }, 0);
+    if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, state.key)) {
+      event.preventDefault();
+      return;
+    }
+    selectLayerEntryByKey(state.key, "layer row");
+    event.preventDefault();
     return;
   }
   if (!targetKey) return;
@@ -4445,9 +4466,11 @@ function refreshLayers() {
         toggleSelectedGroupLock();
       });
       registerLayerListRow(groupLi, `group:${groupId}`, groupMembers, reverseIndex);
-      groupLi.addEventListener("click", () => {
+      groupLi.addEventListener("click", (event) => {
         if (suppressLayerClick) return;
+        if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, `group:${groupId}`)) return;
         selectObjects(groupMembers, groupName);
+        lastLayerListKey = `group:${groupId}`;
       });
       fragment.appendChild(groupLi);
     }
@@ -4493,12 +4516,9 @@ function refreshLayers() {
     });
     li.addEventListener("click", (event) => {
       if (suppressLayerClick) return;
-      if (event.shiftKey && lastLayerListObject && selectLayerListRange(displayObjects, lastLayerListObject, obj)) {
-        lastLayerListObject = obj;
-        return;
-      }
-      lastLayerListObject = obj;
-      selectObjects([obj], "layer row");
+      const key = layerListObjectKey(obj);
+      if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, key)) return;
+      selectLayerEntryByKey(key, "layer row");
     });
     registerLayerListRow(li, layerListObjectKey(obj), [obj], reverseIndex);
     fragment.appendChild(li);

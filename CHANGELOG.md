@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.24
+
+- Fixed Fabric editor layer-list Shift-click range selection after scrolling or pointer-drag handling.
+- Improved layer-list selection anchoring so contiguous ranges remain selected reliably.
+
 ## 2.0.23
 
 - Improved Fabric editor responsiveness and selection behavior for dense vinyls.
