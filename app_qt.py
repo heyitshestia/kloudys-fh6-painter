@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import html
 import json
 import math
 import os
@@ -161,7 +162,7 @@ WORKFLOW_META = {
     "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
     "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
     "Bug Reports": ("Support", "Create a private, reviewable report package without automatic upload."),
-    "Tutorial": ("Support", "Step-by-step setup, generation, import, and troubleshooting guide."),
+    "Tutorial": ("Command Center", "Step-by-step setup, generation, import, and troubleshooting guide."),
     "Settings": ("Support", "Appearance, Pro Settings, and importer behavior."),
 }
 
@@ -245,6 +246,36 @@ QFrame#dashboardCard {
     border-radius: 18px;
     padding: 14px;
 }
+QFrame#tutorialCard {
+    border: none;
+    padding: 0;
+    background: transparent;
+}
+QToolButton#tutorialHeader {
+    text-align: left;
+    padding: 14px 18px;
+    border: 1px solid rgba(255, 255, 255, 72);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 18);
+    font-weight: 950;
+    min-height: 58px;
+}
+QToolButton#tutorialHeader:hover {
+    background: rgba(255, 255, 255, 38);
+    border: 1px solid rgba(255, 255, 255, 150);
+}
+QToolButton#tutorialHeader:checked {
+    background: rgba(255, 255, 255, 46);
+    border: 1px solid rgba(255, 255, 255, 190);
+}
+QLabel#tutorialSummary {
+    background: transparent;
+    font-weight: 850;
+}
+QLabel#tutorialBody {
+    background: transparent;
+    font-size: 10pt;
+}
 QLabel#dashboardCardTitle {
     background: transparent;
     font-size: 14pt;
@@ -271,6 +302,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #a83f67; color: #ffffff; border: 1px solid #793047; }
         QListWidget#workflowNav::item:disabled { color: #7f3d58; }
         QFrame#dashboardCard { background: rgba(255, 253, 253, 245); border: 1px solid #e5b9c8; }
+        QToolButton#tutorialHeader { background: #fff0f6; color: #5d2d41; border: 1px solid #b77b8f; }
+        QToolButton#tutorialHeader:hover { background: #f8d9e4; color: #3b1f2f; border: 1px solid #a7647a; }
+        QToolButton#tutorialHeader:checked { background: #f3c7d6; color: #3b1f2f; border: 1px solid #793047; }
         """
     if theme_key == "horizon":
         return """
@@ -281,6 +315,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.55 #ffb000, stop:1 #24e9ff); color: #050914; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #ffb000; }
         QFrame#dashboardCard { background: rgba(12, 26, 38, 222); border: 1px solid rgba(36, 233, 255, 100); }
+        QToolButton#tutorialHeader { background: rgba(8, 22, 35, 210); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 130); }
+        QToolButton#tutorialHeader:hover { background: rgba(18, 50, 66, 235); color: #ffffff; border: 1px solid #24e9ff; }
+        QToolButton#tutorialHeader:checked { background: rgba(36, 233, 255, 42); color: #ffffff; border: 1px solid #ffb000; }
         """
     if theme_key == "blackout":
         return """
@@ -291,6 +328,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #ffffff; color: #000000; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #bdbdbd; }
         QFrame#dashboardCard { background: #080808; border: 1px solid rgba(255, 255, 255, 145); }
+        QToolButton#tutorialHeader { background: #050505; color: #f4f4f4; border: 1px solid rgba(255, 255, 255, 105); }
+        QToolButton#tutorialHeader:hover { background: #121212; color: #ffffff; border: 1px solid rgba(255, 255, 255, 190); }
+        QToolButton#tutorialHeader:checked { background: #101010; color: #ffffff; border: 1px solid #ffffff; }
         """
     if theme_key in THEME_TOKEN_STYLES:
         tokens = THEME_TOKEN_STYLES[theme_key]
@@ -302,6 +342,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected {{ background: {tokens["accent"]}; color: {tokens["select_fg"]}; border: 1px solid {tokens["frame_light"]}; }}
         QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
         QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+        QToolButton#tutorialHeader {{ background: {tokens["button"]}; color: {tokens["button_fg"]}; border: 1px solid {tokens["border"]}; }}
+        QToolButton#tutorialHeader:hover {{ background: {tokens["button_active"]}; color: {tokens["button_active_fg"]}; border: 1px solid {tokens["accent"]}; }}
+        QToolButton#tutorialHeader:checked {{ background: {tokens["panel_alt"]}; color: {tokens["accent"]}; border: 1px solid {tokens["frame_light"]}; }}
         """
     return """
     QFrame#topBar, QFrame#workflowContent { background: rgba(255, 248, 251, 236); border: 1px solid #d8c2f0; }
@@ -311,6 +354,9 @@ def shell_theme_qss(theme_key: str) -> str:
     QListWidget#workflowNav::item:selected { background: #9f6ad8; color: #ffffff; border: 1px solid #7b4eb0; }
     QListWidget#workflowNav::item:disabled { color: #6c3fa0; }
     QFrame#dashboardCard { background: rgba(255, 253, 248, 245); border: 1px solid #e3d1f5; }
+    QToolButton#tutorialHeader { background: #fffdf8; color: #3b244d; border: 1px solid #c7a8ea; }
+    QToolButton#tutorialHeader:hover { background: #eadcff; color: #3b244d; border: 1px solid #9f6ad8; }
+    QToolButton#tutorialHeader:checked { background: #eadcff; color: #5a2f83; border: 1px solid #7b4eb0; }
     """
 
 THEME_TOKEN_STYLES = {
@@ -1018,6 +1064,310 @@ Check these first:
 If generation looks bad, try the preset that matches the source style, increase layers, enable Pro settings for more samples if needed, or use a cleaner source image.
 """,
 }
+
+
+TUTORIAL_GUIDE = [
+    {
+        "title": "Start Here: Recommended First Run",
+        "category": "Dashboard",
+        "summary": "The safest path from a fresh install to a verified FH6 import.",
+        "body": [
+            "Use the Dashboard as your home base. It links to generation, importing, the editor, and support tools without hunting through the side menu.",
+            "First-time order: run setup from the launcher, open the app, prepare a reusable FH6 template, generate a final JSON, import into the template, then save and reload in FH6.",
+            "Default FH6 template: make a 3000-layer plain white circle vinyl group once, save it, reopen it, ungroup it, then reuse that saved template for imports.",
+            "Do not switch FH6 menus during import or export. Stay inside Vinyl Group Editor until the app finishes.",
+        ],
+        "steps": [
+            "Open the launcher and make sure Python/dependencies are green.",
+            "Open Generate Final Vinyl, pick source art, choose a preset, and generate.",
+            "Wait for finalization to complete. Raw builder checkpoints are not the recommended import target.",
+            "Open Import JSON, select the final JSON, verify the preview, enter the exact open-template layer count, and import.",
+            "Save and reload the vinyl group in FH6 to force the game to refresh shape resources and the final render.",
+        ],
+        "keywords": "dashboard first run quick start setup import generate template save reload",
+    },
+    {
+        "title": "Launcher, Setup, And Updating",
+        "category": "Setup",
+        "summary": "What the launcher buttons do and when to use the fallback batch files.",
+        "body": [
+            "The launcher is the safest entry point because it checks the local version, GitHub version, Python, and dependency state before starting the app.",
+            "Setup Python checks or installs the expected 64-bit Python runtime. Bundled releases include Python, but the button is still a safe repair path.",
+            "Install Dependencies checks PySide6, Pillow, NumPy, OpenCV, psutil, and helper packages used by generation, previews, and memory tools.",
+            "Update should be run while the app, editor, and generator are closed. If the launcher ever fails on old versions, use 03_update_from_github.bat from the app root.",
+            "The root batch files are recovery tools: 00_launcher.bat, 01_add_python312_to_path.bat, 02_install_dependencies.bat, 03_update_from_github.bat, and 05_check_environment.bat.",
+        ],
+        "steps": [
+            "If the launcher says an update is available, close the app first.",
+            "Run Update from the launcher, or use 03_update_from_github.bat if the launcher itself is broken.",
+            "After updating, run dependency setup again only if something fails to import or launch.",
+        ],
+        "keywords": "launcher setup python dependencies update bat batch environment version",
+    },
+    {
+        "title": "Source Images And Source Check",
+        "category": "Generation",
+        "summary": "How to choose input art before spending time generating.",
+        "body": [
+            "Good source art matters more than extreme settings. Clean, readable art with strong shapes usually beats noisy or over-compressed art.",
+            "The source check above the preview gives a green/yellow/red usability hint for resolution, megapixels, and background transparency.",
+            "Too-small images do not contain enough detail for the generator to recover. Too-large images can waste time because the generator must downsample and score more data.",
+            "Transparent backgrounds are ideal for stickers, characters, and decals. If the background is only visually white but not actually transparent, the generator may spend layers drawing the background.",
+            "Transparent fringes from bad background removers are cleaned up, but heavy leftover halos can still waste layers or create milky edges.",
+        ],
+        "steps": [
+            "Use Image Size Helper to check megapixels before generating.",
+            "Use Image Tools for background removal, browser-local upscaling, or browser-local downscaling.",
+            "Prefer a clean PNG with transparency for characters, logos, stickers, and decals.",
+            "If the source check is red, fix the image before increasing layers or samples.",
+        ],
+        "keywords": "source image check resolution megapixels transparent background remover halo fringe size helper",
+    },
+    {
+        "title": "Generator Presets",
+        "category": "Generation",
+        "summary": "When to use each preset and what the app controls automatically.",
+        "body": [
+            "Presets are style choices, not just speed choices. Pick the preset that matches the source style.",
+            "Shaded Character Art is the best default for anime, faces, eyes, hair, skin, mixed linework, and detailed digital art.",
+            "Flat Colors is for stickers, mascot art, clean decals, broad color islands, and hard borders.",
+            "Smooth Gradients is for glossy shading, painterly shading, soft ramps, and designs where alpha blending helps.",
+            "Default mode keeps max resolution, random samples, and mutated samples preset-controlled so casual users do not accidentally make bad combinations.",
+        ],
+        "steps": [
+            "Start with Shaded Character Art for most anime or digital art.",
+            "Use Flat Colors when the image has clear separated colors and sharp borders.",
+            "Use Smooth Gradients when soft shading matters more than hard edge precision.",
+            "If a preset looks wrong, change the preset before touching Pro settings.",
+        ],
+        "keywords": "preset shaded character flat colors smooth gradients anime sticker decal digital art",
+    },
+    {
+        "title": "Generator Controls",
+        "category": "Generation",
+        "summary": "Template layers, finalize checkpoints, Pro settings, and slower quality toggles.",
+        "body": [
+            "Template layers is the layer budget you want to build and the template size you plan to import into.",
+            "Finalize at layers controls which saved checkpoints become import choices. The baseline is 500,1000,1250,1500,2000,2500,3000.",
+            "2x Sample Goblin doubles random and mutated samples. It can improve search quality, but it takes longer and does not increase output layers.",
+            "Enable manual Pro settings in Settings only if you know why you are overriding presets. Pro settings persist across restarts.",
+            "Pro settings: max resolution controls how much detail the generator can see, random samples control broad search, mutated samples control refinement around promising shapes.",
+        ],
+        "steps": [
+            "For normal use, leave Pro settings closed and only change template layers/finalize checkpoints.",
+            "Use more layers for more detail, not as a fix for bad source art.",
+            "If using Pro settings, adjust one variable at a time so you can tell what helped or hurt.",
+        ],
+        "keywords": "template layers finalize checkpoints pro settings random samples mutated samples max resolution sample goblin",
+    },
+    {
+        "title": "Generation Phases And Output Folders",
+        "category": "Generation",
+        "summary": "What raw checkpoints, finals, previews, and reports mean.",
+        "body": [
+            "Generation has two phases. First the GPU builder creates raw checkpoints. Then KFPS finalizes, scores, repairs, and writes import-ready JSONs.",
+            "Do not close the app when the raw builder stops. Wait until the log says finalization completed.",
+            "finals contains the recommended import-ready JSONs and final previews.",
+            "checkpoints contains raw internal builder JSONs. These are useful for debugging but usually not the recommended import target.",
+            "previews contains preview PNGs for raw and finalized outputs.",
+            "reports contains settings, source metrics, score data, candidate data, and run metadata for troubleshooting.",
+        ],
+        "steps": [
+            "Wait for FINALIZE CHECKPOINTS COMPLETE before importing.",
+            "Use finals for normal imports.",
+            "Keep reports if you need help debugging a bad run.",
+        ],
+        "keywords": "finalize final finals checkpoints raw previews reports output folder generated complete",
+    },
+    {
+        "title": "Preparing FH6 Templates",
+        "category": "Import Export",
+        "summary": "The exact in-game setup that makes imports reliable.",
+        "body": [
+            "The standard template is a saved/reopened 3000-layer plain white circle vinyl group.",
+            "Create it once, save it, reopen it, then use it as the reusable base for imports.",
+            "Ungroup the template so all circle layers are individually editable before normal import.",
+            "Enter the exact visible layer count of the open template. If the app thinks the template count is wrong, it will refuse or locate the wrong table.",
+            "After importing, save and reload in FH6. The first live view or thumbnail can be stale until FH6 refreshes shape resources.",
+        ],
+        "steps": [
+            "Open Vinyl Group Editor.",
+            "Load the saved 3000-circle template.",
+            "Ungroup it.",
+            "Stay in the editor and do not switch menus.",
+            "Use 3000 as the template count unless you intentionally opened a different template.",
+        ],
+        "keywords": "fh6 template 3000 circle white ungroup save reopen layer count vinyl group editor",
+    },
+    {
+        "title": "Import JSON Screen",
+        "category": "Import Export",
+        "summary": "Generated finals, handmade JSONs, manual JSONs, and the visible import/export controls.",
+        "body": [
+            "Generated finals mode shows recent generated results. Handmade folder mode reads JSONs from imgs/handmade so downloaded or shared files have a safe drop folder.",
+            "Browse JSONs opens the visual browser. Generated mode groups by source image and shows finalized checkpoint previews.",
+            "Choose any JSON lets you pick a compatible JSON manually from anywhere.",
+            "Clear unused template layers before trimming is recommended. It clears old template layers not used by the imported JSON before trimming the live group count.",
+            "Import JSON into selected game writes the selected JSON into the open game template.",
+            "Export Json reads the currently open editable game group into a compatible JSON and saves it under runtime/universal-import.",
+        ],
+        "steps": [
+            "Refresh the game process list if FH6 is not selected.",
+            "Pick or browse to a JSON.",
+            "Check the preview and visible shape count.",
+            "Enter the exact current template/group layer count.",
+            "Import JSON or Export Json, depending on the task.",
+        ],
+        "keywords": "import json export json browser generated handmade folder choose any clear unused trim preview",
+    },
+    {
+        "title": "Exporting From The Game",
+        "category": "Import Export",
+        "summary": "What Export Json does and why it can refuse bad or stale tables.",
+        "body": [
+            "Export Json is read-only. It scans the open editable game group, validates the layer table, and writes compatible JSON.",
+            "The output is saved under runtime/universal-import and can be selected for import or opened in the editor.",
+            "If export says validation failed, the most common cause is stale or partially rebuilt game memory. Saving/reloading the vinyl or adding/removing one layer can force FH6 to rebuild the table.",
+            "Grouped and nested vinyls are harder because child transforms must be flattened. Current export is stricter than a partial export because missing layers are worse than a refused export.",
+            "Only export designs you own or have permission to export.",
+        ],
+        "steps": [
+            "Open the vinyl group in FH6.",
+            "Enter the exact visible layer count.",
+            "Click Export Json.",
+            "If it refuses after heavy grouping/ungrouping, save and reload the vinyl before trying again.",
+        ],
+        "keywords": "export game json universal import grouped nested stale table validation permission",
+    },
+    {
+        "title": "Fabric Vinyl Editor",
+        "category": "Editor",
+        "summary": "The local browser editor for manual cleanup and creating vinyls from scratch.",
+        "body": [
+            "The editor opens locally and does not write to game memory. It edits JSON files and exports compatible JSON for the app importer.",
+            "Use it for manual cleanup, shape edits, source tracing, creating vinyls from scratch, fixing small generated mistakes, and preparing handmade JSONs.",
+            "Core tools include select, box select, hand/pan, zoom, source overlay, eyedropper, guides, snapping, shape library, favorites, color palette, saved colors, layer list, internal groups, masks, undo/redo, and JSON browser.",
+            "The source overlay can be shown above or below the canvas, moved separately with the source tool, scaled precisely, and used for color sampling.",
+            "Internal editor groups are for organization only. Exported vinyl JSON remains compatible with the app importer.",
+        ],
+        "steps": [
+            "Open Editor from the app.",
+            "Import a JSON or open a source overlay.",
+            "Use the shape library and favorites to place shapes.",
+            "Use eyedropper/source sampling to match colors.",
+            "Export the finished JSON and import it through Import JSON.",
+        ],
+        "keywords": "fabric editor shape library favorites overlay source eyedropper guides snapping layers groups masks json browser",
+    },
+    {
+        "title": "Image Tools",
+        "category": "Tools",
+        "summary": "External browser tools for preparing source images before generation.",
+        "body": [
+            "Background Remover opens PhotoRoom for quick cutouts.",
+            "2x / 4x Browser Upscaler opens a local browser upscaler for images that are too small.",
+            "Browser Downscaler / Compressor opens Squoosh for resizing images that are too large or too heavy.",
+            "These tools are intentionally links, not hidden uploads inside KFPS. Check the resulting PNG before generating.",
+        ],
+        "steps": [
+            "Remove the background if the image should be a sticker/decal.",
+            "Upscale only if the source is genuinely too small.",
+            "Downscale if the image is huge and the source check warns that it is excessive.",
+        ],
+        "keywords": "image tools background remover photoroom upscaler downscaler squoosh compressor png",
+    },
+    {
+        "title": "Image Size Helper",
+        "category": "Tools",
+        "summary": "How to check resolution, megapixels, and resize targets.",
+        "body": [
+            "Image Size Helper reads the selected image and shows width, height, total pixels, and megapixels.",
+            "It calculates 1 to 6 MP target resolutions at the same aspect ratio, so you can resize without guessing.",
+            "Use it when a source is tiny, massive, or when Discord/Nexus users send images with unknown quality.",
+            "The helper does not modify the image. Use the linked browser tools to actually resize.",
+        ],
+        "steps": [
+            "Choose an image.",
+            "Read the current MP value.",
+            "Pick a sensible target MP for the preset/source style.",
+            "Resize externally, then generate from the resized PNG.",
+        ],
+        "keywords": "image size helper resolution megapixels mp resize target aspect ratio pixels",
+    },
+    {
+        "title": "Bug Reports",
+        "category": "Support",
+        "summary": "How to package useful troubleshooting info without automatic upload.",
+        "body": [
+            "Bug Reports is private by default. It does not automatically upload anything.",
+            "Use it to build a local report package with logs, version info, environment checks, and optional files you choose.",
+            "Inspect or redact the report before sending it. Avoid sending personal files unless they are needed for the bug.",
+            "For generator problems, include the run folder or at least the report/settings files. For import/export problems, include the runtime/universal-import run folder.",
+        ],
+        "steps": [
+            "Describe what you clicked, what you expected, and what happened.",
+            "Include the app version and the relevant run folder.",
+            "Copy or send the report manually through Discord or another support channel.",
+        ],
+        "keywords": "bug report support logs privacy redact run folder universal import generated crash traceback",
+    },
+    {
+        "title": "Settings",
+        "category": "Settings",
+        "summary": "Theme, Pro settings, sound, and compatibility behavior.",
+        "body": [
+            "Appearance controls the app theme. Some themes are high contrast, some are playful, and the editor has its own theme choices.",
+            "Enable manual override for Pro settings reveals advanced generator controls on the Generate page and persists across restarts.",
+            "The Blue Terminal theme can play a dial-up sound while generating if its sound option is enabled.",
+            "Import/export target defaults to FH6. FH5 support is available as-is for testing and is not the main focus of the app.",
+            "If you are helping debug import/export, keep settings simple so logs are easier to compare.",
+        ],
+        "steps": [
+            "Use a theme that keeps text readable for you.",
+            "Leave Pro override off unless you are intentionally tuning generation.",
+            "Return to FH6 target before normal use if you tested FH5.",
+        ],
+        "keywords": "settings theme pro settings manual override dial up sound fh5 fh6 compatibility",
+    },
+    {
+        "title": "Logs, Errors, And Where Files Go",
+        "category": "Support",
+        "summary": "What to look at when something fails.",
+        "body": [
+            "The app log usually shows the real error above the final exit code. Always read a few lines before the traceback.",
+            "Generated runs go under imgs/generated. Handmade/shared JSONs can be placed under imgs/handmade.",
+            "Import/export run folders go under runtime/universal-import.",
+            "Updater logs go under runtime/update-logs.",
+            "Access denied while writing previews usually means a file is locked, the folder is protected, antivirus interfered, or the app lacks write permission.",
+            "OpenCL errors usually point to GPU driver/OpenCL runtime problems, not app settings.",
+        ],
+        "steps": [
+            "Find the run folder from the log.",
+            "Check reports/settings files before deleting anything.",
+            "If asking for help, include version, preset, source metrics, and the specific traceback.",
+        ],
+        "keywords": "logs error traceback access denied opencl runtime generated handmade update logs universal import",
+    },
+    {
+        "title": "Common Fixes",
+        "category": "Troubleshooting",
+        "summary": "Fast checks for the most common generation, import, and editor problems.",
+        "body": [
+            "Generator exits immediately: check source path, write permissions, GPU/OpenCL runtime, and dependency setup.",
+            "Generated output looks milky: use a cleaner transparent source, try the matching preset, and avoid unnecessary alpha-heavy sources.",
+            "Import fails to locate: make sure FH6 is open, you are in Vinyl Group Editor, the layer count is exact, and the template is saved/reopened/ungrouped.",
+            "First in-game view or thumbnail looks wrong: save and reload the vinyl group before judging. FH6 can show stale shape resources until reload.",
+            "Export refuses after grouping/ungrouping: save and reload the vinyl, or force FH6 to rebuild the layer table by adding/removing a layer.",
+            "Editor export imports wrong: verify you used the editor export JSON, not a project save, and check whether the source JSON was FH5, FH6, generated, or game-exported.",
+        ],
+        "steps": [
+            "Read the log line immediately before the traceback.",
+            "Try the safest default workflow once before tuning settings.",
+            "If the issue persists, make a bug report with the relevant run folder.",
+        ],
+        "keywords": "troubleshooting common fixes milky import locate thumbnail reload export refused editor wrong",
+    },
+]
 
 
 HELP_TEXT = {
@@ -2799,13 +3149,13 @@ class MainWindow(QMainWindow):
         self.tabs = WorkflowShell()
         root.addWidget(self.tabs, 1)
         self._build_dashboard_tab()
+        self._build_tutorial_tab()
         self._build_generate_tab()
         self._build_import_tab()
         self._build_editor_tab()
         self._build_image_tools_tab()
         self._build_image_size_tab()
         self._build_bug_report_tab()
-        self._build_tutorial_tab()
         self._build_settings_tab()
         self.populate_profile_list()
         self.update_setting_description()
@@ -3656,11 +4006,135 @@ class MainWindow(QMainWindow):
     def _build_tutorial_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        text = QTextEdit()
-        text.setReadOnly(True)
-        text.setPlainText(TEXT["tutorial"])
-        layout.addWidget(text)
+        intro = QLabel(
+            "Search or open the dropdowns below. Relevant sections move to the top while the full guide stays available."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        self.tutorial_search = QLineEdit()
+        self.tutorial_search.setPlaceholderText("Search setup, presets, import, editor, logs, OpenCL, templates...")
+        self.tutorial_search.textChanged.connect(self.refresh_tutorial_cards)
+        layout.addWidget(self.tutorial_search)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        self.tutorial_cards_layout = QVBoxLayout(content)
+        self.tutorial_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.tutorial_cards_layout.setSpacing(18)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+
+        self.tutorial_cards = []
+        for index, entry in enumerate(TUTORIAL_GUIDE):
+            card = self.create_tutorial_card(entry, expanded=index == 0)
+            card["index"] = index
+            self.tutorial_cards.append(card)
+        self.refresh_tutorial_cards()
         self.tabs.addTab(tab, "Tutorial")
+
+    def create_tutorial_card(self, entry: dict, expanded: bool = False) -> dict:
+        frame = QFrame()
+        frame.setObjectName("tutorialCard")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        header = QToolButton()
+        header.setObjectName("tutorialHeader")
+        header.setCheckable(True)
+        header.setChecked(expanded)
+        header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        header.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        header.setText(f"{entry['category']}  |  {entry['title']}\n{entry['summary']}")
+        layout.addWidget(header)
+
+        body = QFrame()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(24, 4, 12, 12)
+        body_layout.setSpacing(8)
+
+        summary = QLabel(entry["summary"])
+        summary.setObjectName("tutorialSummary")
+        summary.setWordWrap(True)
+        body_layout.addWidget(summary)
+
+        body_label = QLabel(self.tutorial_html(entry))
+        body_label.setObjectName("tutorialBody")
+        body_label.setTextFormat(Qt.TextFormat.RichText)
+        body_label.setWordWrap(True)
+        body_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        body_layout.addWidget(body_label)
+
+        body.setVisible(expanded)
+        layout.addWidget(body)
+
+        def toggle_card(checked: bool):
+            body.setVisible(checked)
+            header.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+
+        header.toggled.connect(toggle_card)
+        return {"frame": frame, "header": header, "body": body, "entry": entry}
+
+    def tutorial_html(self, entry: dict) -> str:
+        body_items = "".join(f"<li>{html.escape(text)}</li>" for text in entry.get("body", []))
+        step_items = "".join(f"<li>{html.escape(text)}</li>" for text in entry.get("steps", []))
+        parts = []
+        if body_items:
+            parts.append(f"<p><b>What this covers</b></p><ul>{body_items}</ul>")
+        if step_items:
+            parts.append(f"<p><b>Recommended steps</b></p><ol>{step_items}</ol>")
+        return "".join(parts)
+
+    def tutorial_search_score(self, entry: dict, query: str) -> int:
+        if not query:
+            return 0
+        haystack = " ".join(
+            [
+                str(entry.get("title", "")),
+                str(entry.get("category", "")),
+                str(entry.get("summary", "")),
+                str(entry.get("keywords", "")),
+                " ".join(entry.get("body", [])),
+                " ".join(entry.get("steps", [])),
+            ]
+        ).lower()
+        terms = [term for term in re.split(r"\s+", query.lower().strip()) if term]
+        if not terms:
+            return 0
+        score = 0
+        title = str(entry.get("title", "")).lower()
+        category = str(entry.get("category", "")).lower()
+        keywords = str(entry.get("keywords", "")).lower()
+        for term in terms:
+            if term in title:
+                score += 8
+            if term in category:
+                score += 5
+            if term in keywords:
+                score += 4
+            score += haystack.count(term)
+        return score
+
+    def refresh_tutorial_cards(self, *_args):
+        if not hasattr(self, "tutorial_cards_layout"):
+            return
+        query = self.tutorial_search.text().strip() if hasattr(self, "tutorial_search") else ""
+        while self.tutorial_cards_layout.count():
+            item = self.tutorial_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+        ranked = []
+        for card in self.tutorial_cards:
+            score = self.tutorial_search_score(card["entry"], query)
+            ranked.append((0 if score > 0 else 1, -score, card["index"], card))
+        for _miss, _score, _index, card in sorted(ranked):
+            self.tutorial_cards_layout.addWidget(card["frame"])
+        self.tutorial_cards_layout.addStretch(1)
 
     def _build_bug_report_tab(self):
         tab = QWidget()

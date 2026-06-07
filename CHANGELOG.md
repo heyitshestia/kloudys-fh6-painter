@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.30
+
+- Reworked the in-app tutorial into searchable, theme-aware dropdown sections.
+- Moved Tutorial directly under Dashboard so setup and workflow help is easier to find.
+- Expanded tutorial coverage across setup, generation, importing, exporting, editor use, tools, settings, logs, and troubleshooting.
+
 ## 2.0.29
 
 - Simplified the Import JSON workflow by moving game JSON export into the importer screen.
