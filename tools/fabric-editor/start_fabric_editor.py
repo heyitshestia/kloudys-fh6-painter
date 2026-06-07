@@ -31,8 +31,10 @@ STARTUP_HELP_API = "/api/fabric-editor/startup-help-confirmed"
 JSON_BROWSER_API = "/api/fabric-editor/json-browser"
 JSON_FILE_API = "/api/fabric-editor/json-file"
 JSON_PREVIEW_API = "/api/fabric-editor/json-preview"
+EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 HANDMADE_ROOT = ROOT / "imgs" / "handmade"
+EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 PREVIEW_MAX = 420
@@ -85,12 +87,40 @@ def _resolve_browser_id(path_id: str) -> Path:
     if not path_id or "\x00" in path_id:
         raise ValueError("missing JSON id")
     candidate = (ROOT / path_id).resolve()
-    allowed_roots = [GENERATED_ROOT.resolve(), HANDMADE_ROOT.resolve()]
+    allowed_roots = [GENERATED_ROOT.resolve(), HANDMADE_ROOT.resolve(), EDITOR_JSON_ROOT.resolve()]
     if not any(candidate.is_relative_to(root) for root in allowed_roots):
         raise ValueError("JSON path is outside the editable browser roots")
     if candidate.suffix.lower() != ".json" or not candidate.is_file():
         raise ValueError("JSON file was not found")
     return candidate
+
+
+def _clean_filename_base(name: str, fallback: str = "vinyl") -> str:
+    base = str(name or fallback).replace("\\", "/").split("/")[-1].strip()
+    base = re.sub(r"\.json$", "", base, flags=re.IGNORECASE)
+    base = re.sub(r"\.(fabric-project|fabric-export|normal-import|fh6-import)$", "", base, flags=re.IGNORECASE)
+    base = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", base)
+    base = re.sub(r"\s+", " ", base).strip(" .")
+    return base or fallback
+
+
+def _unique_json_path(folder: Path, base_name: str) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    clean = _clean_filename_base(base_name)
+    candidate = folder / f"{clean}.fh6-import.json"
+    if not candidate.exists():
+        return candidate
+    for index in range(2, 10000):
+        candidate = folder / f"{clean}-{index}.fh6-import.json"
+        if not candidate.exists():
+            return candidate
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    return folder / f"{clean}-{stamp}.fh6-import.json"
+
+
+def _unique_editor_export_path(base_name: str) -> Path:
+    clean = _clean_filename_base(base_name)
+    return _unique_json_path(EDITOR_JSON_ROOT / clean, clean)
 
 
 def _is_internal_json(path: Path) -> bool:
@@ -195,6 +225,58 @@ def _handmade_groups() -> list[dict]:
             "entries": [entry],
         })
     return sorted(groups, key=lambda item: (item["mtime"], item["title"]), reverse=True)
+
+
+def _single_file_groups(root: Path, source: str) -> list[dict]:
+    groups = []
+    if not root.exists():
+        return groups
+    for path in root.rglob("*.json"):
+        if _is_internal_json(path):
+            continue
+        entry = _json_entry(path, source)
+        rel_parent = path.parent.relative_to(root)
+        folder = "" if str(rel_parent) == "." else rel_parent.as_posix()
+        title = path.name if not folder else f"{folder}/{path.name}"
+        groups.append({
+            "key": entry["id"],
+            "title": title,
+            "source": source,
+            "mtime": entry["mtime"],
+            "count": 1,
+            "max_layers": entry["layers"],
+            "entries": [entry],
+        })
+    return sorted(groups, key=lambda item: (item["mtime"], item["title"]), reverse=True)
+
+
+def _editor_groups() -> list[dict]:
+    groups: dict[str, dict] = {}
+    if not EDITOR_JSON_ROOT.exists():
+        return []
+    for path in EDITOR_JSON_ROOT.rglob("*.json"):
+        if _is_internal_json(path):
+            continue
+        try:
+            rel = path.relative_to(EDITOR_JSON_ROOT)
+        except ValueError:
+            continue
+        run_key = rel.parts[0] if len(rel.parts) > 1 else path.stem
+        entry = _json_entry(path, "editor")
+        group = groups.setdefault(run_key, {
+            "key": run_key,
+            "title": run_key,
+            "source": "editor",
+            "mtime": 0.0,
+            "entries": [],
+        })
+        group["entries"].append(entry)
+        group["mtime"] = max(group["mtime"], entry["mtime"])
+    for group in groups.values():
+        group["entries"].sort(key=lambda item: (item["layers"], item["mtime"], item["name"]), reverse=True)
+        group["count"] = len(group["entries"])
+        group["max_layers"] = max((item["layers"] for item in group["entries"]), default=0)
+    return sorted(groups.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
 
 
 def _read_stable_file_bytes(path: Path, checks: int = 2, delay: float = 0.035) -> bytes | None:
@@ -582,6 +664,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             source = (query.get("source") or ["generated"])[0]
             if source == "handmade":
                 groups = _handmade_groups()
+            elif source == "editor":
+                groups = _editor_groups()
             else:
                 source = "generated"
                 groups = _generated_groups()
@@ -623,7 +707,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path == STARTUP_HELP_API:
+        parsed = urlparse(self.path)
+        if parsed.path == STARTUP_HELP_API:
             STARTUP_HELP_MARKER.parent.mkdir(parents=True, exist_ok=True)
             STARTUP_HELP_MARKER.write_text(
                 json.dumps({"confirmed": True}, indent=2),
@@ -632,6 +717,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._send_json({
                 "confirmed": True,
                 "marker": str(STARTUP_HELP_MARKER),
+            })
+            return
+        if parsed.path == EDITOR_EXPORT_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if length <= 0 or length > 20 * 1024 * 1024:
+                    raise ValueError("invalid editor export size")
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = data.get("payload")
+                if not isinstance(payload, dict) or not isinstance(payload.get("shapes"), list):
+                    raise ValueError("editor export payload must contain a shapes list")
+                target = _unique_editor_export_path(str(data.get("name") or "vinyl"))
+                target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({
+                "ok": True,
+                "id": _safe_relpath(target),
+                "path": str(target),
+                "name": target.name,
             })
             return
         self._send_json({"error": "not found"}, status=404)

@@ -8,6 +8,7 @@ import os
 import queue
 import random
 import re
+import shutil
 import subprocess
 import struct
 import sys
@@ -103,6 +104,7 @@ UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 HANDMADE_JSON_ROOT = ROOT / "imgs" / "handmade"
+EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
 FABRIC_EDITOR_SCRIPT = ROOT / "tools" / "fabric-editor" / "start_fabric_editor.py"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
@@ -1172,6 +1174,7 @@ Use Image Tools for background removal, browser upscaling, or browser downscalin
 JSON source picker:
 - Generated finals shows generated/import-ready outputs.
 - Handmade folder reads JSONs from imgs/handmade.
+- Editor exports reads JSONs from imgs/editor.
 - Choose any JSON lets you pick a file manually.
 
 Layer count matters:
@@ -1273,7 +1276,8 @@ Leave Pro Settings disabled unless you need direct generator tuning. The presets
         "body": """Important folders:
 - imgs/generated: generated runs, previews, reports, checkpoints, and finals.
 - imgs/generated/<job>/finals: import-ready generated JSONs.
-- imgs/handmade: downloaded, shared, editor-exported, or hand-edited JSONs for browsing/import.
+- imgs/handmade: downloaded, shared, or hand-edited JSONs for browsing/import.
+- imgs/editor: Fabric editor exports and copied game exports grouped into per-design folders.
 - runtime/universal-import: import/export run logs, reports, backups, and raw operation output.
 - Images: source image folder used by standalone workflows.
 
@@ -1384,8 +1388,10 @@ HELP_TEXT = {
     ),
     "final_json_browser": (
         "JSON Browser",
-        "Generated runs show finalized files from the finals folder.\n\n"
-        "Pick a generated run, click a finalized checkpoint, or choose any compatible JSON manually. The highlighted/selected JSON is the one that imports."
+        "Generated runs show finalized files from imgs/generated.\n\n"
+        "Handmade reads loose or foldered JSONs from imgs/handmade.\n\n"
+        "Editor exports reads per-design folders from imgs/editor.\n\n"
+        "Pick a source, click a JSON, or choose any compatible JSON manually. The highlighted/selected JSON is the one that imports."
     ),
     "auto_locate": (
         "Auto-Locate",
@@ -1412,7 +1418,7 @@ HELP_TEXT = {
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, HANDMADE_JSON_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, HANDMADE_JSON_ROOT, EDITOR_JSON_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -2176,7 +2182,7 @@ class FinalJsonBrowserDialog(QDialog):
         self.setMinimumSize(1180, 760)
 
         layout = QVBoxLayout(self)
-        intro = QLabel("Choose a generated run, preview its finalized checkpoints, then click Select. The selected JSON will be locked into the importer.")
+        intro = QLabel("Choose a JSON folder/source, preview the available JSONs, then click Select. The selected JSON will be locked into the importer.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -2186,7 +2192,7 @@ class FinalJsonBrowserDialog(QDialog):
         run_panel = QWidget()
         run_layout = QVBoxLayout(run_panel)
         run_layout.setContentsMargins(0, 0, 0, 0)
-        run_layout.addWidget(QLabel("Generated runs"))
+        run_layout.addWidget(QLabel("JSON folders"))
         self.run_scroll = QScrollArea()
         self.run_scroll.setWidgetResizable(True)
         self.run_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -2200,7 +2206,7 @@ class FinalJsonBrowserDialog(QDialog):
         detail_panel = QWidget()
         detail_layout = QVBoxLayout(detail_panel)
         detail_layout.setContentsMargins(0, 0, 0, 0)
-        self.run_title = QLabel("Select a generated run")
+        self.run_title = QLabel("Select a JSON folder")
         self.run_title.setWordWrap(True)
         detail_layout.addWidget(self.run_title)
         preview_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -2263,7 +2269,7 @@ class FinalJsonBrowserDialog(QDialog):
     def populate_runs(self):
         run_order = sorted(self.run_groups, key=lambda key: self.run_mtimes.get(key, 0), reverse=True)
         if not run_order:
-            label = QLabel("No finalized JSONs found yet.")
+            label = QLabel("No JSONs found yet.")
             label.setWordWrap(True)
             self.run_grid.addWidget(label, 0, 0)
             return
@@ -2298,7 +2304,7 @@ class FinalJsonBrowserDialog(QDialog):
             stamp = datetime.fromtimestamp(run_folder.stat().st_mtime).strftime("%m-%d %H:%M")
         except Exception:
             stamp = "unknown time"
-        return f"{source_name}\n{len(entries)} finals | top {best_layers} layers\n{stamp}"
+        return f"{source_name}\n{len(entries)} JSONs | top {best_layers} layers\n{stamp}"
 
     def source_image_path(self, entry: dict) -> Path | None:
         run_folder = Path(entry.get("run_folder") or Path(entry["path"]).parent)
@@ -3552,7 +3558,7 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(json_intro)
         source_row = QHBoxLayout()
         source_row.addWidget(QLabel("JSON source"))
-        self.json_source_combo = self.make_combo(["Generated finals", "Handmade folder"], max_visible=2, min_height=38)
+        self.json_source_combo = self.make_combo(["Generated finals", "Handmade folder", "Editor exports"], max_visible=3, min_height=38)
         self.json_source_combo.currentTextChanged.connect(lambda _text: self.refresh_generated_browser())
         source_row.addWidget(self.json_source_combo, 1)
         json_layout.addLayout(source_row)
@@ -3577,7 +3583,7 @@ class MainWindow(QMainWindow):
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         json_layout.addLayout(controls)
-        latest_hint = QLabel("Generated mode shows the latest run by layer count. Handmade mode reads JSONs from imgs/handmade so downloaded or shared files have a safe drop folder.")
+        latest_hint = QLabel("Generated mode shows the latest run by layer count. Handmade and Editor modes read JSONs from imgs/handmade and imgs/editor so outside files and editor exports have safe drop folders.")
         latest_hint.setWordWrap(True)
         json_layout.addWidget(latest_hint)
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
@@ -3697,32 +3703,12 @@ class MainWindow(QMainWindow):
         export_btn.setObjectName("primaryButton")
         export_btn.clicked.connect(self.start_game_export)
         run_layout.addWidget(export_btn)
-        run_layout.addWidget(QLabel("Output is saved under runtime/universal-import and appears in the browser below."))
+        run_layout.addWidget(QLabel("Output is saved under runtime/universal-import and copied to imgs/editor so it appears in Import JSON -> Editor exports."))
         left_layout.addWidget(run_group)
-
-        browser = QGroupBox("Exported Game JSON Browser")
-        browser_layout = QVBoxLayout(browser)
-        browser_controls = QHBoxLayout()
-        refresh_exports = QPushButton("Refresh exports")
-        refresh_exports.clicked.connect(self.refresh_game_export_browser)
-        use_for_import = QPushButton("Use selected in Import JSON")
-        use_for_import.clicked.connect(self.use_selected_export_for_import)
-        browser_controls.addWidget(refresh_exports)
-        browser_controls.addWidget(use_for_import)
-        browser_layout.addLayout(browser_controls)
-        self.exported_game_json_list = QListWidget()
-        self.exported_game_json_list.setMinimumHeight(310)
-        self.exported_game_json_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.exported_game_json_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.exported_game_json_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.exported_game_json_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.exported_game_json_list.setWordWrap(True)
-        self.exported_game_json_list.currentRowChanged.connect(self.select_exported_game_json)
-        browser_layout.addWidget(self.exported_game_json_list, 1)
-        left_layout.addWidget(browser, 1)
+        left_layout.addStretch(1)
 
         right_layout.addWidget(QLabel("Export Preview"))
-        self.export_preview = PreviewView("Export a game group or select an exported JSON to preview it here.")
+        self.export_preview = PreviewView("Export a game group to preview it here. The JSON will be available from Import JSON -> Editor exports.")
         right_layout.addWidget(self.export_preview, 1)
         note = QLabel(
             "Preview is an approximation for non-basic FH shapes until full shape rendering is added. "
@@ -5616,6 +5602,11 @@ class MainWindow(QMainWindow):
             count = geometry_shape_count(path)
         except Exception:
             count = 0
+        if count <= 0:
+            try:
+                count = import_json_shape_count(path)
+            except Exception:
+                count = 0
         self.geometry_count_cache[key] = (fingerprint[0], fingerprint[1], count)
         return count
 
@@ -5726,12 +5717,12 @@ class MainWindow(QMainWindow):
                     candidates.add(path.resolve())
         return candidates
 
-    def handmade_json_candidates(self) -> list[dict]:
+    def folder_json_candidates(self, root: Path, source_label: str, preset_label: str, *, group_by_folder: bool = False) -> list[dict]:
         entries = []
-        if not HANDMADE_JSON_ROOT.exists():
+        if not root.exists():
             return entries
         paths = [
-            path for path in HANDMADE_JSON_ROOT.rglob("*")
+            path for path in root.rglob("*")
             if path.is_file() and path.suffix.lower() == ".json"
         ]
         for path in sorted(paths, key=lambda item: self.safe_path_mtime(item) or 0, reverse=True):
@@ -5743,29 +5734,43 @@ class MainWindow(QMainWindow):
                 run_mtime = path.stat().st_mtime
             except OSError:
                 run_mtime = self.safe_path_mtime(path) or 0
-            source = path.stem
+            run_folder = folder
+            if group_by_folder:
+                try:
+                    rel = path.relative_to(root)
+                    if len(rel.parts) > 1:
+                        run_folder = root / rel.parts[0]
+                except ValueError:
+                    run_folder = folder
+            source = run_folder.name if group_by_folder else path.stem
             entries.append({
                 "path": path.resolve(),
                 "source": source,
                 "folder": self.checkpoint_folder_label(path),
-                "run_folder": folder,
-                "run_key": str(path.resolve()),
+                "run_folder": run_folder,
+                "run_key": str(run_folder.resolve() if group_by_folder else path.resolve()),
                 "run_mtime": run_mtime,
                 "checkpoint": path.stem,
                 "step_number": count,
                 "step_variant": 0,
-                "type": "Handmade JSON",
+                "type": source_label,
                 "layers": count,
                 "import_safe": True,
                 "import_budget": None,
                 "recommended": False,
-                "tags": ["Handmade"],
+                "tags": [source_label.replace(" JSON", "")],
                 "error": None,
-                "preset": "handmade/downloaded",
+                "preset": preset_label,
                 "source_image": None,
             })
         entries.sort(key=lambda item: (-item["run_mtime"], -int(item.get("layers") or 0), item["path"].name.lower()))
         return entries
+
+    def handmade_json_candidates(self) -> list[dict]:
+        return self.folder_json_candidates(HANDMADE_JSON_ROOT, "Handmade JSON", "handmade/downloaded")
+
+    def editor_json_candidates(self) -> list[dict]:
+        return self.folder_json_candidates(EDITOR_JSON_ROOT, "Editor JSON", "fabric editor", group_by_folder=True)
 
     def is_v2_output_json(self, path):
         path = Path(path)
@@ -5928,8 +5933,12 @@ class MainWindow(QMainWindow):
         )
 
     def current_json_browser_mode(self) -> str:
-        if hasattr(self, "json_source_combo") and self.json_source_combo.currentText().lower().startswith("handmade"):
-            return "handmade"
+        if hasattr(self, "json_source_combo"):
+            current = self.json_source_combo.currentText().lower()
+            if current.startswith("handmade"):
+                return "handmade"
+            if current.startswith("editor"):
+                return "editor"
         return "generated"
 
     def latest_final_combo_label(self, entry):
@@ -5951,11 +5960,16 @@ class MainWindow(QMainWindow):
         self.latest_final_combo.clear()
         self.latest_final_entries = []
         if not run_order:
-            message = "No handmade JSONs found in imgs/handmade." if mode == "handmade" else "No finalized JSONs found yet."
+            if mode == "handmade":
+                message = "No handmade JSONs found in imgs/handmade."
+            elif mode == "editor":
+                message = "No editor exports found in imgs/editor."
+            else:
+                message = "No finalized JSONs found yet."
             self.latest_final_combo.addItem(message, None)
             self.latest_final_combo.blockSignals(False)
             return
-        if mode == "handmade":
+        if mode in {"handmade", "editor"}:
             latest_entries = self.sort_generated_entries_for_latest_combo([entry for group in run_groups.values() for entry in group])
         else:
             latest_entries = self.sort_generated_entries_for_latest_combo(run_groups.get(run_order[0], []))
@@ -6001,11 +6015,25 @@ class MainWindow(QMainWindow):
                 self.generated_checkpoint_list.blockSignals(False)
                 return
 
+    def json_browser_entries_for_mode(self, mode: str) -> list[dict]:
+        if mode == "handmade":
+            return self.handmade_json_candidates()
+        if mode == "editor":
+            return self.editor_json_candidates()
+        return self.checkpoint_candidates()
+
+    def json_browser_folder_for_mode(self, mode: str) -> Path:
+        if mode == "handmade":
+            return HANDMADE_JSON_ROOT
+        if mode == "editor":
+            return EDITOR_JSON_ROOT
+        return GENERATED_ROOT
+
     def open_final_json_browser(self):
         mode = self.current_json_browser_mode()
-        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
+        entries = self.json_browser_entries_for_mode(mode)
         if not entries:
-            folder = HANDMADE_JSON_ROOT if mode == "handmade" else GENERATED_ROOT
+            folder = self.json_browser_folder_for_mode(mode)
             QMessageBox.information(self, "Browse JSONs", f"No JSONs were found in {folder.relative_to(ROOT)} yet.")
             return
         dialog = FinalJsonBrowserDialog(self, entries)
@@ -6021,7 +6049,7 @@ class MainWindow(QMainWindow):
 
     def refresh_generated_browser(self):
         mode = self.current_json_browser_mode()
-        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
+        entries = self.json_browser_entries_for_mode(mode)
         run_groups = {}
         run_mtimes = {}
         run_folders = {}
@@ -6036,12 +6064,14 @@ class MainWindow(QMainWindow):
         for index, run_key in enumerate(run_order):
             if mode == "handmade":
                 prefix = "Handmade folder"
+            elif mode == "editor":
+                prefix = "Editor exports"
             else:
                 prefix = "Latest run" if index == 0 else "Previous run"
             label = self.checkpoint_run_label(run_folders[run_key], prefix=prefix)
             groups[label] = (
                 self.sort_generated_entries_for_latest_combo(run_groups[run_key])
-                if mode == "handmade"
+                if mode in {"handmade", "editor"}
                 else self.sort_generated_entries_for_picker(run_groups[run_key])
             )
             order.append(label)
@@ -6167,6 +6197,27 @@ class MainWindow(QMainWindow):
             return
         path = Path(entry["path"])
         self.select_import_json(path, "exported game JSON")
+        self.go_to_workflow("Import JSON")
+
+    def copy_export_to_editor_folder(self, export_json: Path) -> Path:
+        EDITOR_JSON_ROOT.mkdir(parents=True, exist_ok=True)
+        base_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", export_json.stem).strip(" .") or "game-export"
+        target_folder = EDITOR_JSON_ROOT / base_name
+        target_folder.mkdir(parents=True, exist_ok=True)
+        target = target_folder / export_json.name
+        if target.exists():
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            target = target_folder / f"{export_json.stem}-{stamp}{export_json.suffix}"
+        shutil.copy2(export_json, target)
+        return target
+
+    def select_editor_export_for_import(self, path: Path) -> None:
+        if hasattr(self, "json_source_combo"):
+            self.json_source_combo.setCurrentText("Editor exports")
+        self.refresh_generated_browser()
+        self.select_import_json(path, "editor export")
+        self.set_latest_final_combo_to_path(path)
+        self.set_hidden_generated_selection(path)
         self.go_to_workflow("Import JSON")
 
     def select_recommended_generated_json(self):
@@ -6888,16 +6939,17 @@ class MainWindow(QMainWindow):
             exported = int(report.get("exported_shape_count") or 0)
             failures = int(report.get("failure_count") or 0)
             warnings = report.get("validation_warnings") or report.get("editable_group_check", {}).get("warnings") or []
-            self.selected_import_json_path = export_json
+            import_copy = self.copy_export_to_editor_folder(export_json)
+            self.selected_import_json_path = import_copy
             self.bus.log.emit(f"Universal export complete: {exported} layers -> {export_json}")
+            self.bus.log.emit(f"Copied import-ready export to {import_copy}")
             if warnings:
                 self.bus.log.emit("Export validation warning: grouped vinyl did not match every old flat-table assumption; see report.")
             if failures:
                 self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
             self.bus.status.emit("Done")
             self.bus.phase.emit("done", f"Current {game.upper()} group exported to compatible JSON.")
-            self.bus.ui_call.emit(self.refresh_game_export_browser)
-            self.bus.ui_call.emit(lambda: self.select_exported_path_after_refresh(export_json))
+            self.bus.ui_call.emit(lambda: self.select_editor_export_for_import(import_copy))
         except Exception as exc:
             self.bus.log.emit(f"Universal export failed: {exc}")
             self.bus.status.emit("Failed")

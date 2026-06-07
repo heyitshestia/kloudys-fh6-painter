@@ -28,7 +28,7 @@
       <nav class="appMenus" aria-label="Editor actions">
         <div class="menuGroup">
           <span>File</span>
-          <button id="openJsonBrowser" title="Open the KFPS JSON browser for generated finals and handmade JSONs.">Import JSON</button>
+          <button id="openJsonBrowser" title="Open the KFPS JSON browser for generated finals, handmade JSONs, and editor exports.">Import JSON</button>
           <input id="jsonInput" class="hiddenFileInput" type="file" accept=".json,application/json">
           <label class="fileButton">
             Load Project
@@ -383,7 +383,7 @@
               <span>KFPS importer</span><b id="normalExportStatus">Compatible</b>
               <span>Warnings</span><b id="exportWarningCount">0</b>
             </div>
-      <p class="hint">The editor exports one FH6-compatible JSON. Use it with the KFPS Import JSON tab.</p>
+      <p class="hint">The editor saves one FH6-compatible JSON into imgs/editor. Use it with the KFPS Import JSON tab.</p>
           </section>
         </div>
       </aside>
@@ -605,7 +605,7 @@
     <div class="helpHeader">
       <div>
         <h2>Open Vinyl JSON</h2>
-        <p>Choose a generated final or a JSON dropped into imgs/handmade.</p>
+        <p>Choose a generated final, editor export, or a JSON dropped into imgs/handmade.</p>
       </div>
       <button id="closeJsonBrowser">Close</button>
     </div>
@@ -614,6 +614,7 @@
         <select id="jsonBrowserSource">
           <option value="generated" selected>Generated finals</option>
           <option value="handmade">Handmade folder</option>
+          <option value="editor">Editor exports</option>
         </select>
       </label>
       <button id="refreshJsonBrowser" type="button">Refresh</button>
@@ -632,7 +633,7 @@
           </div>
           <div>
             <b id="jsonBrowserTitle">Select a source</b>
-            <p id="jsonBrowserMeta">Generated runs are sorted newest first. Checkpoints are sorted high layer count to low.</p>
+            <p id="jsonBrowserMeta">JSON folders are sorted newest first. Files are sorted high layer count to low.</p>
           </div>
         </div>
         <div id="jsonBrowserEntries" class="jsonBrowserEntries"></div>

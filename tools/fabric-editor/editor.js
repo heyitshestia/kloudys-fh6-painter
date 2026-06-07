@@ -14,6 +14,7 @@ const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
 const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
 const JSON_FILE_API = "/api/fabric-editor/json-file";
+const EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 
@@ -99,6 +100,7 @@ let canvas;
 let isPanning = false;
 let lastPan = null;
 let loadedName = "untitled";
+let currentProjectName = null;
 let overlayImage = null;
 let history = [];
 let historyIndex = -1;
@@ -3857,11 +3859,14 @@ async function loadJsonFile(file) {
   const text = await file.text();
   const payload = JSON.parse(text);
   const previousName = loadedName;
+  const previousProjectName = currentProjectName;
   loadedName = cleanProjectBaseName(file.name, "vinyl");
+  currentProjectName = null;
   try {
     await loadPayload(payload);
   } catch (err) {
     loadedName = previousName;
+    currentProjectName = previousProjectName;
     throw err;
   }
 }
@@ -3888,6 +3893,18 @@ function selectedJsonBrowserEntry() {
 
 function setJsonBrowserStatus(message) {
   setText("jsonBrowserStatus", message);
+}
+
+function jsonBrowserSourceLabel(source = jsonBrowserState.source) {
+  if (source === "handmade") return "Handmade JSON";
+  if (source === "editor") return "Editor export";
+  return "Generated final run";
+}
+
+function jsonBrowserSourceFolder(source = jsonBrowserState.source) {
+  if (source === "handmade") return "imgs/handmade";
+  if (source === "editor") return "imgs/editor";
+  return "imgs/generated";
 }
 
 function setJsonBrowserPreview(entry = null) {
@@ -3918,9 +3935,13 @@ function renderJsonBrowserGroups() {
   if (!jsonBrowserState.groups.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = jsonBrowserState.source === "handmade"
-      ? "No handmade JSONs found. Drop files into imgs/handmade, then click Refresh."
-      : "No generated final JSONs found yet. Generate a vinyl first, then click Refresh.";
+    if (jsonBrowserState.source === "handmade") {
+      empty.textContent = "No handmade JSONs found. Drop files into imgs/handmade, then click Refresh.";
+    } else if (jsonBrowserState.source === "editor") {
+      empty.textContent = "No editor exports found. Export from the editor into imgs/editor, then click Refresh.";
+    } else {
+      empty.textContent = "No generated final JSONs found yet. Generate a vinyl first, then click Refresh.";
+    }
     container.appendChild(empty);
     return;
   }
@@ -3945,9 +3966,9 @@ function renderJsonBrowserGroups() {
     title.title = group.title || group.key || "";
     title.textContent = group.title || group.key || "Untitled JSON";
     const kind = document.createElement("span");
-    kind.textContent = group.source === "handmade"
-      ? "Handmade JSON"
-      : `${group.count || 0} finalized JSON${group.count === 1 ? "" : "s"}`;
+    kind.textContent = group.source === "generated"
+      ? `${group.count || 0} finalized JSON${group.count === 1 ? "" : "s"}`
+      : jsonBrowserSourceLabel(group.source);
     const layers = document.createElement("span");
     layers.textContent = `${layerLabel(group.max_layers || 0)} max`;
     const modified = document.createElement("span");
@@ -3971,13 +3992,13 @@ function renderJsonBrowserEntries() {
   $("selectJsonBrowserEntry").disabled = !selectedJsonBrowserEntry();
   if (!group) {
     setText("jsonBrowserTitle", "Select a source");
-    setText("jsonBrowserMeta", "Generated runs are sorted newest first. Checkpoints are sorted high layer count to low.");
+    setText("jsonBrowserMeta", "JSON folders are sorted newest first. Files are sorted high layer count to low.");
     setJsonBrowserPreview(null);
     setJsonBrowserStatus("Choose a source on the left.");
     return;
   }
   setText("jsonBrowserTitle", group.title || group.key);
-  setText("jsonBrowserMeta", `${group.source === "handmade" ? "Handmade JSON" : "Generated final run"} - ${formatBrowserDate(group.mtime)} - select any checkpoint below to preview and import it.`);
+  setText("jsonBrowserMeta", `${jsonBrowserSourceLabel(group.source)} - ${formatBrowserDate(group.mtime)} - select any JSON below to preview and import it.`);
   setJsonBrowserPreview(selectedJsonBrowserEntry());
   (group.entries || []).forEach((entry, index) => {
     const button = document.createElement("button");
@@ -4019,7 +4040,7 @@ async function refreshJsonBrowser() {
     jsonBrowserState.groups = Array.isArray(data.groups) ? data.groups : [];
     jsonBrowserState.selectedGroupIndex = jsonBrowserState.groups.length ? 0 : -1;
     jsonBrowserState.selectedEntryIndex = jsonBrowserState.groups[0]?.entries?.length ? 0 : -1;
-    setText("jsonBrowserSummary", `${data.total_entries || 0} JSON${data.total_entries === 1 ? "" : "s"} found in ${source === "handmade" ? "imgs/handmade" : "imgs/generated"}.`);
+    setText("jsonBrowserSummary", `${data.total_entries || 0} JSON${data.total_entries === 1 ? "" : "s"} found in ${jsonBrowserSourceFolder(source)}.`);
     renderJsonBrowserGroups();
     renderJsonBrowserEntries();
   } catch (err) {
@@ -4034,6 +4055,28 @@ async function refreshJsonBrowser() {
   } finally {
     jsonBrowserState.loading = false;
   }
+}
+
+function setJsonBrowserSource(source) {
+  const select = $("jsonBrowserSource");
+  if (select) select.value = source;
+  jsonBrowserState.source = source;
+}
+
+function selectJsonBrowserEntryById(entryId) {
+  if (!entryId) return false;
+  for (let groupIndex = 0; groupIndex < jsonBrowserState.groups.length; groupIndex += 1) {
+    const entries = jsonBrowserState.groups[groupIndex]?.entries || [];
+    const entryIndex = entries.findIndex((entry) => entry.id === entryId);
+    if (entryIndex >= 0) {
+      jsonBrowserState.selectedGroupIndex = groupIndex;
+      jsonBrowserState.selectedEntryIndex = entryIndex;
+      renderJsonBrowserGroups();
+      renderJsonBrowserEntries();
+      return true;
+    }
+  }
+  return false;
 }
 
 async function openJsonBrowser() {
@@ -4057,16 +4100,19 @@ async function importSelectedBrowserJson() {
   setBusy(`Loading JSON: ${entry.name}`);
   await nextFrame();
   const previousName = loadedName;
+  const previousProjectName = currentProjectName;
   loadedName = cleanProjectBaseName(entry.name, "vinyl");
+  currentProjectName = null;
   try {
     const response = await fetch(`${JSON_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     await loadPayload(data.payload);
     $("jsonBrowserDialog")?.close();
-    setStatus(`Imported ${entry.name} from ${jsonBrowserState.source === "handmade" ? "handmade folder" : "generated finals"}.`);
+    setStatus(`Imported ${entry.name} from ${jsonBrowserSourceFolder()}.`);
   } catch (err) {
     loadedName = previousName;
+    currentProjectName = previousProjectName;
     showError("JSON browser import failed", err);
     setJsonBrowserStatus(err.message || String(err));
   }
@@ -5092,14 +5138,45 @@ function filenameWithSuffix(baseName, suffix) {
   return `${cleanProjectBaseName(baseName)}.${suffix}.json`;
 }
 
-function exportJson() {
+async function saveEditorJsonToAppFolder(name, payload) {
+  const response = await fetch(EDITOR_EXPORT_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, payload }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+
+async function exportJson() {
   const shapes = vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: false }));
   if (!shapes.length) {
     setStatus("Nothing to export. Import a JSON or add at least one shape first.");
     return;
   }
-  downloadText(filenameWithSuffix(loadedName, "fh6-import"), JSON.stringify({ shapes }, null, 2));
-  setStatus(`Exported ${shapes.length} layer(s) for KFPS Import JSON.`);
+  const defaultName = cleanProjectBaseName(currentProjectName || loadedName, "vinyl");
+  let exportName = currentProjectName;
+  if (!exportName) {
+    const requestedName = window.prompt("Export JSON name", defaultName);
+    if (requestedName === null) {
+      setStatus("JSON export cancelled.");
+      return;
+    }
+    exportName = cleanProjectBaseName(requestedName, defaultName);
+    loadedName = exportName;
+  }
+  const payload = { shapes };
+  try {
+    const result = await saveEditorJsonToAppFolder(exportName, payload);
+    setJsonBrowserSource("editor");
+    await refreshJsonBrowser();
+    selectJsonBrowserEntryById(result.id);
+    setStatus(`Exported ${shapes.length} layer(s) to imgs/editor/${result.name || `${exportName}.fh6-import.json`}.`);
+  } catch (err) {
+    downloadText(filenameWithSuffix(exportName, "fh6-import"), JSON.stringify(payload, null, 2));
+    setStatus(`Saved-to-folder failed (${err.message || err}). Downloaded ${shapes.length} layer(s) instead.`);
+  }
 }
 
 function saveProject() {
@@ -5115,6 +5192,7 @@ function saveProject() {
   }
   const projectName = cleanProjectBaseName(requestedName, defaultName);
   loadedName = projectName;
+  currentProjectName = projectName;
   const payload = {
     format: "kloudy_fabric_editor_project_v1",
     name: projectName,
@@ -5131,12 +5209,15 @@ async function loadProjectFile(file) {
   const payload = JSON.parse(await file.text());
   if (!Array.isArray(payload.shapes)) throw new Error("Project JSON must contain a shapes list.");
   const previousName = loadedName;
-  loadedName = cleanProjectBaseName(file.name, "project");
+  const projectName = cleanProjectBaseName(payload.name || file.name, "project");
+  loadedName = projectName;
+  currentProjectName = projectName;
   try {
     await loadPayload({ shapes: payload.shapes });
     applySavedGuideState(payload.editor_guides || null);
   } catch (err) {
     loadedName = previousName;
+    currentProjectName = null;
     throw err;
   }
 }
@@ -6509,6 +6590,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const payload = JSON.parse(autosave);
       if (!Array.isArray(payload.shapes)) throw new Error("Autosave did not contain a shapes list.");
       loadedName = cleanProjectBaseName(payload.name, "autosave");
+      currentProjectName = null;
       loadPayload({ shapes: payload.shapes })
         .then(() => applySavedGuideState(payload.editor_guides || null))
         .catch((err) => setStatus(`Autosave recovery failed: ${err.message}`));

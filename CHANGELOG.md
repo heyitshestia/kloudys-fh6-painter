@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.36
+- Improved JSON organization so generated, handmade, and editor/exported JSONs are browsed from separate import sources.
+- Copied successful game exports into the editor JSON folder so they can be selected from the Import JSON browser.
+- Fixed editor JSON exports not immediately appearing in the editor browser after saving.
+- Improved browser layer counts for editor/exported JSONs.
+
 ## 2.0.33
 - Restored the stable 2.0.27 editor baseline while keeping the current generator preset updates.
 - Kept the updated raw FH6 import/export locator backend without experimental editor shape-resource caching.
