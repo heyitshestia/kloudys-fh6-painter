@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.31
+
+- Reworked the dashboard into a cleaner first-time-user landing page.
+- Highlighted the Generate, Edit, Import workflow and the editor's hand-creation tools.
+
 ## 2.0.30
 
 - Reworked the in-app tutorial into searchable, theme-aware dropdown sections.

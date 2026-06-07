@@ -3341,95 +3341,97 @@ class MainWindow(QMainWindow):
     def _build_dashboard_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
-        cards = QGridLayout()
-        cards.setSpacing(14)
-        cards.addWidget(
+        hero = QFrame()
+        hero.setObjectName("dashboardCard")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setSpacing(10)
+        hero_title = QLabel("Generate first. Clean it by hand. Import when it looks right.")
+        hero_title.setObjectName("dashboardCardTitle")
+        hero_title.setWordWrap(True)
+        hero_body = QLabel(
+            "KFPS is built around a simple workflow: use the generator for a strong base, use the editor to fix the obvious mistakes, then import the cleaned JSON into FH6. "
+            "The editor is there for the parts generators still struggle with: eyes, text, badges, outlines, colors, and tiny details."
+        )
+        hero_body.setObjectName("dashboardCardText")
+        hero_body.setWordWrap(True)
+        hero_layout.addWidget(hero_title)
+        hero_layout.addWidget(hero_body)
+        layout.addWidget(hero)
+
+        primary = QGridLayout()
+        primary.setSpacing(14)
+        primary.addWidget(
             DashboardCard(
-                "Generate Final Vinyl",
-                "Pick source art, choose a preset, watch progress, then finalize import-ready JSONs.",
-                "Start generating",
+                "1. Generate",
+                "Create finalized JSON checkpoints from source art.",
+                "Generate",
                 lambda: self.go_to_workflow("Generate Final Vinyl"),
             ),
             0,
             0,
         )
-        cards.addWidget(
+        primary.addWidget(
             DashboardCard(
-                "Import JSON",
-                "Choose a generated final, editor export, hand-edited JSON, or game export, then write it into FH6.",
-                "Open importer",
-                lambda: self.go_to_workflow("Import JSON"),
+                "2. Edit",
+                "Open a generated JSON and fix the visible mistakes by hand.",
+                "Open editor",
+                lambda: self.go_to_workflow("Editor"),
             ),
             0,
             1,
         )
-        cards.addWidget(
+        primary.addWidget(
             DashboardCard(
-                "Open Vinyl Editor",
-                "Clean up JSONs manually with the local Fabric editor, shape library, favorites, overlay, and export tools.",
-                "Open editor tools",
-                lambda: self.go_to_workflow("Editor"),
+                "3. Import",
+                "Write the cleaned JSON into the open FH6 template.",
+                "Import JSON",
+                lambda: self.go_to_workflow("Import JSON"),
             ),
             0,
             2,
         )
-        layout.addLayout(cards)
+        layout.addLayout(primary)
 
-        editor_ad = QFrame()
-        editor_ad.setObjectName("dashboardCard")
-        editor_layout = QGridLayout(editor_ad)
-        editor_layout.setHorizontalSpacing(18)
-        editor_layout.setVerticalSpacing(12)
-        editor_title = QLabel("Built for editing vinyls faster than FH6's in-game editor")
-        editor_title.setObjectName("dashboardCardTitle")
-        editor_title.setWordWrap(True)
-        editor_body = QLabel(
-            "The bundled editor gives you a searchable shape library, favorites, source-image overlay, viewport-friendly placement, saved colors, eyedropper tools, box selection, JSON import/export, and quick manual cleanup. "
-            "Use FH6 for the final save, but use this editor when you need precision, repeatable colors, easier shape picking, and less menu wrestling."
+        editor_focus = QFrame()
+        editor_focus.setObjectName("dashboardCard")
+        editor_focus_layout = QVBoxLayout(editor_focus)
+        editor_focus_layout.setSpacing(8)
+        editor_focus_title = QLabel("Create by hand when you want full control")
+        editor_focus_title.setObjectName("dashboardCardTitle")
+        editor_focus_title.setWordWrap(True)
+        editor_focus_body = QLabel(
+            "The editor is also a creative workspace for building vinyls yourself. Place shapes, trace over a source image, sample colors, save favorites, use guides and snapping, organize layers, and turn an idea into an import-ready JSON without scrolling through FH6 menus."
         )
-        editor_body.setObjectName("dashboardCardText")
-        editor_body.setWordWrap(True)
-        editor_button = QPushButton("Open the editor")
-        editor_button.setObjectName("primaryButton")
-        editor_button.clicked.connect(lambda: self.go_to_workflow("Editor"))
-        editor_layout.addWidget(editor_title, 0, 0, 1, 2)
-        editor_layout.addWidget(editor_body, 1, 0, 1, 2)
+        editor_focus_body.setObjectName("dashboardCardText")
+        editor_focus_body.setWordWrap(True)
+        editor_focus_layout.addWidget(editor_focus_title)
+        editor_focus_layout.addWidget(editor_focus_body)
+        layout.addWidget(editor_focus)
 
-        advantages = QGroupBox("Why it beats editing only in-game")
-        advantages_layout = QVBoxLayout(advantages)
-        for text in (
-            "Search and favorite shapes instead of scrolling through every FH6 shape page.",
-            "Use a source overlay and eyedropper so colors and placement are easier to match.",
-            "Move, delete, duplicate, box-select, and clean up JSON layers before importing.",
-            "Export back to FH6-compatible JSON when the design is ready for the game.",
-        ):
-            label = QLabel(text)
-            label.setWordWrap(True)
-            advantages_layout.addWidget(label)
-        editor_layout.addWidget(advantages, 2, 0)
-        editor_layout.addWidget(editor_button, 2, 1, Qt.AlignmentFlag.AlignBottom)
-        editor_layout.setColumnStretch(0, 3)
-        editor_layout.setColumnStretch(1, 1)
-        layout.addWidget(editor_ad)
+        support_row = QHBoxLayout()
+        support_row.setSpacing(10)
+        tutorial_btn = QPushButton("Tutorial")
+        tutorial_btn.clicked.connect(lambda: self.go_to_workflow("Tutorial"))
+        image_tools_btn = QPushButton("Image Tools")
+        image_tools_btn.clicked.connect(lambda: self.go_to_workflow("Image Tools"))
+        bug_btn = QPushButton("Bug Report")
+        bug_btn.clicked.connect(lambda: self.go_to_workflow("Bug Reports"))
+        for button in (tutorial_btn, image_tools_btn, bug_btn):
+            support_row.addWidget(button)
+        layout.addLayout(support_row)
 
         kofi_ad = QFrame()
         kofi_ad.setObjectName("dashboardCard")
         kofi_layout = QVBoxLayout(kofi_ad)
-        kofi_layout.setSpacing(10)
-        kofi_title = QLabel("tiny optional ko-fi note")
-        kofi_title.setObjectName("dashboardCardTitle")
-        kofi_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        kofi_layout.setContentsMargins(12, 8, 12, 8)
         kofi_body = QLabel(
-            "hi, tiny ko-fi note: this is completely optional, but if the app helped you and you want to throw a little support my way, "
-            "it would help me commission a proper logo/mascot someday instead of making everything myself badly lol\n\n"
-            "tip button is in the bottom right."
+            "tiny optional note: the tip button is in the bottom right if KFPS helped you and you want to support future polish."
         )
         kofi_body.setObjectName("dashboardCardText")
         kofi_body.setWordWrap(True)
         kofi_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        kofi_layout.addWidget(kofi_title)
         kofi_layout.addWidget(kofi_body)
         layout.addWidget(kofi_ad)
         layout.addStretch(1)
