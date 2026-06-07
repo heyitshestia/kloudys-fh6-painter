@@ -38,7 +38,7 @@ EDITOR_PROJECT_SAVE_API = "/api/fabric-editor/save-project"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 HANDMADE_ROOT = ROOT / "imgs" / "handmade"
 EXPORTED_ROOT = ROOT / "imgs" / "exported"
-EDITOR_EXPORT_ROOT = ROOT / "imgs" / "editor"
+EDITOR_EXPORT_ROOT = ROOT / "imgs" / "handmade"
 EDITOR_PROJECT_ROOT = ROOT / "projects" / "editor"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
@@ -230,9 +230,9 @@ def _generated_groups() -> list[dict]:
 
 
 def _folder_groups(root: Path, source: str) -> list[dict]:
-    groups = []
+    grouped: dict[str, dict] = {}
     if not root.exists():
-        return groups
+        return []
     for path in root.rglob("*.json"):
         if _is_internal_json(path):
             continue
@@ -242,18 +242,28 @@ def _folder_groups(root: Path, source: str) -> list[dict]:
         if entry["layers"] <= 0:
             continue
         rel_parent = path.parent.relative_to(root)
-        folder = "" if str(rel_parent) == "." else rel_parent.as_posix()
-        title = path.name if not folder else f"{folder}/{path.name}"
-        groups.append({
-            "key": entry["id"],
+        if rel_parent.parts:
+            key = rel_parent.parts[0]
+            title = key
+        else:
+            key = entry["id"]
+            title = path.stem
+        group = grouped.setdefault(key, {
+            "key": key,
             "title": title,
             "source": source,
-            "mtime": entry["mtime"],
-            "count": 1,
-            "max_layers": entry["layers"],
-            "entries": [entry],
+            "mtime": 0.0,
+            "count": 0,
+            "max_layers": 0,
+            "entries": [],
         })
-    return sorted(groups, key=lambda item: (item["mtime"], item["title"]), reverse=True)
+        group["entries"].append(entry)
+        group["mtime"] = max(group["mtime"], entry["mtime"])
+        group["max_layers"] = max(group["max_layers"], entry["layers"])
+    for group in grouped.values():
+        group["entries"].sort(key=lambda item: (item["layers"], item["mtime"], item["name"]), reverse=True)
+        group["count"] = len(group["entries"])
+    return sorted(grouped.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
 
 
 def _handmade_groups() -> list[dict]:
@@ -262,11 +272,6 @@ def _handmade_groups() -> list[dict]:
 
 def _exported_groups() -> list[dict]:
     return _folder_groups(EXPORTED_ROOT, "exported")
-
-
-def _editor_export_groups() -> list[dict]:
-    return _folder_groups(EDITOR_EXPORT_ROOT, "editor")
-
 
 def _read_stable_file_bytes(path: Path, checks: int = 2, delay: float = 0.035) -> bytes | None:
     previous_size = None
@@ -682,8 +687,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 groups = _handmade_groups()
             elif source == "exported":
                 groups = _exported_groups()
-            elif source == "editor":
-                groups = _editor_export_groups()
             else:
                 source = "generated"
                 groups = _generated_groups()
@@ -765,6 +768,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "path": str(path),
                 "id": _safe_relpath(path),
                 "name": path.name,
+                "folder": "imgs/handmade",
             })
             return
         if parsed_path == EDITOR_PROJECT_SAVE_API:

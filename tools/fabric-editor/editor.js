@@ -4031,9 +4031,13 @@ function renderJsonBrowserGroups() {
     title.title = group.title || group.key || "";
     title.textContent = group.title || group.key || "Untitled JSON";
     const kind = document.createElement("span");
-    kind.textContent = group.source === "handmade"
-      ? "Handmade JSON"
-      : `${group.count || 0} finalized JSON${group.count === 1 ? "" : "s"}`;
+    if (group.source === "handmade") {
+      kind.textContent = `${group.count || 0} handmade JSON${group.count === 1 ? "" : "s"}`;
+    } else if (group.source === "exported") {
+      kind.textContent = `${group.count || 0} exported JSON${group.count === 1 ? "" : "s"}`;
+    } else {
+      kind.textContent = `${group.count || 0} finalized JSON${group.count === 1 ? "" : "s"}`;
+    }
     const layers = document.createElement("span");
     layers.textContent = `${layerLabel(group.max_layers || 0)} max`;
     const modified = document.createElement("span");
@@ -4063,7 +4067,12 @@ function renderJsonBrowserEntries() {
     return;
   }
   setText("jsonBrowserTitle", group.title || group.key);
-  setText("jsonBrowserMeta", `${group.source === "handmade" ? "Handmade JSON" : "Generated final run"} - ${formatBrowserDate(group.mtime)} - select any checkpoint below to preview and import it.`);
+  const groupKind = group.source === "handmade"
+    ? "Handmade folder"
+    : group.source === "exported"
+      ? "Exported game JSON folder"
+      : "Generated final run";
+  setText("jsonBrowserMeta", `${groupKind} - ${formatBrowserDate(group.mtime)} - select any JSON below to preview and import it.`);
   setJsonBrowserPreview(selectedJsonBrowserEntry());
   (group.entries || []).forEach((entry, index) => {
     const button = document.createElement("button");
@@ -4105,7 +4114,8 @@ async function refreshJsonBrowser() {
     jsonBrowserState.groups = Array.isArray(data.groups) ? data.groups : [];
     jsonBrowserState.selectedGroupIndex = jsonBrowserState.groups.length ? 0 : -1;
     jsonBrowserState.selectedEntryIndex = jsonBrowserState.groups[0]?.entries?.length ? 0 : -1;
-    setText("jsonBrowserSummary", `${data.total_entries || 0} JSON${data.total_entries === 1 ? "" : "s"} found in ${source === "handmade" ? "imgs/handmade" : "imgs/generated"}.`);
+    const sourceFolder = source === "handmade" ? "imgs/handmade" : source === "exported" ? "imgs/exported" : "imgs/generated";
+    setText("jsonBrowserSummary", `${data.total_entries || 0} JSON${data.total_entries === 1 ? "" : "s"} found in ${sourceFolder}.`);
     renderJsonBrowserGroups();
     renderJsonBrowserEntries();
   } catch (err) {
@@ -4150,7 +4160,12 @@ async function importSelectedBrowserJson() {
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     await loadPayload(data.payload);
     $("jsonBrowserDialog")?.close();
-    setStatus(`Imported ${entry.name} from ${jsonBrowserState.source === "handmade" ? "handmade folder" : "generated finals"}.`);
+    const sourceLabel = jsonBrowserState.source === "handmade"
+      ? "handmade folder"
+      : jsonBrowserState.source === "exported"
+        ? "exported game JSONs"
+        : "generated finals";
+    setStatus(`Imported ${entry.name} from ${sourceLabel}.`);
   } catch (err) {
     loadedName = previousName;
     showError("JSON browser import failed", err);
@@ -5240,14 +5255,22 @@ async function exportJson() {
     setStatus("Nothing to export. Import a JSON or add at least one shape first.");
     return;
   }
-  const payload = { name: cleanProjectBaseName(loadedName, "vinyl"), shapes };
+  const defaultName = cleanProjectBaseName(loadedName, "vinyl");
+  const requestedName = window.prompt("Export FH6 JSON name", defaultName);
+  if (requestedName === null) {
+    setStatus("FH6 JSON export cancelled.");
+    return;
+  }
+  const exportName = cleanProjectBaseName(requestedName, defaultName);
+  loadedName = exportName;
+  const payload = { name: exportName, shapes };
   try {
     const result = await postJson(EDITOR_EXPORT_API, payload);
-    setStatus(`Exported ${shapes.length} layer(s) to ${result.id || result.name || "imgs/editor"}.`);
+    setStatus(`Exported ${shapes.length} layer(s) to ${result.id || result.name || "imgs/handmade"}.`);
     await refreshJsonBrowser();
   } catch (err) {
-    downloadText(filenameWithSuffix(loadedName, "fh6-import"), JSON.stringify({ shapes }, null, 2));
-    setStatus(`Could not save into imgs/editor (${err.message}). Downloaded JSON instead.`);
+    downloadText(filenameWithSuffix(exportName, "fh6-import"), JSON.stringify({ shapes }, null, 2));
+    setStatus(`Could not save into imgs/handmade (${err.message}). Downloaded JSON instead.`);
   }
 }
 

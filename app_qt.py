@@ -106,7 +106,6 @@ PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 HANDMADE_JSON_ROOT = ROOT / "imgs" / "handmade"
 EXPORTED_JSON_ROOT = ROOT / "imgs" / "exported"
-EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
 EDITOR_PROJECT_ROOT = ROOT / "projects" / "editor"
 FABRIC_EDITOR_SCRIPT = ROOT / "tools" / "fabric-editor" / "start_fabric_editor.py"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
@@ -1484,7 +1483,6 @@ def ensure_dirs() -> None:
         LUMA_BANDS_ROOT,
         HANDMADE_JSON_ROOT,
         EXPORTED_JSON_ROOT,
-        EDITOR_JSON_ROOT,
         EDITOR_PROJECT_ROOT,
         USER_IMAGES_ROOT,
         UNIVERSAL_IMPORT_ROOT,
@@ -2378,6 +2376,8 @@ class FinalJsonBrowserDialog(QDialog):
 
     def source_image_path(self, entry: dict) -> Path | None:
         run_folder = Path(entry.get("run_folder") or Path(entry["path"]).parent)
+        if not run_folder.is_dir():
+            run_folder = Path(entry["path"]).parent
         source_name = entry.get("source_image")
         if source_name:
             candidate = run_folder / source_name
@@ -3685,7 +3685,7 @@ class MainWindow(QMainWindow):
         source_row = QHBoxLayout()
         source_row.addWidget(QLabel("JSON source"))
         self.json_source_combo = self.make_combo(
-            ["Generated finals", "Exported game JSONs", "Editor exports", "Handmade folder"],
+            ["Generated finals", "Exported game JSONs", "Handmade folder"],
             max_visible=4,
             min_height=38,
         )
@@ -3714,8 +3714,8 @@ class MainWindow(QMainWindow):
         controls.setColumnStretch(1, 1)
         json_layout.addLayout(controls)
         latest_hint = QLabel(
-            "Generated, exported, editor, and handmade JSONs each have their own safe folder. "
-            "Use imgs/handmade for downloaded/shared files and imgs/editor for editor exports."
+            "Generated, exported, and handmade JSONs each have their own safe folder. "
+            "Use imgs/handmade for downloaded/shared files and Fabric editor exports."
         )
         latest_hint.setWordWrap(True)
         json_layout.addWidget(latest_hint)
@@ -3774,7 +3774,7 @@ class MainWindow(QMainWindow):
         import_layout.addLayout(auto_row)
         right_layout.addWidget(import_group)
         right_layout.addWidget(QLabel("JSON Preview"))
-        self.import_preview = PreviewView("Select a generated, editor, exported, or hand-edited JSON to preview it here.")
+        self.import_preview = PreviewView("Select a generated, exported, handmade, or hand-edited JSON to preview it here.")
         right_layout.addWidget(self.import_preview, 1)
         notes = QLabel(
             "One importer handles generated finals, Fabric editor exports, hand-edited full-shape JSONs, and game exports. "
@@ -5768,13 +5768,53 @@ class MainWindow(QMainWindow):
         key = str(path.resolve())
         cached = self.geometry_count_cache.get(key)
         fingerprint = (int(stat.st_mtime_ns), int(stat.st_size))
-        if cached and cached[:2] == fingerprint:
+        if cached and cached[:2] == fingerprint and int(cached[2] or 0) > 0:
             return cached[2]
         try:
             count = geometry_shape_count(path)
         except Exception:
             count = 0
+        if count <= 0:
+            count = self.compatible_json_shape_count(path)
         self.geometry_count_cache[key] = (fingerprint[0], fingerprint[1], count)
+        return count
+
+    @staticmethod
+    def compatible_json_shape_count(path: Path) -> int:
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception:
+            return 0
+        shapes = payload.get("shapes") if isinstance(payload, dict) else payload if isinstance(payload, list) else None
+        if not isinstance(shapes, list):
+            return 0
+        count = 0
+        for index, shape in enumerate(shapes):
+            if not isinstance(shape, dict):
+                continue
+            color = shape.get("color")
+            if isinstance(color, list) and len(color) >= 4:
+                try:
+                    if float(color[3]) <= 0:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            data = shape.get("data")
+            type_value = shape.get("type")
+            # Skip old transparent canvas sentinels, but allow FH6 type-code
+            # shapes that the geometry counter does not understand.
+            if index == 0 and type_value == 1 and isinstance(data, list) and len(data) == 4:
+                if isinstance(color, list) and len(color) >= 4:
+                    try:
+                        if float(color[3]) <= 0:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+            if isinstance(data, list) and len(data) >= 4 and (
+                type_value is not None
+                or any(key in shape for key in ("shape_word", "shapeWord", "type_word", "typeWord", "font_shape", "fontShape"))
+            ):
+                count += 1
         return count
 
     def run_json_files(self, run_dir):
@@ -5902,14 +5942,6 @@ class MainWindow(QMainWindow):
                 "prefix": "Exported game JSON",
                 "empty": "No exported game JSONs found in imgs/exported.",
             },
-            "editor": {
-                "root": EDITOR_JSON_ROOT,
-                "type": "Editor export",
-                "tag": "Editor",
-                "preset": "editor/export",
-                "prefix": "Editor export",
-                "empty": "No editor exports found in imgs/editor.",
-            },
         }
         return sources.get(mode, sources["handmade"])
 
@@ -5931,18 +5963,32 @@ class MainWindow(QMainWindow):
             count = self.cached_geometry_shape_count(path)
             if count <= 0:
                 continue
-            folder = path.parent
+            rel_parent = Path(".")
             try:
-                run_mtime = path.stat().st_mtime
+                rel_parent = path.parent.relative_to(root)
+            except ValueError:
+                pass
+            # Generated runs are grouped by run folder. Mirror that for
+            # handmade/editor exports saved as imgs/handmade/<name>/*.json,
+            # while keeping loose files in imgs/handmade as individual cards.
+            if rel_parent.parts:
+                group_folder = root / rel_parent.parts[0]
+                run_key = str(group_folder.resolve())
+                source = rel_parent.parts[0]
+            else:
+                group_folder = path.parent
+                run_key = str(path.resolve())
+                source = path.stem
+            try:
+                run_mtime = max(self.safe_path_mtime(group_folder) or 0, path.stat().st_mtime)
             except OSError:
                 run_mtime = self.safe_path_mtime(path) or 0
-            source = path.stem
             entries.append({
                 "path": path.resolve(),
                 "source": source,
                 "folder": self.checkpoint_folder_label(path),
-                "run_folder": folder,
-                "run_key": str(path.resolve()),
+                "run_folder": group_folder,
+                "run_key": run_key,
                 "run_mtime": run_mtime,
                 "checkpoint": path.stem,
                 "step_number": count,
@@ -5966,16 +6012,11 @@ class MainWindow(QMainWindow):
     def exported_json_candidates(self) -> list[dict]:
         return self.folder_json_candidates("exported")
 
-    def editor_json_candidates(self) -> list[dict]:
-        return self.folder_json_candidates("editor")
-
     def json_browser_entries(self, mode: str) -> list[dict]:
         if mode == "handmade":
             return self.handmade_json_candidates()
         if mode == "exported":
             return self.exported_json_candidates()
-        if mode == "editor":
-            return self.editor_json_candidates()
         return self.checkpoint_candidates()
 
     def json_browser_root(self, mode: str) -> Path:
@@ -6159,8 +6200,6 @@ class MainWindow(QMainWindow):
         text = self.json_source_combo.currentText().lower()
         if "handmade" in text:
             return "handmade"
-        if "editor" in text:
-            return "editor"
         if "export" in text:
             return "exported"
         return "generated"

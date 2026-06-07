@@ -51,12 +51,47 @@ RAW_LAYER_PAD = 0x400
 RAW_LAYER_MERGE_GAP = 0x1000
 RAW_MAX_FILE_BYTES = 8 * 1024 * 1024
 RAW_MAX_TOTAL_BYTES_PER_CANDIDATE = 64 * 1024 * 1024
+LOCK_RESEARCH_GROUP_BEFORE = 0x400
+LOCK_RESEARCH_GROUP_AFTER = 0x1200
+LOCK_RESEARCH_POINTER_TARGET_READ = 0x300
+LOCK_RESEARCH_MAX_POINTERS = 96
+LOCK_RESEARCH_MAX_LAYER_SAMPLES = 96
 
 FH6_CALIBRATED_GROUP_PROFILE = {
     "update_code": b"98170067497080",
     "descriptor_offset": 0x9E17E20,
     "vtable_offsets": [0x6802470],
 }
+
+GROUPING_STATE_ALIASES = {
+    "flat": "ungrouped",
+    "flat_orphan": "ungrouped",
+    "none": "ungrouped",
+    "one_group": "grouped",
+    "group": "grouped",
+    "groups": "grouped",
+    "grouped_groups": "nested",
+    "nested_groups": "nested",
+}
+
+ACCESS_STATE_ALIASES = {
+    "editable_own": "editable_allowed",
+    "editable_external": "editable_allowed",
+    "ungrouped": "editable_allowed",
+    "grouped": "unknown",
+    "nested": "unknown",
+}
+
+
+def normalize_access_state(value: str | None) -> str:
+    value = str(value or "unknown").strip().lower()
+    return ACCESS_STATE_ALIASES.get(value, value if value in {"unknown", "editable_allowed", "locked_community"} else "unknown")
+
+
+def normalize_grouping_state(value: str | None) -> str:
+    value = str(value or "unknown").strip().lower()
+    value = GROUPING_STATE_ALIASES.get(value, value)
+    return value if value in {"unknown", "ungrouped", "grouped", "nested"} else "unknown"
 
 
 class MBI(ctypes.Structure):
@@ -679,12 +714,296 @@ def dedupe_candidates(candidates: list[dict]) -> list[dict]:
     return sorted(best.values(), key=lambda x: x.get("score", 0), reverse=True)
 
 
+def candidate_group_addr(candidate: dict) -> int | None:
+    return parse_hex_address(candidate.get("group"))
+
+
+def candidate_table_ptrs(candidate: dict) -> list[int]:
+    ptrs = []
+    for value in candidate.get("table_pointers") or []:
+        parsed = parse_hex_address(value)
+        if parsed is not None:
+            ptrs.append(parsed)
+    return ptrs
+
+
+def annotate_group_graph(candidates: list[dict]) -> None:
+    group_addrs = {candidate_group_addr(c) for c in candidates if candidate_group_addr(c) is not None}
+    ptr_sets: dict[int, set[int]] = {}
+    for candidate in candidates:
+        group = candidate_group_addr(candidate)
+        if group is not None:
+            ptr_sets[group] = set(candidate_table_ptrs(candidate))
+
+    for candidate in candidates:
+        group = candidate_group_addr(candidate)
+        ptrs = ptr_sets.get(group or 0, set())
+        children = sorted(ptrs.intersection(group_addrs) - {group})
+        parents = sorted(
+            parent
+            for parent, parent_ptrs in ptr_sets.items()
+            if group is not None and parent != group and group in parent_ptrs
+        )
+        candidate["group_graph"] = {
+            "has_parent": bool(parents),
+            "has_children": bool(children),
+            "is_flat_orphan": not parents and not children,
+            "parent_count": len(parents),
+            "child_count": len(children),
+            "parent_groups": [hx(v) for v in parents[:16]],
+            "child_groups": [hx(v) for v in children[:16]],
+        }
+
+
+def graph_candidate_quality(candidate: dict, count: int) -> int:
+    graph = candidate.get("group_graph") or {}
+    vector_count = candidate.get("vector_count")
+    capacity_count = candidate.get("capacity_count")
+    count_u16 = candidate.get("count_u16_0x5a")
+    valid_ptrs = int(candidate.get("valid_ptrs") or 0)
+    ok_count = int(candidate.get("layer_ok_count") or 0)
+    invalid_ptrs = int(candidate.get("invalid_ptrs") or max(0, count - valid_ptrs))
+    duplicate_ptr_count = int(candidate.get("duplicate_ptr_count") or 0)
+    reasons = candidate.get("reasons") or []
+    score = 0
+    if graph.get("is_flat_orphan"):
+        score += 6000
+    if vector_count == count:
+        score += 3000
+    if capacity_count is not None and capacity_count >= count:
+        score += 1200
+    if count_u16 == count:
+        score += 900
+    if invalid_ptrs == 0:
+        score += 600
+    score += int(1000 * min(1.0, valid_ptrs / max(1, count)))
+    score += int(1000 * min(1.0, ok_count / max(1, count)))
+    score += min(500, int(candidate.get("score") or 0) // 10)
+    score -= min(1200, duplicate_ptr_count * 10)
+    score -= len(reasons) * 250
+    return score
+
+
+def select_deep_dump_candidates(candidates: list[dict], count: int, limit: int) -> list[dict]:
+    if not candidates:
+        return []
+    annotate_group_graph(candidates)
+    for candidate in candidates:
+        candidate["group_graph_score"] = graph_candidate_quality(candidate, count)
+
+    selected: list[dict] = []
+    seen: set[tuple[str | None, str | None]] = set()
+
+    def add(candidate: dict | None) -> None:
+        if not candidate:
+            return
+        key = (candidate.get("group"), candidate.get("table"))
+        if key in seen:
+            return
+        seen.add(key)
+        selected.append(candidate)
+
+    # Keep classic top-score candidates for continuity, but always include
+    # graph-relevant candidates for grouped/ungrouped research.
+    for candidate in candidates[: max(1, min(2, limit))]:
+        add(candidate)
+
+    add(max(candidates, key=lambda c: c.get("group_graph_score", -10**9)))
+
+    exact = [c for c in candidates if c.get("vector_count") == count]
+    if exact:
+        add(max(exact, key=lambda c: c.get("group_graph_score", -10**9)))
+
+    flat = [c for c in candidates if (c.get("group_graph") or {}).get("is_flat_orphan")]
+    if flat:
+        add(max(flat, key=lambda c: c.get("group_graph_score", -10**9)))
+
+    non_flat = [c for c in candidates if not (c.get("group_graph") or {}).get("is_flat_orphan")]
+    if non_flat:
+        add(max(non_flat, key=lambda c: c.get("group_graph_score", -10**9)))
+
+    if len(selected) < limit:
+        for candidate in sorted(candidates, key=lambda c: c.get("group_graph_score", -10**9), reverse=True):
+            add(candidate)
+            if len(selected) >= limit:
+                break
+    return selected[:limit]
+
+
 def read_surrounding(handle, contains, address: int, before: int = 0x100, size: int = 0x500) -> dict | None:
     start = max(USER_MIN, int(address) - before)
     if not contains(start, 1):
         return None
     raw = read_memory(handle, start, size)
     return {"address": hx(start), "size": len(raw), "hex": raw.hex()}
+
+
+def extract_ascii_strings(raw: bytes, min_len: int = 4, limit: int = 24) -> list[dict]:
+    results = []
+    start = None
+    for index, byte in enumerate(raw + b"\x00"):
+        printable = 32 <= byte <= 126
+        if printable and start is None:
+            start = index
+        elif not printable and start is not None:
+            if index - start >= min_len:
+                text = raw[start:index].decode("ascii", "replace")
+                results.append({"offset": start, "text": text[:160]})
+                if len(results) >= limit:
+                    break
+            start = None
+    return results
+
+
+def extract_utf16_strings(raw: bytes, min_len: int = 4, limit: int = 16) -> list[dict]:
+    results = []
+    for parity in (0, 1):
+        start = None
+        chars = []
+        for offset in range(parity, len(raw) - 1, 2):
+            code = raw[offset] | (raw[offset + 1] << 8)
+            printable = 32 <= code <= 126
+            if printable:
+                if start is None:
+                    start = offset
+                chars.append(chr(code))
+                continue
+            if start is not None and len(chars) >= min_len:
+                results.append({"offset": start, "text": "".join(chars)[:160]})
+                if len(results) >= limit:
+                    return sorted(results, key=lambda item: item["offset"])
+            start = None
+            chars = []
+    return sorted(results, key=lambda item: item["offset"])
+
+
+def compact_scalar_offsets(raw: bytes, base_offset: int = 0, limit: int = 0x300) -> list[dict]:
+    """Return compact flag-like scalar fields for comparing locked/unlocked captures."""
+    out = []
+    scan_len = min(len(raw), limit)
+    interesting_u8 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255}
+    for offset in range(scan_len):
+        value = raw[offset]
+        if value in interesting_u8:
+            out.append({"offset": hx(base_offset + offset), "kind": "u8", "value": value})
+    for offset in range(0, max(0, scan_len - 2 + 1), 2):
+        value = struct.unpack_from("<H", raw, offset)[0]
+        if value <= 4096 or value in (0xFFFF,):
+            out.append({"offset": hx(base_offset + offset), "kind": "u16", "value": value})
+    for offset in range(0, max(0, scan_len - 4 + 1), 4):
+        value = struct.unpack_from("<I", raw, offset)[0]
+        if value <= 100000 or value in (0xFFFFFFFF,):
+            out.append({"offset": hx(base_offset + offset), "kind": "u32", "value": value})
+    return out
+
+
+def pointer_fields_near_group(handle, regions, contains, raw: bytes, raw_base: int, group: int) -> list[dict]:
+    fields = []
+    for offset in range(0, max(0, len(raw) - 8 + 1), 8):
+        value = struct.unpack_from("<Q", raw, offset)[0]
+        if not contains(value, 1):
+            continue
+        target_raw = read_memory(handle, value, LOCK_RESEARCH_POINTER_TARGET_READ)
+        target_region = region_for(regions, value)
+        fields.append(
+            {
+                "offset_from_group": hx(raw_base + offset - group),
+                "offset": hx(raw_base + offset),
+                "ptr": hx(value),
+                "target_region": {
+                    "base": hx(target_region["base"]),
+                    "end": hx(target_region["end"]),
+                    "size": target_region["size"],
+                } if target_region else None,
+                "target_crc32": f"{zlib.crc32(target_raw) & 0xFFFFFFFF:08x}" if target_raw else None,
+                "target_size": len(target_raw),
+                "target_ascii": extract_ascii_strings(target_raw, limit=8),
+                "target_utf16": extract_utf16_strings(target_raw, limit=6),
+                "target_first_u32": [
+                    struct.unpack_from("<I", target_raw, pos)[0]
+                    for pos in range(0, min(len(target_raw), 0x40) - 4 + 1, 4)
+                ] if len(target_raw) >= 4 else [],
+            }
+        )
+        if len(fields) >= LOCK_RESEARCH_MAX_POINTERS:
+            break
+    return fields
+
+
+def layer_signature_for_lock_research(raw: bytes, index: int, ptr: int) -> dict:
+    decoded = decode_layer(raw, ptr, index, include_raw=False)
+    sample = {
+        "index": index,
+        "ptr": hx(ptr),
+        "bytes_read": len(raw),
+        "crc32": decoded.get("crc32"),
+        "ok": decoded.get("ok"),
+        "position": decoded.get("position"),
+        "scale": decoded.get("scale"),
+        "rotation": decoded.get("rotation"),
+        "color_rgba": decoded.get("color_rgba"),
+        "mask_byte": decoded.get("mask_byte"),
+        "shape_word": decoded.get("shape_word"),
+        "resource_ptr_0xa8": decoded.get("resource_ptr_0xa8"),
+    }
+    if len(raw) >= 0x100:
+        sample["tail_crc32_0xc0_0x140"] = f"{zlib.crc32(raw[0xC0:0x140]) & 0xFFFFFFFF:08x}"
+        sample["flag_like_scalars_0x80_0x140"] = compact_scalar_offsets(raw[0x80:0x140], 0x80, limit=0xC0)[:80]
+    return sample
+
+
+def build_lock_research_block(handle, regions, contains, candidate: dict, count: int, access_state: str, grouping_state: str) -> dict:
+    group = parse_hex_address(candidate.get("group"))
+    table = parse_hex_address(candidate.get("table"))
+    if group is None or table is None:
+        return {"available": False, "reason": "candidate missing group/table"}
+    start = max(USER_MIN, group - LOCK_RESEARCH_GROUP_BEFORE)
+    size = LOCK_RESEARCH_GROUP_BEFORE + LOCK_RESEARCH_GROUP_AFTER
+    raw = read_memory(handle, start, size)
+    ptrs = [parse_hex_address(value) for value in candidate.get("table_pointers") or []]
+    ptrs = [p for p in ptrs if p is not None]
+    layer_indices = []
+    if ptrs:
+        if len(ptrs) <= LOCK_RESEARCH_MAX_LAYER_SAMPLES:
+            layer_indices = list(range(len(ptrs)))
+        else:
+            edge = min(24, len(ptrs))
+            layer_indices = list(range(edge))
+            layer_indices.extend(range(max(edge, len(ptrs) - edge), len(ptrs)))
+            for i in range(LOCK_RESEARCH_MAX_LAYER_SAMPLES - len(set(layer_indices))):
+                layer_indices.append(round(i * (len(ptrs) - 1) / max(1, LOCK_RESEARCH_MAX_LAYER_SAMPLES - len(set(layer_indices)) - 1)))
+            layer_indices = sorted(set(i for i in layer_indices if 0 <= i < len(ptrs)))[:LOCK_RESEARCH_MAX_LAYER_SAMPLES]
+    layer_samples = []
+    for index in layer_indices:
+        ptr = ptrs[index]
+        if not contains(ptr, 0x7C):
+            layer_samples.append({"index": index, "ptr": hx(ptr), "ok": False, "reason": "not private rw"})
+            continue
+        layer_raw, _size = read_layer_blob(handle, ptr)
+        layer_samples.append(layer_signature_for_lock_research(layer_raw, index, ptr))
+    group_window = {
+        "start": hx(start),
+        "group_offset_in_window": hx(group - start),
+        "requested_size": size,
+        "bytes_read": len(raw),
+        "crc32": f"{zlib.crc32(raw) & 0xFFFFFFFF:08x}" if raw else None,
+        "ascii": extract_ascii_strings(raw),
+        "utf16": extract_utf16_strings(raw),
+    }
+    relative_group_raw = raw[group - start: group - start + min(GROUP_HEADER_READ, max(0, len(raw) - (group - start)))] if raw else b""
+    return {
+        "available": True,
+        "purpose": "Compare grouped/nested captures against ungrouped flat captures. Flat orphan candidates are expected to be the safest export targets.",
+        "declared_access_state": access_state,
+        "declared_grouping_state": grouping_state,
+        "count": int(count),
+        "candidate_group": hx(group),
+        "candidate_table": hx(table),
+        "group_window": group_window,
+        "group_header_scalar_candidates": compact_scalar_offsets(relative_group_raw, 0, limit=GROUP_HEADER_READ),
+        "group_window_pointer_fields": pointer_fields_near_group(handle, regions, contains, raw, start, group),
+        "layer_samples": layer_samples,
+    }
 
 
 def parse_hex_address(value: str | int | None) -> int | None:
@@ -852,6 +1171,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--count", type=int, required=True, help="Visible layer count shown in FH6 for the open vinyl/group.")
     parser.add_argument("--state-name", default="", help="Human label for this capture.")
+    parser.add_argument(
+        "--access-state",
+        choices=["unknown", "editable_allowed", "locked_community", "editable_own", "editable_external"],
+        default="unknown",
+        help="Legacy label for old lock-flag research. This does not change scanning behavior.",
+    )
+    parser.add_argument(
+        "--grouping-state",
+        choices=["unknown", "ungrouped", "grouped", "grouped_groups", "nested"],
+        default="unknown",
+        help="Opened vinyl structure label for graph research. This does not change scanning behavior.",
+    )
     parser.add_argument("--pid", type=int, default=None)
     parser.add_argument("--out-root", default="captures")
     parser.add_argument("--max-seconds", type=int, default=45)
@@ -863,12 +1194,14 @@ def main() -> int:
 
     if args.count <= 0:
         raise SystemExit("--count must be greater than zero")
+    args.access_state = normalize_access_state(args.access_state)
+    args.grouping_state = normalize_grouping_state(args.grouping_state)
     pid, exe = (args.pid, process_image_path(args.pid)) if args.pid else find_forza_pid()
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     state = safe_name(args.state_name or f"group_{args.count}")
     out_dir = Path(args.out_root) / f"{timestamp}_{state}_{args.count}layers"
     out_dir.mkdir(parents=True, exist_ok=True)
-    log(f"Capturing FH6 state '{state}' count={args.count}")
+    log(f"Capturing FH6 state '{state}' count={args.count} grouping={args.grouping_state} access={args.access_state}")
     log(f"Output: {out_dir}")
     handle = open_process(pid, read=True)
     raw_chunk_metadata = []
@@ -901,11 +1234,29 @@ def main() -> int:
         count_candidates, count_stats = scan_count_headers(handle, regions, contains, args.count, args.max_seconds, args.report_layers)
         vector_candidates, vector_stats = scan_vector_headers(handle, regions, contains, args.count, args.max_seconds, args.report_layers)
         candidates = dedupe_candidates(calibrated_candidates + count_candidates + vector_candidates)
+        annotate_group_graph(candidates)
         log(f"Candidates found: {len(candidates)}")
         deep_candidates = []
-        for index, candidate in enumerate(candidates[: max(1, args.top)], start=1):
-            log(f"Deep dumping candidate {index}/{min(len(candidates), args.top)} score={candidate.get('score')}; metadata saved to files")
+        deep_targets = select_deep_dump_candidates(candidates, args.count, max(1, args.top))
+        for index, candidate in enumerate(deep_targets, start=1):
+            graph = candidate.get("group_graph") or {}
+            log(
+                f"Deep dumping candidate {index}/{len(deep_targets)} "
+                f"score={candidate.get('score')} graph_score={candidate.get('group_graph_score')} "
+                f"flat_orphan={graph.get('is_flat_orphan')}; metadata saved to files"
+            )
             deep = deepen_candidate(handle, regions, contains, candidate, args.count, args.deep_layers, args.full)
+            deep["group_graph"] = candidate.get("group_graph")
+            deep["group_graph_score"] = candidate.get("group_graph_score")
+            deep["protection_research"] = build_lock_research_block(
+                handle,
+                regions,
+                contains,
+                deep,
+                args.count,
+                args.access_state,
+                args.grouping_state,
+            )
             deep_candidates.append(deep)
             raw_chunk_metadata.extend(dump_candidate_raw_chunks(handle, regions, out_dir, deep, args.count, index))
     finally:
@@ -915,6 +1266,8 @@ def main() -> int:
         "format": "fh6_research_capture_v1",
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "state_name": args.state_name,
+        "declared_access_state": args.access_state,
+        "declared_grouping_state": args.grouping_state,
         "requested_count": args.count,
         "pid": pid,
         "process": {"name": "forzahorizon6.exe", "exe": exe},
@@ -929,6 +1282,10 @@ def main() -> int:
             "top_deep_candidates": args.top,
             "full_raw_mode": bool(args.full),
             "raw_chunk_files": len(raw_chunk_metadata),
+            "protection_research": {
+                "enabled": True,
+                "note": "Use declared_grouping_state plus group_graph blocks to compare ungrouped flat captures against grouped/nested captures.",
+            },
         },
         "regions": region_summary,
         "candidates": candidates,
@@ -942,6 +1299,11 @@ def main() -> int:
             [
                 {
                     "rank": i + 1,
+                    "requested_count": args.count,
+                    "declared_access_state": args.access_state,
+                    "declared_grouping_state": args.grouping_state,
+                    "group_graph": c.get("group_graph"),
+                    "group_graph_score": c.get("group_graph_score"),
                     "score": c.get("score"),
                     "source": c.get("source"),
                     "group": c.get("group"),
@@ -966,7 +1328,10 @@ def main() -> int:
         "Fill this in before sending back if possible:\n"
         f"State name: {args.state_name}\n"
         f"Layer count entered: {args.count}\n"
-        "Grouped/ungrouped/nested:\n"
+        f"Declared grouping state: {args.grouping_state}\n"
+        f"Declared access state: {args.access_state}\n"
+        "Ungrouped / grouped / nested / unknown:\n"
+        "Editable / locked / unknown if known:\n"
         "Visible description:\n"
         "Expected shape count:\n"
         "Anything unusual:\n",
