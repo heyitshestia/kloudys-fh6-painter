@@ -3731,8 +3731,6 @@ class MainWindow(QMainWindow):
         import_btn = QPushButton("Import JSON into selected game")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
-        export_btn = QPushButton("Export Json")
-        export_btn.clicked.connect(self.start_game_export)
         self.seed_template_import_btn = QPushButton("WIP: Import all-shape seed template")
         self.seed_template_import_btn.setToolTip(
             "Experimental. Imports the bundled all-shape resource seed into the loaded 3000-layer template, "
@@ -3744,7 +3742,6 @@ class MainWindow(QMainWindow):
         auto_btn.setVisible(False)
         self.auto_locate_button = auto_btn
         import_layout.addWidget(import_btn)
-        import_layout.addWidget(export_btn)
         import_layout.addWidget(self.seed_template_import_btn)
         auto_row = QHBoxLayout()
         auto_row.addWidget(auto_btn, 1)
