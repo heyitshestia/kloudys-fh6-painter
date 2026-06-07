@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.29
+
+- Simplified the Import JSON workflow by moving game JSON export into the importer screen.
+- Removed the separate advanced export workflow from the main navigation so support/tutorial tools are easier to reach.
+
 ## 2.0.28
 
 - Added an experimental all-shape seed-template import option for WIP importer testing.

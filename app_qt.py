@@ -157,7 +157,6 @@ WORKFLOW_META = {
     "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
     "Generate Final Vinyl": ("Create", "Build new vinyl JSONs from source art."),
     "Import JSON": ("Create", "Preview a generated or hand-edited JSON and write it into FH6."),
-    "Export Game JSON": ("Advanced Import", "Read an open editable FH6 group into compatible JSON."),
     "Editor": ("Tools", "Open the local shape editor for JSON cleanup and manual edits."),
     "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
     "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
@@ -169,8 +168,7 @@ WORKFLOW_META = {
 WORKFLOW_SUBTITLES = {
     "Dashboard": "One screen for the most important actions, current status, recent work, and safe next steps.",
     "Generate Final Vinyl": "Choose source art, pick a preset, and build import-ready checkpoints.",
-    "Import JSON": "Select a generated final, editor export, hand-edited JSON, or exported game JSON and import through one path.",
-    "Export Game JSON": "Read the current editable group into compatible JSON for backup or sharing when allowed.",
+    "Import JSON": "Select, import, or export compatible JSON through one focused workflow.",
     "Editor": "Launch the local browser editor for manual JSON adjustments.",
     "Image Tools": "Quick access to safe browser tools that prepare source art before generation.",
     "Image Size Helper": "Convert image dimensions into practical megapixel targets for presets.",
@@ -2803,7 +2801,6 @@ class MainWindow(QMainWindow):
         self._build_dashboard_tab()
         self._build_generate_tab()
         self._build_import_tab()
-        self._build_game_export_tab()
         self._build_editor_tab()
         self._build_image_tools_tab()
         self._build_image_size_tab()
@@ -3379,6 +3376,8 @@ class MainWindow(QMainWindow):
         import_btn = QPushButton("Import JSON into selected game")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
+        export_btn = QPushButton("Export Json")
+        export_btn.clicked.connect(self.start_game_export)
         self.seed_template_import_btn = QPushButton("WIP: Import all-shape seed template")
         self.seed_template_import_btn.setToolTip(
             "Experimental. Imports the bundled all-shape resource seed into the loaded 3000-layer template, "
@@ -3390,6 +3389,7 @@ class MainWindow(QMainWindow):
         auto_btn.setVisible(False)
         self.auto_locate_button = auto_btn
         import_layout.addWidget(import_btn)
+        import_layout.addWidget(export_btn)
         import_layout.addWidget(self.seed_template_import_btn)
         auto_row = QHBoxLayout()
         auto_row.addWidget(auto_btn, 1)
@@ -6550,13 +6550,16 @@ class MainWindow(QMainWindow):
             self.bus.status.emit("Failed")
 
     def start_game_export(self):
-        pid = self.selected_pid_value(self.export_pid_combo)
-        game = self.selected_game_value(self.export_game_combo if hasattr(self, "export_game_combo") else None)
+        pid_combo = self.export_pid_combo if hasattr(self, "export_pid_combo") else self.pid_combo
+        game_combo = self.export_game_combo if hasattr(self, "export_game_combo") else self.game_combo
+        count_field = self.export_template_count if hasattr(self, "export_template_count") else self.layer_count
+        pid = self.selected_pid_value(pid_combo)
+        game = self.selected_game_value(game_combo)
         if not pid:
             self.log_line("Select or refresh the game process before export.")
             return
         try:
-            template_count = int(self.export_template_count.text().strip())
+            template_count = int(count_field.text().strip())
         except ValueError:
             self.log_line("Loaded template layer count must be a number.")
             return
