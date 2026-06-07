@@ -340,6 +340,19 @@ function normalizeOverlayLayerMode(value) {
   return value === "above" ? "above" : "below";
 }
 
+function clampOverlayScalePercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 100;
+  return Math.max(10, Math.min(400, Math.round(number)));
+}
+
+function syncOverlayScaleControls(value) {
+  const percent = clampOverlayScalePercent(value);
+  if ($("overlayScale")) $("overlayScale").value = String(percent);
+  if ($("overlayScalePercent")) $("overlayScalePercent").value = String(percent);
+  return percent;
+}
+
 function defaultGuideState() {
   return {
     gridEnabled: false,
@@ -5590,6 +5603,34 @@ function groupSelectedLayers() {
   setStatus(`${groupName}: grouped ${selected.length} layer(s). Export remains flat.`);
 }
 
+function renameSelectedGroup() {
+  const groupIds = selectedGroupIds();
+  if (!groupIds.length) {
+    setStatus("Select a grouped layer before renaming a group.");
+    return;
+  }
+  if (groupIds.length > 1) {
+    setStatus("Select one editor group before renaming.");
+    return;
+  }
+  const members = membersForGroupIds(groupIds);
+  if (!members.length) {
+    setStatus("Selected group has no editable layers.");
+    return;
+  }
+  const currentName = groupNameForObject(members[0]);
+  const nextName = window.prompt("Rename editor group", currentName);
+  if (nextName === null) return;
+  const cleaned = nextName.trim().slice(0, 64) || currentName;
+  members.forEach((obj) => {
+    obj.kloudy.group_name = cleaned;
+  });
+  refreshLayers();
+  updateSelectionPanel();
+  pushHistory("rename group");
+  setStatus(`Renamed editor group to ${cleaned}. Export remains flat.`);
+}
+
 function ungroupSelectedLayers() {
   const selected = selectedVinylObjects();
   const groupIds = selectedGroupIds();
@@ -6029,7 +6070,8 @@ function loadOverlayImageFromUrl(url, fileName) {
     });
     overlayImage.kloudyOverlay = true;
     const fit = 1800 / Math.max(img.width, img.height);
-    overlayImage.set({ scaleX: fit, scaleY: fit });
+    const factor = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100) / 100;
+    overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
     canvas.add(overlayImage);
     if (layeredOverlayState) populateLayeredOverlayControls();
     if (activeToolMode === "source") updateSourceInteractivity();
@@ -6072,9 +6114,10 @@ function addOverlayFile(file) {
 }
 
 function updateOverlay() {
+  const percent = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100);
   if (!overlayImage) return;
   const base = 1800 / Math.max(overlayImage.width || 1, overlayImage.height || 1);
-  const factor = Number($("overlayScale").value) / 100;
+  const factor = percent / 100;
   overlayImage.set({
     opacity: Number($("overlayOpacity").value) / 100,
     scaleX: base * factor,
@@ -6252,6 +6295,7 @@ function bindUi() {
   $("quickFitSelected")?.addEventListener("click", fitSelectedView);
   $("groupSelected").addEventListener("click", groupSelectedLayers);
   $("quickGroupSelected")?.addEventListener("click", groupSelectedLayers);
+  $("renameSelectedGroup")?.addEventListener("click", renameSelectedGroup);
   $("hideSelectedGroup").addEventListener("click", toggleSelectedGroupVisibility);
   $("lockSelectedGroup").addEventListener("click", toggleSelectedGroupLock);
   $("ungroupSelected").addEventListener("click", ungroupSelectedLayers);
@@ -6273,7 +6317,18 @@ function bindUi() {
     event.target.value = "";
   });
   $("overlayOpacity").addEventListener("input", updateOverlay);
-  $("overlayScale").addEventListener("input", updateOverlay);
+  $("overlayScale").addEventListener("input", (event) => {
+    syncOverlayScaleControls(event.target.value);
+    updateOverlay();
+  });
+  $("overlayScalePercent")?.addEventListener("change", updateOverlay);
+  $("overlayScalePercent")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      updateOverlay();
+      event.target.blur();
+    }
+  });
   if ($("overlayLayerMode")) {
     $("overlayLayerMode").value = overlayLayerMode;
     $("overlayLayerMode").addEventListener("change", (event) => setOverlayLayerMode(event.target.value));

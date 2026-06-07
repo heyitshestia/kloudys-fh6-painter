@@ -701,6 +701,15 @@ input[type="range"] {
   grid-template-columns: 92px minmax(0, 1fr);
 }
 
+#overlayPane label.rangeWithValue {
+  grid-template-columns: 92px minmax(0, 1fr) 64px;
+}
+
+.percentInput {
+  width: 64px;
+  text-align: right;
+}
+
 .layeredOverlayControls .propertySection {
   border-color: rgba(var(--accent-rgb), 0.22);
 }
