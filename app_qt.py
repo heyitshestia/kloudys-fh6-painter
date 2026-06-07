@@ -158,6 +158,7 @@ WORKFLOW_META = {
     "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
     "Generate Final Vinyl": ("Create", "Build new vinyl JSONs from source art."),
     "Import JSON": ("Create", "Preview a generated or hand-edited JSON and write it into FH6."),
+    "Export Json": ("Create", "Read the current editable game group into compatible JSON."),
     "Editor": ("Tools", "Open the local shape editor for JSON cleanup and manual edits."),
     "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
     "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
@@ -170,6 +171,7 @@ WORKFLOW_SUBTITLES = {
     "Dashboard": "One screen for the most important actions, current status, recent work, and safe next steps.",
     "Generate Final Vinyl": "Choose source art, pick a preset, and build import-ready checkpoints.",
     "Import JSON": "Select, import, or export compatible JSON through one focused workflow.",
+    "Export Json": "Export the currently open editable game group into compatible JSON.",
     "Editor": "Launch the local browser editor for manual JSON adjustments.",
     "Image Tools": "Quick access to safe browser tools that prepare source art before generation.",
     "Image Size Helper": "Convert image dimensions into practical megapixel targets for presets.",
@@ -3152,6 +3154,7 @@ class MainWindow(QMainWindow):
         self._build_tutorial_tab()
         self._build_generate_tab()
         self._build_import_tab()
+        self._build_game_export_tab()
         self._build_editor_tab()
         self._build_image_tools_tab()
         self._build_image_size_tab()
@@ -3859,7 +3862,7 @@ class MainWindow(QMainWindow):
         )
         note.setWordWrap(True)
         right_layout.addWidget(note)
-        self.tabs.addTab(tab, "Export Game JSON")
+        self.tabs.addTab(tab, "Export Json")
 
     def _build_editor_tab(self):
         tab = QWidget()

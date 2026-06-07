@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.32
+
+- Restored Export Json as a separate left navigation workflow directly under Import JSON.
+
 ## 2.0.31
 
 - Reworked the dashboard into a cleaner first-time-user landing page.
