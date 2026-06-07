@@ -17,6 +17,10 @@ python/
 Images/
 imgs/generated/
 imgs/luma-bands/
+imgs/handmade/
+imgs/exported/
+imgs/editor/
+projects/
 *.exe.bak-*
 BUILD_COMMIT
 

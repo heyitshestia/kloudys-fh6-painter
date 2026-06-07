@@ -105,6 +105,9 @@ UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 HANDMADE_JSON_ROOT = ROOT / "imgs" / "handmade"
+EXPORTED_JSON_ROOT = ROOT / "imgs" / "exported"
+EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
+EDITOR_PROJECT_ROOT = ROOT / "projects" / "editor"
 FABRIC_EDITOR_SCRIPT = ROOT / "tools" / "fabric-editor" / "start_fabric_editor.py"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
@@ -1472,7 +1475,20 @@ HELP_TEXT = {
 
 
 def ensure_dirs() -> None:
-    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, HANDMADE_JSON_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
+    for path in (
+        ROOT / "runtime",
+        ROOT / "runtime" / "previews",
+        ROOT / "runtime" / "custom-settings",
+        ROOT / "runtime" / "user-presets",
+        PROBE_DIR,
+        LUMA_BANDS_ROOT,
+        HANDMADE_JSON_ROOT,
+        EXPORTED_JSON_ROOT,
+        EDITOR_JSON_ROOT,
+        EDITOR_PROJECT_ROOT,
+        USER_IMAGES_ROOT,
+        UNIVERSAL_IMPORT_ROOT,
+    ):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -3060,7 +3076,6 @@ class MainWindow(QMainWindow):
         self.auto_located_context: dict | None = None
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
-        self.exported_game_json_entries: list[dict] = []
         self.geometry_count_cache: dict[str, tuple[int, int, int]] = {}
         self.thumbnail_pixmap_cache: dict[tuple[str, int, int, int, int], QPixmap] = {}
         self.preview_request_id = 0
@@ -3669,7 +3684,11 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(json_intro)
         source_row = QHBoxLayout()
         source_row.addWidget(QLabel("JSON source"))
-        self.json_source_combo = self.make_combo(["Generated finals", "Handmade folder"], max_visible=2, min_height=38)
+        self.json_source_combo = self.make_combo(
+            ["Generated finals", "Exported game JSONs", "Editor exports", "Handmade folder"],
+            max_visible=4,
+            min_height=38,
+        )
         self.json_source_combo.currentTextChanged.connect(lambda _text: self.refresh_generated_browser())
         source_row.addWidget(self.json_source_combo, 1)
         json_layout.addLayout(source_row)
@@ -3694,7 +3713,10 @@ class MainWindow(QMainWindow):
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         json_layout.addLayout(controls)
-        latest_hint = QLabel("Generated mode shows the latest run by layer count. Handmade mode reads JSONs from imgs/handmade so downloaded or shared files have a safe drop folder.")
+        latest_hint = QLabel(
+            "Generated, exported, editor, and handmade JSONs each have their own safe folder. "
+            "Use imgs/handmade for downloaded/shared files and imgs/editor for editor exports."
+        )
         latest_hint.setWordWrap(True)
         json_layout.addWidget(latest_hint)
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
@@ -3826,32 +3848,14 @@ class MainWindow(QMainWindow):
         export_btn.setObjectName("primaryButton")
         export_btn.clicked.connect(self.start_game_export)
         run_layout.addWidget(export_btn)
-        run_layout.addWidget(QLabel("Output is saved under runtime/universal-import and appears in the browser below."))
+        output_hint = QLabel("Output is saved under imgs/exported and appears in Import JSON > Exported game JSONs.")
+        output_hint.setWordWrap(True)
+        run_layout.addWidget(output_hint)
         left_layout.addWidget(run_group)
-
-        browser = QGroupBox("Exported Game JSON Browser")
-        browser_layout = QVBoxLayout(browser)
-        browser_controls = QHBoxLayout()
-        refresh_exports = QPushButton("Refresh exports")
-        refresh_exports.clicked.connect(self.refresh_game_export_browser)
-        use_for_import = QPushButton("Use selected in Import JSON")
-        use_for_import.clicked.connect(self.use_selected_export_for_import)
-        browser_controls.addWidget(refresh_exports)
-        browser_controls.addWidget(use_for_import)
-        browser_layout.addLayout(browser_controls)
-        self.exported_game_json_list = QListWidget()
-        self.exported_game_json_list.setMinimumHeight(310)
-        self.exported_game_json_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.exported_game_json_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.exported_game_json_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.exported_game_json_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.exported_game_json_list.setWordWrap(True)
-        self.exported_game_json_list.currentRowChanged.connect(self.select_exported_game_json)
-        browser_layout.addWidget(self.exported_game_json_list, 1)
-        left_layout.addWidget(browser, 1)
+        left_layout.addStretch(1)
 
         right_layout.addWidget(QLabel("Export Preview"))
-        self.export_preview = PreviewView("Export a game group or select an exported JSON to preview it here.")
+        self.export_preview = PreviewView("Export a game group to preview the exported JSON here.")
         right_layout.addWidget(self.export_preview, 1)
         note = QLabel(
             "Preview is an approximation for non-basic FH shapes until full shape rendering is added. "
@@ -5880,18 +5884,53 @@ class MainWindow(QMainWindow):
                     candidates.add(path.resolve())
         return candidates
 
-    def handmade_json_candidates(self) -> list[dict]:
+    def folder_json_source_info(self, mode: str) -> dict:
+        sources = {
+            "handmade": {
+                "root": HANDMADE_JSON_ROOT,
+                "type": "Handmade JSON",
+                "tag": "Handmade",
+                "preset": "handmade/downloaded",
+                "prefix": "Handmade folder",
+                "empty": "No handmade JSONs found in imgs/handmade.",
+            },
+            "exported": {
+                "root": EXPORTED_JSON_ROOT,
+                "type": "Exported game JSON",
+                "tag": "Exported",
+                "preset": "game/exported",
+                "prefix": "Exported game JSON",
+                "empty": "No exported game JSONs found in imgs/exported.",
+            },
+            "editor": {
+                "root": EDITOR_JSON_ROOT,
+                "type": "Editor export",
+                "tag": "Editor",
+                "preset": "editor/export",
+                "prefix": "Editor export",
+                "empty": "No editor exports found in imgs/editor.",
+            },
+        }
+        return sources.get(mode, sources["handmade"])
+
+    def folder_json_candidates(self, mode: str) -> list[dict]:
+        info = self.folder_json_source_info(mode)
+        root = Path(info["root"])
         entries = []
-        if not HANDMADE_JSON_ROOT.exists():
+        if not root.exists():
             return entries
         paths = [
-            path for path in HANDMADE_JSON_ROOT.rglob("*")
+            path for path in root.rglob("*")
             if path.is_file() and path.suffix.lower() == ".json"
         ]
         for path in sorted(paths, key=lambda item: self.safe_path_mtime(item) or 0, reverse=True):
             if is_internal_generator_json(path):
                 continue
+            if path.name.lower().endswith(".report.json"):
+                continue
             count = self.cached_geometry_shape_count(path)
+            if count <= 0:
+                continue
             folder = path.parent
             try:
                 run_mtime = path.stat().st_mtime
@@ -5908,18 +5947,51 @@ class MainWindow(QMainWindow):
                 "checkpoint": path.stem,
                 "step_number": count,
                 "step_variant": 0,
-                "type": "Handmade JSON",
+                "type": info["type"],
                 "layers": count,
                 "import_safe": True,
                 "import_budget": None,
                 "recommended": False,
-                "tags": ["Handmade"],
+                "tags": [info["tag"]],
                 "error": None,
-                "preset": "handmade/downloaded",
+                "preset": info["preset"],
                 "source_image": None,
             })
         entries.sort(key=lambda item: (-item["run_mtime"], -int(item.get("layers") or 0), item["path"].name.lower()))
         return entries
+
+    def handmade_json_candidates(self) -> list[dict]:
+        return self.folder_json_candidates("handmade")
+
+    def exported_json_candidates(self) -> list[dict]:
+        return self.folder_json_candidates("exported")
+
+    def editor_json_candidates(self) -> list[dict]:
+        return self.folder_json_candidates("editor")
+
+    def json_browser_entries(self, mode: str) -> list[dict]:
+        if mode == "handmade":
+            return self.handmade_json_candidates()
+        if mode == "exported":
+            return self.exported_json_candidates()
+        if mode == "editor":
+            return self.editor_json_candidates()
+        return self.checkpoint_candidates()
+
+    def json_browser_root(self, mode: str) -> Path:
+        if mode == "generated":
+            return GENERATED_ROOT
+        return Path(self.folder_json_source_info(mode)["root"])
+
+    def json_browser_empty_message(self, mode: str) -> str:
+        if mode == "generated":
+            return "No finalized JSONs found yet."
+        return str(self.folder_json_source_info(mode)["empty"])
+
+    def json_browser_group_prefix(self, mode: str, index: int) -> str:
+        if mode == "generated":
+            return "Latest run" if index == 0 else "Previous run"
+        return str(self.folder_json_source_info(mode)["prefix"])
 
     def is_v2_output_json(self, path):
         path = Path(path)
@@ -6082,8 +6154,15 @@ class MainWindow(QMainWindow):
         )
 
     def current_json_browser_mode(self) -> str:
-        if hasattr(self, "json_source_combo") and self.json_source_combo.currentText().lower().startswith("handmade"):
+        if not hasattr(self, "json_source_combo"):
+            return "generated"
+        text = self.json_source_combo.currentText().lower()
+        if "handmade" in text:
             return "handmade"
+        if "editor" in text:
+            return "editor"
+        if "export" in text:
+            return "exported"
         return "generated"
 
     def latest_final_combo_label(self, entry):
@@ -6105,11 +6184,10 @@ class MainWindow(QMainWindow):
         self.latest_final_combo.clear()
         self.latest_final_entries = []
         if not run_order:
-            message = "No handmade JSONs found in imgs/handmade." if mode == "handmade" else "No finalized JSONs found yet."
-            self.latest_final_combo.addItem(message, None)
+            self.latest_final_combo.addItem(self.json_browser_empty_message(mode), None)
             self.latest_final_combo.blockSignals(False)
             return
-        if mode == "handmade":
+        if mode != "generated":
             latest_entries = self.sort_generated_entries_for_latest_combo([entry for group in run_groups.values() for entry in group])
         else:
             latest_entries = self.sort_generated_entries_for_latest_combo(run_groups.get(run_order[0], []))
@@ -6157,9 +6235,9 @@ class MainWindow(QMainWindow):
 
     def open_final_json_browser(self):
         mode = self.current_json_browser_mode()
-        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
+        entries = self.json_browser_entries(mode)
         if not entries:
-            folder = HANDMADE_JSON_ROOT if mode == "handmade" else GENERATED_ROOT
+            folder = self.json_browser_root(mode)
             QMessageBox.information(self, "Browse JSONs", f"No JSONs were found in {folder.relative_to(ROOT)} yet.")
             return
         dialog = FinalJsonBrowserDialog(self, entries)
@@ -6175,7 +6253,7 @@ class MainWindow(QMainWindow):
 
     def refresh_generated_browser(self):
         mode = self.current_json_browser_mode()
-        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
+        entries = self.json_browser_entries(mode)
         run_groups = {}
         run_mtimes = {}
         run_folders = {}
@@ -6188,14 +6266,11 @@ class MainWindow(QMainWindow):
         groups = {}
         order = []
         for index, run_key in enumerate(run_order):
-            if mode == "handmade":
-                prefix = "Handmade folder"
-            else:
-                prefix = "Latest run" if index == 0 else "Previous run"
+            prefix = self.json_browser_group_prefix(mode, index)
             label = self.checkpoint_run_label(run_folders[run_key], prefix=prefix)
             groups[label] = (
                 self.sort_generated_entries_for_latest_combo(run_groups[run_key])
-                if mode == "handmade"
+                if mode != "generated"
                 else self.sort_generated_entries_for_picker(run_groups[run_key])
             )
             order.append(label)
@@ -6213,7 +6288,7 @@ class MainWindow(QMainWindow):
         self.generated_checkpoint_entries = list(self.generated_folder_entries.get(folder_label, []))
         self.generated_checkpoint_list.clear()
         if not self.generated_checkpoint_entries:
-            self.generated_checkpoint_list.addItem("No finalized vinyl JSONs found yet.")
+            self.generated_checkpoint_list.addItem(self.json_browser_empty_message(self.current_json_browser_mode()))
             return
         for entry in self.generated_checkpoint_entries:
             item = QListWidgetItem(self.generated_display_label(entry))
@@ -6248,79 +6323,17 @@ class MainWindow(QMainWindow):
             return
         self.select_import_json(entry["path"], "highlighted finalized checkpoint")
 
-    def exported_game_json_candidates(self) -> list[dict]:
-        entries = []
-        if not UNIVERSAL_IMPORT_ROOT.exists():
-            return entries
-        for path in UNIVERSAL_IMPORT_ROOT.glob("export-current-group-*/*.json"):
-            if path.name.endswith(".report.json"):
-                continue
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if payload.get("format") != "fh6_typecode_json_export_v1":
-                continue
-            source = payload.get("source") or {}
-            shape_count = len(payload.get("shapes") or [])
-            report_path = path.with_suffix(".report.json")
-            entries.append({
-                "path": path,
-                "run_folder": path.parent,
-                "mtime": path.stat().st_mtime,
-                "shape_count": shape_count,
-                "layer_count": source.get("layer_count"),
-                "table": source.get("table"),
-                "group": source.get("group"),
-                "report": report_path if report_path.exists() else None,
-            })
-        return sorted(entries, key=lambda entry: entry["mtime"], reverse=True)
-
-    def exported_game_json_label(self, entry):
-        timestamp = datetime.fromtimestamp(entry["mtime"]).strftime("%Y-%m-%d %H:%M:%S")
-        return (
-            f"{entry['path'].name}\n"
-            f"{entry['shape_count']} exported layers | source count {entry.get('layer_count') or 'unknown'} | {timestamp}\n"
-            f"group={entry.get('group') or 'unknown'} table={entry.get('table') or 'unknown'}"
-        )
-
-    def refresh_game_export_browser(self):
-        if not hasattr(self, "exported_game_json_list"):
-            return
-        self.exported_game_json_entries = self.exported_game_json_candidates()
-        self.exported_game_json_list.clear()
-        if not self.exported_game_json_entries:
-            self.exported_game_json_list.addItem("No exported game group JSONs found yet.")
-            if hasattr(self, "export_preview"):
-                self.export_preview.clear("Export a game group or select an exported JSON to preview it here.")
-            return
-        for entry in self.exported_game_json_entries:
-            item = QListWidgetItem(self.exported_game_json_label(entry))
-            item.setSizeHint(QSize(0, 86))
-            item.setData(Qt.ItemDataRole.UserRole, entry)
-            self.exported_game_json_list.addItem(item)
-        self.exported_game_json_list.setCurrentRow(0)
-
-    def selected_exported_game_entry(self):
-        if not hasattr(self, "exported_game_json_list"):
-            return None
-        item = self.exported_game_json_list.currentItem()
-        return item.data(Qt.ItemDataRole.UserRole) if item else None
-
-    def select_exported_game_json(self, _row: int):
-        entry = self.selected_exported_game_entry()
-        if not entry:
-            return
-        self.preview_export_json(entry["path"])
-        self.log_line(f"Selected exported game JSON: {entry['path']}")
-
-    def use_selected_export_for_import(self):
-        entry = self.selected_exported_game_entry()
-        if not entry:
-            self.log_line("No exported game JSON selected.")
-            return
-        path = Path(entry["path"])
+    def show_exported_json_in_import_browser(self, path: Path):
+        path = Path(path)
+        if hasattr(self, "json_source_combo"):
+            index = self.json_source_combo.findText("Exported game JSONs")
+            if index >= 0:
+                self.json_source_combo.setCurrentIndex(index)
+        self.refresh_generated_browser()
+        self.set_latest_final_combo_to_path(path)
+        self.set_hidden_generated_selection(path)
         self.select_import_json(path, "exported game JSON")
+        self.preview_export_json(path)
         self.go_to_workflow("Import JSON")
 
     def select_recommended_generated_json(self):
@@ -7054,10 +7067,13 @@ class MainWindow(QMainWindow):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"export-current-group-{template_count}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
-        export_json = run_dir / f"{game}-current-group-{template_count}-{timestamp}.json"
-        export_report = run_dir / f"{game}-current-group-{template_count}-{timestamp}.report.json"
+        export_dir = EXPORTED_JSON_ROOT / f"export-current-group-{template_count}-{timestamp}"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        export_json = export_dir / f"{game}-current-group-{template_count}-{timestamp}.json"
+        export_report = export_dir / f"{game}-current-group-{template_count}-{timestamp}.report.json"
         try:
             self.bus.log.emit(f"Universal export run folder: {run_dir}")
+            self.bus.log.emit(f"Export JSON output folder: {export_dir.relative_to(ROOT)}")
             self.bus.log.emit(f"Target game: {game.upper()}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="export-template")
             fast_report = run_dir / "fast-export-template-session.json"
@@ -7113,19 +7129,10 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
             self.bus.status.emit("Done")
             self.bus.phase.emit("done", f"Current {game.upper()} group exported to compatible JSON.")
-            self.bus.ui_call.emit(self.refresh_game_export_browser)
-            self.bus.ui_call.emit(lambda: self.select_exported_path_after_refresh(export_json))
+            self.bus.ui_call.emit(lambda: self.show_exported_json_in_import_browser(export_json))
         except Exception as exc:
             self.bus.log.emit(f"Universal export failed: {exc}")
             self.bus.status.emit("Failed")
-
-    def select_exported_path_after_refresh(self, path: Path):
-        if not hasattr(self, "exported_game_json_list"):
-            return
-        for row, entry in enumerate(self.exported_game_json_entries):
-            if Path(entry["path"]) == Path(path):
-                self.exported_game_json_list.setCurrentRow(row)
-                break
 
     def start_diagnose(self):
         cmd = [helper_python(), ROOT / "main.py", "--game", self.game_combo.currentText() or "fh6", "--diagnose"]

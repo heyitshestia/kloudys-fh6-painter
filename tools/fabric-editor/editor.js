@@ -12,8 +12,11 @@ const VINYL_RESOURCE_BASES = [
 ];
 const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
+const EDITOR_PREFS_API = "/api/fabric-editor/preferences";
 const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
 const JSON_FILE_API = "/api/fabric-editor/json-file";
+const EDITOR_EXPORT_API = "/api/fabric-editor/export-json";
+const EDITOR_PROJECT_SAVE_API = "/api/fabric-editor/save-project";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 
@@ -93,6 +96,7 @@ const VINYL_TYPE_BASES = {
 
 const FAMILY_ORDER = Object.keys(VINYL_TYPE_BASES);
 const FAVORITE_COLOR_SLOTS = 16;
+const EDITOR_PREFS_SAVE_DELAY_MS = 250;
 const resourceCache = new Map();
 const resourceOutlineCache = new Map();
 let canvas;
@@ -106,6 +110,7 @@ let historyLocked = false;
 let protectedHistoryIndex = -1;
 let showFavoritesOnly = false;
 let favorites = loadFavoriteShapes();
+let editorPrefsSaveTimer = null;
 let shapeNames = { families: {} };
 let shapeWords = { families: {} };
 let rememberedColor = [255, 255, 255, 255];
@@ -361,7 +366,7 @@ function normalizeTheme(theme) {
   return theme === "dark" ? "dark" : "pastel";
 }
 
-function applyEditorTheme(theme) {
+function applyEditorTheme(theme, options = {}) {
   const safeTheme = normalizeTheme(theme);
   document.documentElement.dataset.editorTheme = safeTheme;
   localStorage.setItem("kloudyFabricTheme", safeTheme);
@@ -372,6 +377,7 @@ function applyEditorTheme(theme) {
     styleAllTransformControls();
     canvas.requestRenderAll();
   }
+  if (options.persist !== false) saveEditorPreferencesSoon();
 }
 
 function cssColorVar(name, fallback) {
@@ -1033,6 +1039,48 @@ function loadFavoriteShapes() {
   }
 }
 
+function favoriteShapeList() {
+  return [...favorites].map(String).sort();
+}
+
+function currentEditorPreferences() {
+  return {
+    theme: normalizeTheme(document.documentElement.dataset.editorTheme || localStorage.getItem("kloudyFabricTheme")),
+    favorites: favoriteShapeList(),
+  };
+}
+
+function saveEditorPreferencesSoon() {
+  clearTimeout(editorPrefsSaveTimer);
+  editorPrefsSaveTimer = setTimeout(() => {
+    saveEditorPreferences().catch((err) => console.warn("Editor preferences save failed.", err));
+  }, EDITOR_PREFS_SAVE_DELAY_MS);
+}
+
+async function saveEditorPreferences() {
+  localStorage.setItem("kloudyFabricFavorites", JSON.stringify(favoriteShapeList()));
+  localStorage.setItem("kloudyFabricTheme", currentEditorPreferences().theme);
+  await postJson(EDITOR_PREFS_API, currentEditorPreferences());
+}
+
+async function loadEditorPreferences() {
+  try {
+    const response = await fetch(EDITOR_PREFS_API, { cache: "no-store" });
+    if (!response.ok) throw new Error(`preferences HTTP ${response.status}`);
+    const prefs = await response.json();
+    if (Array.isArray(prefs.favorites)) {
+      favorites = new Set(prefs.favorites.map(String));
+      localStorage.setItem("kloudyFabricFavorites", JSON.stringify(favoriteShapeList()));
+      renderShapeGrid();
+    }
+    if (prefs.theme) {
+      applyEditorTheme(prefs.theme, { persist: false });
+    }
+  } catch (err) {
+    console.warn("Editor preferences unavailable; using browser-local fallback.", err);
+  }
+}
+
 function loadLastFontShapeTransform() {
   try {
     const saved = JSON.parse(localStorage.getItem("kloudyFabricLastFontShapeTransform") || "null");
@@ -1152,10 +1200,6 @@ function leaveGuideModeForLayerEdit() {
 
 function typeCodeToResource(typeCode) {
   const word = Number(typeCode) & 0xffff;
-  const primitiveIndex = word - 100;
-  if (primitiveIndex >= 1 && primitiveIndex <= 40) {
-    return { family: "Primitives", index: primitiveIndex, typeCode: 0x100000 + word, shapeWord: word };
-  }
   const explicit = shapeWords?.families || {};
   for (const [family, values] of Object.entries(explicit)) {
     for (const [index, shapeWord] of Object.entries(values || {})) {
@@ -1163,6 +1207,10 @@ function typeCodeToResource(typeCode) {
         return { family, index: Number(index), typeCode: 0x100000 + word, shapeWord: word };
       }
     }
+  }
+  const primitiveIndex = word - 100;
+  if (primitiveIndex >= 1 && primitiveIndex <= 40) {
+    return { family: "Primitives", index: primitiveIndex, typeCode: 0x100000 + word, shapeWord: word };
   }
   for (const [family, base] of Object.entries(VINYL_TYPE_BASES)) {
     const baseWord = base & 0xffff;
@@ -1182,11 +1230,48 @@ function typeCodeToResource(typeCode) {
   return null;
 }
 
+function normalizedShapeName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s*\/\s*word\s+[0-9]+$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function resourceFromShapeName(name) {
+  const target = normalizedShapeName(name);
+  if (!target) return null;
+  for (const [family, names] of Object.entries(shapeNames?.families || {})) {
+    for (const [index, label] of Object.entries(names || {})) {
+      if (normalizedShapeName(label) === target) {
+        const shapeWord = resourceToShapeWord(family, Number(index));
+        return { family, index: Number(index), typeCode: 0x100000 + shapeWord, shapeWord };
+      }
+    }
+  }
+  return null;
+}
+
+function resolveShapeResource(shape, typeCode) {
+  if (shape?.resource_family && shape?.resource_index) {
+    return {
+      family: String(shape.resource_family),
+      index: Number(shape.resource_index),
+      typeCode,
+      shapeWord: Number(shape.type_word ?? (typeCode & 0xffff)),
+    };
+  }
+  const named = resourceFromShapeName(shape?.shape_name || shape?.shapeName || shape?.name);
+  return named || typeCodeToResource(typeCode);
+}
+
 function resourceToTypeCode(family, index) {
   return 0x100000 + resourceToShapeWord(family, index);
 }
 
 function resourceToShapeWord(family, index) {
+  const explicitWord = shapeWords?.families?.[family]?.[String(index)];
+  if (explicitWord !== undefined && explicitWord !== null) return Number(explicitWord) & 0xffff;
   if (family === "Primitives") return (100 + Number(index)) & 0xffff;
   const base = VINYL_TYPE_BASES[family];
   if (!base) throw new Error(`Unknown shape family: ${family}`);
@@ -1386,18 +1471,10 @@ function normalizeInputShape(shape, index, legacyOffset = { x: 0, y: 0 }) {
 
 async function makeFabricObject(shape, name = null) {
   const typeCode = Number(shape.type);
-  const explicitResource = shape.resource_family && shape.resource_index
-    ? {
-      family: String(shape.resource_family),
-      index: Number(shape.resource_index),
-      typeCode,
-      shapeWord: Number(shape.type_word ?? (typeCode & 0xffff)),
-    }
-    : null;
-  const d = explicitResource ? await loadResourcePathForResolved(explicitResource) : await loadResourcePath(typeCode);
+  const resolved = resolveShapeResource(shape, typeCode);
+  const d = resolved ? await loadResourcePathForResolved(resolved) : await loadResourcePath(typeCode);
   const color = normalizeColor(shape.color);
   const data = shape.data || [0, 0, 1, 1, 0, 0, 0];
-  const resolved = explicitResource || typeCodeToResource(typeCode);
   const outlinePath = resolved ? await loadResourceOutlinePathForResolved(resolved).catch(() => "") : "";
   const gradientResource = isGradientResource(resolved);
   const shapePathForBounds = gradientResource ? new fabric.Path(d, { originX: "center", originY: "center" }) : null;
@@ -1426,11 +1503,11 @@ async function makeFabricObject(shape, name = null) {
     });
   }
   object.kloudy = {
-    name: name || shape.shape_name || (explicitResource ? shapeDisplayName(explicitResource.family, explicitResource.index) : typeLabel(typeCode)),
+    name: name || shape.shape_name || (resolved ? shapeDisplayName(resolved.family, resolved.index) : typeLabel(typeCode)),
     type: typeCode,
     type_word: Number(shape.type_word ?? (typeCode & 0xffff)),
-    resource_family: explicitResource?.family || null,
-    resource_index: explicitResource?.index || null,
+    resource_family: resolved?.family || null,
+    resource_index: resolved?.index || null,
     source_format: shape.source_format || "fh6_typecode",
     legacy_type: shape.legacy_type ?? null,
     legacy_divisor: shape.legacy_divisor ?? null,
@@ -1475,10 +1552,7 @@ function shapeDisplayName(family, index) {
   const familyLabel = family.replaceAll("_", " ");
   const word = shapeWords?.families?.[family]?.[String(index)];
   const suffix = word !== undefined ? ` / word ${word}` : "";
-  if (family === "Primitives" || family.includes("Letters")) {
-    return shapeNames?.families?.[family]?.[String(index)] || `${familyLabel} slot ${index}${suffix}`;
-  }
-  return `${familyLabel} slot ${index}${suffix}`;
+  return shapeNames?.families?.[family]?.[String(index)] || `${familyLabel} slot ${index}${suffix}`;
 }
 
 function shapeSearchText(family, index, typeCode) {
@@ -1515,6 +1589,10 @@ async function loadShapeNames() {
     renderShapeGrid();
   } catch (err) {
     console.warn("Shape metadata unavailable.", err);
+    const grid = $("shapeGrid");
+    if (grid) {
+      grid.innerHTML = `<div class="emptyState">Shape metadata could not be loaded. Restart the editor from KFPS and try again.</div>`;
+    }
   }
 }
 
@@ -5143,17 +5221,37 @@ function filenameWithSuffix(baseName, suffix) {
   return `${cleanProjectBaseName(baseName)}.${suffix}.json`;
 }
 
-function exportJson() {
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.error) {
+    throw new Error(data.error || `Save failed with HTTP ${response.status}`);
+  }
+  return data;
+}
+
+async function exportJson() {
   const shapes = vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: false }));
   if (!shapes.length) {
     setStatus("Nothing to export. Import a JSON or add at least one shape first.");
     return;
   }
-  downloadText(filenameWithSuffix(loadedName, "fh6-import"), JSON.stringify({ shapes }, null, 2));
-  setStatus(`Exported ${shapes.length} layer(s) for KFPS Import JSON.`);
+  const payload = { name: cleanProjectBaseName(loadedName, "vinyl"), shapes };
+  try {
+    const result = await postJson(EDITOR_EXPORT_API, payload);
+    setStatus(`Exported ${shapes.length} layer(s) to ${result.id || result.name || "imgs/editor"}.`);
+    await refreshJsonBrowser();
+  } catch (err) {
+    downloadText(filenameWithSuffix(loadedName, "fh6-import"), JSON.stringify({ shapes }, null, 2));
+    setStatus(`Could not save into imgs/editor (${err.message}). Downloaded JSON instead.`);
+  }
 }
 
-function saveProject() {
+async function saveProject() {
   if (!vinylObjects().length) {
     setStatus("Nothing to save. Import a JSON or add at least one shape first.");
     return;
@@ -5172,8 +5270,13 @@ function saveProject() {
     shapes: vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true })),
     editor_guides: savedGuideState(),
   };
-  downloadText(filenameWithSuffix(projectName, "fabric-project"), JSON.stringify(payload, null, 2));
-  setStatus(`Saved project: ${projectName}`);
+  try {
+    const result = await postJson(EDITOR_PROJECT_SAVE_API, { name: projectName, payload });
+    setStatus(`Saved project: ${result.id || result.name || projectName}.`);
+  } catch (err) {
+    downloadText(filenameWithSuffix(projectName, "fabric-project"), JSON.stringify(payload, null, 2));
+    setStatus(`Could not save project into projects/editor (${err.message}). Downloaded project instead.`);
+  }
 }
 
 async function loadProjectFile(file) {
@@ -5380,16 +5483,23 @@ function buildShapeLibrary() {
   select.value = "Primitives";
   select.addEventListener("change", renderShapeGrid);
   $("shapeSearch").addEventListener("input", renderShapeGrid);
+  const grid = $("shapeGrid");
+  if (grid) grid.innerHTML = `<div class="emptyState">Loading FH6 shape metadata...</div>`;
   loadShapeNames();
-  renderShapeGrid();
 }
 
 function renderShapeGrid() {
+  if (!shapeNames || !shapeWords) {
+    const grid = $("shapeGrid");
+    if (grid) grid.innerHTML = `<div class="emptyState">Loading FH6 shape metadata...</div>`;
+    return;
+  }
   const selectedFamily = $("shapeFamily").value;
   const query = $("shapeSearch").value.trim().toLowerCase();
   const grid = $("shapeGrid");
   grid.innerHTML = "";
   const families = (query || showFavoritesOnly) ? FAMILY_ORDER : [selectedFamily];
+  let shownCount = 0;
   for (const family of families) for (let index = 1; index <= shapeCountForFamily(family); index++) {
     const typeCode = resourceToTypeCode(family, index);
     const shapeWord = resourceToShapeWord(family, index);
@@ -5399,6 +5509,7 @@ function renderShapeGrid() {
     const name = shapeDisplayName(family, index);
     if (query && !shapeSearchText(family, index, typeCode).includes(query)) continue;
     const tile = document.createElement("div");
+    shownCount += 1;
     tile.className = `shapeTile${isFavorite ? " favorite" : ""}`;
     tile.tabIndex = 0;
     tile.title = `${name}\n${family.replaceAll("_", " ")} #${index}\nType ${typeCode} / word ${shapeWord}`;
@@ -5415,9 +5526,13 @@ function renderShapeGrid() {
         addShape(family, index).catch((err) => showError("Shape add failed", err));
       }
     });
-    tile.querySelector(".favButton").addEventListener("click", (event) => {
+    const favButton = tile.querySelector(".favButton");
+    favButton.addEventListener("pointerdown", (event) => event.stopPropagation());
+    favButton.addEventListener("mousedown", (event) => event.stopPropagation());
+    favButton.addEventListener("click", (event) => {
+      event.preventDefault();
       event.stopPropagation();
-      toggleFavorite(family, index);
+      setFavoriteShape(family, index, !isFavorite);
     });
     const img = tile.querySelector("img");
     img.addEventListener("error", async () => {
@@ -5431,6 +5546,9 @@ function renderShapeGrid() {
     }, { once: true });
     grid.appendChild(tile);
   }
+  if (!shownCount) {
+    grid.innerHTML = `<div class="emptyState">${showFavoritesOnly ? "No favorite shapes yet. Click + on any shape tile to add one." : "No shapes matched this search."}</div>`;
+  }
 }
 
 function escapeHtml(value) {
@@ -5442,12 +5560,15 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function toggleFavorite(family, index) {
+function setFavoriteShape(family, index, shouldFavorite) {
   const key = `${family}:${index}`;
-  if (favorites.has(key)) favorites.delete(key);
-  else favorites.add(key);
-  localStorage.setItem("kloudyFabricFavorites", JSON.stringify([...favorites]));
+  const nextState = Boolean(shouldFavorite);
+  if (nextState) favorites.add(key);
+  else favorites.delete(key);
+  localStorage.setItem("kloudyFabricFavorites", JSON.stringify(favoriteShapeList()));
+  saveEditorPreferencesSoon();
   renderShapeGrid();
+  setStatus(`${shapeDisplayName(family, index)} ${nextState ? "added to" : "removed from"} favorite shapes.`);
 }
 
 function duplicateSelected() {
@@ -6229,7 +6350,8 @@ async function maybeShowStartupHelp() {
 }
 
 function bindUi() {
-  applyEditorTheme(localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme);
+  applyEditorTheme(localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme, { persist: false });
+  loadEditorPreferences();
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
   $("openJsonBrowser")?.addEventListener("click", openJsonBrowser);
   $("closeJsonBrowser")?.addEventListener("click", () => $("jsonBrowserDialog")?.close());
