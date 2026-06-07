@@ -156,12 +156,12 @@ WORKFLOW_META = {
     "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
     "Generate Final Vinyl": ("Create", "Build new vinyl JSONs from source art."),
     "Import JSON": ("Create", "Preview a generated or hand-edited JSON and write it into FH6."),
-    "Export Game JSON": ("Advanced Import", "Read an open editable FH6 group into compatible JSON."),
+    "Export Game JSON": ("Create", "Read an open editable FH6 group into compatible JSON."),
     "Editor": ("Tools", "Open the local shape editor for JSON cleanup and manual edits."),
     "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
     "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
     "Bug Reports": ("Support", "Create a private, reviewable report package without automatic upload."),
-    "Tutorial": ("Support", "Step-by-step setup, generation, import, and troubleshooting guide."),
+    "Tutorial": ("Command Center", "Step-by-step setup, generation, import, and troubleshooting guide."),
     "Settings": ("Support", "Appearance, Pro Settings, and importer behavior."),
 }
 
@@ -246,6 +246,34 @@ QFrame#dashboardCard {
     border-radius: 18px;
     padding: 14px;
 }
+QFrame#tutorialSectionFrame {
+    border-radius: 14px;
+    padding: 0;
+}
+QToolButton#tutorialSectionButton {
+    border-radius: 12px;
+    padding: 11px 14px;
+    min-height: 34px;
+    font-size: 10pt;
+    font-weight: 900;
+    text-align: left;
+}
+QToolButton#tutorialSectionButton::menu-indicator {
+    image: none;
+}
+QFrame#tutorialSectionBodyFrame {
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+QLabel#tutorialSectionBody {
+    font-size: 10pt;
+    padding: 4px;
+}
+QLabel#tutorialNoResults {
+    font-size: 11pt;
+    font-weight: 850;
+    padding: 14px;
+}
 QLabel#dashboardCardTitle {
     background: transparent;
     font-size: 14pt;
@@ -272,6 +300,12 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #a83f67; color: #ffffff; border: 1px solid #793047; }
         QListWidget#workflowNav::item:disabled { color: #7f3d58; }
         QFrame#dashboardCard { background: rgba(255, 253, 253, 245); border: 1px solid #e5b9c8; }
+        QFrame#tutorialSectionFrame { background: rgba(255, 253, 253, 210); border: 1px solid #e5b9c8; }
+        QToolButton#tutorialSectionButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; }
+        QToolButton#tutorialSectionButton:hover { background: #f8d9e4; }
+        QToolButton#tutorialSectionButton:checked { background: #a83f67; color: #ffffff; border: 1px solid #793047; }
+        QFrame#tutorialSectionBodyFrame { background: rgba(255, 250, 250, 230); border: 1px solid #e5b9c8; }
+        QLabel#tutorialSectionBody, QLabel#tutorialNoResults { color: #332534; }
         """
     if theme_key == "horizon":
         return """
@@ -282,6 +316,12 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.55 #ffb000, stop:1 #24e9ff); color: #050914; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #ffb000; }
         QFrame#dashboardCard { background: rgba(12, 26, 38, 222); border: 1px solid rgba(36, 233, 255, 100); }
+        QFrame#tutorialSectionFrame { background: rgba(12, 26, 38, 205); border: 1px solid rgba(36, 233, 255, 100); }
+        QToolButton#tutorialSectionButton { background: rgba(8, 22, 35, 230); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); }
+        QToolButton#tutorialSectionButton:hover { background: rgba(18, 50, 66, 238); border: 1px solid #24e9ff; }
+        QToolButton#tutorialSectionButton:checked { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.55 #ffb000, stop:1 #24e9ff); color: #050914; border: 1px solid #ffffff; }
+        QFrame#tutorialSectionBodyFrame { background: rgba(5, 9, 20, 220); border: 1px solid rgba(36, 233, 255, 90); }
+        QLabel#tutorialSectionBody, QLabel#tutorialNoResults { color: #e8fbff; }
         """
     if theme_key == "blackout":
         return """
@@ -292,6 +332,12 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #ffffff; color: #000000; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #bdbdbd; }
         QFrame#dashboardCard { background: #080808; border: 1px solid rgba(255, 255, 255, 145); }
+        QFrame#tutorialSectionFrame { background: #050505; border: 1px solid rgba(255, 255, 255, 120); }
+        QToolButton#tutorialSectionButton { background: #050505; color: #f4f4f4; border: 1px solid rgba(255, 255, 255, 105); }
+        QToolButton#tutorialSectionButton:hover { background: #121212; color: #ffffff; border: 1px solid rgba(255, 255, 255, 190); }
+        QToolButton#tutorialSectionButton:checked { background: #ffffff; color: #000000; border: 1px solid #ffffff; }
+        QFrame#tutorialSectionBodyFrame { background: #000000; border: 1px solid #2b2b2b; }
+        QLabel#tutorialSectionBody, QLabel#tutorialNoResults { color: #f4f4f4; }
         """
     if theme_key in THEME_TOKEN_STYLES:
         tokens = THEME_TOKEN_STYLES[theme_key]
@@ -303,6 +349,12 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected {{ background: {tokens["accent"]}; color: {tokens["select_fg"]}; border: 1px solid {tokens["frame_light"]}; }}
         QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
         QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+        QFrame#tutorialSectionFrame {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+        QToolButton#tutorialSectionButton {{ background: {tokens["button"]}; color: {tokens["button_fg"]}; border: 1px solid {tokens["border"]}; }}
+        QToolButton#tutorialSectionButton:hover {{ background: {tokens["button_active"]}; color: {tokens["button_active_fg"]}; border: 1px solid {tokens["accent"]}; }}
+        QToolButton#tutorialSectionButton:checked {{ background: {tokens["accent"]}; color: {tokens["select_fg"]}; border: 1px solid {tokens["frame_light"]}; }}
+        QFrame#tutorialSectionBodyFrame {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
+        QLabel#tutorialSectionBody, QLabel#tutorialNoResults {{ color: {tokens["text"]}; }}
         """
     return """
     QFrame#topBar, QFrame#workflowContent { background: rgba(255, 248, 251, 236); border: 1px solid #d8c2f0; }
@@ -312,6 +364,12 @@ def shell_theme_qss(theme_key: str) -> str:
     QListWidget#workflowNav::item:selected { background: #9f6ad8; color: #ffffff; border: 1px solid #7b4eb0; }
     QListWidget#workflowNav::item:disabled { color: #6c3fa0; }
     QFrame#dashboardCard { background: rgba(255, 253, 248, 245); border: 1px solid #e3d1f5; }
+    QFrame#tutorialSectionFrame { background: rgba(255, 253, 248, 220); border: 1px solid #e3d1f5; }
+    QToolButton#tutorialSectionButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; }
+    QToolButton#tutorialSectionButton:hover { background: #dfc9ff; }
+    QToolButton#tutorialSectionButton:checked { background: #9f6ad8; color: #ffffff; border: 1px solid #7b4eb0; }
+    QFrame#tutorialSectionBodyFrame { background: #fffdf8; border: 1px solid #d8c2f0; }
+    QLabel#tutorialSectionBody, QLabel#tutorialNoResults { color: #3b244d; }
     """
 
 THEME_TOKEN_STYLES = {
@@ -1019,6 +1077,239 @@ Check these first:
 If generation looks bad, try the preset that matches the source style, increase layers, enable Pro settings for more samples if needed, or use a cleaner source image.
 """,
 }
+
+
+TUTORIAL_SECTIONS = [
+    {
+        "title": "Start Here",
+        "summary": "The safe first-run path from launcher to app.",
+        "body": """Use the launcher when possible.
+
+First-time setup:
+1. Run Setup Python.
+2. Run Install Dependencies.
+3. Run Update if the launcher says GitHub main is newer.
+4. Launch the app.
+
+Manual fallback files:
+- 00_launcher.bat opens the launcher.
+- 01_add_python312_to_path.bat helps when Python is missing.
+- 02_install_dependencies.bat checks and installs app dependencies.
+- 03_update_from_github.bat updates program files while preserving generated/runtime data.
+- 05_check_environment.bat prints useful setup diagnostics.
+
+If the launcher does not open on versions below 2.0.10, update through 03_update_from_github.bat from the root folder.""",
+    },
+    {
+        "title": "Dashboard",
+        "summary": "Where to start and what the main cards mean.",
+        "body": """The Dashboard is the quick-start page.
+
+Use it for:
+- Starting a new generation.
+- Opening the importer.
+- Opening the Fabric editor.
+- Seeing the update status and current app state.
+
+The editor card is there because generated vinyls usually become much better after a small amount of manual cleanup. Use the editor for hand-created vinyls too, not only generator cleanup.""",
+    },
+    {
+        "title": "Generate Final Vinyl",
+        "summary": "Pick source art, preset, layer count, and checkpoints.",
+        "body": """Basic flow:
+1. Choose one or more source images.
+2. Pick the preset that matches the art style.
+3. Set Template Layers to your target FH6 template size.
+4. Leave Finalize at layers as the default list unless you know exactly what you want.
+5. Press Generate Final Vinyl.
+
+Current stock presets:
+- Shaded Character Art: best default for anime, faces, eyes, hair, skin, and mixed linework.
+- Flat Colors: best for mascot art, stickers, hard borders, and broad clean regions.
+- Smooth Gradients: best for glossy shading, soft ramps, and painterly blends.
+
+Important:
+- Raw builder checkpoints are not the recommended import target.
+- Wait until the log says FINALIZE CHECKPOINTS COMPLETE.
+- Final import-ready JSONs are written to imgs/generated/<job>/finals.
+
+Pro Settings:
+- Pro controls are normally hidden and preset-managed.
+- Enable manual override in Settings only if you want to tune max resolution, random samples, mutated samples, Luma Prep, Edge Repair, or 2x Sample Goblin yourself.""",
+    },
+    {
+        "title": "Source Image Checks",
+        "summary": "Avoid images that are too small, too huge, or badly cut out.",
+        "body": """Before generating, check the source banner above the preview.
+
+Green means the source looks usable.
+Yellow means the app can use it, but quality or speed may suffer.
+Red means the image is likely a bad fit until resized or cleaned.
+
+Common problems:
+- Too small: there is not enough detail for the generator to see.
+- Too large: generation slows down without proportional quality gain.
+- Fake transparent background: the background looks gone, but still contains visible or semi-visible pixels.
+- Transparent fringe: cutout edges contain leftover pixels that can waste shapes.
+
+Use Image Size Helper to choose a sensible megapixel target.
+Use Image Tools for background removal, browser upscaling, or browser downscaling/compression.""",
+    },
+    {
+        "title": "Import JSON",
+        "summary": "Write generated, handmade, editor, or exported JSON into FH6.",
+        "body": """Default FH6 import workflow:
+1. In FH6, open Vinyl Group Editor.
+2. Create or load a 3000-layer template made from simple plain white circle layers.
+3. Save that 3000-circle template once.
+4. Reopen it before using it for imports.
+5. Ungroup it so every circle is individually editable.
+6. Stay inside Vinyl Group Editor and do not switch menus.
+7. In KFPS, select the JSON and enter the exact template layer count.
+8. Press Import JSON into selected game.
+9. Save and reload the vinyl in FH6 to verify.
+
+JSON source picker:
+- Generated finals shows generated/import-ready outputs.
+- Handmade folder reads JSONs from imgs/handmade.
+- Choose any JSON lets you pick a file manually.
+
+Layer count matters:
+- If the game template has 3000 layers, enter 3000.
+- If it has 1000 layers, enter 1000.
+- The selected JSON must fit inside the open template.""",
+    },
+    {
+        "title": "Export Game JSON",
+        "summary": "Read the current editable FH group into compatible JSON.",
+        "body": """Use Export Game JSON when you want to back up or move an editable vinyl group into JSON.
+
+Basic flow:
+1. Open the vinyl group in FH6 Vinyl Group Editor.
+2. Enter the visible layer count exactly.
+3. Keep the game in the editor and do not switch menus.
+4. Press Export Current Group.
+5. Check the saved report if validation warns or fails.
+
+Important:
+- Only export designs you own or have permission to export.
+- Fully ungrouped, flat editable vinyls are the most reliable target.
+- Heavily grouped or nested vinyls can be harder to validate correctly.
+- Exported JSONs are saved under runtime/universal-import and app-visible exported folders when available.""",
+    },
+    {
+        "title": "Fabric Editor",
+        "summary": "Create vinyls by hand or clean generated JSONs.",
+        "body": """The Fabric editor is a local browser editor for FH-compatible JSON.
+
+Use it for:
+- Making vinyls from scratch.
+- Editing generated outputs by hand.
+- Removing or moving problem layers.
+- Tracing over a source overlay.
+- Searching and favoriting FH shapes.
+- Grouping layers internally without changing game export structure.
+- Saving projects separately from exported JSONs.
+
+Editor basics:
+- Import or browse a JSON to edit it.
+- Add source images as overlays for tracing.
+- Use the layer list to select, reorder, group, hide, or lock layers.
+- Export JSON when you want to import the result through the app.
+
+Editor groups are internal. Game JSON export remains flat unless FH shape data itself requires otherwise.""",
+    },
+    {
+        "title": "Image Tools",
+        "summary": "Prepare source images before generation.",
+        "body": """Open Image Tools before generating if the source needs cleanup.
+
+Tools:
+- Background Remover opens PhotoRoom for cutouts.
+- Browser Upscaler opens a local-browser upscaler for 2x or 4x enlarging.
+- Browser Downscaler / Compressor opens Squoosh for resizing and compression.
+
+Good source prep usually improves quality more than forcing extreme generator settings.
+
+Typical fixes:
+- Remove backgrounds before generation.
+- Upscale tiny sources before using character/detail presets.
+- Downscale enormous sources before generating to avoid wasted time.""",
+    },
+    {
+        "title": "Image Size Helper",
+        "summary": "Check dimensions, megapixels, and resize targets.",
+        "body": """Use Image Size Helper when you are not sure whether a source is too small or too large.
+
+It shows:
+- Current width and height.
+- Current megapixels.
+- Same-aspect resize targets from 1 MP to 6 MP.
+- A preset cheat sheet for practical source sizes.
+
+Quick guidance:
+- Flat Colors: often fine around 1.5-3 MP.
+- Shaded Character Art: often best around 2-4 MP.
+- Smooth Gradients: often benefits from 3-6 MP.
+
+These are practical targets, not hard rules. Clean art and good layer count still matter.""",
+    },
+    {
+        "title": "Settings",
+        "summary": "Theme, Pro settings, sound, and compatibility toggles.",
+        "body": """Settings controls app behavior, not a single generation only.
+
+Common settings:
+- Theme changes the full app look.
+- Manual Pro Settings controls whether advanced generator lines are editable.
+- Blue Terminal dial-up sound can be toggled for that theme.
+- Game compatibility options control FH6/FH5 process targeting where available.
+
+Leave Pro Settings disabled unless you need direct generator tuning. The presets are designed to choose safe automatic values for most users.""",
+    },
+    {
+        "title": "Output Folders",
+        "summary": "Where generated, handmade, exported, and project files belong.",
+        "body": """Important folders:
+- imgs/generated: generated runs, previews, reports, checkpoints, and finals.
+- imgs/generated/<job>/finals: import-ready generated JSONs.
+- imgs/handmade: downloaded, shared, editor-exported, or hand-edited JSONs for browsing/import.
+- runtime/universal-import: import/export run logs, reports, backups, and raw operation output.
+- Images: source image folder used by standalone workflows.
+
+Generated checkpoints:
+- finals are the recommended import target.
+- checkpoints are raw internal build saves and are mostly diagnostic.
+- reports explain settings, scores, and run metadata.""",
+    },
+    {
+        "title": "Troubleshooting",
+        "summary": "Fast checks for setup, generation, import, and preview issues.",
+        "body": """If generation fails:
+- Check the log line before the Python traceback.
+- Make sure dependencies are installed.
+- For OpenCL errors, verify GPU driver OpenCL support is installed.
+- Avoid write-protected folders or cloud folders that deny file writes.
+
+If import does nothing:
+- FH6 must be running.
+- You must be inside Vinyl Group Editor.
+- The template must be ungrouped for normal imports.
+- The template layer count must be exact.
+- The JSON must fit inside the template.
+- Try running the app as administrator.
+
+If the preview looks different from FH6:
+- Save and reload the vinyl in game before judging shape resources.
+- Some FH shapes only appear correctly after the game reloads the vinyl.
+- Use the editor preview for structure, but always verify in-game before sharing.
+
+If the app UI looks wrong after an update:
+- Fully close the app and launcher.
+- Run the updater batch once.
+- Relaunch from the launcher or root batch file.""",
+    },
+]
 
 
 HELP_TEXT = {
@@ -2663,7 +2954,7 @@ class DashboardCard(QFrame):
     def __init__(self, title: str, text: str, action_text: str, action, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("dashboardCard")
-        self.setMinimumHeight(160)
+        self.setMinimumHeight(132)
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
         title_label = QLabel(title)
@@ -2795,6 +3086,7 @@ class MainWindow(QMainWindow):
         self.tabs = WorkflowShell()
         root.addWidget(self.tabs, 1)
         self._build_dashboard_tab()
+        self._build_tutorial_tab()
         self._build_generate_tab()
         self._build_import_tab()
         self._build_game_export_tab()
@@ -2802,7 +3094,6 @@ class MainWindow(QMainWindow):
         self._build_image_tools_tab()
         self._build_image_size_tab()
         self._build_bug_report_tab()
-        self._build_tutorial_tab()
         self._build_settings_tab()
         self.populate_profile_list()
         self.update_setting_description()
@@ -2941,77 +3232,74 @@ class MainWindow(QMainWindow):
     def _build_dashboard_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
-        cards = QGridLayout()
-        cards.setSpacing(14)
-        cards.addWidget(
-            DashboardCard(
+        start = QFrame()
+        start.setObjectName("dashboardCard")
+        start_layout = QGridLayout(start)
+        start_layout.setHorizontalSpacing(16)
+        start_layout.setVerticalSpacing(8)
+        start_title = QLabel("Start with a simple path")
+        start_title.setObjectName("dashboardCardTitle")
+        start_title.setWordWrap(True)
+        start_body = QLabel(
+            "Most users only need this loop: generate a good base, fix the important bits by hand, then import the finished JSON into FH6."
+        )
+        start_body.setObjectName("dashboardCardText")
+        start_body.setWordWrap(True)
+        tutorial_btn = QPushButton("Open tutorial")
+        tutorial_btn.clicked.connect(lambda: self.go_to_workflow("Tutorial"))
+        start_layout.addWidget(start_title, 0, 0)
+        start_layout.addWidget(start_body, 1, 0)
+        start_layout.addWidget(tutorial_btn, 0, 1, 2, 1)
+        start_layout.setColumnStretch(0, 1)
+        layout.addWidget(start)
+
+        workflow = QGridLayout()
+        workflow.setSpacing(12)
+        for column, (title, body, button_text, target) in enumerate((
+            (
+                "1. Generate",
+                "Choose source art and build finalized JSON checkpoints.",
+                "Generate",
                 "Generate Final Vinyl",
-                "Pick source art, choose a preset, watch progress, then finalize import-ready JSONs.",
-                "Start generating",
-                lambda: self.go_to_workflow("Generate Final Vinyl"),
             ),
-            0,
-            0,
-        )
-        cards.addWidget(
-            DashboardCard(
+            (
+                "2. Edit",
+                "Open the editor to create by hand, trace over an overlay, or clean up generated layers.",
+                "Open editor",
+                "Editor",
+            ),
+            (
+                "3. Import",
+                "Pick the final JSON, write it into the open FH6 template, then save and reload in game.",
+                "Import",
                 "Import JSON",
-                "Choose a generated final, editor export, hand-edited JSON, or game export, then write it into FH6.",
-                "Open importer",
-                lambda: self.go_to_workflow("Import JSON"),
             ),
-            0,
-            1,
-        )
-        cards.addWidget(
-            DashboardCard(
-                "Open Vinyl Editor",
-                "Clean up JSONs manually with the local Fabric editor, shape library, favorites, overlay, and export tools.",
-                "Open editor tools",
-                lambda: self.go_to_workflow("Editor"),
-            ),
-            0,
-            2,
-        )
-        layout.addLayout(cards)
+        )):
+            workflow.addWidget(
+                DashboardCard(title, body, button_text, lambda target=target: self.go_to_workflow(target)),
+                0,
+                column,
+            )
+        layout.addLayout(workflow)
 
         editor_ad = QFrame()
         editor_ad.setObjectName("dashboardCard")
         editor_layout = QGridLayout(editor_ad)
         editor_layout.setHorizontalSpacing(18)
-        editor_layout.setVerticalSpacing(12)
-        editor_title = QLabel("Built for editing vinyls faster than FH6's in-game editor")
+        editor_layout.setVerticalSpacing(10)
+        editor_title = QLabel("The editor is for making vinyls by hand, not just fixing generator output")
         editor_title.setObjectName("dashboardCardTitle")
         editor_title.setWordWrap(True)
         editor_body = QLabel(
-            "The bundled editor gives you a searchable shape library, favorites, source-image overlay, viewport-friendly placement, saved colors, eyedropper tools, box selection, JSON import/export, and quick manual cleanup. "
-            "Use FH6 for the final save, but use this editor when you need precision, repeatable colors, easier shape picking, and less menu wrestling."
+            "Use the Fabric editor when you want control: searchable shapes, favorites, overlay tracing, saved colors, eyedropper tools, box selection, groups, and cleaner layer handling. "
+            "Generated vinyls are a strong starting point, but the best results usually come from hand-editing the details that matter."
         )
         editor_body.setObjectName("dashboardCardText")
         editor_body.setWordWrap(True)
-        editor_button = QPushButton("Open the editor")
-        editor_button.setObjectName("primaryButton")
-        editor_button.clicked.connect(lambda: self.go_to_workflow("Editor"))
         editor_layout.addWidget(editor_title, 0, 0, 1, 2)
         editor_layout.addWidget(editor_body, 1, 0, 1, 2)
-
-        advantages = QGroupBox("Why it beats editing only in-game")
-        advantages_layout = QVBoxLayout(advantages)
-        for text in (
-            "Search and favorite shapes instead of scrolling through every FH6 shape page.",
-            "Use a source overlay and eyedropper so colors and placement are easier to match.",
-            "Move, delete, duplicate, box-select, and clean up JSON layers before importing.",
-            "Export back to FH6-compatible JSON when the design is ready for the game.",
-        ):
-            label = QLabel(text)
-            label.setWordWrap(True)
-            advantages_layout.addWidget(label)
-        editor_layout.addWidget(advantages, 2, 0)
-        editor_layout.addWidget(editor_button, 2, 1, Qt.AlignmentFlag.AlignBottom)
-        editor_layout.setColumnStretch(0, 3)
-        editor_layout.setColumnStretch(1, 1)
         layout.addWidget(editor_ad)
 
         kofi_ad = QFrame()
@@ -3591,11 +3879,133 @@ class MainWindow(QMainWindow):
     def _build_tutorial_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        text = QTextEdit()
-        text.setReadOnly(True)
-        text.setPlainText(TEXT["tutorial"])
-        layout.addWidget(text)
+        layout.setSpacing(12)
+
+        intro = QFrame()
+        intro.setObjectName("dashboardCard")
+        intro_layout = QVBoxLayout(intro)
+        title = QLabel("KFPS Tutorial")
+        title.setObjectName("dashboardCardTitle")
+        body = QLabel(
+            "Start here if you are setting up the app, generating your first vinyl, importing into FH6, "
+            "or cleaning work by hand in the editor. Use search to narrow the sections below."
+        )
+        body.setObjectName("dashboardCardText")
+        body.setWordWrap(True)
+        intro_layout.addWidget(title)
+        intro_layout.addWidget(body)
+        layout.addWidget(intro)
+
+        self.tutorial_search = QLineEdit()
+        self.tutorial_search.setPlaceholderText("Search tutorial sections, for example: import, template, editor, OpenCL, folders")
+        self.tutorial_search.textChanged.connect(self.filter_tutorial_sections)
+        layout.addWidget(self.tutorial_search)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        self.tutorial_sections_layout = QVBoxLayout(content)
+        self.tutorial_sections_layout.setContentsMargins(2, 2, 8, 2)
+        self.tutorial_sections_layout.setSpacing(10)
+        self.tutorial_section_widgets: list[dict] = []
+        for index, section in enumerate(TUTORIAL_SECTIONS):
+            self.tutorial_section_widgets.append(self.make_tutorial_section(section, index, expanded=index == 0))
+        self.tutorial_no_results = QLabel("No tutorial section matches that search.")
+        self.tutorial_no_results.setObjectName("tutorialNoResults")
+        self.tutorial_no_results.setWordWrap(True)
+        self.tutorial_no_results.setVisible(False)
+        self.tutorial_sections_layout.addWidget(self.tutorial_no_results)
+        self.tutorial_sections_layout.addStretch(1)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         self.tabs.addTab(tab, "Tutorial")
+
+    def make_tutorial_section(self, section: dict, index: int, *, expanded: bool = False) -> dict:
+        frame = QFrame()
+        frame.setObjectName("tutorialSectionFrame")
+        frame_layout = QVBoxLayout(frame)
+        frame_layout.setContentsMargins(10, 10, 10, 10)
+        frame_layout.setSpacing(8)
+
+        button = QToolButton()
+        button.setObjectName("tutorialSectionButton")
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        button.setCheckable(True)
+        button.setChecked(expanded)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button.clicked.connect(lambda checked, item_index=index: self.set_tutorial_section_open(item_index, checked))
+
+        body_frame = QFrame()
+        body_frame.setObjectName("tutorialSectionBodyFrame")
+        body_layout = QVBoxLayout(body_frame)
+        body_layout.setContentsMargins(10, 10, 10, 10)
+        body_label = QLabel(section["body"])
+        body_label.setObjectName("tutorialSectionBody")
+        body_label.setWordWrap(True)
+        body_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        body_layout.addWidget(body_label)
+        body_frame.setVisible(expanded)
+
+        frame_layout.addWidget(button)
+        frame_layout.addWidget(body_frame)
+        self.tutorial_sections_layout.addWidget(frame)
+
+        item = {
+            "index": index,
+            "frame": frame,
+            "button": button,
+            "body_frame": body_frame,
+            "title": section["title"],
+            "summary": section["summary"],
+            "search": f'{section["title"]} {section["summary"]} {section["body"]}'.lower(),
+        }
+        self.update_tutorial_button_text(item)
+        return item
+
+    def update_tutorial_button_text(self, item: dict) -> None:
+        prefix = "v" if item["button"].isChecked() else ">"
+        item["button"].setText(f'{prefix} {item["title"]} - {item["summary"]}')
+
+    def set_tutorial_section_open(self, index: int, open_: bool) -> None:
+        if not hasattr(self, "tutorial_section_widgets"):
+            return
+        for item in self.tutorial_section_widgets:
+            if item["index"] != index:
+                continue
+            item["button"].setChecked(open_)
+            item["body_frame"].setVisible(open_)
+            self.update_tutorial_button_text(item)
+            break
+
+    def filter_tutorial_sections(self, query: str) -> None:
+        if not hasattr(self, "tutorial_section_widgets"):
+            return
+        terms = [term for term in query.lower().split() if term]
+        matches: list[tuple[int, dict]] = []
+        for item in self.tutorial_section_widgets:
+            score = 1 if not terms else sum(1 for term in terms if term in item["search"])
+            if score:
+                matches.append((score, item))
+
+        for item in self.tutorial_section_widgets:
+            self.tutorial_sections_layout.removeWidget(item["frame"])
+            item["frame"].setVisible(False)
+
+        if terms:
+            ordered = [item for _score, item in sorted(matches, key=lambda pair: (-pair[0], pair[1]["index"]))]
+        else:
+            ordered = self.tutorial_section_widgets
+
+        for item in ordered:
+            item["frame"].setVisible(True)
+            self.tutorial_sections_layout.insertWidget(self.tutorial_sections_layout.count() - 2, item["frame"])
+            if terms:
+                item["button"].setChecked(True)
+                item["body_frame"].setVisible(True)
+                self.update_tutorial_button_text(item)
+
+        self.tutorial_no_results.setVisible(bool(terms) and not matches)
 
     def _build_bug_report_tab(self):
         tab = QWidget()
