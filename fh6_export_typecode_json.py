@@ -30,9 +30,8 @@ GROUP_TABLE_END_OFFSET = 0x80
 GROUP_TABLE_CAPACITY_OFFSET = 0x88
 MIN_NORMAL_GROUP_ADDRESS = 0x100000000
 EXPORT_REFUSAL_MESSAGE = (
-    "Export refused: this does not appear to be a normal editable user-owned FH6 group. "
-    "Kloudy's FH6 Painter will not export locked/community-highlight work. "
-    "The FH creator community does not condone copying or redistributing another creator's design without permission."
+    "Export refused: this does not appear to be a fully ungrouped editable FH6 group. "
+    "Fully ungroup the vinyl, save it, reopen it, and only export designs you own or have permission to export."
 )
 EXPORT_VALIDATION_WARNING = (
     "Export validation warning: the located group did not match every old editable-table assumption. "
@@ -202,6 +201,9 @@ def validate_probe_report(probe_report, requested_count, selected_group, selecte
 
 def validate_fast_session_report(session, requested_count, selected_group, selected_table):
     reasons = []
+    if session.get("refused"):
+        reasons.append(str(session.get("refusal_reason") or "locator refused this editor state"))
+        return False, reasons
     if int(session.get("layer_count") or -1) != int(requested_count):
         reasons.append(f"locator session count does not match requested count ({session.get('layer_count')} != {requested_count})")
     group = session.get("group_address")
@@ -219,6 +221,14 @@ def validate_fast_session_report(session, requested_count, selected_group, selec
     vector_count = session.get("vector_count")
     validated_entries = int(session.get("validated_entries") or 0)
     flattened = bool(session.get("flattened_from_groups"))
+    graph = session.get("group_graph") or {}
+    if graph and not graph.get("is_flat_orphan"):
+        reasons.append("locator session is grouped or nested, not a flat editable group")
+    global_group_count = session.get("global_group_count")
+    if global_group_count is not None and int(global_group_count) > 5:
+        reasons.append("locator session contains too many group structures")
+    if flattened:
+        reasons.append("flattened grouped exports are disabled for safety")
     if not flattened and vector_count is not None and int(vector_count) != int(requested_count):
         reasons.append(f"locator session vector count does not match requested count ({vector_count} != {requested_count})")
     required_capacity = int(vector_count) if flattened and vector_count is not None else int(requested_count)
@@ -428,7 +438,7 @@ def load_locator_report(path):
 
 
 def locator_allows_flattened(locator):
-    return bool(locator.get("type") == "fh6_session_location_v1" and locator.get("flattened_from_groups"))
+    return False
 
 
 def locator_group_vtable(locator):

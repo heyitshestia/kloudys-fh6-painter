@@ -32,6 +32,15 @@ FH6_CALIBRATED_RTTI_PROFILE = {
     "base_class_count": 4,
 }
 
+FH6_GROUP_GRAPH_ACCEPT_CAP = 5
+FH6_LOCATOR_CANDIDATE_CAP = 5
+
+
+class LocatorRefused(RuntimeError):
+    def __init__(self, message, details=None):
+        super().__init__(message)
+        self.details = details or {}
+
 
 class MEMORY_BASIC_INFORMATION(ctypes.Structure):
     _fields_ = [
@@ -1037,6 +1046,145 @@ def read_calibrated_group_vector(pid, profile, group_address, vtables, max_vecto
     }
 
 
+def read_group_pointer_table(pid, table_address, count):
+    count = max(0, min(int(count), 3000))
+    pointers = []
+    for index in range(count):
+        try:
+            pointers.append(read_pointer(pid, table_address + index * 8))
+        except Exception:
+            pointers.append(0)
+    return pointers
+
+
+def locate_clivery_groups_by_calibrated_graph(pid, profile, layer_count, rtti, max_seconds=18, accept_cap=FH6_GROUP_GRAPH_ACCEPT_CAP):
+    """Build a compact CLiveryGroup graph and accept only exact-count flat orphans."""
+    vtables = set(rtti.get("vtables") or [])
+    if not vtables:
+        return []
+
+    started = time.monotonic()
+    patterns = [(vtable, struct.pack("<Q", vtable)) for vtable in vtables]
+    instances = {}
+    scanned = 0
+    vtable_hits = 0
+    stopped_by_time = False
+
+    for base, size, _protect, _type in iter_regions(pid, type_filter=MEM_PRIVATE, writable_only=True):
+        if max_seconds and time.monotonic() - started > max_seconds:
+            stopped_by_time = True
+            break
+        memory = read_region(pid, base, size)
+        if not memory:
+            continue
+        scanned += len(memory)
+        for vtable, pattern in patterns:
+            start = 0
+            while True:
+                pos = memory.find(pattern, start)
+                if pos == -1:
+                    break
+                start = pos + 8
+                if pos % 8:
+                    continue
+                vtable_hits += 1
+                group_address = base + pos
+                if group_address in instances:
+                    continue
+                info = read_calibrated_group_vector(pid, profile, group_address, vtables, max_vector_count=3000)
+                if not info:
+                    continue
+                count_u16 = int(info.get("current_u16") or 0)
+                vector_count = int(info.get("vector_count") or 0)
+                if not (1 <= count_u16 <= 3000) or not (1 <= vector_count <= 3000):
+                    continue
+                pointer_count = min(max(count_u16, vector_count), 3000)
+                pointers = read_group_pointer_table(pid, info["table_address"], pointer_count)
+                valid_pointer_count = sum(1 for ptr in pointers if is_private_writable_address(pid, ptr))
+                if valid_pointer_count <= 0:
+                    continue
+                info["table_pointers"] = pointers
+                info["valid_pointer_count"] = valid_pointer_count
+                instances[group_address] = info
+                if len(instances) > accept_cap:
+                    details = {
+                        "global_group_count": len(instances),
+                        "global_group_cap": accept_cap,
+                        "scanned_mb": scanned // (1024 * 1024),
+                        "vtable_hits": vtable_hits,
+                    }
+                    raise LocatorRefused(
+                        "This editor state contains multiple group structures. Fully ungroup, save, reopen, and try again.",
+                        details,
+                    )
+
+    group_addresses = set(instances)
+    for group_address, info in instances.items():
+        ptrs = set(info.get("table_pointers") or [])
+        parents = [parent for parent, parent_info in instances.items() if parent != group_address and group_address in set(parent_info.get("table_pointers") or [])]
+        children = [child for child in group_addresses if child != group_address and child in ptrs]
+        info["group_graph"] = {
+            "has_parent": bool(parents),
+            "has_children": bool(children),
+            "is_flat_orphan": not parents and not children,
+            "parent_count": len(parents),
+            "child_count": len(children),
+        }
+
+    exact_groups = [info for info in instances.values() if int(info.get("current_u16") or 0) == int(layer_count)]
+    blocked_exact = [info for info in exact_groups if not (info.get("group_graph") or {}).get("is_flat_orphan")]
+    if blocked_exact:
+        raise LocatorRefused(
+            "This editor state is grouped or nested. Fully ungroup, save, reopen, and try again.",
+            {
+                "global_group_count": len(instances),
+                "matched_group_count": len(exact_groups),
+                "blocked_group_count": len(blocked_exact),
+                "scanned_mb": scanned // (1024 * 1024),
+                "stopped_by_time": stopped_by_time,
+            },
+        )
+
+    groups = []
+    for info in exact_groups:
+        if int(info.get("vector_count") or -1) != int(layer_count):
+            continue
+        graph = info.get("group_graph") or {}
+        if not graph.get("is_flat_orphan"):
+            continue
+        candidate = build_clivery_group_candidate(
+            pid,
+            profile,
+            layer_count,
+            rtti,
+            info["group_address"],
+            info["vtable"],
+            "rtti_group_graph_flat_orphan",
+        )
+        if not candidate:
+            continue
+        candidate["group_graph"] = graph
+        candidate["group_graph_complete"] = not stopped_by_time
+        candidate["group_graph_partial"] = bool(stopped_by_time)
+        candidate["global_group_count"] = len(instances)
+        candidate["graph_scan_mb"] = scanned // (1024 * 1024)
+        groups.append(candidate)
+
+    groups.sort(key=lambda item: item["score"], reverse=True)
+    if groups:
+        suffix = " from partial graph" if stopped_by_time else ""
+        print(
+            f"Calibrated group graph accepted {len(groups[:accept_cap])} flat editable candidate(s){suffix}.",
+            flush=True,
+        )
+    elif instances:
+        print(
+            f"Calibrated group graph found {len(instances)} group(s), no exact flat candidate.",
+            flush=True,
+        )
+    return groups[:accept_cap]
+
+
 def flatten_calibrated_group(pid, profile, group_info, vtables, requested_count, depth=0, seen_groups=None):
     if seen_groups is None:
         seen_groups = set()
@@ -1178,12 +1326,17 @@ def locate_clivery_groups_by_rtti(pid, profile, layer_count):
         return []
 
     if rtti.get("source") == "calibrated_profile":
+        groups = locate_clivery_groups_by_calibrated_graph(pid, profile, layer_count, rtti)
+        if groups:
+            return groups
         groups = locate_clivery_groups_by_calibrated_count(pid, profile, layer_count, rtti)
         if groups:
-            return groups
-        groups = locate_clivery_groups_by_calibrated_flattened(pid, profile, layer_count, rtti)
-        if groups:
-            return groups
+            flat_groups = [
+                item for item in groups
+                if (item.get("group_graph") or {}).get("is_flat_orphan", True)
+                and not item.get("flattened_from_groups")
+            ]
+            return flat_groups[:FH6_LOCATOR_CANDIDATE_CAP]
         print(
             "Calibrated locator count scan did not find a validated group; "
             "skipping broad type scan to avoid long stale-memory searches.",
@@ -1218,7 +1371,7 @@ def locate_clivery_groups_by_rtti(pid, profile, layer_count):
                 if candidate:
                     groups.append(candidate)
     groups.sort(key=lambda item: item["score"], reverse=True)
-    return groups
+    return groups[:FH6_LOCATOR_CANDIDATE_CAP]
 
 
 def locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=None, max_candidates=200000):
@@ -1309,19 +1462,38 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
     print(f"Auto-locating FH6 layer count/table for count {layer_count}...")
     started = time.monotonic()
 
-    if profile.key == "fh6":
-        fast_groups = locate_clivery_groups_by_rtti(pid, profile, layer_count)
-        if not fast_groups:
-            fast_groups = locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds)
-    else:
-        fast_groups = locate_clivery_groups_by_rtti(pid, profile, layer_count)
-        if not fast_groups:
-            fast_groups = locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds)
+    try:
+        if profile.key == "fh6":
+            fast_groups = locate_clivery_groups_by_rtti(pid, profile, layer_count)
+            if not fast_groups:
+                fast_groups = locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds)
+        else:
+            fast_groups = locate_clivery_groups_by_rtti(pid, profile, layer_count)
+            if not fast_groups:
+                fast_groups = locate_clivery_groups_by_layout_count(pid, profile, layer_count, max_seconds=max_seconds)
+    except LocatorRefused as exc:
+        payload = {
+            "type": "fh6_session_location_v1",
+            "pid": pid,
+            "process": psutil.Process(pid).name(),
+            "layer_count": layer_count,
+            "created": time.time(),
+            "refused": True,
+            "refusal_reason": str(exc),
+            "locator_details": exc.details,
+        }
+        print(str(exc), flush=True)
+        if output_path:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+            print(f"Wrote FH6 session location to {output_path}")
+        return payload
     if fast_groups:
         print(f"Fast FH6 layer group candidates: {len(fast_groups)}", flush=True)
         winner = fast_groups[0]
-        best = fast_groups
-        for item in best[:10]:
+        best = fast_groups[:FH6_LOCATOR_CANDIDATE_CAP]
+        for item in best:
             print(
                 f"candidate score={item['score']} kind={item['count_kind']} validated={item['validated_entries']}",
                 flush=True,
@@ -1347,6 +1519,11 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
             "flattened_from_groups": bool(winner.get("flattened_from_groups")),
             "flattened_group_count": winner.get("flattened_group_count"),
             "flattened_max_depth": winner.get("flattened_max_depth"),
+            "group_graph": winner.get("group_graph"),
+            "group_graph_complete": winner.get("group_graph_complete"),
+            "group_graph_partial": winner.get("group_graph_partial"),
+            "global_group_count": winner.get("global_group_count"),
+            "graph_scan_mb": winner.get("graph_scan_mb"),
             "vtable": winner.get("vtable"),
             "rtti_source": winner.get("rtti_source"),
             "rtti_update_code": winner.get("rtti_update_code"),
@@ -1396,7 +1573,7 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
         table["current_u32"] = u32
         quick.append(table)
         quick.sort(key=lambda item: item["score"], reverse=True)
-        del quick[48:]
+        del quick[16:]
 
     if not quick:
         for kind, address, u16, u32 in fallback_addresses:
@@ -1411,7 +1588,7 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
             table["current_u32"] = u32
             quick.append(table)
             quick.sort(key=lambda item: item["score"], reverse=True)
-            del quick[48:]
+            del quick[16:]
 
     if quick:
         print(f"Quick count/table candidates before safety validation: {len(quick)}", flush=True)
@@ -1449,8 +1626,9 @@ def auto_locate_count_table(pid, profile, layer_count, limit_mb, max_matches, pr
         )
 
     best.sort(key=lambda item: item["score"], reverse=True)
+    best = best[:FH6_LOCATOR_CANDIDATE_CAP]
     print(f"Auto-locate candidates: {len(best)}")
-    for item in best[:10]:
+    for item in best:
         print(
             f"score={item['score']} kind={item['count_kind']} count16={item['current_u16']} count32={item['current_u32']}"
         )

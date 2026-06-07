@@ -106,6 +106,7 @@ def try_read_memory(handle, address, size):
 def decode(raw):
     return {
         "shape_id_byte": raw[0x7A],
+        "shape_word": struct.unpack_from("<H", raw, 0x7A)[0],
         "color_rgba": list(raw[0x74:0x78]),
         "position": list(struct.unpack_from("<ff", raw, 0x18)),
         "scale": list(struct.unpack_from("<ff", raw, 0x28)),
@@ -130,6 +131,8 @@ def decode_partial(raw):
     }
     if len(raw) > 0x7A:
         out["shape_id_byte"] = raw[0x7A]
+    if len(raw) >= 0x7C:
+        out["shape_word"] = struct.unpack_from("<H", raw, 0x7A)[0]
     if len(raw) >= 0x78:
         out["color_rgba"] = list(raw[0x74:0x78])
     if len(raw) >= 0x20:
@@ -513,7 +516,11 @@ def load_shapes(path, allow_unknown_low_byte=False):
             out.append(legacy_shape)
             continue
         code, shape_word, font_item = shape_type_fields(shape, font_registry)
-        if code not in SUPPORTED_PAGE1_CODES and font_item is None and not allow_unknown_low_byte:
+        if (
+            code not in SUPPORTED_PAGE1_CODES
+            and font_item is None
+            and not allow_unknown_low_byte
+        ):
             skipped_item = {
                 "source_index": i,
                 "source_layer": i + 1,

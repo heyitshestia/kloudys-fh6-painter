@@ -1,32 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
-## 2.0.32
-
-- Restored Export Json as a separate left navigation workflow directly under Import JSON.
-
-## 2.0.31
-
-- Reworked the dashboard into a cleaner first-time-user landing page.
-- Highlighted the Generate, Edit, Import workflow and the editor's hand-creation tools.
-
-## 2.0.30
-
-- Reworked the in-app tutorial into searchable, theme-aware dropdown sections.
-- Moved Tutorial directly under Dashboard so setup and workflow help is easier to find.
-- Expanded tutorial coverage across setup, generation, importing, exporting, editor use, tools, settings, logs, and troubleshooting.
-
-## 2.0.29
-
-- Simplified the Import JSON workflow by moving game JSON export into the importer screen.
-- Removed the separate advanced export workflow from the main navigation so support/tutorial tools are easier to reach.
-
-## 2.0.28
-
-- Added an experimental all-shape seed-template import option for WIP importer testing.
-- Added the bundled FH6 all-shape seed JSON used by the experimental template setup.
-- Improved WIP import/export research tooling for faster grouped vinyl locator testing.
-- Added precise source-overlay scale controls in the Fabric editor with a synced slider and editable percent value.
-- Added internal Fabric editor group renaming. Exported vinyl JSON remains flat.
+## 2.0.33
+- Restored the stable 2.0.27 editor baseline while keeping the current generator preset updates.
+- Kept the updated raw FH6 import/export locator backend without experimental editor shape-resource caching.
+- Removed the WIP seed/resource editor path from the shipped build.
 
 ## 2.0.27
 

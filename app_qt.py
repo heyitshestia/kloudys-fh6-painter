@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import html
 import json
 import math
 import os
@@ -98,15 +97,12 @@ EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
 SESSION_PATH = PROBE_DIR / "current-fh6-session.json"
-FH6_RESOURCE_SEED_JSON = ROOT / "data" / "fh6_all_shapes_resource_seed.json"
 PREVIEW_MAX = 1200
 MEMORY_SNAPSHOT_LIMIT_MB = 2048
 UNIVERSAL_IMPORT_ROOT = ROOT / "runtime" / "universal-import"
 PROJECT_PRESENCE_ASSET = ROOT / "assets" / "app" / "project-integrity.marker"
 LUMA_BANDS_ROOT = ROOT / "imgs" / "luma-bands"
 HANDMADE_JSON_ROOT = ROOT / "imgs" / "handmade"
-EXPORTED_JSON_ROOT = ROOT / "imgs" / "exported"
-EDITOR_PROJECT_ROOT = ROOT / "projects" / "editor"
 FABRIC_EDITOR_SCRIPT = ROOT / "tools" / "fabric-editor" / "start_fabric_editor.py"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
@@ -160,20 +156,20 @@ WORKFLOW_META = {
     "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
     "Generate Final Vinyl": ("Create", "Build new vinyl JSONs from source art."),
     "Import JSON": ("Create", "Preview a generated or hand-edited JSON and write it into FH6."),
-    "Export Json": ("Create", "Read the current editable game group into compatible JSON."),
+    "Export Game JSON": ("Advanced Import", "Read an open editable FH6 group into compatible JSON."),
     "Editor": ("Tools", "Open the local shape editor for JSON cleanup and manual edits."),
     "Image Tools": ("Tools", "External helper links for cutouts, upscaling, and resizing."),
     "Image Size Helper": ("Tools", "Check source resolution and megapixel resize targets."),
     "Bug Reports": ("Support", "Create a private, reviewable report package without automatic upload."),
-    "Tutorial": ("Command Center", "Step-by-step setup, generation, import, and troubleshooting guide."),
+    "Tutorial": ("Support", "Step-by-step setup, generation, import, and troubleshooting guide."),
     "Settings": ("Support", "Appearance, Pro Settings, and importer behavior."),
 }
 
 WORKFLOW_SUBTITLES = {
     "Dashboard": "One screen for the most important actions, current status, recent work, and safe next steps.",
     "Generate Final Vinyl": "Choose source art, pick a preset, and build import-ready checkpoints.",
-    "Import JSON": "Select, import, or export compatible JSON through one focused workflow.",
-    "Export Json": "Export the currently open editable game group into compatible JSON.",
+    "Import JSON": "Select a generated final, editor export, hand-edited JSON, or exported game JSON and import through one path.",
+    "Export Game JSON": "Read the current editable group into compatible JSON for backup or sharing when allowed.",
     "Editor": "Launch the local browser editor for manual JSON adjustments.",
     "Image Tools": "Quick access to safe browser tools that prepare source art before generation.",
     "Image Size Helper": "Convert image dimensions into practical megapixel targets for presets.",
@@ -250,36 +246,6 @@ QFrame#dashboardCard {
     border-radius: 18px;
     padding: 14px;
 }
-QFrame#tutorialCard {
-    border: none;
-    padding: 0;
-    background: transparent;
-}
-QToolButton#tutorialHeader {
-    text-align: left;
-    padding: 14px 18px;
-    border: 1px solid rgba(255, 255, 255, 72);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 18);
-    font-weight: 950;
-    min-height: 58px;
-}
-QToolButton#tutorialHeader:hover {
-    background: rgba(255, 255, 255, 38);
-    border: 1px solid rgba(255, 255, 255, 150);
-}
-QToolButton#tutorialHeader:checked {
-    background: rgba(255, 255, 255, 46);
-    border: 1px solid rgba(255, 255, 255, 190);
-}
-QLabel#tutorialSummary {
-    background: transparent;
-    font-weight: 850;
-}
-QLabel#tutorialBody {
-    background: transparent;
-    font-size: 10pt;
-}
 QLabel#dashboardCardTitle {
     background: transparent;
     font-size: 14pt;
@@ -306,9 +272,6 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #a83f67; color: #ffffff; border: 1px solid #793047; }
         QListWidget#workflowNav::item:disabled { color: #7f3d58; }
         QFrame#dashboardCard { background: rgba(255, 253, 253, 245); border: 1px solid #e5b9c8; }
-        QToolButton#tutorialHeader { background: #fff0f6; color: #5d2d41; border: 1px solid #b77b8f; }
-        QToolButton#tutorialHeader:hover { background: #f8d9e4; color: #3b1f2f; border: 1px solid #a7647a; }
-        QToolButton#tutorialHeader:checked { background: #f3c7d6; color: #3b1f2f; border: 1px solid #793047; }
         """
     if theme_key == "horizon":
         return """
@@ -319,9 +282,6 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.55 #ffb000, stop:1 #24e9ff); color: #050914; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #ffb000; }
         QFrame#dashboardCard { background: rgba(12, 26, 38, 222); border: 1px solid rgba(36, 233, 255, 100); }
-        QToolButton#tutorialHeader { background: rgba(8, 22, 35, 210); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 130); }
-        QToolButton#tutorialHeader:hover { background: rgba(18, 50, 66, 235); color: #ffffff; border: 1px solid #24e9ff; }
-        QToolButton#tutorialHeader:checked { background: rgba(36, 233, 255, 42); color: #ffffff; border: 1px solid #ffb000; }
         """
     if theme_key == "blackout":
         return """
@@ -332,9 +292,6 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #ffffff; color: #000000; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #bdbdbd; }
         QFrame#dashboardCard { background: #080808; border: 1px solid rgba(255, 255, 255, 145); }
-        QToolButton#tutorialHeader { background: #050505; color: #f4f4f4; border: 1px solid rgba(255, 255, 255, 105); }
-        QToolButton#tutorialHeader:hover { background: #121212; color: #ffffff; border: 1px solid rgba(255, 255, 255, 190); }
-        QToolButton#tutorialHeader:checked { background: #101010; color: #ffffff; border: 1px solid #ffffff; }
         """
     if theme_key in THEME_TOKEN_STYLES:
         tokens = THEME_TOKEN_STYLES[theme_key]
@@ -346,9 +303,6 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected {{ background: {tokens["accent"]}; color: {tokens["select_fg"]}; border: 1px solid {tokens["frame_light"]}; }}
         QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
         QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
-        QToolButton#tutorialHeader {{ background: {tokens["button"]}; color: {tokens["button_fg"]}; border: 1px solid {tokens["border"]}; }}
-        QToolButton#tutorialHeader:hover {{ background: {tokens["button_active"]}; color: {tokens["button_active_fg"]}; border: 1px solid {tokens["accent"]}; }}
-        QToolButton#tutorialHeader:checked {{ background: {tokens["panel_alt"]}; color: {tokens["accent"]}; border: 1px solid {tokens["frame_light"]}; }}
         """
     return """
     QFrame#topBar, QFrame#workflowContent { background: rgba(255, 248, 251, 236); border: 1px solid #d8c2f0; }
@@ -358,9 +312,6 @@ def shell_theme_qss(theme_key: str) -> str:
     QListWidget#workflowNav::item:selected { background: #9f6ad8; color: #ffffff; border: 1px solid #7b4eb0; }
     QListWidget#workflowNav::item:disabled { color: #6c3fa0; }
     QFrame#dashboardCard { background: rgba(255, 253, 248, 245); border: 1px solid #e3d1f5; }
-    QToolButton#tutorialHeader { background: #fffdf8; color: #3b244d; border: 1px solid #c7a8ea; }
-    QToolButton#tutorialHeader:hover { background: #eadcff; color: #3b244d; border: 1px solid #9f6ad8; }
-    QToolButton#tutorialHeader:checked { background: #eadcff; color: #5a2f83; border: 1px solid #7b4eb0; }
     """
 
 THEME_TOKEN_STYLES = {
@@ -1070,310 +1021,6 @@ If generation looks bad, try the preset that matches the source style, increase 
 }
 
 
-TUTORIAL_GUIDE = [
-    {
-        "title": "Start Here: Recommended First Run",
-        "category": "Dashboard",
-        "summary": "The safest path from a fresh install to a verified FH6 import.",
-        "body": [
-            "Use the Dashboard as your home base. It links to generation, importing, the editor, and support tools without hunting through the side menu.",
-            "First-time order: run setup from the launcher, open the app, prepare a reusable FH6 template, generate a final JSON, import into the template, then save and reload in FH6.",
-            "Default FH6 template: make a 3000-layer plain white circle vinyl group once, save it, reopen it, ungroup it, then reuse that saved template for imports.",
-            "Do not switch FH6 menus during import or export. Stay inside Vinyl Group Editor until the app finishes.",
-        ],
-        "steps": [
-            "Open the launcher and make sure Python/dependencies are green.",
-            "Open Generate Final Vinyl, pick source art, choose a preset, and generate.",
-            "Wait for finalization to complete. Raw builder checkpoints are not the recommended import target.",
-            "Open Import JSON, select the final JSON, verify the preview, enter the exact open-template layer count, and import.",
-            "Save and reload the vinyl group in FH6 to force the game to refresh shape resources and the final render.",
-        ],
-        "keywords": "dashboard first run quick start setup import generate template save reload",
-    },
-    {
-        "title": "Launcher, Setup, And Updating",
-        "category": "Setup",
-        "summary": "What the launcher buttons do and when to use the fallback batch files.",
-        "body": [
-            "The launcher is the safest entry point because it checks the local version, GitHub version, Python, and dependency state before starting the app.",
-            "Setup Python checks or installs the expected 64-bit Python runtime. Bundled releases include Python, but the button is still a safe repair path.",
-            "Install Dependencies checks PySide6, Pillow, NumPy, OpenCV, psutil, and helper packages used by generation, previews, and memory tools.",
-            "Update should be run while the app, editor, and generator are closed. If the launcher ever fails on old versions, use 03_update_from_github.bat from the app root.",
-            "The root batch files are recovery tools: 00_launcher.bat, 01_add_python312_to_path.bat, 02_install_dependencies.bat, 03_update_from_github.bat, and 05_check_environment.bat.",
-        ],
-        "steps": [
-            "If the launcher says an update is available, close the app first.",
-            "Run Update from the launcher, or use 03_update_from_github.bat if the launcher itself is broken.",
-            "After updating, run dependency setup again only if something fails to import or launch.",
-        ],
-        "keywords": "launcher setup python dependencies update bat batch environment version",
-    },
-    {
-        "title": "Source Images And Source Check",
-        "category": "Generation",
-        "summary": "How to choose input art before spending time generating.",
-        "body": [
-            "Good source art matters more than extreme settings. Clean, readable art with strong shapes usually beats noisy or over-compressed art.",
-            "The source check above the preview gives a green/yellow/red usability hint for resolution, megapixels, and background transparency.",
-            "Too-small images do not contain enough detail for the generator to recover. Too-large images can waste time because the generator must downsample and score more data.",
-            "Transparent backgrounds are ideal for stickers, characters, and decals. If the background is only visually white but not actually transparent, the generator may spend layers drawing the background.",
-            "Transparent fringes from bad background removers are cleaned up, but heavy leftover halos can still waste layers or create milky edges.",
-        ],
-        "steps": [
-            "Use Image Size Helper to check megapixels before generating.",
-            "Use Image Tools for background removal, browser-local upscaling, or browser-local downscaling.",
-            "Prefer a clean PNG with transparency for characters, logos, stickers, and decals.",
-            "If the source check is red, fix the image before increasing layers or samples.",
-        ],
-        "keywords": "source image check resolution megapixels transparent background remover halo fringe size helper",
-    },
-    {
-        "title": "Generator Presets",
-        "category": "Generation",
-        "summary": "When to use each preset and what the app controls automatically.",
-        "body": [
-            "Presets are style choices, not just speed choices. Pick the preset that matches the source style.",
-            "Shaded Character Art is the best default for anime, faces, eyes, hair, skin, mixed linework, and detailed digital art.",
-            "Flat Colors is for stickers, mascot art, clean decals, broad color islands, and hard borders.",
-            "Smooth Gradients is for glossy shading, painterly shading, soft ramps, and designs where alpha blending helps.",
-            "Default mode keeps max resolution, random samples, and mutated samples preset-controlled so casual users do not accidentally make bad combinations.",
-        ],
-        "steps": [
-            "Start with Shaded Character Art for most anime or digital art.",
-            "Use Flat Colors when the image has clear separated colors and sharp borders.",
-            "Use Smooth Gradients when soft shading matters more than hard edge precision.",
-            "If a preset looks wrong, change the preset before touching Pro settings.",
-        ],
-        "keywords": "preset shaded character flat colors smooth gradients anime sticker decal digital art",
-    },
-    {
-        "title": "Generator Controls",
-        "category": "Generation",
-        "summary": "Template layers, finalize checkpoints, Pro settings, and slower quality toggles.",
-        "body": [
-            "Template layers is the layer budget you want to build and the template size you plan to import into.",
-            "Finalize at layers controls which saved checkpoints become import choices. The baseline is 500,1000,1250,1500,2000,2500,3000.",
-            "2x Sample Goblin doubles random and mutated samples. It can improve search quality, but it takes longer and does not increase output layers.",
-            "Enable manual Pro settings in Settings only if you know why you are overriding presets. Pro settings persist across restarts.",
-            "Pro settings: max resolution controls how much detail the generator can see, random samples control broad search, mutated samples control refinement around promising shapes.",
-        ],
-        "steps": [
-            "For normal use, leave Pro settings closed and only change template layers/finalize checkpoints.",
-            "Use more layers for more detail, not as a fix for bad source art.",
-            "If using Pro settings, adjust one variable at a time so you can tell what helped or hurt.",
-        ],
-        "keywords": "template layers finalize checkpoints pro settings random samples mutated samples max resolution sample goblin",
-    },
-    {
-        "title": "Generation Phases And Output Folders",
-        "category": "Generation",
-        "summary": "What raw checkpoints, finals, previews, and reports mean.",
-        "body": [
-            "Generation has two phases. First the GPU builder creates raw checkpoints. Then KFPS finalizes, scores, repairs, and writes import-ready JSONs.",
-            "Do not close the app when the raw builder stops. Wait until the log says finalization completed.",
-            "finals contains the recommended import-ready JSONs and final previews.",
-            "checkpoints contains raw internal builder JSONs. These are useful for debugging but usually not the recommended import target.",
-            "previews contains preview PNGs for raw and finalized outputs.",
-            "reports contains settings, source metrics, score data, candidate data, and run metadata for troubleshooting.",
-        ],
-        "steps": [
-            "Wait for FINALIZE CHECKPOINTS COMPLETE before importing.",
-            "Use finals for normal imports.",
-            "Keep reports if you need help debugging a bad run.",
-        ],
-        "keywords": "finalize final finals checkpoints raw previews reports output folder generated complete",
-    },
-    {
-        "title": "Preparing FH6 Templates",
-        "category": "Import Export",
-        "summary": "The exact in-game setup that makes imports reliable.",
-        "body": [
-            "The standard template is a saved/reopened 3000-layer plain white circle vinyl group.",
-            "Create it once, save it, reopen it, then use it as the reusable base for imports.",
-            "Ungroup the template so all circle layers are individually editable before normal import.",
-            "Enter the exact visible layer count of the open template. If the app thinks the template count is wrong, it will refuse or locate the wrong table.",
-            "After importing, save and reload in FH6. The first live view or thumbnail can be stale until FH6 refreshes shape resources.",
-        ],
-        "steps": [
-            "Open Vinyl Group Editor.",
-            "Load the saved 3000-circle template.",
-            "Ungroup it.",
-            "Stay in the editor and do not switch menus.",
-            "Use 3000 as the template count unless you intentionally opened a different template.",
-        ],
-        "keywords": "fh6 template 3000 circle white ungroup save reopen layer count vinyl group editor",
-    },
-    {
-        "title": "Import JSON Screen",
-        "category": "Import Export",
-        "summary": "Generated finals, handmade JSONs, manual JSONs, and the visible import/export controls.",
-        "body": [
-            "Generated finals mode shows recent generated results. Handmade folder mode reads JSONs from imgs/handmade so downloaded or shared files have a safe drop folder.",
-            "Browse JSONs opens the visual browser. Generated mode groups by source image and shows finalized checkpoint previews.",
-            "Choose any JSON lets you pick a compatible JSON manually from anywhere.",
-            "Clear unused template layers before trimming is recommended. It clears old template layers not used by the imported JSON before trimming the live group count.",
-            "Import JSON into selected game writes the selected JSON into the open game template.",
-            "Export Json reads the currently open editable game group into a compatible JSON and saves it under runtime/universal-import.",
-        ],
-        "steps": [
-            "Refresh the game process list if FH6 is not selected.",
-            "Pick or browse to a JSON.",
-            "Check the preview and visible shape count.",
-            "Enter the exact current template/group layer count.",
-            "Import JSON or Export Json, depending on the task.",
-        ],
-        "keywords": "import json export json browser generated handmade folder choose any clear unused trim preview",
-    },
-    {
-        "title": "Exporting From The Game",
-        "category": "Import Export",
-        "summary": "What Export Json does and why it can refuse bad or stale tables.",
-        "body": [
-            "Export Json is read-only. It scans the open editable game group, validates the layer table, and writes compatible JSON.",
-            "The output is saved under runtime/universal-import and can be selected for import or opened in the editor.",
-            "If export says validation failed, the most common cause is stale or partially rebuilt game memory. Saving/reloading the vinyl or adding/removing one layer can force FH6 to rebuild the table.",
-            "Grouped and nested vinyls are harder because child transforms must be flattened. Current export is stricter than a partial export because missing layers are worse than a refused export.",
-            "Only export designs you own or have permission to export.",
-        ],
-        "steps": [
-            "Open the vinyl group in FH6.",
-            "Enter the exact visible layer count.",
-            "Click Export Json.",
-            "If it refuses after heavy grouping/ungrouping, save and reload the vinyl before trying again.",
-        ],
-        "keywords": "export game json universal import grouped nested stale table validation permission",
-    },
-    {
-        "title": "Fabric Vinyl Editor",
-        "category": "Editor",
-        "summary": "The local browser editor for manual cleanup and creating vinyls from scratch.",
-        "body": [
-            "The editor opens locally and does not write to game memory. It edits JSON files and exports compatible JSON for the app importer.",
-            "Use it for manual cleanup, shape edits, source tracing, creating vinyls from scratch, fixing small generated mistakes, and preparing handmade JSONs.",
-            "Core tools include select, box select, hand/pan, zoom, source overlay, eyedropper, guides, snapping, shape library, favorites, color palette, saved colors, layer list, internal groups, masks, undo/redo, and JSON browser.",
-            "The source overlay can be shown above or below the canvas, moved separately with the source tool, scaled precisely, and used for color sampling.",
-            "Internal editor groups are for organization only. Exported vinyl JSON remains compatible with the app importer.",
-        ],
-        "steps": [
-            "Open Editor from the app.",
-            "Import a JSON or open a source overlay.",
-            "Use the shape library and favorites to place shapes.",
-            "Use eyedropper/source sampling to match colors.",
-            "Export the finished JSON and import it through Import JSON.",
-        ],
-        "keywords": "fabric editor shape library favorites overlay source eyedropper guides snapping layers groups masks json browser",
-    },
-    {
-        "title": "Image Tools",
-        "category": "Tools",
-        "summary": "External browser tools for preparing source images before generation.",
-        "body": [
-            "Background Remover opens PhotoRoom for quick cutouts.",
-            "2x / 4x Browser Upscaler opens a local browser upscaler for images that are too small.",
-            "Browser Downscaler / Compressor opens Squoosh for resizing images that are too large or too heavy.",
-            "These tools are intentionally links, not hidden uploads inside KFPS. Check the resulting PNG before generating.",
-        ],
-        "steps": [
-            "Remove the background if the image should be a sticker/decal.",
-            "Upscale only if the source is genuinely too small.",
-            "Downscale if the image is huge and the source check warns that it is excessive.",
-        ],
-        "keywords": "image tools background remover photoroom upscaler downscaler squoosh compressor png",
-    },
-    {
-        "title": "Image Size Helper",
-        "category": "Tools",
-        "summary": "How to check resolution, megapixels, and resize targets.",
-        "body": [
-            "Image Size Helper reads the selected image and shows width, height, total pixels, and megapixels.",
-            "It calculates 1 to 6 MP target resolutions at the same aspect ratio, so you can resize without guessing.",
-            "Use it when a source is tiny, massive, or when Discord/Nexus users send images with unknown quality.",
-            "The helper does not modify the image. Use the linked browser tools to actually resize.",
-        ],
-        "steps": [
-            "Choose an image.",
-            "Read the current MP value.",
-            "Pick a sensible target MP for the preset/source style.",
-            "Resize externally, then generate from the resized PNG.",
-        ],
-        "keywords": "image size helper resolution megapixels mp resize target aspect ratio pixels",
-    },
-    {
-        "title": "Bug Reports",
-        "category": "Support",
-        "summary": "How to package useful troubleshooting info without automatic upload.",
-        "body": [
-            "Bug Reports is private by default. It does not automatically upload anything.",
-            "Use it to build a local report package with logs, version info, environment checks, and optional files you choose.",
-            "Inspect or redact the report before sending it. Avoid sending personal files unless they are needed for the bug.",
-            "For generator problems, include the run folder or at least the report/settings files. For import/export problems, include the runtime/universal-import run folder.",
-        ],
-        "steps": [
-            "Describe what you clicked, what you expected, and what happened.",
-            "Include the app version and the relevant run folder.",
-            "Copy or send the report manually through Discord or another support channel.",
-        ],
-        "keywords": "bug report support logs privacy redact run folder universal import generated crash traceback",
-    },
-    {
-        "title": "Settings",
-        "category": "Settings",
-        "summary": "Theme, Pro settings, sound, and compatibility behavior.",
-        "body": [
-            "Appearance controls the app theme. Some themes are high contrast, some are playful, and the editor has its own theme choices.",
-            "Enable manual override for Pro settings reveals advanced generator controls on the Generate page and persists across restarts.",
-            "The Blue Terminal theme can play a dial-up sound while generating if its sound option is enabled.",
-            "Import/export target defaults to FH6. FH5 support is available as-is for testing and is not the main focus of the app.",
-            "If you are helping debug import/export, keep settings simple so logs are easier to compare.",
-        ],
-        "steps": [
-            "Use a theme that keeps text readable for you.",
-            "Leave Pro override off unless you are intentionally tuning generation.",
-            "Return to FH6 target before normal use if you tested FH5.",
-        ],
-        "keywords": "settings theme pro settings manual override dial up sound fh5 fh6 compatibility",
-    },
-    {
-        "title": "Logs, Errors, And Where Files Go",
-        "category": "Support",
-        "summary": "What to look at when something fails.",
-        "body": [
-            "The app log usually shows the real error above the final exit code. Always read a few lines before the traceback.",
-            "Generated runs go under imgs/generated. Handmade/shared JSONs can be placed under imgs/handmade.",
-            "Import/export run folders go under runtime/universal-import.",
-            "Updater logs go under runtime/update-logs.",
-            "Access denied while writing previews usually means a file is locked, the folder is protected, antivirus interfered, or the app lacks write permission.",
-            "OpenCL errors usually point to GPU driver/OpenCL runtime problems, not app settings.",
-        ],
-        "steps": [
-            "Find the run folder from the log.",
-            "Check reports/settings files before deleting anything.",
-            "If asking for help, include version, preset, source metrics, and the specific traceback.",
-        ],
-        "keywords": "logs error traceback access denied opencl runtime generated handmade update logs universal import",
-    },
-    {
-        "title": "Common Fixes",
-        "category": "Troubleshooting",
-        "summary": "Fast checks for the most common generation, import, and editor problems.",
-        "body": [
-            "Generator exits immediately: check source path, write permissions, GPU/OpenCL runtime, and dependency setup.",
-            "Generated output looks milky: use a cleaner transparent source, try the matching preset, and avoid unnecessary alpha-heavy sources.",
-            "Import fails to locate: make sure FH6 is open, you are in Vinyl Group Editor, the layer count is exact, and the template is saved/reopened/ungrouped.",
-            "First in-game view or thumbnail looks wrong: save and reload the vinyl group before judging. FH6 can show stale shape resources until reload.",
-            "Export refuses after grouping/ungrouping: save and reload the vinyl, or force FH6 to rebuild the layer table by adding/removing a layer.",
-            "Editor export imports wrong: verify you used the editor export JSON, not a project save, and check whether the source JSON was FH5, FH6, generated, or game-exported.",
-        ],
-        "steps": [
-            "Read the log line immediately before the traceback.",
-            "Try the safest default workflow once before tuning settings.",
-            "If the issue persists, make a bug report with the relevant run folder.",
-        ],
-        "keywords": "troubleshooting common fixes milky import locate thumbnail reload export refused editor wrong",
-    },
-]
-
-
 HELP_TEXT = {
     "preset": (
         "Preset",
@@ -1474,19 +1121,7 @@ HELP_TEXT = {
 
 
 def ensure_dirs() -> None:
-    for path in (
-        ROOT / "runtime",
-        ROOT / "runtime" / "previews",
-        ROOT / "runtime" / "custom-settings",
-        ROOT / "runtime" / "user-presets",
-        PROBE_DIR,
-        LUMA_BANDS_ROOT,
-        HANDMADE_JSON_ROOT,
-        EXPORTED_JSON_ROOT,
-        EDITOR_PROJECT_ROOT,
-        USER_IMAGES_ROOT,
-        UNIVERSAL_IMPORT_ROOT,
-    ):
+    for path in (ROOT / "runtime", ROOT / "runtime" / "previews", ROOT / "runtime" / "custom-settings", ROOT / "runtime" / "user-presets", PROBE_DIR, LUMA_BANDS_ROOT, HANDMADE_JSON_ROOT, USER_IMAGES_ROOT, UNIVERSAL_IMPORT_ROOT):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -2376,8 +2011,6 @@ class FinalJsonBrowserDialog(QDialog):
 
     def source_image_path(self, entry: dict) -> Path | None:
         run_folder = Path(entry.get("run_folder") or Path(entry["path"]).parent)
-        if not run_folder.is_dir():
-            run_folder = Path(entry["path"]).parent
         source_name = entry.get("source_image")
         if source_name:
             candidate = run_folder / source_name
@@ -3076,6 +2709,7 @@ class MainWindow(QMainWindow):
         self.auto_located_context: dict | None = None
         self.generated_folder_entries: dict[str, list[dict]] = {}
         self.generated_checkpoint_entries: list[dict] = []
+        self.exported_game_json_entries: list[dict] = []
         self.geometry_count_cache: dict[str, tuple[int, int, int]] = {}
         self.thumbnail_pixmap_cache: dict[tuple[str, int, int, int, int], QPixmap] = {}
         self.preview_request_id = 0
@@ -3097,10 +2731,6 @@ class MainWindow(QMainWindow):
         self.editor_wip_timer = QTimer(self)
         self.editor_wip_timer.setInterval(520)
         self.editor_wip_timer.timeout.connect(self.toggle_editor_wip_blink)
-        self.seed_import_blink_on = True
-        self.seed_import_blink_timer = QTimer(self)
-        self.seed_import_blink_timer.setInterval(520)
-        self.seed_import_blink_timer.timeout.connect(self.toggle_seed_import_blink)
         self.bus = UiBus()
         self.bus.log.connect(self.log_line)
         self.bus.status.connect(self.set_status)
@@ -3118,7 +2748,6 @@ class MainWindow(QMainWindow):
         self._build()
         self.apply_theme()
         self.apply_editor_wip_style()
-        self.update_experimental_import_ui()
         self.editor_wip_timer.start()
         self.set_phase("ready", "Choose a source image or select a finalized JSON to import.")
         self.refresh_processes()
@@ -3166,7 +2795,6 @@ class MainWindow(QMainWindow):
         self.tabs = WorkflowShell()
         root.addWidget(self.tabs, 1)
         self._build_dashboard_tab()
-        self._build_tutorial_tab()
         self._build_generate_tab()
         self._build_import_tab()
         self._build_game_export_tab()
@@ -3174,6 +2802,7 @@ class MainWindow(QMainWindow):
         self._build_image_tools_tab()
         self._build_image_size_tab()
         self._build_bug_report_tab()
+        self._build_tutorial_tab()
         self._build_settings_tab()
         self.populate_profile_list()
         self.update_setting_description()
@@ -3269,53 +2898,6 @@ class MainWindow(QMainWindow):
             """
         )
 
-    def toggle_seed_import_blink(self):
-        self.seed_import_blink_on = not self.seed_import_blink_on
-        self.apply_seed_import_button_style()
-
-    def apply_seed_import_button_style(self):
-        if not hasattr(self, "seed_template_import_btn"):
-            return
-        if self.seed_import_blink_on:
-            background = "#ff1010"
-            color = "#ffffff"
-            border = "#ffffff"
-        else:
-            background = "#3a0000"
-            color = "#ffb3b3"
-            border = "#ff4040"
-        self.seed_template_import_btn.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: {background};
-                color: {color};
-                border: 2px solid {border};
-                border-radius: 10px;
-                padding: 12px 14px;
-                font-weight: 950;
-                min-height: 34px;
-            }}
-            QPushButton:hover {{
-                background: #ff3b3b;
-                color: #ffffff;
-                border-color: #ffffff;
-            }}
-            """
-        )
-
-    def update_experimental_import_ui(self, *_args):
-        enabled = settings_bool(self.app_settings.get("experimental_seed_import"), False)
-        if hasattr(self, "experimental_seed_import_enabled"):
-            enabled = bool(self.experimental_seed_import_enabled.isChecked())
-        if hasattr(self, "seed_template_import_btn"):
-            self.seed_template_import_btn.setVisible(enabled)
-            self.apply_seed_import_button_style()
-        if enabled:
-            if not self.seed_import_blink_timer.isActive():
-                self.seed_import_blink_timer.start()
-        else:
-            self.seed_import_blink_timer.stop()
-
     def help_button(self, key: str) -> QToolButton:
         title, body = HELP_TEXT[key]
         button = QToolButton()
@@ -3359,97 +2941,95 @@ class MainWindow(QMainWindow):
     def _build_dashboard_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setSpacing(14)
+        layout.setSpacing(16)
 
-        hero = QFrame()
-        hero.setObjectName("dashboardCard")
-        hero_layout = QVBoxLayout(hero)
-        hero_layout.setSpacing(10)
-        hero_title = QLabel("Generate first. Clean it by hand. Import when it looks right.")
-        hero_title.setObjectName("dashboardCardTitle")
-        hero_title.setWordWrap(True)
-        hero_body = QLabel(
-            "KFPS is built around a simple workflow: use the generator for a strong base, use the editor to fix the obvious mistakes, then import the cleaned JSON into FH6. "
-            "The editor is there for the parts generators still struggle with: eyes, text, badges, outlines, colors, and tiny details."
-        )
-        hero_body.setObjectName("dashboardCardText")
-        hero_body.setWordWrap(True)
-        hero_layout.addWidget(hero_title)
-        hero_layout.addWidget(hero_body)
-        layout.addWidget(hero)
-
-        primary = QGridLayout()
-        primary.setSpacing(14)
-        primary.addWidget(
+        cards = QGridLayout()
+        cards.setSpacing(14)
+        cards.addWidget(
             DashboardCard(
-                "1. Generate",
-                "Create finalized JSON checkpoints from source art.",
-                "Generate",
+                "Generate Final Vinyl",
+                "Pick source art, choose a preset, watch progress, then finalize import-ready JSONs.",
+                "Start generating",
                 lambda: self.go_to_workflow("Generate Final Vinyl"),
             ),
             0,
             0,
         )
-        primary.addWidget(
+        cards.addWidget(
             DashboardCard(
-                "2. Edit",
-                "Open a generated JSON and fix the visible mistakes by hand.",
-                "Open editor",
-                lambda: self.go_to_workflow("Editor"),
+                "Import JSON",
+                "Choose a generated final, editor export, hand-edited JSON, or game export, then write it into FH6.",
+                "Open importer",
+                lambda: self.go_to_workflow("Import JSON"),
             ),
             0,
             1,
         )
-        primary.addWidget(
+        cards.addWidget(
             DashboardCard(
-                "3. Import",
-                "Write the cleaned JSON into the open FH6 template.",
-                "Import JSON",
-                lambda: self.go_to_workflow("Import JSON"),
+                "Open Vinyl Editor",
+                "Clean up JSONs manually with the local Fabric editor, shape library, favorites, overlay, and export tools.",
+                "Open editor tools",
+                lambda: self.go_to_workflow("Editor"),
             ),
             0,
             2,
         )
-        layout.addLayout(primary)
+        layout.addLayout(cards)
 
-        editor_focus = QFrame()
-        editor_focus.setObjectName("dashboardCard")
-        editor_focus_layout = QVBoxLayout(editor_focus)
-        editor_focus_layout.setSpacing(8)
-        editor_focus_title = QLabel("Create by hand when you want full control")
-        editor_focus_title.setObjectName("dashboardCardTitle")
-        editor_focus_title.setWordWrap(True)
-        editor_focus_body = QLabel(
-            "The editor is also a creative workspace for building vinyls yourself. Place shapes, trace over a source image, sample colors, save favorites, use guides and snapping, organize layers, and turn an idea into an import-ready JSON without scrolling through FH6 menus."
+        editor_ad = QFrame()
+        editor_ad.setObjectName("dashboardCard")
+        editor_layout = QGridLayout(editor_ad)
+        editor_layout.setHorizontalSpacing(18)
+        editor_layout.setVerticalSpacing(12)
+        editor_title = QLabel("Built for editing vinyls faster than FH6's in-game editor")
+        editor_title.setObjectName("dashboardCardTitle")
+        editor_title.setWordWrap(True)
+        editor_body = QLabel(
+            "The bundled editor gives you a searchable shape library, favorites, source-image overlay, viewport-friendly placement, saved colors, eyedropper tools, box selection, JSON import/export, and quick manual cleanup. "
+            "Use FH6 for the final save, but use this editor when you need precision, repeatable colors, easier shape picking, and less menu wrestling."
         )
-        editor_focus_body.setObjectName("dashboardCardText")
-        editor_focus_body.setWordWrap(True)
-        editor_focus_layout.addWidget(editor_focus_title)
-        editor_focus_layout.addWidget(editor_focus_body)
-        layout.addWidget(editor_focus)
+        editor_body.setObjectName("dashboardCardText")
+        editor_body.setWordWrap(True)
+        editor_button = QPushButton("Open the editor")
+        editor_button.setObjectName("primaryButton")
+        editor_button.clicked.connect(lambda: self.go_to_workflow("Editor"))
+        editor_layout.addWidget(editor_title, 0, 0, 1, 2)
+        editor_layout.addWidget(editor_body, 1, 0, 1, 2)
 
-        support_row = QHBoxLayout()
-        support_row.setSpacing(10)
-        tutorial_btn = QPushButton("Tutorial")
-        tutorial_btn.clicked.connect(lambda: self.go_to_workflow("Tutorial"))
-        image_tools_btn = QPushButton("Image Tools")
-        image_tools_btn.clicked.connect(lambda: self.go_to_workflow("Image Tools"))
-        bug_btn = QPushButton("Bug Report")
-        bug_btn.clicked.connect(lambda: self.go_to_workflow("Bug Reports"))
-        for button in (tutorial_btn, image_tools_btn, bug_btn):
-            support_row.addWidget(button)
-        layout.addLayout(support_row)
+        advantages = QGroupBox("Why it beats editing only in-game")
+        advantages_layout = QVBoxLayout(advantages)
+        for text in (
+            "Search and favorite shapes instead of scrolling through every FH6 shape page.",
+            "Use a source overlay and eyedropper so colors and placement are easier to match.",
+            "Move, delete, duplicate, box-select, and clean up JSON layers before importing.",
+            "Export back to FH6-compatible JSON when the design is ready for the game.",
+        ):
+            label = QLabel(text)
+            label.setWordWrap(True)
+            advantages_layout.addWidget(label)
+        editor_layout.addWidget(advantages, 2, 0)
+        editor_layout.addWidget(editor_button, 2, 1, Qt.AlignmentFlag.AlignBottom)
+        editor_layout.setColumnStretch(0, 3)
+        editor_layout.setColumnStretch(1, 1)
+        layout.addWidget(editor_ad)
 
         kofi_ad = QFrame()
         kofi_ad.setObjectName("dashboardCard")
         kofi_layout = QVBoxLayout(kofi_ad)
-        kofi_layout.setContentsMargins(12, 8, 12, 8)
+        kofi_layout.setSpacing(10)
+        kofi_title = QLabel("tiny optional ko-fi note")
+        kofi_title.setObjectName("dashboardCardTitle")
+        kofi_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         kofi_body = QLabel(
-            "tiny optional note: the tip button is in the bottom right if KFPS helped you and you want to support future polish."
+            "hi, tiny ko-fi note: this is completely optional, but if the app helped you and you want to throw a little support my way, "
+            "it would help me commission a proper logo/mascot someday instead of making everything myself badly lol\n\n"
+            "tip button is in the bottom right."
         )
         kofi_body.setObjectName("dashboardCardText")
         kofi_body.setWordWrap(True)
         kofi_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        kofi_layout.addWidget(kofi_title)
         kofi_layout.addWidget(kofi_body)
         layout.addWidget(kofi_ad)
         layout.addStretch(1)
@@ -3684,11 +3264,7 @@ class MainWindow(QMainWindow):
         json_layout.addWidget(json_intro)
         source_row = QHBoxLayout()
         source_row.addWidget(QLabel("JSON source"))
-        self.json_source_combo = self.make_combo(
-            ["Generated finals", "Exported game JSONs", "Handmade folder"],
-            max_visible=4,
-            min_height=38,
-        )
+        self.json_source_combo = self.make_combo(["Generated finals", "Handmade folder"], max_visible=2, min_height=38)
         self.json_source_combo.currentTextChanged.connect(lambda _text: self.refresh_generated_browser())
         source_row.addWidget(self.json_source_combo, 1)
         json_layout.addLayout(source_row)
@@ -3713,10 +3289,7 @@ class MainWindow(QMainWindow):
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         json_layout.addLayout(controls)
-        latest_hint = QLabel(
-            "Generated, exported, and handmade JSONs each have their own safe folder. "
-            "Use imgs/handmade for downloaded/shared files and Fabric editor exports."
-        )
+        latest_hint = QLabel("Generated mode shows the latest run by layer count. Handmade mode reads JSONs from imgs/handmade so downloaded or shared files have a safe drop folder.")
         latest_hint.setWordWrap(True)
         json_layout.addWidget(latest_hint)
         self.generated_folder_combo = self.make_combo(max_visible=24, min_height=34)
@@ -3753,28 +3326,16 @@ class MainWindow(QMainWindow):
         import_btn = QPushButton("Import JSON into selected game")
         import_btn.setObjectName("primaryButton")
         import_btn.clicked.connect(self.start_import)
-        self.seed_template_import_btn = QPushButton("WIP: Import all-shape seed template")
-        self.seed_template_import_btn.setToolTip(
-            "Experimental. Imports the bundled all-shape resource seed into the loaded 3000-layer template, "
-            "does not trim/cull, then you save and reload that vinyl once."
-        )
-        self.seed_template_import_btn.clicked.connect(self.start_seed_template_import)
         auto_btn = QPushButton("Auto-locate template")
         auto_btn.clicked.connect(self.start_auto_locate)
-        auto_btn.setVisible(False)
-        self.auto_locate_button = auto_btn
         import_layout.addWidget(import_btn)
-        import_layout.addWidget(self.seed_template_import_btn)
         auto_row = QHBoxLayout()
         auto_row.addWidget(auto_btn, 1)
-        auto_help = self.help_button("auto_locate")
-        auto_help.setVisible(False)
-        self.auto_locate_help_button = auto_help
-        auto_row.addWidget(auto_help)
+        auto_row.addWidget(self.help_button("auto_locate"))
         import_layout.addLayout(auto_row)
         right_layout.addWidget(import_group)
         right_layout.addWidget(QLabel("JSON Preview"))
-        self.import_preview = PreviewView("Select a generated, exported, handmade, or hand-edited JSON to preview it here.")
+        self.import_preview = PreviewView("Select a generated, editor, exported, or hand-edited JSON to preview it here.")
         right_layout.addWidget(self.import_preview, 1)
         notes = QLabel(
             "One importer handles generated finals, Fabric editor exports, hand-edited full-shape JSONs, and game exports. "
@@ -3848,14 +3409,32 @@ class MainWindow(QMainWindow):
         export_btn.setObjectName("primaryButton")
         export_btn.clicked.connect(self.start_game_export)
         run_layout.addWidget(export_btn)
-        output_hint = QLabel("Output is saved under imgs/exported and appears in Import JSON > Exported game JSONs.")
-        output_hint.setWordWrap(True)
-        run_layout.addWidget(output_hint)
+        run_layout.addWidget(QLabel("Output is saved under runtime/universal-import and appears in the browser below."))
         left_layout.addWidget(run_group)
-        left_layout.addStretch(1)
+
+        browser = QGroupBox("Exported Game JSON Browser")
+        browser_layout = QVBoxLayout(browser)
+        browser_controls = QHBoxLayout()
+        refresh_exports = QPushButton("Refresh exports")
+        refresh_exports.clicked.connect(self.refresh_game_export_browser)
+        use_for_import = QPushButton("Use selected in Import JSON")
+        use_for_import.clicked.connect(self.use_selected_export_for_import)
+        browser_controls.addWidget(refresh_exports)
+        browser_controls.addWidget(use_for_import)
+        browser_layout.addLayout(browser_controls)
+        self.exported_game_json_list = QListWidget()
+        self.exported_game_json_list.setMinimumHeight(310)
+        self.exported_game_json_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.exported_game_json_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.exported_game_json_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.exported_game_json_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.exported_game_json_list.setWordWrap(True)
+        self.exported_game_json_list.currentRowChanged.connect(self.select_exported_game_json)
+        browser_layout.addWidget(self.exported_game_json_list, 1)
+        left_layout.addWidget(browser, 1)
 
         right_layout.addWidget(QLabel("Export Preview"))
-        self.export_preview = PreviewView("Export a game group to preview the exported JSON here.")
+        self.export_preview = PreviewView("Export a game group or select an exported JSON to preview it here.")
         right_layout.addWidget(self.export_preview, 1)
         note = QLabel(
             "Preview is an approximation for non-basic FH shapes until full shape rendering is added. "
@@ -3863,7 +3442,7 @@ class MainWindow(QMainWindow):
         )
         note.setWordWrap(True)
         right_layout.addWidget(note)
-        self.tabs.addTab(tab, "Export Json")
+        self.tabs.addTab(tab, "Export Game JSON")
 
     def _build_editor_tab(self):
         tab = QWidget()
@@ -4012,135 +3591,11 @@ class MainWindow(QMainWindow):
     def _build_tutorial_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        intro = QLabel(
-            "Search or open the dropdowns below. Relevant sections move to the top while the full guide stays available."
-        )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-
-        self.tutorial_search = QLineEdit()
-        self.tutorial_search.setPlaceholderText("Search setup, presets, import, editor, logs, OpenCL, templates...")
-        self.tutorial_search.textChanged.connect(self.refresh_tutorial_cards)
-        layout.addWidget(self.tutorial_search)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        content = QWidget()
-        self.tutorial_cards_layout = QVBoxLayout(content)
-        self.tutorial_cards_layout.setContentsMargins(0, 0, 0, 0)
-        self.tutorial_cards_layout.setSpacing(18)
-        scroll.setWidget(content)
-        layout.addWidget(scroll, 1)
-
-        self.tutorial_cards = []
-        for index, entry in enumerate(TUTORIAL_GUIDE):
-            card = self.create_tutorial_card(entry, expanded=index == 0)
-            card["index"] = index
-            self.tutorial_cards.append(card)
-        self.refresh_tutorial_cards()
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(TEXT["tutorial"])
+        layout.addWidget(text)
         self.tabs.addTab(tab, "Tutorial")
-
-    def create_tutorial_card(self, entry: dict, expanded: bool = False) -> dict:
-        frame = QFrame()
-        frame.setObjectName("tutorialCard")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-
-        header = QToolButton()
-        header.setObjectName("tutorialHeader")
-        header.setCheckable(True)
-        header.setChecked(expanded)
-        header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        header.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
-        header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        header.setText(f"{entry['category']}  |  {entry['title']}\n{entry['summary']}")
-        layout.addWidget(header)
-
-        body = QFrame()
-        body_layout = QVBoxLayout(body)
-        body_layout.setContentsMargins(24, 4, 12, 12)
-        body_layout.setSpacing(8)
-
-        summary = QLabel(entry["summary"])
-        summary.setObjectName("tutorialSummary")
-        summary.setWordWrap(True)
-        body_layout.addWidget(summary)
-
-        body_label = QLabel(self.tutorial_html(entry))
-        body_label.setObjectName("tutorialBody")
-        body_label.setTextFormat(Qt.TextFormat.RichText)
-        body_label.setWordWrap(True)
-        body_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
-        body_layout.addWidget(body_label)
-
-        body.setVisible(expanded)
-        layout.addWidget(body)
-
-        def toggle_card(checked: bool):
-            body.setVisible(checked)
-            header.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
-
-        header.toggled.connect(toggle_card)
-        return {"frame": frame, "header": header, "body": body, "entry": entry}
-
-    def tutorial_html(self, entry: dict) -> str:
-        body_items = "".join(f"<li>{html.escape(text)}</li>" for text in entry.get("body", []))
-        step_items = "".join(f"<li>{html.escape(text)}</li>" for text in entry.get("steps", []))
-        parts = []
-        if body_items:
-            parts.append(f"<p><b>What this covers</b></p><ul>{body_items}</ul>")
-        if step_items:
-            parts.append(f"<p><b>Recommended steps</b></p><ol>{step_items}</ol>")
-        return "".join(parts)
-
-    def tutorial_search_score(self, entry: dict, query: str) -> int:
-        if not query:
-            return 0
-        haystack = " ".join(
-            [
-                str(entry.get("title", "")),
-                str(entry.get("category", "")),
-                str(entry.get("summary", "")),
-                str(entry.get("keywords", "")),
-                " ".join(entry.get("body", [])),
-                " ".join(entry.get("steps", [])),
-            ]
-        ).lower()
-        terms = [term for term in re.split(r"\s+", query.lower().strip()) if term]
-        if not terms:
-            return 0
-        score = 0
-        title = str(entry.get("title", "")).lower()
-        category = str(entry.get("category", "")).lower()
-        keywords = str(entry.get("keywords", "")).lower()
-        for term in terms:
-            if term in title:
-                score += 8
-            if term in category:
-                score += 5
-            if term in keywords:
-                score += 4
-            score += haystack.count(term)
-        return score
-
-    def refresh_tutorial_cards(self, *_args):
-        if not hasattr(self, "tutorial_cards_layout"):
-            return
-        query = self.tutorial_search.text().strip() if hasattr(self, "tutorial_search") else ""
-        while self.tutorial_cards_layout.count():
-            item = self.tutorial_cards_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.setParent(None)
-        ranked = []
-        for card in self.tutorial_cards:
-            score = self.tutorial_search_score(card["entry"], query)
-            ranked.append((0 if score > 0 else 1, -score, card["index"], card))
-        for _miss, _score, _index, card in sorted(ranked):
-            self.tutorial_cards_layout.addWidget(card["frame"])
-        self.tutorial_cards_layout.addStretch(1)
 
     def _build_bug_report_tab(self):
         tab = QWidget()
@@ -4263,35 +3718,12 @@ class MainWindow(QMainWindow):
         generator_layout.addWidget(self.blue_terminal_dialup_enabled)
         layout.addWidget(generator)
 
-        importer = QGroupBox("Importer Experimental WIP")
-        importer_layout = QVBoxLayout(importer)
-        self.experimental_seed_import_enabled = QCheckBox("Show all-shape seed-template import button")
-        self.experimental_seed_import_enabled.setToolTip(
-            "WIP. Reveals a red seed import button on the Import JSON tab. "
-            "Use it once on a 3000-circle template, then save/reload that vinyl as a reusable seeded template."
-        )
-        self.experimental_seed_import_enabled.setChecked(settings_bool(self.app_settings.get("experimental_seed_import"), False))
-        self.experimental_seed_import_enabled.stateChanged.connect(self.save_importer_experimental_settings)
-        self.experimental_seed_import_enabled.stateChanged.connect(self.update_experimental_import_ui)
-        importer_layout.addWidget(self.experimental_seed_import_enabled)
-        importer_note = QLabel(
-            "Seeded templates are optional. Plain circle templates still import correctly, but first preview/thumbnail may look wrong until save/reload."
-        )
-        importer_note.setWordWrap(True)
-        importer_layout.addWidget(importer_note)
-        layout.addWidget(importer)
-
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
 
     def save_generator_settings(self, *_args):
         if hasattr(self, "blue_terminal_dialup_enabled"):
             self.app_settings["blue_terminal_dialup_sound"] = bool(self.blue_terminal_dialup_enabled.isChecked())
-            save_app_settings(self.app_settings)
-
-    def save_importer_experimental_settings(self, *_args):
-        if hasattr(self, "experimental_seed_import_enabled"):
-            self.app_settings["experimental_seed_import"] = bool(self.experimental_seed_import_enabled.isChecked())
             save_app_settings(self.app_settings)
 
     def build_bug_report_text(self) -> str:
@@ -5768,53 +5200,13 @@ class MainWindow(QMainWindow):
         key = str(path.resolve())
         cached = self.geometry_count_cache.get(key)
         fingerprint = (int(stat.st_mtime_ns), int(stat.st_size))
-        if cached and cached[:2] == fingerprint and int(cached[2] or 0) > 0:
+        if cached and cached[:2] == fingerprint:
             return cached[2]
         try:
             count = geometry_shape_count(path)
         except Exception:
             count = 0
-        if count <= 0:
-            count = self.compatible_json_shape_count(path)
         self.geometry_count_cache[key] = (fingerprint[0], fingerprint[1], count)
-        return count
-
-    @staticmethod
-    def compatible_json_shape_count(path: Path) -> int:
-        try:
-            payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        except Exception:
-            return 0
-        shapes = payload.get("shapes") if isinstance(payload, dict) else payload if isinstance(payload, list) else None
-        if not isinstance(shapes, list):
-            return 0
-        count = 0
-        for index, shape in enumerate(shapes):
-            if not isinstance(shape, dict):
-                continue
-            color = shape.get("color")
-            if isinstance(color, list) and len(color) >= 4:
-                try:
-                    if float(color[3]) <= 0:
-                        continue
-                except (TypeError, ValueError):
-                    pass
-            data = shape.get("data")
-            type_value = shape.get("type")
-            # Skip old transparent canvas sentinels, but allow FH6 type-code
-            # shapes that the geometry counter does not understand.
-            if index == 0 and type_value == 1 and isinstance(data, list) and len(data) == 4:
-                if isinstance(color, list) and len(color) >= 4:
-                    try:
-                        if float(color[3]) <= 0:
-                            continue
-                    except (TypeError, ValueError):
-                        pass
-            if isinstance(data, list) and len(data) >= 4 and (
-                type_value is not None
-                or any(key in shape for key in ("shape_word", "shapeWord", "type_word", "typeWord", "font_shape", "fontShape"))
-            ):
-                count += 1
         return count
 
     def run_json_files(self, run_dir):
@@ -5924,115 +5316,46 @@ class MainWindow(QMainWindow):
                     candidates.add(path.resolve())
         return candidates
 
-    def folder_json_source_info(self, mode: str) -> dict:
-        sources = {
-            "handmade": {
-                "root": HANDMADE_JSON_ROOT,
-                "type": "Handmade JSON",
-                "tag": "Handmade",
-                "preset": "handmade/downloaded",
-                "prefix": "Handmade folder",
-                "empty": "No handmade JSONs found in imgs/handmade.",
-            },
-            "exported": {
-                "root": EXPORTED_JSON_ROOT,
-                "type": "Exported game JSON",
-                "tag": "Exported",
-                "preset": "game/exported",
-                "prefix": "Exported game JSON",
-                "empty": "No exported game JSONs found in imgs/exported.",
-            },
-        }
-        return sources.get(mode, sources["handmade"])
-
-    def folder_json_candidates(self, mode: str) -> list[dict]:
-        info = self.folder_json_source_info(mode)
-        root = Path(info["root"])
+    def handmade_json_candidates(self) -> list[dict]:
         entries = []
-        if not root.exists():
+        if not HANDMADE_JSON_ROOT.exists():
             return entries
         paths = [
-            path for path in root.rglob("*")
+            path for path in HANDMADE_JSON_ROOT.rglob("*")
             if path.is_file() and path.suffix.lower() == ".json"
         ]
         for path in sorted(paths, key=lambda item: self.safe_path_mtime(item) or 0, reverse=True):
             if is_internal_generator_json(path):
                 continue
-            if path.name.lower().endswith(".report.json"):
-                continue
             count = self.cached_geometry_shape_count(path)
-            if count <= 0:
-                continue
-            rel_parent = Path(".")
+            folder = path.parent
             try:
-                rel_parent = path.parent.relative_to(root)
-            except ValueError:
-                pass
-            # Generated runs are grouped by run folder. Mirror that for
-            # handmade/editor exports saved as imgs/handmade/<name>/*.json,
-            # while keeping loose files in imgs/handmade as individual cards.
-            if rel_parent.parts:
-                group_folder = root / rel_parent.parts[0]
-                run_key = str(group_folder.resolve())
-                source = rel_parent.parts[0]
-            else:
-                group_folder = path.parent
-                run_key = str(path.resolve())
-                source = path.stem
-            try:
-                run_mtime = max(self.safe_path_mtime(group_folder) or 0, path.stat().st_mtime)
+                run_mtime = path.stat().st_mtime
             except OSError:
                 run_mtime = self.safe_path_mtime(path) or 0
+            source = path.stem
             entries.append({
                 "path": path.resolve(),
                 "source": source,
                 "folder": self.checkpoint_folder_label(path),
-                "run_folder": group_folder,
-                "run_key": run_key,
+                "run_folder": folder,
+                "run_key": str(path.resolve()),
                 "run_mtime": run_mtime,
                 "checkpoint": path.stem,
                 "step_number": count,
                 "step_variant": 0,
-                "type": info["type"],
+                "type": "Handmade JSON",
                 "layers": count,
                 "import_safe": True,
                 "import_budget": None,
                 "recommended": False,
-                "tags": [info["tag"]],
+                "tags": ["Handmade"],
                 "error": None,
-                "preset": info["preset"],
+                "preset": "handmade/downloaded",
                 "source_image": None,
             })
         entries.sort(key=lambda item: (-item["run_mtime"], -int(item.get("layers") or 0), item["path"].name.lower()))
         return entries
-
-    def handmade_json_candidates(self) -> list[dict]:
-        return self.folder_json_candidates("handmade")
-
-    def exported_json_candidates(self) -> list[dict]:
-        return self.folder_json_candidates("exported")
-
-    def json_browser_entries(self, mode: str) -> list[dict]:
-        if mode == "handmade":
-            return self.handmade_json_candidates()
-        if mode == "exported":
-            return self.exported_json_candidates()
-        return self.checkpoint_candidates()
-
-    def json_browser_root(self, mode: str) -> Path:
-        if mode == "generated":
-            return GENERATED_ROOT
-        return Path(self.folder_json_source_info(mode)["root"])
-
-    def json_browser_empty_message(self, mode: str) -> str:
-        if mode == "generated":
-            return "No finalized JSONs found yet."
-        return str(self.folder_json_source_info(mode)["empty"])
-
-    def json_browser_group_prefix(self, mode: str, index: int) -> str:
-        if mode == "generated":
-            return "Latest run" if index == 0 else "Previous run"
-        return str(self.folder_json_source_info(mode)["prefix"])
 
     def is_v2_output_json(self, path):
         path = Path(path)
@@ -6195,13 +5518,8 @@ class MainWindow(QMainWindow):
         )
 
     def current_json_browser_mode(self) -> str:
-        if not hasattr(self, "json_source_combo"):
-            return "generated"
-        text = self.json_source_combo.currentText().lower()
-        if "handmade" in text:
+        if hasattr(self, "json_source_combo") and self.json_source_combo.currentText().lower().startswith("handmade"):
             return "handmade"
-        if "export" in text:
-            return "exported"
         return "generated"
 
     def latest_final_combo_label(self, entry):
@@ -6223,10 +5541,11 @@ class MainWindow(QMainWindow):
         self.latest_final_combo.clear()
         self.latest_final_entries = []
         if not run_order:
-            self.latest_final_combo.addItem(self.json_browser_empty_message(mode), None)
+            message = "No handmade JSONs found in imgs/handmade." if mode == "handmade" else "No finalized JSONs found yet."
+            self.latest_final_combo.addItem(message, None)
             self.latest_final_combo.blockSignals(False)
             return
-        if mode != "generated":
+        if mode == "handmade":
             latest_entries = self.sort_generated_entries_for_latest_combo([entry for group in run_groups.values() for entry in group])
         else:
             latest_entries = self.sort_generated_entries_for_latest_combo(run_groups.get(run_order[0], []))
@@ -6274,9 +5593,9 @@ class MainWindow(QMainWindow):
 
     def open_final_json_browser(self):
         mode = self.current_json_browser_mode()
-        entries = self.json_browser_entries(mode)
+        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
         if not entries:
-            folder = self.json_browser_root(mode)
+            folder = HANDMADE_JSON_ROOT if mode == "handmade" else GENERATED_ROOT
             QMessageBox.information(self, "Browse JSONs", f"No JSONs were found in {folder.relative_to(ROOT)} yet.")
             return
         dialog = FinalJsonBrowserDialog(self, entries)
@@ -6292,7 +5611,7 @@ class MainWindow(QMainWindow):
 
     def refresh_generated_browser(self):
         mode = self.current_json_browser_mode()
-        entries = self.json_browser_entries(mode)
+        entries = self.handmade_json_candidates() if mode == "handmade" else self.checkpoint_candidates()
         run_groups = {}
         run_mtimes = {}
         run_folders = {}
@@ -6305,11 +5624,14 @@ class MainWindow(QMainWindow):
         groups = {}
         order = []
         for index, run_key in enumerate(run_order):
-            prefix = self.json_browser_group_prefix(mode, index)
+            if mode == "handmade":
+                prefix = "Handmade folder"
+            else:
+                prefix = "Latest run" if index == 0 else "Previous run"
             label = self.checkpoint_run_label(run_folders[run_key], prefix=prefix)
             groups[label] = (
                 self.sort_generated_entries_for_latest_combo(run_groups[run_key])
-                if mode != "generated"
+                if mode == "handmade"
                 else self.sort_generated_entries_for_picker(run_groups[run_key])
             )
             order.append(label)
@@ -6327,7 +5649,7 @@ class MainWindow(QMainWindow):
         self.generated_checkpoint_entries = list(self.generated_folder_entries.get(folder_label, []))
         self.generated_checkpoint_list.clear()
         if not self.generated_checkpoint_entries:
-            self.generated_checkpoint_list.addItem(self.json_browser_empty_message(self.current_json_browser_mode()))
+            self.generated_checkpoint_list.addItem("No finalized vinyl JSONs found yet.")
             return
         for entry in self.generated_checkpoint_entries:
             item = QListWidgetItem(self.generated_display_label(entry))
@@ -6362,17 +5684,79 @@ class MainWindow(QMainWindow):
             return
         self.select_import_json(entry["path"], "highlighted finalized checkpoint")
 
-    def show_exported_json_in_import_browser(self, path: Path):
-        path = Path(path)
-        if hasattr(self, "json_source_combo"):
-            index = self.json_source_combo.findText("Exported game JSONs")
-            if index >= 0:
-                self.json_source_combo.setCurrentIndex(index)
-        self.refresh_generated_browser()
-        self.set_latest_final_combo_to_path(path)
-        self.set_hidden_generated_selection(path)
+    def exported_game_json_candidates(self) -> list[dict]:
+        entries = []
+        if not UNIVERSAL_IMPORT_ROOT.exists():
+            return entries
+        for path in UNIVERSAL_IMPORT_ROOT.glob("export-current-group-*/*.json"):
+            if path.name.endswith(".report.json"):
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if payload.get("format") != "fh6_typecode_json_export_v1":
+                continue
+            source = payload.get("source") or {}
+            shape_count = len(payload.get("shapes") or [])
+            report_path = path.with_suffix(".report.json")
+            entries.append({
+                "path": path,
+                "run_folder": path.parent,
+                "mtime": path.stat().st_mtime,
+                "shape_count": shape_count,
+                "layer_count": source.get("layer_count"),
+                "table": source.get("table"),
+                "group": source.get("group"),
+                "report": report_path if report_path.exists() else None,
+            })
+        return sorted(entries, key=lambda entry: entry["mtime"], reverse=True)
+
+    def exported_game_json_label(self, entry):
+        timestamp = datetime.fromtimestamp(entry["mtime"]).strftime("%Y-%m-%d %H:%M:%S")
+        return (
+            f"{entry['path'].name}\n"
+            f"{entry['shape_count']} exported layers | source count {entry.get('layer_count') or 'unknown'} | {timestamp}\n"
+            f"group={entry.get('group') or 'unknown'} table={entry.get('table') or 'unknown'}"
+        )
+
+    def refresh_game_export_browser(self):
+        if not hasattr(self, "exported_game_json_list"):
+            return
+        self.exported_game_json_entries = self.exported_game_json_candidates()
+        self.exported_game_json_list.clear()
+        if not self.exported_game_json_entries:
+            self.exported_game_json_list.addItem("No exported game group JSONs found yet.")
+            if hasattr(self, "export_preview"):
+                self.export_preview.clear("Export a game group or select an exported JSON to preview it here.")
+            return
+        for entry in self.exported_game_json_entries:
+            item = QListWidgetItem(self.exported_game_json_label(entry))
+            item.setSizeHint(QSize(0, 86))
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            self.exported_game_json_list.addItem(item)
+        self.exported_game_json_list.setCurrentRow(0)
+
+    def selected_exported_game_entry(self):
+        if not hasattr(self, "exported_game_json_list"):
+            return None
+        item = self.exported_game_json_list.currentItem()
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def select_exported_game_json(self, _row: int):
+        entry = self.selected_exported_game_entry()
+        if not entry:
+            return
+        self.preview_export_json(entry["path"])
+        self.log_line(f"Selected exported game JSON: {entry['path']}")
+
+    def use_selected_export_for_import(self):
+        entry = self.selected_exported_game_entry()
+        if not entry:
+            self.log_line("No exported game JSON selected.")
+            return
+        path = Path(entry["path"])
         self.select_import_json(path, "exported game JSON")
-        self.preview_export_json(path)
         self.go_to_workflow("Import JSON")
 
     def select_recommended_generated_json(self):
@@ -6758,58 +6142,6 @@ class MainWindow(QMainWindow):
             daemon=True,
         ).start()
 
-    def start_seed_template_import(self):
-        pid = self.selected_pid_value()
-        game = self.selected_game_value(self.game_combo)
-        if not pid:
-            self.log_line("Select or refresh the game process before importing the seed template.")
-            return
-        try:
-            template_count = int(self.layer_count.text().strip())
-        except ValueError:
-            self.log_line("Template layer count must be a number.")
-            return
-        if template_count <= 0:
-            self.log_line("Template layer count must be greater than zero.")
-            return
-        if not FH6_RESOURCE_SEED_JSON.exists():
-            self.log_line(f"Seed template JSON is missing: {FH6_RESOURCE_SEED_JSON}")
-            return
-        try:
-            shape_count = import_json_shape_count(FH6_RESOURCE_SEED_JSON)
-        except Exception as exc:
-            self.log_line(f"Seed template JSON is invalid: {exc}")
-            return
-        if shape_count <= 0:
-            self.log_line("Seed template JSON has no visible shapes.")
-            return
-        if shape_count > template_count:
-            self.log_line(f"Seed template needs {shape_count} layers, but the loaded template only has {template_count}.")
-            return
-        self.set_status("Importing")
-        self.set_phase(
-            "importing",
-            "WIP seed import: writing every known FH6 shape resource while keeping the template layer count unchanged.",
-        )
-        self.log_line(
-            "WIP seed import: load a saved/reopened plain 3000 white-circle template first. "
-            "This writes the all-shape resource seed and intentionally does not trim/cull the template."
-        )
-        threading.Thread(
-            target=self.unified_import_worker,
-            args=(
-                game,
-                pid,
-                template_count,
-                shape_count,
-                FH6_RESOURCE_SEED_JSON,
-                True,
-                False,
-                "All-shape seed import",
-            ),
-            daemon=True,
-        ).start()
-
     def locate_universal_template(self, game, pid, template_count, run_dir, purpose="template"):
         session_report = run_dir / f"fast-{purpose}-session.json"
         probe_report = run_dir / f"fallback-{purpose}-probe.json"
@@ -6989,7 +6321,7 @@ class MainWindow(QMainWindow):
         self.bus.log.emit(f"{game.upper()} group fallback-located and validated: layers={template_count}, validated={valid_ptrs}, sample_ok={sample_ok}{circle_suffix}")
         return group, table
 
-    def unified_import_worker(self, game, pid, template_count, shape_count, json_path, clear_unused=True, trim_after_import=True, import_label="Universal import"):
+    def unified_import_worker(self, game, pid, template_count, shape_count, json_path, clear_unused=True):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"{json_path.stem}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -6997,7 +6329,7 @@ class MainWindow(QMainWindow):
         import_report = run_dir / "import-report.json"
         trim_backup = run_dir / "trim-backup.json"
         try:
-            self.bus.log.emit(f"{import_label} run folder: {run_dir}")
+            self.bus.log.emit(f"Universal import run folder: {run_dir}")
             self.bus.log.emit(f"Target game: {game.upper()}")
             self.bus.log.emit(f"Import JSON visible shapes: {shape_count}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="import-template")
@@ -7040,14 +6372,6 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit("Universal import failed: no layers were imported.")
                 self.bus.status.emit("Failed")
                 return
-            if not trim_after_import:
-                self.bus.log.emit(
-                    f"{import_label} complete: wrote {imported} seed layers and kept the loaded template at "
-                    f"{template_count} layers. Save and reload this vinyl once, then reuse it as the seeded import template."
-                )
-                self.bus.status.emit("Done")
-                self.bus.phase.emit("done", "Seed template written. Save/reload it once before using it for imports.")
-                return
             self.bus.log.emit(f"Imported {imported} shape layers. Trimming {game.upper()} group count...")
             trim_cmd = [
                 helper_python(),
@@ -7078,16 +6402,13 @@ class MainWindow(QMainWindow):
             self.bus.status.emit("Failed")
 
     def start_game_export(self):
-        pid_combo = self.export_pid_combo if hasattr(self, "export_pid_combo") else self.pid_combo
-        game_combo = self.export_game_combo if hasattr(self, "export_game_combo") else self.game_combo
-        count_field = self.export_template_count if hasattr(self, "export_template_count") else self.layer_count
-        pid = self.selected_pid_value(pid_combo)
-        game = self.selected_game_value(game_combo)
+        pid = self.selected_pid_value(self.export_pid_combo)
+        game = self.selected_game_value(self.export_game_combo if hasattr(self, "export_game_combo") else None)
         if not pid:
             self.log_line("Select or refresh the game process before export.")
             return
         try:
-            template_count = int(count_field.text().strip())
+            template_count = int(self.export_template_count.text().strip())
         except ValueError:
             self.log_line("Loaded template layer count must be a number.")
             return
@@ -7106,13 +6427,10 @@ class MainWindow(QMainWindow):
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = UNIVERSAL_IMPORT_ROOT / f"export-current-group-{template_count}-{timestamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
-        export_dir = EXPORTED_JSON_ROOT / f"export-current-group-{template_count}-{timestamp}"
-        export_dir.mkdir(parents=True, exist_ok=True)
-        export_json = export_dir / f"{game}-current-group-{template_count}-{timestamp}.json"
-        export_report = export_dir / f"{game}-current-group-{template_count}-{timestamp}.report.json"
+        export_json = run_dir / f"{game}-current-group-{template_count}-{timestamp}.json"
+        export_report = run_dir / f"{game}-current-group-{template_count}-{timestamp}.report.json"
         try:
             self.bus.log.emit(f"Universal export run folder: {run_dir}")
-            self.bus.log.emit(f"Export JSON output folder: {export_dir.relative_to(ROOT)}")
             self.bus.log.emit(f"Target game: {game.upper()}")
             group, table = self.locate_universal_template(game, pid, template_count, run_dir, purpose="export-template")
             fast_report = run_dir / "fast-export-template-session.json"
@@ -7168,10 +6486,19 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit(f"Export warning: {failures} unreadable layer(s), see report.")
             self.bus.status.emit("Done")
             self.bus.phase.emit("done", f"Current {game.upper()} group exported to compatible JSON.")
-            self.bus.ui_call.emit(lambda: self.show_exported_json_in_import_browser(export_json))
+            self.bus.ui_call.emit(self.refresh_game_export_browser)
+            self.bus.ui_call.emit(lambda: self.select_exported_path_after_refresh(export_json))
         except Exception as exc:
             self.bus.log.emit(f"Universal export failed: {exc}")
             self.bus.status.emit("Failed")
+
+    def select_exported_path_after_refresh(self, path: Path):
+        if not hasattr(self, "exported_game_json_list"):
+            return
+        for row, entry in enumerate(self.exported_game_json_entries):
+            if Path(entry["path"]) == Path(path):
+                self.exported_game_json_list.setCurrentRow(row)
+                break
 
     def start_diagnose(self):
         cmd = [helper_python(), ROOT / "main.py", "--game", self.game_combo.currentText() or "fh6", "--diagnose"]

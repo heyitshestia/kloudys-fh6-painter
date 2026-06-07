@@ -27,19 +27,12 @@ from json_preview_renderer import render_json_preview as shared_render_json_prev
 
 EDITOR = ROOT / "tools" / "fabric-editor" / "index.html"
 STARTUP_HELP_MARKER = ROOT / "runtime" / "fabric-editor" / "startup-help-confirmed.json"
-EDITOR_PREFS_PATH = ROOT / "runtime" / "fabric-editor" / "preferences.json"
 STARTUP_HELP_API = "/api/fabric-editor/startup-help-confirmed"
-EDITOR_PREFS_API = "/api/fabric-editor/preferences"
 JSON_BROWSER_API = "/api/fabric-editor/json-browser"
 JSON_FILE_API = "/api/fabric-editor/json-file"
 JSON_PREVIEW_API = "/api/fabric-editor/json-preview"
-EDITOR_EXPORT_API = "/api/fabric-editor/export-json"
-EDITOR_PROJECT_SAVE_API = "/api/fabric-editor/save-project"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 HANDMADE_ROOT = ROOT / "imgs" / "handmade"
-EXPORTED_ROOT = ROOT / "imgs" / "exported"
-EDITOR_EXPORT_ROOT = ROOT / "imgs" / "handmade"
-EDITOR_PROJECT_ROOT = ROOT / "projects" / "editor"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 PREVIEW_MAX = 420
@@ -88,59 +81,11 @@ def _safe_relpath(path: Path) -> str:
     return path.resolve().relative_to(ROOT.resolve()).as_posix()
 
 
-def _clean_project_base_name(name: str | None, fallback: str = "vinyl") -> str:
-    base = str(name or fallback).replace("\\", "/").split("/")[-1].strip()
-    base = re.sub(r"\.json$", "", base, flags=re.IGNORECASE)
-    base = re.sub(r"\.(fabric-project|fabric-export|normal-import|fh6-import)$", "", base, flags=re.IGNORECASE)
-    base = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", base)
-    base = re.sub(r"\s+", " ", base).strip(" .")
-    return base or fallback
-
-
-def _load_editor_preferences() -> dict:
-    try:
-        payload = json.loads(EDITOR_PREFS_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def _clean_editor_preferences(payload: dict) -> dict:
-    theme = str(payload.get("theme") or "pastel").lower()
-    if theme not in {"pastel", "dark"}:
-        theme = "pastel"
-    favorites_in = payload.get("favorites")
-    favorites = []
-    if isinstance(favorites_in, list):
-        for item in favorites_in:
-            text = str(item or "").strip()
-            if re.match(r"^[A-Za-z0-9_]+:[0-9]{1,3}$", text):
-                favorites.append(text)
-    return {
-        "theme": theme,
-        "favorites": sorted(set(favorites)),
-    }
-
-
-def _save_editor_preferences(payload: dict) -> dict:
-    clean = _clean_editor_preferences(payload)
-    EDITOR_PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = EDITOR_PREFS_PATH.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(clean, indent=2), encoding="utf-8")
-    tmp_path.replace(EDITOR_PREFS_PATH)
-    return clean
-
-
 def _resolve_browser_id(path_id: str) -> Path:
     if not path_id or "\x00" in path_id:
         raise ValueError("missing JSON id")
     candidate = (ROOT / path_id).resolve()
-    allowed_roots = [
-        GENERATED_ROOT.resolve(),
-        HANDMADE_ROOT.resolve(),
-        EXPORTED_ROOT.resolve(),
-        EDITOR_EXPORT_ROOT.resolve(),
-    ]
+    allowed_roots = [GENERATED_ROOT.resolve(), HANDMADE_ROOT.resolve()]
     if not any(candidate.is_relative_to(root) for root in allowed_roots):
         raise ValueError("JSON path is outside the editable browser roots")
     if candidate.suffix.lower() != ".json" or not candidate.is_file():
@@ -229,49 +174,28 @@ def _generated_groups() -> list[dict]:
     return sorted(groups.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
 
 
-def _folder_groups(root: Path, source: str) -> list[dict]:
-    grouped: dict[str, dict] = {}
-    if not root.exists():
-        return []
-    for path in root.rglob("*.json"):
+def _handmade_groups() -> list[dict]:
+    groups = []
+    if not HANDMADE_ROOT.exists():
+        return groups
+    for path in HANDMADE_ROOT.rglob("*.json"):
         if _is_internal_json(path):
             continue
-        if path.name.lower().endswith(".report.json"):
-            continue
-        entry = _json_entry(path, source)
-        if entry["layers"] <= 0:
-            continue
-        rel_parent = path.parent.relative_to(root)
-        if rel_parent.parts:
-            key = rel_parent.parts[0]
-            title = key
-        else:
-            key = entry["id"]
-            title = path.stem
-        group = grouped.setdefault(key, {
-            "key": key,
+        entry = _json_entry(path, "handmade")
+        rel_parent = path.parent.relative_to(HANDMADE_ROOT)
+        folder = "" if str(rel_parent) == "." else rel_parent.as_posix()
+        title = path.name if not folder else f"{folder}/{path.name}"
+        groups.append({
+            "key": entry["id"],
             "title": title,
-            "source": source,
-            "mtime": 0.0,
-            "count": 0,
-            "max_layers": 0,
-            "entries": [],
+            "source": "handmade",
+            "mtime": entry["mtime"],
+            "count": 1,
+            "max_layers": entry["layers"],
+            "entries": [entry],
         })
-        group["entries"].append(entry)
-        group["mtime"] = max(group["mtime"], entry["mtime"])
-        group["max_layers"] = max(group["max_layers"], entry["layers"])
-    for group in grouped.values():
-        group["entries"].sort(key=lambda item: (item["layers"], item["mtime"], item["name"]), reverse=True)
-        group["count"] = len(group["entries"])
-    return sorted(grouped.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
+    return sorted(groups, key=lambda item: (item["mtime"], item["title"]), reverse=True)
 
-
-def _handmade_groups() -> list[dict]:
-    return _folder_groups(HANDMADE_ROOT, "handmade")
-
-
-def _exported_groups() -> list[dict]:
-    return _folder_groups(EXPORTED_ROOT, "exported")
 
 def _read_stable_file_bytes(path: Path, checks: int = 2, delay: float = 0.035) -> bytes | None:
     previous_size = None
@@ -645,30 +569,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _read_json_body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or "0")
-        if length <= 0:
-            raise ValueError("missing request body")
-        if length > 32 * 1024 * 1024:
-            raise ValueError("request body is too large")
-        payload = json.loads(self.rfile.read(length).decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("request body must be a JSON object")
-        return payload
-
-    def _save_json_payload(self, root: Path, name: str, suffix: str, payload: dict) -> Path:
-        project_name = _clean_project_base_name(name)
-        target_dir = root / project_name
-        target_dir.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        path = target_dir / f"{project_name}.{suffix}.{stamp}.json"
-        counter = 2
-        while path.exists():
-            path = target_dir / f"{project_name}.{suffix}.{stamp}-{counter}.json"
-            counter += 1
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return path
-
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == STARTUP_HELP_API:
@@ -677,16 +577,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "marker": str(STARTUP_HELP_MARKER),
             })
             return
-        if parsed.path == EDITOR_PREFS_API:
-            self._send_json(_clean_editor_preferences(_load_editor_preferences()))
-            return
         if parsed.path == JSON_BROWSER_API:
             query = parse_qs(parsed.query)
             source = (query.get("source") or ["generated"])[0]
             if source == "handmade":
                 groups = _handmade_groups()
-            elif source == "exported":
-                groups = _exported_groups()
             else:
                 source = "generated"
                 groups = _generated_groups()
@@ -728,8 +623,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
-        parsed_path = urlparse(self.path).path
-        if parsed_path == STARTUP_HELP_API:
+        if urlparse(self.path).path == STARTUP_HELP_API:
             STARTUP_HELP_MARKER.parent.mkdir(parents=True, exist_ok=True)
             STARTUP_HELP_MARKER.write_text(
                 json.dumps({"confirmed": True}, indent=2),
@@ -738,61 +632,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._send_json({
                 "confirmed": True,
                 "marker": str(STARTUP_HELP_MARKER),
-            })
-            return
-        if parsed_path == EDITOR_PREFS_API:
-            try:
-                clean = _save_editor_preferences(self._read_json_body())
-            except Exception as err:
-                self._send_json({"error": str(err)}, status=400)
-                return
-            self._send_json({"ok": True, **clean})
-            return
-        if parsed_path == EDITOR_EXPORT_API:
-            try:
-                body = self._read_json_body()
-                shapes = body.get("shapes")
-                if not isinstance(shapes, list) or not shapes:
-                    raise ValueError("export must contain at least one shape")
-                path = self._save_json_payload(
-                    EDITOR_EXPORT_ROOT,
-                    str(body.get("name") or "vinyl"),
-                    "fh6-import",
-                    {"shapes": shapes},
-                )
-            except Exception as err:
-                self._send_json({"error": str(err)}, status=400)
-                return
-            self._send_json({
-                "ok": True,
-                "path": str(path),
-                "id": _safe_relpath(path),
-                "name": path.name,
-                "folder": "imgs/handmade",
-            })
-            return
-        if parsed_path == EDITOR_PROJECT_SAVE_API:
-            try:
-                body = self._read_json_body()
-                project_name = _clean_project_base_name(str(body.get("name") or "vinyl"))
-                payload = dict(body.get("payload") or {})
-                if not isinstance(payload.get("shapes"), list) or not payload["shapes"]:
-                    raise ValueError("project must contain at least one shape")
-                payload["name"] = project_name
-                path = self._save_json_payload(
-                    EDITOR_PROJECT_ROOT,
-                    project_name,
-                    "fabric-project",
-                    payload,
-                )
-            except Exception as err:
-                self._send_json({"error": str(err)}, status=400)
-                return
-            self._send_json({
-                "ok": True,
-                "path": str(path),
-                "id": _safe_relpath(path),
-                "name": path.name,
             })
             return
         self._send_json({"error": "not found"}, status=404)
