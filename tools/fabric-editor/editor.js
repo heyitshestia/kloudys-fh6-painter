@@ -385,6 +385,7 @@ function applyEditorTheme(theme) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
     canvas.set("backgroundColor", bg);
     styleAllTransformControls();
+    updateVisualGridLayer();
     canvas.requestRenderAll();
   }
 }
@@ -392,6 +393,11 @@ function applyEditorTheme(theme) {
 function cssColorVar(name, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;
+}
+
+function positiveModulo(value, divisor) {
+  if (!Number.isFinite(divisor) || divisor <= 0) return 0;
+  return ((value % divisor) + divisor) % divisor;
 }
 
 function colorWithAlpha(color, alpha) {
@@ -2210,7 +2216,7 @@ function initCanvas() {
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
     styleAllTransformControls();
     syncSelectedShapeOutlines();
-    queueGuideRender();
+    updateVisualGridLayer();
     updateHud(canvas.getPointer(opt.e));
     requestCanvasRender();
     opt.e.preventDefault();
@@ -2290,7 +2296,7 @@ function initCanvas() {
       const vpt = canvas.viewportTransform;
       vpt[4] += opt.e.clientX - lastPan.x;
       vpt[5] += opt.e.clientY - lastPan.y;
-      queueGuideRender();
+      updateVisualGridLayer();
       requestCanvasRender();
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
       updateHud(canvas.getPointer(opt.e));
@@ -2340,7 +2346,7 @@ function resizeCanvas() {
     lastCanvasSize = { width, height };
   }
   syncCanvasObjectCoords();
-  queueGuideRender();
+  updateVisualGridLayer();
   canvas.requestRenderAll();
   updateHud();
 }
@@ -2507,28 +2513,62 @@ function visibleCanvasBounds(pad = 80) {
   };
 }
 
+function updateVisualGridLayer() {
+  const layer = $("editorGridLayer");
+  if (!layer || !canvas) return;
+  if (!guideState.gridEnabled) {
+    layer.hidden = true;
+    layer.style.backgroundImage = "";
+    return;
+  }
+  const zoom = Math.max(canvas.getZoom() || 1, 0.001);
+  let step = clampGuideSize(guideState.gridSize);
+  while (step * zoom < 10) step *= 2;
+  const screenStep = Math.max(2, step * zoom);
+  const vpt = canvas.viewportTransform || [zoom, 0, 0, zoom, 0, 0];
+  const gridOpacity = Math.max(0.08, Math.min(0.85, guideState.gridOpacity / 100));
+  const gridColor = colorWithAlpha(cssColorVar("--editor-grid-line", "rgba(80, 72, 92, 0.42)"), gridOpacity);
+  const axisColor = cssColorVar("--editor-grid-axis", "rgba(40, 36, 48, 0.62)");
+  const width = Math.max(1, canvas.width || layer.clientWidth || 1);
+  const height = Math.max(1, canvas.height || layer.clientHeight || 1);
+  const xOffset = positiveModulo(vpt[4] || 0, screenStep);
+  const yOffset = positiveModulo(vpt[5] || 0, screenStep);
+  const backgrounds = [
+    `linear-gradient(to right, ${gridColor} 1px, transparent 1px)`,
+    `linear-gradient(to bottom, ${gridColor} 1px, transparent 1px)`,
+  ];
+  const sizes = [
+    `${screenStep}px ${screenStep}px`,
+    `${screenStep}px ${screenStep}px`,
+  ];
+  const positions = [
+    `${xOffset}px 0px`,
+    `0px ${yOffset}px`,
+  ];
+  const axisX = vpt[4] || 0;
+  const axisY = vpt[5] || 0;
+  if (axisX >= 0 && axisX <= width) {
+    backgrounds.unshift(`linear-gradient(to right, transparent ${Math.max(0, axisX - 1)}px, ${axisColor} ${Math.max(0, axisX - 1)}px, ${axisColor} ${axisX + 1}px, transparent ${axisX + 1}px)`);
+    sizes.unshift("100% 100%");
+    positions.unshift("0 0");
+  }
+  if (axisY >= 0 && axisY <= height) {
+    backgrounds.unshift(`linear-gradient(to bottom, transparent ${Math.max(0, axisY - 1)}px, ${axisColor} ${Math.max(0, axisY - 1)}px, ${axisColor} ${axisY + 1}px, transparent ${axisY + 1}px)`);
+    sizes.unshift("100% 100%");
+    positions.unshift("0 0");
+  }
+  layer.hidden = false;
+  layer.style.backgroundImage = backgrounds.join(", ");
+  layer.style.backgroundSize = sizes.join(", ");
+  layer.style.backgroundPosition = positions.join(", ");
+}
+
 function renderGuideObjects() {
   if (!canvas) return;
   canvas.getObjects().filter((obj) => obj.kloudyGuide).forEach((obj) => canvas.remove(obj));
   snapOverlayObjects = [];
   const objects = [];
-  if (guideState.gridEnabled) {
-    const bounds = visibleCanvasBounds(160);
-    const zoom = Math.max(canvas.getZoom() || 1, 0.001);
-    let step = clampGuideSize(guideState.gridSize);
-    while (step * zoom < 10) step *= 2;
-    const startX = Math.floor(bounds.minX / step) * step;
-    const startY = Math.floor(bounds.minY / step) * step;
-    const maxLines = 260;
-    let xCount = 0;
-    for (let x = startX; x <= bounds.maxX && xCount < maxLines; x += step, xCount++) {
-      objects.push(makeGuideLine({ grid: true, axisGuide: Math.abs(x) < 0.0001, x1: x, y1: bounds.minY, x2: x, y2: bounds.maxY }, { strokeWidth: Math.abs(x) < 0.0001 ? 2 : 1 }));
-    }
-    let yCount = 0;
-    for (let y = startY; y <= bounds.maxY && yCount < maxLines; y += step, yCount++) {
-      objects.push(makeGuideLine({ grid: true, axisGuide: Math.abs(y) < 0.0001, x1: bounds.minX, y1: y, x2: bounds.maxX, y2: y }, { strokeWidth: Math.abs(y) < 0.0001 ? 2 : 1 }));
-    }
-  }
+  updateVisualGridLayer();
   if (guideState.guidesVisible) {
     guideState.guides.forEach((guide) => objects.push(makeGuideLine(guide)));
   }
@@ -3759,8 +3799,8 @@ function resetView() {
   styleAllTransformControls();
   syncCanvasObjectCoords();
   syncSelectedShapeOutlines();
+  updateVisualGridLayer();
   canvas.requestRenderAll();
-  queueGuideRender();
   updateHud();
 }
 
@@ -3799,7 +3839,7 @@ function fitDesignView() {
   styleAllTransformControls();
   syncCanvasObjectCoords();
   syncSelectedShapeOutlines();
-  queueGuideRender();
+  updateVisualGridLayer();
   canvas.requestRenderAll();
   updateHud();
 }
@@ -3838,7 +3878,7 @@ function fitObjectsView(objects) {
   styleAllTransformControls();
   syncCanvasObjectCoords();
   syncSelectedShapeOutlines();
-  queueGuideRender();
+  updateVisualGridLayer();
   canvas.requestRenderAll();
   updateHud();
 }

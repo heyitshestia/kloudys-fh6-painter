@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.39
+- Improved Fabric editor grid performance while panning and zooming the canvas.
+
 ## 2.0.38
 - Fixed Dashboard shortcut buttons for Generate, Open Editor, and Import.
 
