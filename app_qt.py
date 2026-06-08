@@ -3147,6 +3147,15 @@ class MainWindow(QMainWindow):
         if hasattr(self, "tabs") and hasattr(self.tabs, "switch_to"):
             self.tabs.switch_to(title)
 
+    def dashboard_generate_action(self):
+        self.go_to_workflow("Generate Final Vinyl")
+
+    def dashboard_editor_action(self):
+        self.open_fabric_editor()
+
+    def dashboard_import_action(self):
+        self.go_to_workflow("Import JSON")
+
     def open_fabric_editor(self):
         if os.name != "nt":
             QMessageBox.information(
@@ -3263,28 +3272,28 @@ class MainWindow(QMainWindow):
 
         workflow = QGridLayout()
         workflow.setSpacing(12)
-        for column, (title, body, button_text, target) in enumerate((
+        for column, (title, body, button_text, action) in enumerate((
             (
                 "1. Generate",
                 "Choose source art and build finalized JSON checkpoints.",
                 "Generate",
-                "Generate Final Vinyl",
+                self.dashboard_generate_action,
             ),
             (
                 "2. Edit",
                 "Open the editor to create by hand, trace over an overlay, or clean up generated layers.",
                 "Open editor",
-                "Editor",
+                self.dashboard_editor_action,
             ),
             (
                 "3. Import",
                 "Pick the final JSON, write it into the open FH6 template, then save and reload in game.",
                 "Import",
-                "Import JSON",
+                self.dashboard_import_action,
             ),
         )):
             workflow.addWidget(
-                DashboardCard(title, body, button_text, lambda target=target: self.go_to_workflow(target)),
+                DashboardCard(title, body, button_text, action),
                 0,
                 column,
             )

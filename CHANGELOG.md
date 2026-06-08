@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.38
+- Fixed Dashboard shortcut buttons for Generate, Open Editor, and Import.
+
 ## 2.0.37
 - Fixed Fabric editor flip actions becoming unreliable after larger multi-layer selections.
 - Reduced redundant editor redraws while moving, snapping, rotating, and updating selection outlines.
