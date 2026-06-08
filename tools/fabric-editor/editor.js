@@ -4525,17 +4525,120 @@ function layerRowAtPoint(x, y) {
   return best;
 }
 
+function isGroupLayerKey(key) {
+  return String(key || "").startsWith("group:");
+}
+
+function layerSearchActive() {
+  return Boolean(($("layerSearch")?.value || "").trim());
+}
+
+function visibleLayerBlocks() {
+  const displayObjects = displayObjectsFromCurrentStack();
+  const displayIndex = new Map(displayObjects.map((obj, index) => [obj, index]));
+  const seen = new Set();
+  const blocks = [];
+  document.querySelectorAll("#layers [data-layer-list-key]").forEach((row) => {
+    const key = row.dataset.layerListKey;
+    const entry = layerListRows.get(key);
+    if (!entry?.objects?.length) return;
+    if (isGroupLayerKey(key)) {
+      const objects = entry.objects
+        .filter((obj) => displayIndex.has(obj))
+        .sort((a, b) => displayIndex.get(a) - displayIndex.get(b));
+      if (!objects.length) return;
+      objects.forEach((obj) => seen.add(obj));
+      blocks.push({ key, objects, element: row });
+      return;
+    }
+    const object = entry.objects[0];
+    if (!object || seen.has(object)) return;
+    seen.add(object);
+    blocks.push({ key, objects: [object], element: row });
+  });
+  return blocks;
+}
+
+function layerBlockForKey(key, blocks = visibleLayerBlocks()) {
+  const entry = layerListRows.get(key);
+  if (!entry?.objects?.length) return null;
+  if (isGroupLayerKey(key)) return blocks.find((block) => block.key === key) || null;
+  const objectSet = new Set(entry.objects);
+  return blocks.find((block) => block.objects.some((obj) => objectSet.has(obj))) || null;
+}
+
+function reorderCandidateBlocks(dragObjects = []) {
+  const selectedSet = new Set(dragObjects);
+  return visibleLayerBlocks()
+    .map((block) => ({
+      ...block,
+      objects: block.objects.filter((obj) => !selectedSet.has(obj)),
+    }))
+    .filter((block) => block.objects.length && block.element?.isConnected);
+}
+
+function layerDropSlotAtPoint(event) {
+  if (!layerDragState || layerDragState.mode !== "reorder") return null;
+  if (layerSearchActive()) return null;
+  const pane = layerScrollPane();
+  const paneRect = pane?.getBoundingClientRect();
+  if (!paneRect || event.clientX < paneRect.left || event.clientX > paneRect.right || event.clientY < paneRect.top || event.clientY > paneRect.bottom) return null;
+  const blocks = reorderCandidateBlocks(layerDragState.objects);
+  if (!blocks.length) return { index: 0, blocks };
+  const rows = blocks.map((block) => ({ block, rect: block.element.getBoundingClientRect() }));
+  const gaps = [{ index: 0, y: rows[0].rect.top, block: rows[0].block, side: "before" }];
+  for (let index = 1; index < rows.length; index += 1) {
+    gaps.push({
+      index,
+      y: (rows[index - 1].rect.bottom + rows[index].rect.top) / 2,
+      block: rows[index].block,
+      side: "before",
+    });
+  }
+  gaps.push({
+    index: rows.length,
+    y: rows[rows.length - 1].rect.bottom,
+    block: rows[rows.length - 1].block,
+    side: "after",
+  });
+  let best = gaps[0];
+  let bestDistance = Math.abs(event.clientY - best.y);
+  gaps.slice(1).forEach((gap) => {
+    const distance = Math.abs(event.clientY - gap.y);
+    if (distance < bestDistance) {
+      best = gap;
+      bestDistance = distance;
+    }
+  });
+  return { index: best.index, blocks, markerBlock: best.block, markerSide: best.side };
+}
+
 function updateLayerDropPreview(event) {
   if (!layerDragState) return null;
   clearLayerDropPreview();
+  layerDragState.dropSlot = null;
+  if (layerDragState.mode === "reorder") {
+    if (layerSearchActive()) {
+      setStatus("Clear the layer search before dragging layers; filtered rows cannot safely define canvas depth.");
+      return null;
+    }
+    const slot = layerDropSlotAtPoint(event);
+    if (!slot?.markerBlock?.element) return null;
+    slot.markerBlock.element.classList.add(slot.markerSide === "after" ? "layerDropAfter" : "layerDropBefore");
+    layerDragState.dropSlot = { index: slot.index };
+    return slot.markerBlock.element;
+  }
   const row = layerRowAtPoint(event.clientX, event.clientY);
   if (!row || row.dataset.layerListKey === layerDragState.key) return null;
-  row.classList.add("layerDropTarget");
+  const previewRow = isGroupLayerKey(layerDragState.key)
+    ? (layerBlockForKey(row.dataset.layerListKey)?.element || row)
+    : row;
+  previewRow.classList.add("layerDropTarget");
   if (layerDragState.mode === "reorder") {
-    const rect = row.getBoundingClientRect();
-    row.classList.add(event.clientY > rect.top + rect.height / 2 ? "layerDropAfter" : "layerDropBefore");
+    const rect = previewRow.getBoundingClientRect();
+    previewRow.classList.add(event.clientY > rect.top + rect.height / 2 ? "layerDropAfter" : "layerDropBefore");
   }
-  return row;
+  return previewRow;
 }
 
 function scrollLayerPaneDuringDrag(clientY) {
@@ -4637,26 +4740,30 @@ function groupDisplayRange(startKey, endKey) {
   return true;
 }
 
-function dropLayerBlockOnTarget(dragObjects, targetKey, pointerY) {
-  const target = layerListRows.get(targetKey);
+function dropLayerBlockAtSlot(dragObjects, slot) {
   const selectedSet = new Set(dragObjects || []);
-  if (!selectedSet.size || !target) return false;
-  if (target.objects.some((obj) => selectedSet.has(obj))) return false;
+  if (!selectedSet.size || !slot) return false;
+  if (layerSearchActive()) {
+    setStatus("Clear the layer search before dragging layers; filtered rows cannot safely define canvas depth.");
+    return false;
+  }
   const displayObjects = displayObjectsFromCurrentStack();
-  const blockDisplay = displayObjects.filter((obj) => selectedSet.has(obj));
-  if (!blockDisplay.length) return false;
-  const reducedDisplay = displayObjects.filter((obj) => !selectedSet.has(obj));
-  const targetIndex = reducedDisplay.findIndex((obj) => target.objects.includes(obj));
-  if (targetIndex < 0) return false;
-  const rect = target.element.getBoundingClientRect();
-  const insertAfter = pointerY > rect.top + rect.height / 2;
-  const insertIndex = targetIndex + (insertAfter ? 1 : 0);
-  reducedDisplay.splice(insertIndex, 0, ...blockDisplay);
-  setVinylStackOrder(reducedDisplay.slice().reverse());
-  selectObjects([...selectedSet], selectedSet.size > 1 ? "moved layer group" : "moved layer");
+  const sourceObjects = displayObjects.filter((obj) => selectedSet.has(obj));
+  if (!sourceObjects.length) return false;
+  const blocks = reorderCandidateBlocks(sourceObjects);
+  const insertIndex = Math.max(0, Math.min(slot.index, blocks.length));
+  blocks.splice(insertIndex, 0, { key: "__dragged_layers__", objects: sourceObjects, element: null });
+  const nextDisplay = blocks.flatMap((block) => block.objects);
+  if (nextDisplay.length !== displayObjects.length) return false;
+  if (nextDisplay.every((obj, index) => obj === displayObjects[index])) {
+    setStatus("Layer order unchanged.");
+    return false;
+  }
+  setVinylStackOrder(nextDisplay.slice().reverse());
+  selectObjects(sourceObjects, sourceObjects.length > 1 ? "moved layer group" : "moved layer");
   refreshLayers();
   pushHistory("layer drag reorder");
-  setStatus(`Moved ${selectedSet.size > 1 ? `${selectedSet.size} layers` : "1 layer"} in the layer stack.`);
+  setStatus(`Moved ${sourceObjects.length > 1 ? `${sourceObjects.length} layers` : "1 layer"} in the layer stack.`);
   return true;
 }
 
@@ -4718,9 +4825,12 @@ function handleLayerPointerUp(event) {
     event.preventDefault();
     return;
   }
-  if (!targetKey) return;
-  if (state.mode === "group") groupDisplayRange(state.key, targetKey);
-  else dropLayerBlockOnTarget(state.objects, targetKey, event.clientY);
+  if (state.mode === "group") {
+    if (!targetKey) return;
+    groupDisplayRange(state.key, targetKey);
+  } else {
+    dropLayerBlockAtSlot(state.objects, state.dropSlot);
+  }
   event.preventDefault();
 }
 
@@ -5709,8 +5819,34 @@ function moveSelected(direction) {
 }
 
 function setVinylStackOrder(order) {
-  order.forEach((obj) => obj.bringToFront());
+  if (!canvas) return;
+  const currentObjects = canvas.getObjects();
+  const currentVinyl = vinylObjects();
+  const currentVinylSet = new Set(currentVinyl);
+  const nextVinyl = [];
+  const seen = new Set();
+  order.forEach((obj) => {
+    if (!currentVinylSet.has(obj) || seen.has(obj)) return;
+    seen.add(obj);
+    nextVinyl.push(obj);
+  });
+  currentVinyl.forEach((obj) => {
+    if (seen.has(obj)) return;
+    seen.add(obj);
+    nextVinyl.push(obj);
+  });
+  if (nextVinyl.length !== currentVinyl.length) return;
+  const restoreSelection = selectedVinylObjects().filter((obj) => currentVinylSet.has(obj));
+  const nonVinyl = currentObjects.filter((obj) => !currentVinylSet.has(obj));
+  if (restoreSelection.length) canvas.discardActiveObject();
+  canvas._objects = nonVinyl.concat(nextVinyl);
+  nextVinyl.forEach((obj) => {
+    obj.canvas = canvas;
+    obj.setCoords?.();
+  });
   layerEditorHelpers();
+  if (restoreSelection.length === 1) canvas.setActiveObject(restoreSelection[0]);
+  else if (restoreSelection.length > 1) canvas.setActiveObject(styledActiveSelection(restoreSelection));
   canvas.requestRenderAll();
 }
 
