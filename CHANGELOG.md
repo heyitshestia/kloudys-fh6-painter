@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.41
+- Fixed the Generate tab preview being replaced by an unrelated Import JSON preview after generation finishes.
+- Fixed collapsed Fabric editor groups expanding unexpectedly after undo/redo or editor state rebuilds.
+
 ## 2.0.40
 - Made Fabric editor theme selection persist across editor restarts.
 - Added app-folder temp recovery for unsaved Fabric editor work after an unexpected editor/server shutdown.
