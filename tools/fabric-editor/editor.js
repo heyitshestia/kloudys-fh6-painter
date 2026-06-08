@@ -5733,6 +5733,7 @@ function renderShapeGrid() {
       <img alt="" src="${vinylResourceUrl(family, index, ".png")}">
       <span class="shapeName">${escapeHtml(name)}</span>
       <span class="shapeMeta">${family.replaceAll("_", " ")} #${index}</span>
+      <span class="shapeWord">word ${shapeWord}</span>
     `;
     tile.addEventListener("click", () => addShape(family, index).catch((err) => showError("Shape add failed", err)));
     tile.addEventListener("keydown", (event) => {

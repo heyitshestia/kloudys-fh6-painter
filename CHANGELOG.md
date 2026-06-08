@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.44
+- Added visible FH6 shape word labels under each Fabric editor shape-library tile for easier shape-code debugging.
+
 ## 2.0.43
 - Improved Fabric editor grid snap feedback so the highlighted snap edge matches the actual snapped edge or corner.
 
