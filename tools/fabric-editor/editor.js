@@ -3307,6 +3307,20 @@ function refreshedGuideContact(target, contact) {
   return guideContactForTarget(target, null, contact?.kind || "center");
 }
 
+function axisSnapContactKind(bestX = null, bestY = null) {
+  const xKind = bestX?.point;
+  const yKind = bestY?.point;
+  if (xKind && yKind) {
+    if (yKind === "top" && xKind === "left") return "tl";
+    if (yKind === "top" && xKind === "right") return "tr";
+    if (yKind === "bottom" && xKind === "left") return "bl";
+    if (yKind === "bottom" && xKind === "right") return "br";
+    if (yKind === "middle") return xKind;
+    if (xKind === "center") return yKind;
+  }
+  return xKind || yKind || "center";
+}
+
 function oppositeContactKind(kind) {
   const map = {
     left: "right",
@@ -3902,7 +3916,7 @@ function snapTargetToGuides(target, event = null) {
       });
     }
     target.setCoords();
-    overlayContact = refreshedGuideContact(target, contact);
+    overlayContact = refreshedGuideContact(target, { kind: axisSnapContactKind(bestX, bestY) });
   }
   renderSnapOverlayForTarget(target, overlayContact, overlayResult);
   const now = Date.now();

@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.43
+- Improved Fabric editor grid snap feedback so the highlighted snap edge matches the actual snapped edge or corner.
+
 ## 2.0.42
 - Fixed finalized checkpoint preview PNGs so every requested Finalize at Layers checkpoint gets a saved preview.
 
