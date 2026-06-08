@@ -5094,9 +5094,8 @@ class MainWindow(QMainWindow):
         request_id = self.preview_request_id
         preview = self.preview_path_for_json(path)
         if preview and preview.exists():
-            self.show_preview_file(str(preview))
+            self.import_preview.set_file(preview)
         else:
-            self.preview.clear("Rendering final vinyl preview...")
             self.import_preview.clear("Rendering final vinyl preview...")
             threading.Thread(target=self.render_json_preview_worker, args=(Path(path), request_id), daemon=True).start()
 
@@ -5119,7 +5118,7 @@ class MainWindow(QMainWindow):
 
     def show_json_preview_result(self, request_id: int, data):
         if request_id == self.preview_request_id:
-            self.show_preview_bytes(data or b"")
+            self.import_preview.set_bytes(data or b"")
 
     def preview_export_json(self, path: Path):
         self.export_preview_request_id += 1

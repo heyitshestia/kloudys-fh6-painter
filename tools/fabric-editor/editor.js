@@ -2011,20 +2011,64 @@ function snapshotShapes() {
   return vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true }));
 }
 
+function currentEditorGroupIds() {
+  return new Set(vinylObjects().map((obj) => obj.kloudy?.group_id).filter(Boolean).map(String));
+}
+
+function pruneCollapsedLayerGroups() {
+  const existing = currentEditorGroupIds();
+  collapsedLayerGroups = new Set([...collapsedLayerGroups].filter((groupId) => existing.has(String(groupId))));
+}
+
+function collapsedLayerGroupIds() {
+  pruneCollapsedLayerGroups();
+  return [...collapsedLayerGroups];
+}
+
+function applyCollapsedLayerGroups(groupIds) {
+  collapsedLayerGroups = new Set((Array.isArray(groupIds) ? groupIds : []).filter(Boolean).map(String));
+  pruneCollapsedLayerGroups();
+}
+
+function persistCollapsedLayerState() {
+  const collapsed = collapsedLayerGroupIds();
+  if (historyIndex >= 0 && history[historyIndex]) {
+    try {
+      const state = JSON.parse(history[historyIndex]);
+      state.editor_collapsed_groups = collapsed;
+      history[historyIndex] = JSON.stringify(state);
+    } catch (_err) {
+      // Keep collapse state best-effort; geometry history remains valid.
+    }
+  }
+  try {
+    writeAutosavePayload(autosavePayloadFromState(snapshotEditorState()));
+  } catch (err) {
+    console.warn("Collapsed layer autosave skipped.", err);
+  }
+}
+
 function snapshotEditorState() {
   return {
     version: 2,
     shapes: snapshotShapes(),
     editor_guides: savedGuideState(),
+    editor_collapsed_groups: collapsedLayerGroupIds(),
   };
 }
 
-async function restoreShapes(shapes) {
+async function restoreShapes(shapes, options = {}) {
+  const previousCollapsed = new Set(collapsedLayerGroups);
   historyLocked = true;
-  clearVinylObjects();
+  clearVinylObjects({ preserveCollapsed: true });
   for (const shape of shapes) {
     const object = await makeFabricObject(shape);
     canvas.add(object);
+  }
+  if (Array.isArray(options.collapsedGroups)) applyCollapsedLayerGroups(options.collapsedGroups);
+  else {
+    collapsedLayerGroups = previousCollapsed;
+    pruneCollapsedLayerGroups();
   }
   bringGuidesToBack();
   historyLocked = false;
@@ -2054,6 +2098,7 @@ function autosavePayloadFromState(state) {
     saved_at: new Date().toISOString(),
     shapes: Array.isArray(state?.shapes) ? state.shapes : [],
     editor_guides: state?.editor_guides || savedGuideState(),
+    editor_collapsed_groups: Array.isArray(state?.editor_collapsed_groups) ? state.editor_collapsed_groups : collapsedLayerGroupIds(),
   };
 }
 
@@ -4268,6 +4313,8 @@ async function loadPayload(payload) {
   clearVinylObjects();
   resetHistory();
   builtObjects.forEach((object) => canvas.add(object));
+  if (Array.isArray(payload.editor_collapsed_groups)) applyCollapsedLayerGroups(payload.editor_collapsed_groups);
+  else collapsedLayerGroups.clear();
   bringGuidesToBack();
   syncCanvasObjectCoords();
   refreshLayers();
@@ -4277,7 +4324,7 @@ async function loadPayload(payload) {
   clearBusy(`Loaded ${builtObjects.length}/${normalized.length} editable FH6 layer(s).${failed ? ` Failed: ${failed}.` : ""}`);
 }
 
-function clearVinylObjects() {
+function clearVinylObjects(options = {}) {
   selectedShapeOutlineObjects.forEach(restoreSelectionOutline);
   selectedShapeOutlineObjects.clear();
   selectedShapeOutlineHelpers.forEach((helper) => canvas.remove(helper));
@@ -4287,7 +4334,7 @@ function clearVinylObjects() {
   maskPreviewCutouts.forEach((cutout) => canvas.remove(cutout));
   maskPreviewCutouts.clear();
   vinylObjects().forEach((obj) => canvas.remove(obj));
-  collapsedLayerGroups.clear();
+  if (!options.preserveCollapsed) collapsedLayerGroups.clear();
   lastLayerListKey = null;
   dropperPreservedActiveObject = null;
 }
@@ -4425,9 +4472,10 @@ function selectGroupForObject(object) {
 
 function setCollapsedGroup(groupId, collapsed) {
   if (!groupId) return;
-  if (collapsed) collapsedLayerGroups.add(groupId);
-  else collapsedLayerGroups.delete(groupId);
+  if (collapsed) collapsedLayerGroups.add(String(groupId));
+  else collapsedLayerGroups.delete(String(groupId));
   refreshLayers();
+  persistCollapsedLayerState();
 }
 
 function layerListObjectKey(object) {
@@ -5427,6 +5475,7 @@ function saveProject() {
     name: projectName,
     shapes: vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: true })),
     editor_guides: savedGuideState(),
+    editor_collapsed_groups: collapsedLayerGroupIds(),
   };
   downloadText(filenameWithSuffix(projectName, "fabric-project"), JSON.stringify(payload, null, 2));
   clearAutosave();
@@ -5443,7 +5492,10 @@ async function loadProjectFile(file) {
   loadedName = projectName;
   currentProjectName = projectName;
   try {
-    await loadPayload({ shapes: payload.shapes });
+    await loadPayload({
+      shapes: payload.shapes,
+      editor_collapsed_groups: payload.editor_collapsed_groups || [],
+    });
     applySavedGuideState(payload.editor_guides || null);
   } catch (err) {
     loadedName = previousName;
@@ -6587,7 +6639,10 @@ async function recoverAutosavePayload(payload) {
   loadedName = cleanProjectBaseName(payload.name, "autosave");
   currentProjectName = null;
   try {
-    await loadPayload({ shapes: payload.shapes });
+    await loadPayload({
+      shapes: payload.shapes,
+      editor_collapsed_groups: payload.editor_collapsed_groups || [],
+    });
     applySavedGuideState(payload.editor_guides || null);
     setStatus(`Recovered temp save: ${autosaveSummary(payload)}. Use Save Project if you want to keep it.`);
   } catch (err) {
