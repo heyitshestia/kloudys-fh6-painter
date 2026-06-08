@@ -170,10 +170,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--preview-candidate-limit",
         type=int,
-        default=4,
+        default=0,
         help=(
             "Only render full final preview PNGs for the best N scored checkpoints plus the latest checkpoint. "
-            "Use 0 to render every preview. JSON browser can still preview unrendered files on demand. Default: 4"
+            "Use 0 to render every preview. JSON browser can still preview unrendered files on demand. Default: 0"
         ),
     )
     parser.add_argument(

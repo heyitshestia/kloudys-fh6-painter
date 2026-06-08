@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.42
+- Fixed finalized checkpoint preview PNGs so every requested Finalize at Layers checkpoint gets a saved preview.
+
 ## 2.0.41
 - Fixed the Generate tab preview being replaced by an unrelated Import JSON preview after generation finishes.
 - Fixed collapsed Fabric editor groups expanding unexpectedly after undo/redo or editor state rebuilds.

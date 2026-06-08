@@ -6352,6 +6352,7 @@ class MainWindow(QMainWindow):
         target_shapes = str(options.get("target_shapes") or values.get("stopAt") or "3000")
         checkpoint_step = str(options.get("checkpoint_step") or "250")
         live_preview_every = str(options.get("live_preview_every") or "50")
+        preview_candidate_limit = str(options.get("preview_candidate_limit") or "0")
         preprocess = str(options.get("preprocess_mode") or values.get("v2PreprocessMode") or "none")
         cmd = [
             helper_python(),
@@ -6367,6 +6368,8 @@ class MainWindow(QMainWindow):
             checkpoint_step,
             "--live-preview-every",
             live_preview_every,
+            "--preview-candidate-limit",
+            preview_candidate_limit,
             "--overshoot-ratio",
             str(options.get("overshoot_ratio") or "1.0"),
             "--overshoot-max-extra",
