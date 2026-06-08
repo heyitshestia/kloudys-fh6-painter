@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.37
+- Fixed Fabric editor flip actions becoming unreliable after larger multi-layer selections.
+- Reduced redundant editor redraws while moving, snapping, rotating, and updating selection outlines.
+
 ## 2.0.36
 - Improved JSON organization so generated, handmade, and editor/exported JSONs are browsed from separate import sources.
 - Copied successful game exports into the editor JSON folder so they can be selected from the Import JSON browser.

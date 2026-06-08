@@ -756,7 +756,7 @@ function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
   selectedShapeOutlineObjects = next;
   syncSelectionOutlineHelpers(next);
   bringGuidesToBack();
-  canvas.requestRenderAll();
+  requestCanvasRender();
 }
 
 function styledActiveSelection(objects) {
@@ -3360,7 +3360,7 @@ function renderSnapOverlayForTarget(target, contact = null, snapResult = null) {
   if (!canvas) return;
   clearSnapOverlay();
   if (!target || target.kloudyGuide || target.kloudyOverlay) {
-    canvas.requestRenderAll();
+    requestCanvasRender();
     return;
   }
   const coords = objectCornerCoords(target);
@@ -3427,7 +3427,7 @@ function renderSnapOverlayForTarget(target, contact = null, snapResult = null) {
     })));
   }
   layerEditorHelpers();
-  canvas.requestRenderAll();
+  requestCanvasRender();
 }
 
 function signedAngleDistance(a, b) {
@@ -3539,7 +3539,7 @@ function renderRotationNotchOverlay(target, event = null) {
     strokeWidth: nearRing ? 2.8 : 1.8,
   })));
   layerEditorHelpers();
-  canvas.requestRenderAll();
+  requestCanvasRender();
 }
 
 function axisSnapPoints(rect, contact = null) {
@@ -5626,13 +5626,17 @@ function flipSelected(axis) {
     setStatus("Selected layers are locked. Unlock them before flipping.");
     return;
   }
+  const active = canvas.getActiveObject();
+  if (isActiveSelectionObject(active)) canvas.discardActiveObject();
   objects.forEach((obj) => {
     if (axis === "x") obj.set("flipX", !obj.flipX);
     else obj.set("flipY", !obj.flipY);
     updateObjectScaleSigns(obj);
     obj.setCoords();
   });
-  canvas.requestRenderAll();
+  if (objects.length === 1) canvas.setActiveObject(objects[0]);
+  else canvas.setActiveObject(styledActiveSelection(objects));
+  requestCanvasRender();
   updateSelectionPanel();
   scheduleRefreshLayers();
   pushHistory(axis === "x" ? "flip horizontal" : "flip vertical");
