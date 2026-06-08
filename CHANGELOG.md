@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.40
+- Made Fabric editor theme selection persist across editor restarts.
+- Added app-folder temp recovery for unsaved Fabric editor work after an unexpected editor/server shutdown.
+
 ## 2.0.39
 - Improved Fabric editor grid performance while panning and zooming the canvas.
 

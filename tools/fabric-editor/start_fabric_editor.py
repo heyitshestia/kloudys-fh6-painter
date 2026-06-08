@@ -27,7 +27,11 @@ from json_preview_renderer import render_json_preview as shared_render_json_prev
 
 EDITOR = ROOT / "tools" / "fabric-editor" / "index.html"
 STARTUP_HELP_MARKER = ROOT / "runtime" / "fabric-editor" / "startup-help-confirmed.json"
+EDITOR_PREFS_MARKER = ROOT / "runtime" / "fabric-editor" / "preferences.json"
+EDITOR_AUTOSAVE_MARKER = ROOT / "runtime" / "fabric-editor" / "autosave.json"
 STARTUP_HELP_API = "/api/fabric-editor/startup-help-confirmed"
+EDITOR_PREFS_API = "/api/fabric-editor/preferences"
+EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave"
 JSON_BROWSER_API = "/api/fabric-editor/json-browser"
 JSON_FILE_API = "/api/fabric-editor/json-file"
 JSON_PREVIEW_API = "/api/fabric-editor/json-preview"
@@ -659,6 +663,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "marker": str(STARTUP_HELP_MARKER),
             })
             return
+        if parsed.path == EDITOR_PREFS_API:
+            payload = {}
+            if EDITOR_PREFS_MARKER.exists():
+                try:
+                    payload = json.loads(EDITOR_PREFS_MARKER.read_text(encoding="utf-8"))
+                except Exception:
+                    payload = {}
+            self._send_json({
+                "theme": payload.get("theme") if payload.get("theme") in {"pastel", "dark"} else None,
+                "marker": str(EDITOR_PREFS_MARKER),
+            })
+            return
+        if parsed.path == EDITOR_AUTOSAVE_API:
+            if not EDITOR_AUTOSAVE_MARKER.exists():
+                self._send_json({"exists": False, "marker": str(EDITOR_AUTOSAVE_MARKER)})
+                return
+            try:
+                payload = json.loads(EDITOR_AUTOSAVE_MARKER.read_text(encoding="utf-8"))
+            except Exception as err:
+                self._send_json({"exists": False, "error": str(err), "marker": str(EDITOR_AUTOSAVE_MARKER)})
+                return
+            shapes = payload.get("shapes") if isinstance(payload, dict) else None
+            self._send_json({
+                "exists": isinstance(shapes, list),
+                "payload": payload if isinstance(shapes, list) else None,
+                "marker": str(EDITOR_AUTOSAVE_MARKER),
+            })
+            return
         if parsed.path == JSON_BROWSER_API:
             query = parse_qs(parsed.query)
             source = (query.get("source") or ["generated"])[0]
@@ -718,6 +750,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "confirmed": True,
                 "marker": str(STARTUP_HELP_MARKER),
             })
+            return
+        if parsed.path == EDITOR_PREFS_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                data = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                theme = data.get("theme")
+                if theme not in {"pastel", "dark"}:
+                    raise ValueError("invalid editor theme")
+                EDITOR_PREFS_MARKER.parent.mkdir(parents=True, exist_ok=True)
+                EDITOR_PREFS_MARKER.write_text(json.dumps({"theme": theme}, indent=2), encoding="utf-8")
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({"ok": True, "theme": theme, "marker": str(EDITOR_PREFS_MARKER)})
+            return
+        if parsed.path == EDITOR_AUTOSAVE_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if length <= 0 or length > 25 * 1024 * 1024:
+                    raise ValueError("invalid autosave size")
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                if data.get("action") == "clear":
+                    if EDITOR_AUTOSAVE_MARKER.exists():
+                        EDITOR_AUTOSAVE_MARKER.unlink()
+                    self._send_json({"ok": True, "cleared": True, "marker": str(EDITOR_AUTOSAVE_MARKER)})
+                    return
+                shapes = data.get("shapes")
+                if not isinstance(shapes, list):
+                    raise ValueError("autosave payload must contain a shapes list")
+                EDITOR_AUTOSAVE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+                EDITOR_AUTOSAVE_MARKER.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({"ok": True, "marker": str(EDITOR_AUTOSAVE_MARKER)})
             return
         if parsed.path == EDITOR_EXPORT_API:
             try:

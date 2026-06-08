@@ -534,7 +534,7 @@
           <li>Editor groups, guide lines, grids, halos, snap overlays, and helper UI never count as vinyl layers.</li>
           <li>Export one FH6 JSON, then import it through the KFPS Import JSON tab.</li>
           <li>If the in-game thumbnail looks wrong after import, save and reopen the vinyl group before judging shape-library imports.</li>
-          <li>Autosave is browser-local safety only. Use <b>Save Project</b> when you want a real editable project file.</li>
+          <li>Autosave is a temporary safety backup in this app folder/browser. Use <b>Save Project</b> when you want a real editable project file.</li>
         </ul>
       </section>
       <section>
@@ -578,6 +578,24 @@
         <button id="startupHelpConfirm" type="button">Confirm And Open Editor</button>
         <p>The full help menu is always available from the <b>Help</b> button in the top toolbar, near the File actions.</p>
         <p>This confirmation is saved in this KFPS app folder, so it stays hidden for future launches from this copy.</p>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="autosaveRecoveryDialog" class="startupHelpDialog">
+    <div class="helpHeader startupHelpHeader">
+      <h2>Recover Unsaved Editor Work?</h2>
+    </div>
+    <div class="helpBody startupHelpBody">
+      <section>
+        <h3>Temporary Save Found</h3>
+        <p id="autosaveRecoverySummary">The editor found an unsaved local recovery file.</p>
+        <p>This is only a safety backup from the app folder/browser. Use <b>Save Project</b> once recovered if you want a real project file.</p>
+      </section>
+      <section class="startupConfirmBox">
+        <button id="recoverAutosave" type="button">Recover Work</button>
+        <button id="dismissAutosave" type="button">Not Now</button>
+        <button id="discardAutosave" type="button">Discard Temp Save</button>
       </section>
     </div>
   </dialog>

@@ -12,11 +12,14 @@ const VINYL_RESOURCE_BASES = [
 ];
 const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
+const EDITOR_PREFS_API = "/api/fabric-editor/preferences";
+const EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave";
 const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
 const JSON_FILE_API = "/api/fabric-editor/json-file";
 const EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
+const AUTOSAVE_KEY = "kloudyFabricAutosave";
 
 const DEFAULT_SHORTCUTS = {
   selectTool: "V",
@@ -149,6 +152,9 @@ let nextLayerListObjectId = 1;
 let layerRefreshFrame = null;
 let canvasRenderFrame = null;
 let canvasGeometryFrame = null;
+let autosaveWriteTimer = null;
+let pendingAutosavePayload = null;
+let recoveryAutosavePayload = null;
 let canvasResizeObserver = null;
 let lastCanvasSize = { width: 0, height: 0 };
 let jsonBrowserState = {
@@ -376,10 +382,21 @@ function normalizeTheme(theme) {
   return theme === "dark" ? "dark" : "pastel";
 }
 
-function applyEditorTheme(theme) {
+function saveEditorThemePreference(theme) {
+  fetch(EDITOR_PREFS_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme: normalizeTheme(theme) }),
+  }).catch(() => {
+    // Direct-file launches or blocked local server writes still keep localStorage.
+  });
+}
+
+function applyEditorTheme(theme, options = {}) {
   const safeTheme = normalizeTheme(theme);
   document.documentElement.dataset.editorTheme = safeTheme;
   localStorage.setItem("kloudyFabricTheme", safeTheme);
+  if (options.persist !== false) saveEditorThemePreference(safeTheme);
   if ($("editorThemeSelect")) $("editorThemeSelect").value = safeTheme;
   if (canvas) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
@@ -388,6 +405,22 @@ function applyEditorTheme(theme) {
     updateVisualGridLayer();
     canvas.requestRenderAll();
   }
+}
+
+async function loadEditorThemePreference() {
+  try {
+    const response = await fetch(EDITOR_PREFS_API, { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.theme) {
+        applyEditorTheme(data.theme, { persist: false });
+        return data.theme;
+      }
+    }
+  } catch (_err) {
+    // Direct-file/browser fallback.
+  }
+  return null;
 }
 
 function cssColorVar(name, fallback) {
@@ -2014,6 +2047,64 @@ function resetHistory() {
   protectedHistoryIndex = -1;
 }
 
+function autosavePayloadFromState(state) {
+  return {
+    format: "kloudy_fabric_editor_autosave_v1",
+    name: cleanProjectBaseName(loadedName, "autosave"),
+    saved_at: new Date().toISOString(),
+    shapes: Array.isArray(state?.shapes) ? state.shapes : [],
+    editor_guides: state?.editor_guides || savedGuideState(),
+  };
+}
+
+function writeAutosavePayload(payload) {
+  if (!payload || !Array.isArray(payload.shapes)) return false;
+  let localOk = true;
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    localOk = false;
+    console.warn("Browser autosave skipped.", err);
+  }
+  pendingAutosavePayload = payload;
+  if (!autosaveWriteTimer) {
+    autosaveWriteTimer = setTimeout(() => {
+      const nextPayload = pendingAutosavePayload;
+      pendingAutosavePayload = null;
+      autosaveWriteTimer = null;
+      if (!nextPayload) return;
+      fetch(EDITOR_AUTOSAVE_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextPayload),
+      }).catch((err) => {
+        console.warn("App-folder autosave skipped.", err);
+      });
+    }, 350);
+  }
+  return localOk;
+}
+
+function clearAutosave() {
+  pendingAutosavePayload = null;
+  if (autosaveWriteTimer) {
+    clearTimeout(autosaveWriteTimer);
+    autosaveWriteTimer = null;
+  }
+  try {
+    localStorage.removeItem(AUTOSAVE_KEY);
+  } catch (_err) {
+    // Ignore storage cleanup failures.
+  }
+  fetch(EDITOR_AUTOSAVE_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "clear", shapes: [] }),
+  }).catch(() => {
+    // Direct-file/browser fallback.
+  });
+}
+
 function pushHistory(reason = "change") {
   if (historyLocked) return;
   const snapshot = JSON.stringify(snapshotEditorState());
@@ -2028,12 +2119,7 @@ function pushHistory(reason = "change") {
   let autosaveOk = true;
   try {
     const state = JSON.parse(snapshot);
-    localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
-      name: loadedName,
-      created: new Date().toISOString(),
-      shapes: state.shapes || [],
-      editor_guides: state.editor_guides || savedGuideState(),
-    }));
+    autosaveOk = writeAutosavePayload(autosavePayloadFromState(state));
   } catch (err) {
     autosaveOk = false;
     console.warn("Autosave skipped.", err);
@@ -2943,14 +3029,7 @@ function applyGuideStateToUi() {
 
 function saveGuideAutosave() {
   try {
-    const current = JSON.parse(localStorage.getItem("kloudyFabricAutosave") || "{}");
-    localStorage.setItem("kloudyFabricAutosave", JSON.stringify({
-      ...current,
-      name: loadedName,
-      created: current.created || new Date().toISOString(),
-      shapes: current.shapes || snapshotShapes(),
-      editor_guides: savedGuideState(),
-    }));
+    writeAutosavePayload(autosavePayloadFromState(snapshotEditorState()));
   } catch (err) {
     console.warn("Guide autosave skipped.", err);
   }
@@ -5240,6 +5319,7 @@ function saveProject() {
     editor_guides: savedGuideState(),
   };
   downloadText(filenameWithSuffix(projectName, "fabric-project"), JSON.stringify(payload, null, 2));
+  clearAutosave();
   setStatus(`Saved project: ${projectName}`);
 }
 
@@ -6318,7 +6398,7 @@ async function writeStartupHelpConfirmed() {
 
 async function maybeShowStartupHelp() {
   const dialog = $("startupHelpDialog");
-  if (!dialog || await readStartupHelpConfirmed()) return;
+  if (!dialog || await readStartupHelpConfirmed()) return false;
   requestAnimationFrame(() => {
     try {
       if (!dialog.open) dialog.showModal();
@@ -6329,10 +6409,82 @@ async function maybeShowStartupHelp() {
       }, 250);
     }
   });
+  return true;
+}
+
+function autosaveSummary(payload) {
+  const count = Array.isArray(payload?.shapes) ? payload.shapes.length : 0;
+  const name = cleanProjectBaseName(payload?.name || "autosave", "autosave");
+  const stamp = payload?.saved_at || payload?.created || "";
+  let time = "unknown time";
+  if (stamp) {
+    const date = new Date(stamp);
+    if (!Number.isNaN(date.getTime())) time = date.toLocaleString();
+  }
+  return `${name} - ${count} layer${count === 1 ? "" : "s"} - saved ${time}`;
+}
+
+async function readAutosavePayload() {
+  try {
+    const response = await fetch(EDITOR_AUTOSAVE_API, { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.exists && data.payload && Array.isArray(data.payload.shapes)) return data.payload;
+    }
+  } catch (_err) {
+    // Direct-file/browser fallback.
+  }
+  try {
+    const payload = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null");
+    if (payload && Array.isArray(payload.shapes)) return payload;
+  } catch (_err) {
+    // Ignore broken browser autosave.
+  }
+  return null;
+}
+
+async function recoverAutosavePayload(payload) {
+  if (!payload || !Array.isArray(payload.shapes)) {
+    setStatus("Autosave recovery failed: temp save has no shapes list.");
+    return;
+  }
+  loadedName = cleanProjectBaseName(payload.name, "autosave");
+  currentProjectName = null;
+  try {
+    await loadPayload({ shapes: payload.shapes });
+    applySavedGuideState(payload.editor_guides || null);
+    setStatus(`Recovered temp save: ${autosaveSummary(payload)}. Use Save Project if you want to keep it.`);
+  } catch (err) {
+    setStatus(`Autosave recovery failed: ${err.message}`);
+  }
+}
+
+async function maybeShowAutosaveRecovery() {
+  const payload = await readAutosavePayload();
+  if (!payload || !Array.isArray(payload.shapes) || payload.shapes.length <= 0) return false;
+  recoveryAutosavePayload = payload;
+  const summary = $("autosaveRecoverySummary");
+  if (summary) summary.textContent = `Found: ${autosaveSummary(payload)}`;
+  const dialog = $("autosaveRecoveryDialog");
+  if (!dialog) return false;
+  requestAnimationFrame(() => {
+    try {
+      if (!dialog.open) dialog.showModal();
+    } catch (_err) {
+      setTimeout(() => {
+        if (!dialog.open) dialog.showModal();
+      }, 250);
+    }
+  });
+  return true;
 }
 
 function bindUi() {
-  applyEditorTheme(localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme);
+  const initialTheme = localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme;
+  applyEditorTheme(initialTheme, { persist: false });
+  loadEditorThemePreference().then((serverTheme) => {
+    if (!serverTheme) saveEditorThemePreference(normalizeTheme(initialTheme));
+  });
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
   $("openJsonBrowser")?.addEventListener("click", openJsonBrowser);
   $("closeJsonBrowser")?.addEventListener("click", () => $("jsonBrowserDialog")?.close());
@@ -6378,9 +6530,24 @@ function bindUi() {
       setStatus(marker
         ? "Startup help confirmed for this app folder. The full Help menu is available from the Help button in the top toolbar."
         : "Startup help confirmed for this browser. The full Help menu is available from the Help button in the top toolbar.");
+      maybeShowAutosaveRecovery();
       return;
     }
     setStatus("Tick \"I have read and understood this\" before opening the editor.");
+  });
+  $("recoverAutosave")?.addEventListener("click", async () => {
+    $("autosaveRecoveryDialog")?.close();
+    await recoverAutosavePayload(recoveryAutosavePayload);
+  });
+  $("dismissAutosave")?.addEventListener("click", () => {
+    $("autosaveRecoveryDialog")?.close();
+    setStatus("Temp save kept. It will be offered again next launch until recovered, discarded, or replaced.");
+  });
+  $("discardAutosave")?.addEventListener("click", () => {
+    $("autosaveRecoveryDialog")?.close();
+    clearAutosave();
+    recoveryAutosavePayload = null;
+    setStatus("Temp save discarded.");
   });
   $("colorSwatchButton").addEventListener("click", openColorDialog);
   $("colorPanelSwatch").addEventListener("click", openColorDialog);
@@ -6619,7 +6786,7 @@ function bindUi() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   initCanvas();
   buildShapeLibrary();
   bindUi();
@@ -6628,19 +6795,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderGuideObjects();
   updateSelectionPanel();
   updateShapePlacementLabel();
-  const autosave = localStorage.getItem("kloudyFabricAutosave");
-  if (autosave && window.confirm("Recover the last autosaved Fabric editor project?")) {
-    try {
-      const payload = JSON.parse(autosave);
-      if (!Array.isArray(payload.shapes)) throw new Error("Autosave did not contain a shapes list.");
-      loadedName = cleanProjectBaseName(payload.name, "autosave");
-      currentProjectName = null;
-      loadPayload({ shapes: payload.shapes })
-        .then(() => applySavedGuideState(payload.editor_guides || null))
-        .catch((err) => setStatus(`Autosave recovery failed: ${err.message}`));
-    } catch (err) {
-      setStatus(`Autosave recovery failed: ${err.message}`);
-    }
-  }
-  maybeShowStartupHelp();
+  const startupHelpShown = await maybeShowStartupHelp();
+  if (!startupHelpShown) maybeShowAutosaveRecovery();
 });
