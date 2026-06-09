@@ -148,6 +148,7 @@ THEMES = {
     "UNATCO": "unatco",
     "New Eden": "new_eden",
     "Red Phosphorous": "red_phosphorous",
+    "Arc Reactor Red": "arc_reactor_red",
     "Blackout Violet": "blackout_violet",
     "Blue Terminal 90s": "blue_terminal_90s",
     "Matrix Green": "matrix_green",
@@ -343,6 +344,22 @@ def shell_theme_qss(theme_key: str) -> str:
         """
     if theme_key in THEME_TOKEN_STYLES:
         tokens = THEME_TOKEN_STYLES[theme_key]
+        if theme_key == "arc_reactor_red":
+            return f"""
+            QFrame#topBar, QFrame#workflowContent {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
+            QListWidget#workflowNav {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
+            QListWidget#workflowNav::item {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #55320c, stop:0.32 #d8a83f, stop:0.58 #7f541b, stop:1 #240403); color: #fff0bd; border: 1px solid #7d2112; }}
+            QListWidget#workflowNav::item:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #805017, stop:0.34 #f0c965, stop:0.62 #9b671f, stop:1 #3a0704); color: #ffffff; border: 1px solid #e8bb58; }}
+            QListWidget#workflowNav::item:selected {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f3cf75, stop:0.48 #a87522, stop:1 #f7df94); color: #130201; border: 1px solid #fff0bd; }}
+            QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
+            QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+            QFrame#tutorialSectionFrame {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+            QToolButton#tutorialSectionButton {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #55320c, stop:0.32 #d8a83f, stop:0.58 #7f541b, stop:1 #240403); color: #fff0bd; border: 1px solid #7d2112; }}
+            QToolButton#tutorialSectionButton:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #805017, stop:0.34 #f0c965, stop:0.62 #9b671f, stop:1 #3a0704); color: #ffffff; border: 1px solid #e8bb58; }}
+            QToolButton#tutorialSectionButton:checked {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f3cf75, stop:0.48 #a87522, stop:1 #f7df94); color: #130201; border: 1px solid #fff0bd; }}
+            QFrame#tutorialSectionBodyFrame {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
+            QLabel#tutorialSectionBody, QLabel#tutorialNoResults {{ color: {tokens["text"]}; }}
+            """
         return f"""
         QFrame#topBar, QFrame#workflowContent {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
         QListWidget#workflowNav {{ background: {tokens["panel"]}; border: 1px solid {tokens["border"]}; }}
@@ -534,6 +551,35 @@ THEME_TOKEN_STYLES = {
         "frame_light": "#800000",
         "frame_dark": "#1a0000",
         "sash": "#1a0000",
+    },
+    "arc_reactor_red": {
+        "bg": "#050000",
+        "panel": "#160302",
+        "panel_alt": "#260504",
+        "input": "#0f0101",
+        "text": "#f5d28a",
+        "muted": "#b77534",
+        "accent": "#d8a83f",
+        "accent_dark": "#6f140b",
+        "warn": "#e0ae4a",
+        "border": "#7d2112",
+        "button": "#240403",
+        "button_active": "#3a0704",
+        "hint": "#e6ba5b",
+        "info": "#d8a83f",
+        "success": "#d8a83f",
+        "error": "#d6452d",
+        "preview_bg": "#090000",
+        "preview_fg": "#f5d28a",
+        "select_fg": "#130201",
+        "button_active_fg": "#ffe3a1",
+        "button_fg": "#f5d28a",
+        "accent_fg": "#120201",
+        "accent_hover_fg": "#fff0bd",
+        "frame_light": "#e8bb58",
+        "frame_dark": "#2a0503",
+        "sash": "#250504",
+        "font": "\"Segoe UI Variable\", \"Segoe UI\"",
     },
     "blackout_violet": {
         "bg": "#020003",
@@ -4103,7 +4149,7 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addWidget(QLabel("Theme changes apply immediately and are saved for the next launch."))
         theme_layout.addWidget(QLabel("Animated themes: Sakura Glass and Horizon Pulse."))
-        theme_layout.addWidget(QLabel("Game-inspired themes: Eurocorp, Elite, CryNet, UNATCO, New Eden, Red Phosphorous, Blue Terminal 90s, and Matrix Green."))
+        theme_layout.addWidget(QLabel("Game-inspired themes include Eurocorp, Elite, CryNet, UNATCO, New Eden, Red Phosphorous, Arc Reactor Red, Blue Terminal 90s, and Matrix Green."))
         theme_layout.addWidget(QLabel("Blackout Violet mixes the low-glare Blackout base with a purple neon edge."))
         theme_layout.addWidget(QLabel("Blackout remains the full opaque low-glare default."))
         layout.addWidget(theme)

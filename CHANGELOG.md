@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.45
+- Added the Arc Reactor Red app theme with matte red panels and metallic gold controls.
+
 ## 2.0.44
 - Added visible FH6 shape word labels under each Fabric editor shape-library tile for easier shape-code debugging.
 
