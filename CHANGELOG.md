@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.46
+- Improved Fabric editor JSON export confirmation and internal project save/load handling.
+
 ## 2.0.45
 - Added the Arc Reactor Red app theme with matte red panels and metallic gold controls.
 

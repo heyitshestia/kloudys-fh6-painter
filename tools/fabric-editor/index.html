@@ -30,10 +30,7 @@
           <span>File</span>
           <button id="openJsonBrowser" title="Open the KFPS JSON browser for generated finals, handmade JSONs, and editor exports.">Import JSON</button>
           <input id="jsonInput" class="hiddenFileInput" type="file" accept=".json,application/json">
-          <label class="fileButton">
-            Load Project
-            <input id="projectInput" type="file" accept=".json,application/json">
-          </label>
+          <button id="loadProject" title="Open internally saved editor projects.">Load Project</button>
           <button id="saveProject" title="Save this editor state so you can keep editing later.">Save Project</button>
         </div>
         <div class="menuGroup">
@@ -105,6 +102,11 @@
       <div class="spinner"></div>
       <span id="busyText">Working...</span>
     </div>
+
+    <aside id="cornerNotice" class="cornerNotice" hidden>
+      <b id="cornerNoticeTitle">Saved</b>
+      <span id="cornerNoticeBody">Ready.</span>
+    </aside>
 
     <main class="workspace">
       <aside class="toolRail" aria-label="Tools">
@@ -661,6 +663,25 @@
           <button id="selectJsonBrowserEntry" class="primary" type="button" disabled>Select JSON</button>
         </div>
       </section>
+    </div>
+  </dialog>
+
+  <dialog id="projectBrowserDialog" class="projectBrowserDialog">
+    <div class="helpHeader">
+      <div>
+        <h2>Load Editor Project</h2>
+        <p>These are internal KFPS project saves from runtime/fabric-editor/projects. They are not shown in the Import JSON browser.</p>
+      </div>
+      <button id="closeProjectBrowser" type="button">Close</button>
+    </div>
+    <div class="projectBrowserToolbar">
+      <button id="refreshProjectBrowser" type="button">Refresh</button>
+      <span id="projectBrowserSummary">No projects loaded.</span>
+    </div>
+    <div id="projectBrowserEntries" class="projectBrowserEntries"></div>
+    <div class="jsonBrowserActions">
+      <p id="projectBrowserStatus">Choose a project, then click Load Project.</p>
+      <button id="selectProjectEntry" class="primary" type="button" disabled>Load Project</button>
     </div>
   </dialog>
 

@@ -1284,6 +1284,47 @@ body.layerGroupingActive .layerGroupRow.layerDropTarget {
   display: none;
 }
 
+.cornerNotice {
+  position: fixed;
+  right: 24px;
+  bottom: 50px;
+  z-index: 80;
+  width: min(360px, calc(100vw - 48px));
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px;
+  border: 1px solid rgba(var(--accent-rgb), 0.52);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(var(--accent-rgb), 0.18), transparent 5rem),
+    rgba(var(--panel-rgb), 0.96);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+
+.cornerNotice.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cornerNotice[hidden] {
+  display: none;
+}
+
+.cornerNotice b {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.cornerNotice span {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .spinner {
   width: 16px;
   height: 16px;
@@ -1487,7 +1528,13 @@ dialog::backdrop {
   max-height: 88vh;
 }
 
-.jsonBrowserToolbar {
+.projectBrowserDialog {
+  width: min(760px, 92vw);
+  max-height: 82vh;
+}
+
+.jsonBrowserToolbar,
+.projectBrowserToolbar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1514,6 +1561,16 @@ dialog::backdrop {
 }
 
 #jsonBrowserSummary {
+  min-width: 0;
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#projectBrowserSummary {
   min-width: 0;
   flex: 1;
   color: var(--muted);
@@ -1608,7 +1665,8 @@ dialog::backdrop {
 .jsonBrowserCard span,
 .jsonBrowserEntry span,
 .jsonBrowserPreview p,
-#jsonBrowserStatus {
+#jsonBrowserStatus,
+#projectBrowserStatus {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
@@ -1699,6 +1757,57 @@ dialog::backdrop {
   background: rgba(var(--accent-rgb), 0.12);
 }
 
+.projectBrowserEntries {
+  max-height: 52vh;
+  min-height: 260px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.projectBrowserEntry {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(var(--surface-rgb), 0.66);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.projectBrowserEntry:hover {
+  border-color: var(--line2);
+}
+
+.projectBrowserEntry.active {
+  border-color: rgba(var(--accent-rgb), 0.82);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.projectBrowserEntry b {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.projectBrowserEntry span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .jsonBrowserLayerPill {
   flex: 0 0 auto;
   padding: 5px 8px;
@@ -1719,7 +1828,8 @@ dialog::backdrop {
   background: rgba(var(--panel-rgb), 0.74);
 }
 
-#jsonBrowserStatus {
+#jsonBrowserStatus,
+#projectBrowserStatus {
   min-width: 0;
   flex: 1;
 }

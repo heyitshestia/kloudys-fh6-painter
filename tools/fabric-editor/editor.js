@@ -17,6 +17,9 @@ const EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave";
 const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
 const JSON_FILE_API = "/api/fabric-editor/json-file";
 const EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json";
+const PROJECT_BROWSER_API = "/api/fabric-editor/project-browser";
+const PROJECT_FILE_API = "/api/fabric-editor/project-file";
+const PROJECT_SAVE_API = "/api/fabric-editor/save-project";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
@@ -164,6 +167,14 @@ let jsonBrowserState = {
   selectedEntryIndex: -1,
   loading: false,
 };
+let projectBrowserState = {
+  entries: [],
+  selectedIndex: -1,
+  loading: false,
+};
+let exportSaveInProgress = false;
+let projectSaveInProgress = false;
+let toastTimer = null;
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -978,6 +989,24 @@ function configureEditorTransformControls() {
 
 function setStatus(message) {
   setText("status", message);
+}
+
+function showCornerNotice(title, message = "") {
+  const notice = $("cornerNotice");
+  if (!notice) return;
+  const titleEl = $("cornerNoticeTitle");
+  const bodyEl = $("cornerNoticeBody");
+  if (titleEl) titleEl.textContent = title;
+  if (bodyEl) bodyEl.textContent = message;
+  notice.hidden = false;
+  notice.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    notice.classList.remove("show");
+    setTimeout(() => {
+      if (!notice.classList.contains("show")) notice.hidden = true;
+    }, 180);
+  }, 4200);
 }
 
 function updateHud(pointer = null) {
@@ -4296,6 +4325,107 @@ async function importSelectedBrowserJson() {
   }
 }
 
+function selectedProjectEntry() {
+  return projectBrowserState.entries[projectBrowserState.selectedIndex] || null;
+}
+
+function setProjectBrowserStatus(message) {
+  setText("projectBrowserStatus", message);
+}
+
+function renderProjectBrowser() {
+  const container = $("projectBrowserEntries");
+  if (!container) return;
+  container.innerHTML = "";
+  const selected = selectedProjectEntry();
+  $("selectProjectEntry").disabled = !selected;
+  if (!projectBrowserState.entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "No saved projects found yet. Use Save Project to create an internal project file.";
+    container.appendChild(empty);
+    setProjectBrowserStatus("No internal project saves found.");
+    return;
+  }
+  projectBrowserState.entries.forEach((entry, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `projectBrowserEntry${index === projectBrowserState.selectedIndex ? " active" : ""}`;
+    const textWrap = document.createElement("span");
+    const title = document.createElement("b");
+    title.textContent = entry.title || entry.name || "Untitled project";
+    const meta = document.createElement("span");
+    meta.textContent = `${layerLabel(entry.layers)} - ${formatBrowserDate(entry.mtime)}`;
+    textWrap.append(title, meta);
+    const file = document.createElement("span");
+    file.textContent = entry.name || "";
+    button.append(textWrap, file);
+    button.addEventListener("click", () => {
+      projectBrowserState.selectedIndex = index;
+      renderProjectBrowser();
+    });
+    button.addEventListener("dblclick", () => loadSelectedProject());
+    container.appendChild(button);
+  });
+  setProjectBrowserStatus(selected ? "Choose Load Project or double-click a project." : "Select a project.");
+}
+
+async function refreshProjectBrowser() {
+  if (projectBrowserState.loading) return;
+  projectBrowserState.loading = true;
+  setText("projectBrowserSummary", "Loading internal projects...");
+  setProjectBrowserStatus("Scanning runtime/fabric-editor/projects...");
+  try {
+    const response = await fetch(PROJECT_BROWSER_API, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    projectBrowserState.entries = Array.isArray(data.entries) ? data.entries : [];
+    projectBrowserState.selectedIndex = projectBrowserState.entries.length ? 0 : -1;
+    setText("projectBrowserSummary", `${data.total_entries || 0} project${data.total_entries === 1 ? "" : "s"} saved inside KFPS.`);
+    renderProjectBrowser();
+  } catch (err) {
+    console.error(err);
+    projectBrowserState.entries = [];
+    projectBrowserState.selectedIndex = -1;
+    renderProjectBrowser();
+    setText("projectBrowserSummary", "Project browser failed to load.");
+    setProjectBrowserStatus(err.message || String(err));
+  } finally {
+    projectBrowserState.loading = false;
+  }
+}
+
+async function openProjectBrowser() {
+  const dialog = $("projectBrowserDialog");
+  if (!dialog) return;
+  try {
+    if (!dialog.open) dialog.showModal();
+  } catch (_err) {
+    dialog.setAttribute("open", "");
+  }
+  await refreshProjectBrowser();
+}
+
+async function loadSelectedProject() {
+  const entry = selectedProjectEntry();
+  if (!entry) {
+    setProjectBrowserStatus("Select a project first.");
+    return;
+  }
+  setProjectBrowserStatus(`Loading ${entry.title || entry.name}...`);
+  try {
+    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadProjectPayload(data.payload, entry.title || entry.name);
+    $("projectBrowserDialog")?.close();
+    clearBusy(`Loaded project: ${entry.title || entry.name}`);
+  } catch (err) {
+    showError("Project load failed", err);
+    setProjectBrowserStatus(err.message || String(err));
+  }
+}
+
 async function loadPayload(payload) {
   const shapes = Array.isArray(payload.shapes) ? payload.shapes : null;
   if (!shapes) throw new Error("JSON must contain a shapes list.");
@@ -5440,7 +5570,22 @@ async function saveEditorJsonToAppFolder(name, payload) {
   return data;
 }
 
+async function saveProjectToAppFolder(name, payload) {
+  const response = await fetch(PROJECT_SAVE_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, payload }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+
 async function exportJson() {
+  if (exportSaveInProgress) {
+    setStatus("Export is already saving. Wait for it to finish.");
+    return;
+  }
   const shapes = vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: false }));
   if (!shapes.length) {
     setStatus("Nothing to export. Import a JSON or add at least one shape first.");
@@ -5458,19 +5603,30 @@ async function exportJson() {
     loadedName = exportName;
   }
   const payload = { shapes };
+  exportSaveInProgress = true;
+  const exportButton = $("exportJson");
+  if (exportButton) exportButton.disabled = true;
   try {
     const result = await saveEditorJsonToAppFolder(exportName, payload);
     setJsonBrowserSource("editor");
     await refreshJsonBrowser();
     selectJsonBrowserEntryById(result.id);
     setStatus(`Exported ${shapes.length} layer(s) to imgs/editor/${result.name || `${exportName}.fh6-import.json`}.`);
+    showCornerNotice("FH6 JSON saved inside KFPS", "Open Import JSON, choose Editor exports, and import it from there.");
   } catch (err) {
     downloadText(filenameWithSuffix(exportName, "fh6-import"), JSON.stringify(payload, null, 2));
     setStatus(`Saved-to-folder failed (${err.message || err}). Downloaded ${shapes.length} layer(s) instead.`);
+  } finally {
+    exportSaveInProgress = false;
+    if (exportButton) exportButton.disabled = false;
   }
 }
 
-function saveProject() {
+async function saveProject() {
+  if (projectSaveInProgress) {
+    setStatus("Project save is already running. Wait for it to finish.");
+    return;
+  }
   if (!vinylObjects().length) {
     setStatus("Nothing to save. Import a JSON or add at least one shape first.");
     return;
@@ -5491,18 +5647,29 @@ function saveProject() {
     editor_guides: savedGuideState(),
     editor_collapsed_groups: collapsedLayerGroupIds(),
   };
-  downloadText(filenameWithSuffix(projectName, "fabric-project"), JSON.stringify(payload, null, 2));
-  clearAutosave();
-  setStatus(`Saved project: ${projectName}`);
+  projectSaveInProgress = true;
+  const saveButton = $("saveProject");
+  if (saveButton) saveButton.disabled = true;
+  try {
+    const result = await saveProjectToAppFolder(projectName, payload);
+    clearAutosave();
+    setStatus(`Saved project internally: ${result.title || projectName}`);
+    showCornerNotice("Project saved inside KFPS", "Use Load Project to reopen it from the internal project browser.");
+  } catch (err) {
+    setStatus(`Project save failed: ${err.message || err}`);
+    showError("Project save failed", err);
+  } finally {
+    projectSaveInProgress = false;
+    if (saveButton) saveButton.disabled = false;
+  }
 }
 
-async function loadProjectFile(file) {
-  setBusy(`Loading project: ${file.name}`);
+async function loadProjectPayload(payload, displayName = "project") {
+  setBusy(`Loading project: ${displayName}`);
   await nextFrame();
-  const payload = JSON.parse(await file.text());
   if (!Array.isArray(payload.shapes)) throw new Error("Project JSON must contain a shapes list.");
   const previousName = loadedName;
-  const projectName = cleanProjectBaseName(payload.name || file.name, "project");
+  const projectName = cleanProjectBaseName(payload.name || displayName, "project");
   loadedName = projectName;
   currentProjectName = projectName;
   try {
@@ -5516,6 +5683,11 @@ async function loadProjectFile(file) {
     currentProjectName = null;
     throw err;
   }
+}
+
+async function loadProjectFile(file) {
+  const payload = JSON.parse(await file.text());
+  await loadProjectPayload(payload, file.name);
 }
 
 function viewportCenterPoint() {
@@ -6697,6 +6869,10 @@ function bindUi() {
   $("refreshJsonBrowser")?.addEventListener("click", refreshJsonBrowser);
   $("jsonBrowserSource")?.addEventListener("change", refreshJsonBrowser);
   $("selectJsonBrowserEntry")?.addEventListener("click", importSelectedBrowserJson);
+  $("loadProject")?.addEventListener("click", openProjectBrowser);
+  $("closeProjectBrowser")?.addEventListener("click", () => $("projectBrowserDialog")?.close());
+  $("refreshProjectBrowser")?.addEventListener("click", refreshProjectBrowser);
+  $("selectProjectEntry")?.addEventListener("click", loadSelectedProject);
   $("importJsonFromDisk")?.addEventListener("click", () => $("jsonInput")?.click());
   $("jsonInput").addEventListener("change", (event) => {
     const file = event.target.files?.[0];
@@ -6705,14 +6881,6 @@ function bindUi() {
     loadJsonFile(file)
       .then(() => $("jsonBrowserDialog")?.close())
       .catch((err) => showError("JSON import failed", err))
-      .finally(() => { event.target.value = ""; });
-  });
-  $("projectInput").addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setBusy(`Selected project: ${file.name}`);
-    loadProjectFile(file)
-      .catch((err) => showError("Project load failed", err))
       .finally(() => { event.target.value = ""; });
   });
   $("exportJson").addEventListener("click", exportJson);

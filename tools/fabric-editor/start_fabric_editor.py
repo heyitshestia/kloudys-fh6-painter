@@ -36,9 +36,13 @@ JSON_BROWSER_API = "/api/fabric-editor/json-browser"
 JSON_FILE_API = "/api/fabric-editor/json-file"
 JSON_PREVIEW_API = "/api/fabric-editor/json-preview"
 EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json"
+PROJECT_BROWSER_API = "/api/fabric-editor/project-browser"
+PROJECT_FILE_API = "/api/fabric-editor/project-file"
+PROJECT_SAVE_API = "/api/fabric-editor/save-project"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 HANDMADE_ROOT = ROOT / "imgs" / "handmade"
 EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
+EDITOR_PROJECT_ROOT = ROOT / "runtime" / "fabric-editor" / "projects"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 PREVIEW_MAX = 420
@@ -99,6 +103,17 @@ def _resolve_browser_id(path_id: str) -> Path:
     return candidate
 
 
+def _resolve_project_id(path_id: str) -> Path:
+    if not path_id or "\x00" in path_id:
+        raise ValueError("missing project id")
+    candidate = (EDITOR_PROJECT_ROOT / path_id).resolve()
+    if not candidate.is_relative_to(EDITOR_PROJECT_ROOT.resolve()):
+        raise ValueError("project path is outside the internal project folder")
+    if candidate.suffix.lower() != ".json" or not candidate.is_file():
+        raise ValueError("project file was not found")
+    return candidate
+
+
 def _clean_filename_base(name: str, fallback: str = "vinyl") -> str:
     base = str(name or fallback).replace("\\", "/").split("/")[-1].strip()
     base = re.sub(r"\.json$", "", base, flags=re.IGNORECASE)
@@ -125,6 +140,12 @@ def _unique_json_path(folder: Path, base_name: str) -> Path:
 def _unique_editor_export_path(base_name: str) -> Path:
     clean = _clean_filename_base(base_name)
     return _unique_json_path(EDITOR_JSON_ROOT / clean, clean)
+
+
+def _project_path(base_name: str) -> Path:
+    clean = _clean_filename_base(base_name, "project")
+    EDITOR_PROJECT_ROOT.mkdir(parents=True, exist_ok=True)
+    return EDITOR_PROJECT_ROOT / f"{clean}.fabric-project.json"
 
 
 def _is_internal_json(path: Path) -> bool:
@@ -281,6 +302,40 @@ def _editor_groups() -> list[dict]:
         group["count"] = len(group["entries"])
         group["max_layers"] = max((item["layers"] for item in group["entries"]), default=0)
     return sorted(groups.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
+
+
+def _project_entry(path: Path) -> dict:
+    stat = path.stat()
+    name = path.name
+    title = re.sub(r"\.fabric-project\.json$", "", name, flags=re.IGNORECASE)
+    layers = 0
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        shapes = payload.get("shapes") if isinstance(payload, dict) else None
+        if isinstance(shapes, list):
+            layers = len(shapes)
+        title = str(payload.get("name") or title) if isinstance(payload, dict) else title
+    except Exception:
+        pass
+    return {
+        "id": path.relative_to(EDITOR_PROJECT_ROOT).as_posix(),
+        "name": name,
+        "title": title,
+        "layers": layers,
+        "mtime": stat.st_mtime,
+    }
+
+
+def _project_entries() -> list[dict]:
+    if not EDITOR_PROJECT_ROOT.exists():
+        return []
+    entries = []
+    for path in EDITOR_PROJECT_ROOT.rglob("*.fabric-project.json"):
+        try:
+            entries.append(_project_entry(path))
+        except Exception:
+            continue
+    return sorted(entries, key=lambda item: (item["mtime"], item["title"]), reverse=True)
 
 
 def _read_stable_file_bytes(path: Path, checks: int = 2, delay: float = 0.035) -> bytes | None:
@@ -721,6 +776,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "payload": payload,
             })
             return
+        if parsed.path == PROJECT_BROWSER_API:
+            entries = _project_entries()
+            self._send_json({
+                "entries": entries,
+                "total_entries": len(entries),
+                "folder": str(EDITOR_PROJECT_ROOT),
+            })
+            return
+        if parsed.path == PROJECT_FILE_API:
+            query = parse_qs(parsed.query)
+            try:
+                path = _resolve_project_id((query.get("id") or [""])[0])
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({
+                "id": path.relative_to(EDITOR_PROJECT_ROOT).as_posix(),
+                "name": path.name,
+                "payload": payload,
+            })
+            return
         if parsed.path == JSON_PREVIEW_API:
             query = parse_qs(parsed.query)
             try:
@@ -805,6 +882,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "id": _safe_relpath(target),
                 "path": str(target),
                 "name": target.name,
+            })
+            return
+        if parsed.path == PROJECT_SAVE_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if length <= 0 or length > 25 * 1024 * 1024:
+                    raise ValueError("invalid project save size")
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = data.get("payload")
+                if not isinstance(payload, dict) or not isinstance(payload.get("shapes"), list):
+                    raise ValueError("project payload must contain a shapes list")
+                project_name = _clean_filename_base(str(data.get("name") or payload.get("name") or "project"), "project")
+                payload["name"] = project_name
+                target = _project_path(project_name)
+                target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({
+                "ok": True,
+                "id": target.relative_to(EDITOR_PROJECT_ROOT).as_posix(),
+                "path": str(target),
+                "name": target.name,
+                "title": project_name,
             })
             return
         self._send_json({"error": "not found"}, status=404)
