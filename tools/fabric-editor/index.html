@@ -160,6 +160,17 @@
               <button id="hideSelectedGroup" title="Hide or show every layer in the selected editor group.">Hide Group</button>
               <button id="lockSelectedGroup" title="Lock or unlock every layer in the selected editor group.">Lock Group</button>
               <button id="ungroupSelected" title="Remove selected layers from their editor-only group.">Ungroup</button>
+              <button id="changeSelectedShape" title="With layers selected, replace those layers. With nothing selected, choose a used shape type to replace globally.">Change Shape</button>
+            </div>
+            <div id="globalShapeReplacePanel" class="globalShapeReplacePanel" hidden>
+              <div class="panelHeader compactHeader">
+                <div>
+                  <h3>Choose Used Shape</h3>
+                  <p>Pick one shape type used in this design, then click its replacement in Shape Library.</p>
+                </div>
+                <button id="cancelGlobalShapeReplace" type="button">Cancel</button>
+              </div>
+              <div id="globalShapeReplaceList" class="globalShapeReplaceList"></div>
             </div>
             <ol id="layers"></ol>
           </section>

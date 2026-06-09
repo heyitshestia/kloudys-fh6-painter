@@ -618,6 +618,66 @@ input[type="range"] {
   margin: 8px 0;
 }
 
+.globalShapeReplacePanel {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.26);
+  border-radius: 14px;
+  background: rgba(var(--surface-rgb), 0.62);
+}
+
+.compactHeader {
+  margin-bottom: 8px;
+}
+
+.compactHeader h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.compactHeader p {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.globalShapeReplaceList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.usedShapeButton {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-height: 48px;
+  text-align: left;
+}
+
+.usedShapeButton img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.usedShapeButton b,
+.usedShapeButton span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usedShapeButton span {
+  font-size: 10px;
+  color: var(--muted);
+}
+
 .shapePlacementPanel {
   margin: 9px 0 10px;
   padding: 10px;

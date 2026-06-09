@@ -172,6 +172,7 @@ let projectBrowserState = {
   selectedIndex: -1,
   loading: false,
 };
+let pendingGlobalShapeReplacement = null;
 let exportSaveInProgress = false;
 let projectSaveInProgress = false;
 let toastTimer = null;
@@ -5721,6 +5722,130 @@ function updateShapePlacementLabel() {
   label.textContent = select.options[select.selectedIndex]?.textContent || "Add at top";
 }
 
+function shapeWordForObject(object) {
+  const meta = object?.kloudy || {};
+  const word = Number(meta.type_word ?? (Number(meta.type) & 0xffff));
+  return Number.isFinite(word) ? (word & 0xffff) : null;
+}
+
+function resolvedResourceForObject(object) {
+  const meta = object?.kloudy || {};
+  if (meta.resource_family && meta.resource_index) {
+    return {
+      family: String(meta.resource_family),
+      index: Number(meta.resource_index),
+      typeCode: Number(meta.type),
+      shapeWord: shapeWordForObject(object),
+    };
+  }
+  const typeCode = Number(meta.type);
+  if (Number.isFinite(typeCode)) return typeCodeToResource(typeCode);
+  return null;
+}
+
+function hideGlobalShapeReplacePanel() {
+  const panel = $("globalShapeReplacePanel");
+  if (panel) panel.hidden = true;
+}
+
+function shapeReplaceListEntry(object) {
+  const word = shapeWordForObject(object);
+  if (word === null) return null;
+  const resource = resolvedResourceForObject(object);
+  const family = resource?.family || object.kloudy?.resource_family || "Unknown";
+  const index = Number(resource?.index || object.kloudy?.resource_index || 0);
+  const name = object.kloudy?.name || (resource ? shapeDisplayName(resource.family, resource.index) : `Shape word ${word}`);
+  return { word, family, index, name };
+}
+
+function renderGlobalShapeReplacePanel() {
+  const panel = $("globalShapeReplacePanel");
+  const list = $("globalShapeReplaceList");
+  if (!panel || !list) return;
+  const used = new Map();
+  vinylObjects().forEach((object) => {
+    const entry = shapeReplaceListEntry(object);
+    if (!entry) return;
+    const key = String(entry.word);
+    const existing = used.get(key);
+    if (existing) existing.count += 1;
+    else used.set(key, { ...entry, count: 1 });
+  });
+  list.innerHTML = "";
+  if (!used.size) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "No replaceable vinyl shapes are loaded.";
+    list.appendChild(empty);
+    panel.hidden = false;
+    return;
+  }
+  [...used.values()]
+    .sort((a, b) => a.name.localeCompare(b.name) || a.word - b.word)
+    .forEach((entry) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "usedShapeButton";
+      const thumb = entry.family !== "Unknown" && entry.index ? vinylResourceUrl(entry.family, entry.index, ".png") : "";
+      button.innerHTML = `
+        ${thumb ? `<img alt="" src="${thumb}">` : "<span></span>"}
+        <span>
+          <b>${escapeHtml(entry.name)}</b>
+          <span>${entry.count} layer${entry.count === 1 ? "" : "s"} / word ${entry.word}</span>
+        </span>
+      `;
+      button.addEventListener("click", () => armGlobalShapeReplacement(entry));
+      list.appendChild(button);
+    });
+  panel.hidden = false;
+}
+
+function armGlobalShapeReplacement(entry) {
+  pendingGlobalShapeReplacement = {
+    word: Number(entry.word) & 0xffff,
+    name: entry.name || `word ${entry.word}`,
+    count: Number(entry.count) || 0,
+  };
+  hideGlobalShapeReplacePanel();
+  const placement = $("shapePlacementMode");
+  if (placement) {
+    placement.value = "top";
+    updateShapePlacementLabel();
+  }
+  canvas?.discardActiveObject();
+  syncSelectedShapeOutlines([]);
+  const shapeTool = document.querySelector('.toolButton[data-tool-mode="shapeLibrary"]');
+  if (shapeTool) setActiveTool(shapeTool);
+  else activateDockPanel("shapeLibraryPane");
+  setStatus(`Global Change Shape armed for ${pendingGlobalShapeReplacement.name} (${pendingGlobalShapeReplacement.count} layer${pendingGlobalShapeReplacement.count === 1 ? "" : "s"}). Click a shape tile to replace every matching layer.`);
+}
+
+function armShapeReplacementFromLayers() {
+  const selected = selectedVinylObjects();
+  if (!selected.length) {
+    pendingGlobalShapeReplacement = null;
+    renderGlobalShapeReplacePanel();
+    setStatus("No layers selected. Choose a used shape type, then click its replacement in Shape Library.");
+    return;
+  }
+  const editable = unlockedObjects(selected);
+  if (!editable.length) {
+    setStatus("Selected layers are locked. Unlock them before changing shape type.");
+    return;
+  }
+  pendingGlobalShapeReplacement = null;
+  hideGlobalShapeReplacePanel();
+  const placement = $("shapePlacementMode");
+  if (placement) {
+    placement.value = "replace";
+    updateShapePlacementLabel();
+  }
+  const shapeTool = document.querySelector('.toolButton[data-tool-mode="shapeLibrary"]');
+  if (shapeTool) setActiveTool(shapeTool);
+  else activateDockPanel("shapeLibraryPane");
+  setStatus(`Change Shape armed for ${editable.length} selected layer(s). Click a shape tile to replace them.${editable.length !== selected.length ? ` ${selected.length - editable.length} locked layer(s) will be skipped.` : ""}`);
+}
+
 function orderedSelectedVinylObjects() {
   const selected = selectedVinylObjects();
   const all = canvas.getObjects();
@@ -5833,7 +5958,56 @@ async function replaceSelectedShapes(family, index) {
   setStatus(`Replaced ${replacements.length} layer(s) with ${shapeDisplayName(family, index)}.${editable.length !== selected.length ? ` Skipped ${selected.length - editable.length} locked layer(s).` : ""}`);
 }
 
+async function replaceMatchingShapeWords(source, family, index) {
+  const rawSourceWord = Number(source?.word);
+  if (!Number.isFinite(rawSourceWord)) {
+    pendingGlobalShapeReplacement = null;
+    setStatus("Global Change Shape cancelled because the source shape was invalid.");
+    return;
+  }
+  const sourceWord = rawSourceWord & 0xffff;
+  const matches = vinylObjects().filter((object) => shapeWordForObject(object) === sourceWord);
+  if (!matches.length) {
+    pendingGlobalShapeReplacement = null;
+    setStatus("No matching layers remain for that source shape.");
+    return;
+  }
+  const editable = unlockedObjects(matches);
+  if (!editable.length) {
+    pendingGlobalShapeReplacement = null;
+    setStatus("Matching layers are locked. Unlock them before replacing shape type.");
+    return;
+  }
+  const replacements = [];
+  for (const oldObject of editable) {
+    const oldIndex = canvas.getObjects().indexOf(oldObject);
+    const shape = updateShapeResourceOnShape(objectToShape(oldObject, { includeEditorMeta: true }), family, index);
+    const replacement = await makeFabricObject(shape);
+    replacement.visible = oldObject.visible;
+    replacements.push({ oldObject, oldIndex, replacement });
+  }
+  replacements.forEach(({ oldObject }) => canvas.remove(oldObject));
+  replacements.forEach(({ oldIndex, replacement }) => {
+    canvas.add(replacement);
+    replacement.moveTo(Math.max(0, oldIndex));
+    if (isFontFamily(family)) rememberFontShapeTransform(replacement);
+  });
+  pendingGlobalShapeReplacement = null;
+  syncMaskPreviewOutlines();
+  bringGuidesToBack();
+  syncCanvasObjectCoords();
+  selectObjects(replacements.map((item) => item.replacement), "global shape replacement");
+  canvas.requestRenderAll();
+  refreshLayers();
+  pushHistory("replace shape globally");
+  setStatus(`Replaced ${replacements.length} ${source.name || `word ${sourceWord}`} layer(s) with ${shapeDisplayName(family, index)}.${editable.length !== matches.length ? ` Skipped ${matches.length - editable.length} locked layer(s).` : ""}`);
+}
+
 async function addShape(family, index) {
+  if (pendingGlobalShapeReplacement) {
+    await replaceMatchingShapeWords(pendingGlobalShapeReplacement, family, index);
+    return;
+  }
   const mode = shapePlacementMode();
   if (mode === "replace") {
     await replaceSelectedShapes(family, index);
@@ -6965,6 +7139,12 @@ function bindUi() {
   $("hideSelectedGroup").addEventListener("click", toggleSelectedGroupVisibility);
   $("lockSelectedGroup").addEventListener("click", toggleSelectedGroupLock);
   $("ungroupSelected").addEventListener("click", ungroupSelectedLayers);
+  $("changeSelectedShape")?.addEventListener("click", armShapeReplacementFromLayers);
+  $("cancelGlobalShapeReplace")?.addEventListener("click", () => {
+    pendingGlobalShapeReplacement = null;
+    hideGlobalShapeReplacePanel();
+    setStatus("Global Change Shape cancelled.");
+  });
   $("applyColorToSelection").addEventListener("click", () => {
     const alpha = Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
     applyEditorColor(hexToRgb($("colorPicker")?.value || colorToHex(rememberedColor), alpha), "apply color to selection");
