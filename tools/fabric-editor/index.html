@@ -64,8 +64,8 @@
         <span class="contextLabel">Selection</span>
         <b id="contextSelection">No layer selected</b>
       </div>
-      <label class="toolbarToggle" title="When off, the entire transformed shape box is clickable. Turn on only for precision picking through overlapping transparent areas.">
-        <input id="boxVisibleOnly" type="checkbox"> Visible-only select
+      <label class="toolbarToggle" title="When on, clicks must land on the visible shape itself. Turn off only when you intentionally want box-style picking.">
+        <input id="boxVisibleOnly" type="checkbox" checked> Visible-only select
       </label>
       <label class="toolbarToggle" title="Box-select everything outside the dragged box instead of inside it. Single clicks are unaffected.">
         <input id="invertBoxSelect" type="checkbox"> Invert box select
@@ -214,7 +214,7 @@
             <div class="propertySection">
               <h3>Nudge</h3>
               <label>Nudge step <input id="nudgeStep" type="number" step="0.1" value="1"></label>
-              <label class="inline"><input id="pixelSelect" type="checkbox"> Select only visible pixels</label>
+              <label class="inline"><input id="pixelSelect" type="checkbox" checked> Select only visible pixels</label>
             </div>
           </section>
 

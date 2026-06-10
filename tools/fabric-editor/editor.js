@@ -23,6 +23,7 @@ const PROJECT_SAVE_API = "/api/fabric-editor/save-project";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
+const VINYL_HIT_TOLERANCE = 0;
 
 const DEFAULT_SHORTCUTS = {
   selectTool: "V",
@@ -155,6 +156,12 @@ let nextLayerListObjectId = 1;
 let layerRefreshFrame = null;
 let canvasRenderFrame = null;
 let canvasGeometryFrame = null;
+let visualGridFrame = null;
+let hudUpdateFrame = null;
+let pendingHudPointer = null;
+let pendingHudTarget = null;
+let pendingHudText = null;
+let layerStatsCache = null;
 let autosaveWriteTimer = null;
 let pendingAutosavePayload = null;
 let recoveryAutosavePayload = null;
@@ -785,7 +792,7 @@ function syncSelectionOutlineHelpers(selectedSet) {
   });
 }
 
-function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
+function syncSelectedShapeOutlines(selected = selectedVinylObjects(), options = {}) {
   if (!canvas) return;
   const selectable = selected.filter((obj) => obj?.kloudy && !obj.kloudyGuide);
   // Fabric moves ActiveSelection wrappers before committing child coordinates.
@@ -806,7 +813,7 @@ function syncSelectedShapeOutlines(selected = selectedVinylObjects()) {
   });
   selectedShapeOutlineObjects = next;
   syncSelectionOutlineHelpers(next);
-  bringGuidesToBack();
+  if (options.relayer !== false) bringGuidesToBack();
   requestCanvasRender();
 }
 
@@ -819,6 +826,12 @@ function styledActiveSelection(objects) {
 function styleAllTransformControls() {
   if (!canvas) return;
   canvas.getObjects().forEach(styleObjectTransformControls);
+  const active = canvas.getActiveObject();
+  if (active) styleObjectTransformControls(active);
+}
+
+function styleActiveTransformControls() {
+  if (!canvas) return;
   const active = canvas.getActiveObject();
   if (active) styleObjectTransformControls(active);
 }
@@ -1010,25 +1023,38 @@ function showCornerNotice(title, message = "") {
   }, 4200);
 }
 
-function updateHud(pointer = null) {
-  if (!canvas) return;
-  const selected = selectedVinylObjects().length;
+function invalidateLayerStats() {
+  layerStatsCache = null;
+}
+
+function getLayerStats(force = false) {
+  if (!force && layerStatsCache) return layerStatsCache;
   const objects = vinylObjects();
   const visible = objects.filter((obj) => obj.visible !== false && (obj.opacity ?? 1) > 0).length;
-  const zoom = `${Math.round((canvas.getZoom() || 1) * 100)}%`;
-  const layerText = `${objects.length} layer${objects.length === 1 ? "" : "s"}`;
-  const selectionText = selected ? `${selected} selected` : "No layer selected";
-  setText("selectedCount", String(selected));
-  setText("visibleCount", String(visible));
-  setText("zoomValue", zoom);
-  setText("hudLayers", layerText);
-  setText("hudMode", currentHudMode(selected));
-  setText("bottomZoom", zoom);
-  setText("bottomLayers", layerText);
-  setText("contextSelection", selectionText);
-  setText("exportLayerCount", String(objects.length));
-  setText("layerLimitMeter", `${objects.length} / template`);
-  setHidden("emptyCanvasHint", objects.length > 0 || Boolean(overlayImage));
+  layerStatsCache = { objects, count: objects.length, visible };
+  return layerStatsCache;
+}
+
+function updateHud(pointer = null, options = {}) {
+  if (!canvas) return;
+  if (!options.pointerOnly) {
+    const selected = selectedVinylObjects().length;
+    const stats = getLayerStats(Boolean(options.forceStats));
+    const zoom = `${Math.round((canvas.getZoom() || 1) * 100)}%`;
+    const layerText = `${stats.count} layer${stats.count === 1 ? "" : "s"}`;
+    const selectionText = selected ? `${selected} selected` : "No layer selected";
+    setText("selectedCount", String(selected));
+    setText("visibleCount", String(stats.visible));
+    setText("zoomValue", zoom);
+    setText("hudLayers", layerText);
+    setText("hudMode", currentHudMode(selected));
+    setText("bottomZoom", zoom);
+    setText("bottomLayers", layerText);
+    setText("contextSelection", selectionText);
+    setText("exportLayerCount", String(stats.count));
+    setText("layerLimitMeter", `${stats.count} / template`);
+    setHidden("emptyCanvasHint", stats.count > 0 || Boolean(overlayImage));
+  }
   if (pointer) {
     const coords = `x ${round(pointer.x)}, y ${round(-pointer.y)}`;
     setText("hudCoords", coords);
@@ -1052,6 +1078,22 @@ function setHoverHud(target) {
   } else {
     $("hudHover").textContent = "over nothing";
   }
+}
+
+function schedulePointerHud(pointer = null, target = null, hoverText = null) {
+  pendingHudPointer = pointer;
+  pendingHudTarget = target;
+  pendingHudText = hoverText;
+  if (hudUpdateFrame) return;
+  hudUpdateFrame = requestAnimationFrame(() => {
+    hudUpdateFrame = null;
+    updateHud(pendingHudPointer, { pointerOnly: true });
+    if (pendingHudText) setText("hudHover", pendingHudText);
+    else setHoverHud(pendingHudTarget);
+    pendingHudPointer = null;
+    pendingHudTarget = null;
+    pendingHudText = null;
+  });
 }
 
 function setBusy(message) {
@@ -1496,8 +1538,8 @@ async function makeFabricObject(shape, name = null) {
     strokeWidth: 0,
     objectCaching: true,
     noScaleCache: true,
-    perPixelTargetFind: false,
-    targetFindTolerance: 0,
+    perPixelTargetFind: true,
+    targetFindTolerance: VINYL_HIT_TOLERANCE,
     hoverCursor: "pointer",
     moveCursor: "move",
     lockScalingFlip: false,
@@ -2281,8 +2323,8 @@ function initCanvas() {
     renderOnAddRemove: false,
     enableRetinaScaling: false,
     skipOffscreen: true,
-    perPixelTargetFind: false,
-    targetFindTolerance: 0,
+    perPixelTargetFind: true,
+    targetFindTolerance: VINYL_HIT_TOLERANCE,
     defaultCursor: "default",
     hoverCursor: "default",
     moveCursor: "move",
@@ -2309,9 +2351,13 @@ function initCanvas() {
   });
   canvas.on("object:added", (event) => {
     if (event.target?.kloudy) {
+      invalidateLayerStats();
       styleObjectTransformControls(event.target);
       event.target.setCoords();
     }
+  });
+  canvas.on("object:removed", (event) => {
+    if (event.target?.kloudy) invalidateLayerStats();
   });
   canvas.on("object:modified", (event) => {
     if (event.target?.kloudyOverlay) {
@@ -2345,7 +2391,7 @@ function initCanvas() {
     const target = interactiveVinylTarget(event.target);
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
     snapTargetToGuides(target, { ...event, kloudyTransformAction: "move" });
-    if (target) syncSelectedShapeOutlines();
+    if (target) syncSelectedShapeOutlines(undefined, { relayer: false });
     syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
   });
@@ -2360,7 +2406,7 @@ function initCanvas() {
       const target = interactiveVinylTarget(event.target);
       if (target !== event.target) mirrorMaskProxyToOwner(event.target);
       snapTargetToGuides(target, { ...event, kloudyTransformAction: eventName === "object:scaling" ? "scale" : "skew" });
-      if (target) syncSelectedShapeOutlines();
+      if (target) syncSelectedShapeOutlines(undefined, { relayer: false });
       syncMaskPreviewForTarget(target);
       scheduleLiveOverlayColor(target);
     });
@@ -2375,7 +2421,7 @@ function initCanvas() {
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
     snapRotationToNotches(target, event);
     renderRotationNotchOverlay(target, event);
-    if (target) syncSelectedShapeOutlines();
+    if (target) syncSelectedShapeOutlines(undefined, { relayer: false });
     syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
   });
@@ -2385,9 +2431,9 @@ function initCanvas() {
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.04), 8);
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
-    styleAllTransformControls();
+    styleActiveTransformControls();
     syncSelectedShapeOutlines();
-    updateVisualGridLayer();
+    scheduleVisualGridLayerUpdate();
     updateHud(canvas.getPointer(opt.e));
     requestCanvasRender();
     opt.e.preventDefault();
@@ -2467,11 +2513,10 @@ function initCanvas() {
       const vpt = canvas.viewportTransform;
       vpt[4] += opt.e.clientX - lastPan.x;
       vpt[5] += opt.e.clientY - lastPan.y;
-      updateVisualGridLayer();
+      scheduleVisualGridLayerUpdate();
       requestCanvasRender();
       lastPan = { x: opt.e.clientX, y: opt.e.clientY };
-      updateHud(canvas.getPointer(opt.e));
-      setText("hudHover", "panning");
+      schedulePointerHud(canvas.getPointer(opt.e), null, "panning");
       return;
     }
     if (guideDraft && activeToolMode === "guides") {
@@ -2480,14 +2525,13 @@ function initCanvas() {
       canvas.selection = false;
       canvas._groupSelector = null;
       updateGuideDraft(opt);
-      updateHud(canvas.getPointer(opt.e));
+      schedulePointerHud(canvas.getPointer(opt.e));
       return;
     }
   });
   canvas.on("mouse:move", (opt) => {
     if (!isPanning && opt?.e) {
-      updateHud(canvas.getPointer(opt.e));
-      setHoverHud(opt.target);
+      schedulePointerHud(canvas.getPointer(opt.e), opt.target);
     }
   });
   canvas.on("mouse:up", () => {
@@ -2733,6 +2777,14 @@ function updateVisualGridLayer() {
   layer.style.backgroundImage = backgrounds.join(", ");
   layer.style.backgroundSize = sizes.join(", ");
   layer.style.backgroundPosition = positions.join(", ");
+}
+
+function scheduleVisualGridLayerUpdate() {
+  if (visualGridFrame) return;
+  visualGridFrame = requestAnimationFrame(() => {
+    visualGridFrame = null;
+    updateVisualGridLayer();
+  });
 }
 
 function renderGuideObjects() {
@@ -4558,6 +4610,7 @@ function clearVinylObjects(options = {}) {
   maskPreviewCutouts.forEach((cutout) => canvas.remove(cutout));
   maskPreviewCutouts.clear();
   vinylObjects().forEach((obj) => canvas.remove(obj));
+  invalidateLayerStats();
   if (!options.preserveCollapsed) collapsedLayerGroups.clear();
   lastLayerListKey = null;
   dropperPreservedActiveObject = null;
@@ -5140,10 +5193,16 @@ function refreshLayers() {
     cancelAnimationFrame(layerRefreshFrame);
     layerRefreshFrame = null;
   }
+  invalidateLayerStats();
   const list = $("layers");
   const fragment = document.createDocumentFragment();
   layerListRows = new Map();
   const objects = vinylObjects();
+  layerStatsCache = {
+    objects,
+    count: objects.length,
+    visible: objects.filter((obj) => obj.visible !== false && (obj.opacity ?? 1) > 0).length,
+  };
   const activeSet = new Set(selectedVinylObjects());
   const filter = ($("layerSearch")?.value || "").trim().toLowerCase();
   const groupCounts = new Map();
@@ -5418,7 +5477,7 @@ function applyMaskVisual(obj) {
       selectable: !obj.kloudy?.locked,
       evented: !obj.kloudy?.locked,
       perPixelTargetFind: $("boxVisibleOnly")?.checked ?? true,
-      targetFindTolerance: ($("boxVisibleOnly")?.checked ?? true) ? 3 : 0,
+      targetFindTolerance: ($("boxVisibleOnly")?.checked ?? true) ? VINYL_HIT_TOLERANCE : 0,
     });
     obj.kloudy.maskOriginalColor = null;
   }
@@ -6247,7 +6306,7 @@ function duplicateSelected() {
       if (clone.kloudy?.locked) setObjectLocked(clone, false);
       applyMaskVisual(clone);
       clone.perPixelTargetFind = $("boxVisibleOnly")?.checked || $("pixelSelect")?.checked || false;
-      clone.targetFindTolerance = clone.perPixelTargetFind ? 3 : 0;
+      clone.targetFindTolerance = clone.perPixelTargetFind ? VINYL_HIT_TOLERANCE : 0;
       clone.hoverCursor = "pointer";
       clone.moveCursor = "move";
       styleObjectTransformControls(clone);
@@ -6537,7 +6596,7 @@ function setPixelSelection(enabled) {
   if ($("pixelSelect")) $("pixelSelect").checked = enabled;
   if ($("boxVisibleOnly")) $("boxVisibleOnly").checked = enabled;
   canvas.perPixelTargetFind = enabled;
-  canvas.targetFindTolerance = enabled ? 3 : 0;
+  canvas.targetFindTolerance = enabled ? VINYL_HIT_TOLERANCE : 0;
   vinylObjects().forEach((obj) => {
     if (obj.kloudy?.mask) {
       obj.perPixelTargetFind = false;
@@ -6545,7 +6604,7 @@ function setPixelSelection(enabled) {
       return;
     }
     obj.perPixelTargetFind = enabled;
-    obj.targetFindTolerance = enabled ? 3 : 0;
+    obj.targetFindTolerance = enabled ? VINYL_HIT_TOLERANCE : 0;
   });
 }
 

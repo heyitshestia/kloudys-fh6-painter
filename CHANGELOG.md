@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.47
+- Improved Fabric editor shape selection accuracy for small edge-cleanup details.
+- Reduced Fabric editor canvas lag while panning, zooming, and editing high-layer vinyls.
+
 ## 2.0.46
 - Improved Fabric editor JSON export confirmation and internal project save/load handling.
 
