@@ -202,6 +202,12 @@ small,
   font-size: 11px;
 }
 
+.themePicker button {
+  min-height: 25px;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
 .appMenus {
   min-width: 0;
   flex: 1;
@@ -1591,6 +1597,66 @@ dialog::backdrop {
 .projectBrowserDialog {
   width: min(760px, 92vw);
   max-height: 82vh;
+}
+
+.themeAdjustDialog {
+  width: min(980px, 94vw);
+  max-height: 88vh;
+}
+
+.themeAdjustBody {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.themeNameRow {
+  display: grid;
+  grid-template-columns: 120px minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.themeAdjustFields {
+  max-height: min(58vh, 560px);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 8px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.themeAdjustRow {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(105px, 0.8fr) minmax(120px, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+  border-radius: 12px;
+  background: rgba(var(--panel-rgb), 0.56);
+}
+
+.themeAdjustRow span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.themeAdjustRow input[type="color"] {
+  width: 36px;
+  min-width: 36px;
+  height: 30px;
+  padding: 2px;
 }
 
 .jsonBrowserToolbar,

@@ -22,6 +22,7 @@
               <option value="pastel">Signature Pink</option>
               <option value="dark">Dark</option>
             </select>
+            <button id="adjustTheme" type="button" title="Adjust the current editor color scheme and save it as a custom file-backed theme.">Adjust</button>
           </label>
         </div>
       </div>
@@ -694,6 +695,26 @@
     <div class="jsonBrowserActions">
       <p id="projectBrowserStatus">Choose a project, then click Load Project.</p>
       <button id="selectProjectEntry" class="primary" type="button" disabled>Load Project</button>
+    </div>
+  </dialog>
+
+  <dialog id="themeAdjustDialog" class="themeAdjustDialog">
+    <div class="helpHeader">
+      <div>
+        <h2>Adjust Editor Theme</h2>
+        <p>Edit the current color scheme and save it as a new custom theme file inside runtime/fabric-editor/themes.</p>
+      </div>
+      <button id="closeThemeAdjust" type="button">Close</button>
+    </div>
+    <div class="themeAdjustBody">
+      <label class="themeNameRow">Theme name
+        <input id="themeAdjustName" type="text" value="Custom Theme">
+      </label>
+      <div id="themeAdjustFields" class="themeAdjustFields"></div>
+      <div class="jsonBrowserActions">
+        <p id="themeAdjustStatus">Hex colors get a color picker. RGBA fields stay editable as text for advanced tuning.</p>
+        <button id="saveThemeAdjust" class="primary" type="button">Save As New Theme</button>
+      </div>
     </div>
   </dialog>
 

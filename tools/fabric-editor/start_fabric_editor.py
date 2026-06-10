@@ -31,8 +31,10 @@ EDITOR = ROOT / "tools" / "fabric-editor" / "index.html"
 STARTUP_HELP_MARKER = ROOT / "runtime" / "fabric-editor" / "startup-help-confirmed.json"
 EDITOR_PREFS_MARKER = ROOT / "runtime" / "fabric-editor" / "preferences.json"
 EDITOR_AUTOSAVE_MARKER = ROOT / "runtime" / "fabric-editor" / "autosave.json"
+EDITOR_THEME_ROOT = ROOT / "runtime" / "fabric-editor" / "themes"
 STARTUP_HELP_API = "/api/fabric-editor/startup-help-confirmed"
 EDITOR_PREFS_API = "/api/fabric-editor/preferences"
+EDITOR_THEMES_API = "/api/fabric-editor/themes"
 EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave"
 JSON_BROWSER_API = "/api/fabric-editor/json-browser"
 JSON_FILE_API = "/api/fabric-editor/json-file"
@@ -124,6 +126,60 @@ def _clean_filename_base(name: str, fallback: str = "vinyl") -> str:
     base = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", base)
     base = re.sub(r"\s+", " ", base).strip(" .")
     return base or fallback
+
+
+def _theme_id_from_name(name: str) -> str:
+    base = _clean_filename_base(name, "custom-theme").lower()
+    base = re.sub(r"[^a-z0-9._-]+", "-", base).strip(".-_")
+    if base in {"pastel", "dark"}:
+        base = f"{base}-custom"
+    return base or "custom-theme"
+
+
+def _theme_entries() -> list[dict]:
+    entries = [
+        {"id": "pastel", "name": "Signature Pink", "builtin": True, "values": {}},
+        {"id": "dark", "name": "Dark", "builtin": True, "values": {}},
+    ]
+    if not EDITOR_THEME_ROOT.exists():
+        return entries
+    for path in sorted(EDITOR_THEME_ROOT.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            theme_id = str(payload.get("id") or path.stem)
+            if not theme_id or theme_id in {"pastel", "dark"}:
+                continue
+            values = payload.get("values")
+            if not isinstance(values, dict):
+                continue
+            entries.append({
+                "id": theme_id,
+                "name": str(payload.get("name") or theme_id),
+                "builtin": False,
+                "values": {str(key): str(value) for key, value in values.items()},
+            })
+        except Exception:
+            continue
+    return entries
+
+
+def _theme_exists(theme_id: str) -> bool:
+    if theme_id in {"pastel", "dark"}:
+        return True
+    if not theme_id or "\x00" in theme_id:
+        return False
+    candidate = (EDITOR_THEME_ROOT / f"{theme_id}.json").resolve()
+    return candidate.is_relative_to(EDITOR_THEME_ROOT.resolve()) and candidate.is_file()
+
+
+def _unique_theme_id(base_id: str) -> str:
+    theme_id = base_id
+    for index in range(2, 10000):
+        target = (EDITOR_THEME_ROOT / f"{theme_id}.json").resolve()
+        if target.is_relative_to(EDITOR_THEME_ROOT.resolve()) and not target.exists():
+            return theme_id
+        theme_id = f"{base_id}-{index}"
+    return f"{base_id}-{int(time.time())}"
 
 
 def _unique_json_path(folder: Path, base_name: str) -> Path:
@@ -738,9 +794,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     payload = json.loads(EDITOR_PREFS_MARKER.read_text(encoding="utf-8"))
                 except Exception:
                     payload = {}
+            theme = str(payload.get("theme") or "")
             self._send_json({
-                "theme": payload.get("theme") if payload.get("theme") in {"pastel", "dark"} else None,
+                "theme": theme if _theme_exists(theme) else None,
                 "marker": str(EDITOR_PREFS_MARKER),
+            })
+            return
+        if parsed.path == EDITOR_THEMES_API:
+            self._send_json({
+                "themes": _theme_entries(),
+                "folder": str(EDITOR_THEME_ROOT),
             })
             return
         if parsed.path == EDITOR_AUTOSAVE_API:
@@ -845,8 +908,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length") or "0")
                 data = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
-                theme = data.get("theme")
-                if theme not in {"pastel", "dark"}:
+                theme = str(data.get("theme") or "")
+                if not _theme_exists(theme):
                     raise ValueError("invalid editor theme")
                 EDITOR_PREFS_MARKER.parent.mkdir(parents=True, exist_ok=True)
                 EDITOR_PREFS_MARKER.write_text(json.dumps({"theme": theme}, indent=2), encoding="utf-8")
@@ -854,6 +917,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self._send_json({"error": str(err)}, status=400)
                 return
             self._send_json({"ok": True, "theme": theme, "marker": str(EDITOR_PREFS_MARKER)})
+            return
+        if parsed.path == EDITOR_THEMES_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if length <= 0 or length > 256 * 1024:
+                    raise ValueError("invalid theme payload size")
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                name = str(data.get("name") or "Custom Theme").strip() or "Custom Theme"
+                values = data.get("values")
+                if not isinstance(values, dict) or not values:
+                    raise ValueError("theme values must be a non-empty object")
+                EDITOR_THEME_ROOT.mkdir(parents=True, exist_ok=True)
+                theme_id = _unique_theme_id(_theme_id_from_name(str(data.get("id") or name)))
+                target = EDITOR_THEME_ROOT / f"{theme_id}.json"
+                payload = {
+                    "format": "kfps_fabric_editor_theme_v1",
+                    "id": theme_id,
+                    "name": name,
+                    "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "values": {str(key): str(value) for key, value in values.items()},
+                }
+                target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                EDITOR_PREFS_MARKER.parent.mkdir(parents=True, exist_ok=True)
+                EDITOR_PREFS_MARKER.write_text(json.dumps({"theme": theme_id}, indent=2), encoding="utf-8")
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({
+                "ok": True,
+                "theme": payload,
+                "path": str(target),
+            })
             return
         if parsed.path == EDITOR_AUTOSAVE_API:
             try:

@@ -13,6 +13,7 @@ const VINYL_RESOURCE_BASES = [
 const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
 const EDITOR_PREFS_API = "/api/fabric-editor/preferences";
+const EDITOR_THEMES_API = "/api/fabric-editor/themes";
 const EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave";
 const JSON_BROWSER_API = "/api/fabric-editor/json-browser";
 const JSON_FILE_API = "/api/fabric-editor/json-file";
@@ -43,6 +44,47 @@ const DEFAULT_SHORTCUTS = {
   flipHorizontal: "Shift+F",
   makeMask: "M",
 };
+
+const BUILTIN_EDITOR_THEMES = [
+  { id: "pastel", name: "Signature Pink", builtin: true, values: {} },
+  { id: "dark", name: "Dark", builtin: true, values: {} },
+];
+
+const THEME_FIELDS = [
+  ["--bg", "App background"],
+  ["--shell", "Outer shell"],
+  ["--panel", "Main panels"],
+  ["--panel2", "Raised panels"],
+  ["--panel3", "Inset panels"],
+  ["--text", "Main text"],
+  ["--muted", "Muted text"],
+  ["--soft", "Soft labels"],
+  ["--line", "Thin borders"],
+  ["--line2", "Strong borders"],
+  ["--accent", "Primary accent"],
+  ["--accent2", "Secondary accent"],
+  ["--good", "Success color"],
+  ["--warn", "Warning color"],
+  ["--danger", "Danger color"],
+  ["--canvas-bg", "Canvas surround"],
+  ["--fabric-canvas-bg", "Canvas color"],
+  ["--editor-grid-line", "Grid lines"],
+  ["--editor-grid-axis", "Grid axis"],
+  ["--editor-guide-line", "Guide lines"],
+  ["--editor-guide-selected", "Selected guide"],
+  ["--editor-guide-draft", "Guide draft"],
+  ["--editor-notch-line", "Rotation notch"],
+  ["--editor-notch-muted", "Muted notch"],
+  ["--editor-notch-active", "Active notch"],
+  ["--editor-selection-border", "Selection border"],
+  ["--editor-shape-outline", "Shape outline"],
+  ["--editor-selection-corner", "Transform handles"],
+  ["--editor-selection-corner-stroke", "Handle stroke"],
+  ["--editor-skew-corner", "Skew handle"],
+  ["--shape-tile-bg", "Shape tile background"],
+  ["--dialog-bg", "Dialog background"],
+  ["--dialog-header", "Dialog header"],
+];
 
 const SHORTCUT_LABELS = {
   selectTool: "Select / Move",
@@ -121,6 +163,8 @@ let shapeWords = { families: {} };
 let rememberedColor = [255, 255, 255, 255];
 let favoriteColors = loadFavoriteColors();
 let selectedFavoriteColorSlot = 0;
+let editorThemes = new Map(BUILTIN_EDITOR_THEMES.map((theme) => [theme.id, theme]));
+let themeAdjustRestoreTheme = null;
 let shapeEyedropperActive = false;
 let activeToolMode = "select";
 let overlaySampler = null;
@@ -400,7 +444,74 @@ function defaultGuideState() {
 }
 
 function normalizeTheme(theme) {
-  return theme === "dark" ? "dark" : "pastel";
+  const key = String(theme || "");
+  if (editorThemes.has(key)) return key;
+  return key === "dark" ? "dark" : "pastel";
+}
+
+function themeById(theme) {
+  return editorThemes.get(normalizeTheme(theme)) || editorThemes.get("pastel") || BUILTIN_EDITOR_THEMES[0];
+}
+
+function themeFieldCurrentValues() {
+  const styles = getComputedStyle(document.documentElement);
+  const values = {};
+  THEME_FIELDS.forEach(([key]) => {
+    values[key] = styles.getPropertyValue(key).trim();
+  });
+  return values;
+}
+
+function clearCustomThemeProperties() {
+  THEME_FIELDS.forEach(([key]) => document.documentElement.style.removeProperty(key));
+  ["--surface-rgb", "--panel-rgb", "--accent-rgb", "--accent2-rgb", "--good-rgb", "--warn-rgb", "--danger-rgb"].forEach((key) => {
+    document.documentElement.style.removeProperty(key);
+  });
+}
+
+function hexToRgbString(hex) {
+  const match = String(hex || "").trim().match(/^#([0-9a-f]{6})$/i);
+  if (!match) return null;
+  const raw = match[1];
+  return `${parseInt(raw.slice(0, 2), 16)}, ${parseInt(raw.slice(2, 4), 16)}, ${parseInt(raw.slice(4, 6), 16)}`;
+}
+
+function syncDerivedThemeRgb(values = {}) {
+  const pairs = [
+    ["--shell", "--surface-rgb"],
+    ["--panel", "--panel-rgb"],
+    ["--accent", "--accent-rgb"],
+    ["--accent2", "--accent2-rgb"],
+    ["--good", "--good-rgb"],
+    ["--warn", "--warn-rgb"],
+    ["--danger", "--danger-rgb"],
+  ];
+  pairs.forEach(([source, target]) => {
+    const rgb = hexToRgbString(values[source]);
+    if (rgb) document.documentElement.style.setProperty(target, rgb);
+  });
+}
+
+function applyCustomThemeValues(values = {}) {
+  clearCustomThemeProperties();
+  THEME_FIELDS.forEach(([key]) => {
+    if (values[key]) document.documentElement.style.setProperty(key, String(values[key]));
+  });
+  syncDerivedThemeRgb(values);
+}
+
+function populateEditorThemeSelect(selectedTheme = null) {
+  const select = $("editorThemeSelect");
+  if (!select) return;
+  const current = selectedTheme || select.value || "pastel";
+  select.innerHTML = "";
+  [...editorThemes.values()].forEach((theme) => {
+    const option = document.createElement("option");
+    option.value = theme.id;
+    option.textContent = theme.builtin ? theme.name : `${theme.name} (Custom)`;
+    select.appendChild(option);
+  });
+  select.value = normalizeTheme(current);
 }
 
 function saveEditorThemePreference(theme) {
@@ -415,10 +526,17 @@ function saveEditorThemePreference(theme) {
 
 function applyEditorTheme(theme, options = {}) {
   const safeTheme = normalizeTheme(theme);
-  document.documentElement.dataset.editorTheme = safeTheme;
+  const entry = themeById(safeTheme);
+  if (entry.builtin) {
+    clearCustomThemeProperties();
+    document.documentElement.dataset.editorTheme = safeTheme;
+  } else {
+    document.documentElement.dataset.editorTheme = "custom";
+    applyCustomThemeValues(entry.values || {});
+  }
   localStorage.setItem("kloudyFabricTheme", safeTheme);
   if (options.persist !== false) saveEditorThemePreference(safeTheme);
-  if ($("editorThemeSelect")) $("editorThemeSelect").value = safeTheme;
+  populateEditorThemeSelect(safeTheme);
   if (canvas) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
     canvas.set("backgroundColor", bg);
@@ -426,6 +544,28 @@ function applyEditorTheme(theme, options = {}) {
     updateVisualGridLayer();
     canvas.requestRenderAll();
   }
+}
+
+async function loadEditorThemes() {
+  editorThemes = new Map(BUILTIN_EDITOR_THEMES.map((theme) => [theme.id, theme]));
+  try {
+    const response = await fetch(EDITOR_THEMES_API, { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      (Array.isArray(data.themes) ? data.themes : []).forEach((theme) => {
+        if (!theme?.id) return;
+        editorThemes.set(String(theme.id), {
+          id: String(theme.id),
+          name: String(theme.name || theme.id),
+          builtin: Boolean(theme.builtin),
+          values: theme.values && typeof theme.values === "object" ? theme.values : {},
+        });
+      });
+    }
+  } catch (_err) {
+    // Direct-file/browser fallback keeps built-in themes only.
+  }
+  populateEditorThemeSelect(localStorage.getItem("kloudyFabricTheme") || "pastel");
 }
 
 async function loadEditorThemePreference() {
@@ -442,6 +582,112 @@ async function loadEditorThemePreference() {
     // Direct-file/browser fallback.
   }
   return null;
+}
+
+function themeFieldInputRow(key, label, value) {
+  const safeValue = String(value || "");
+  const isHex = /^#[0-9a-f]{6}$/i.test(safeValue);
+  return `
+    <label class="themeAdjustRow">
+      <span>${escapeHtml(label)}</span>
+      <input class="themeValueInput" data-theme-var="${escapeHtml(key)}" value="${escapeHtml(safeValue)}" spellcheck="false">
+      ${isHex ? `<input class="themeColorInput" type="color" value="${escapeHtml(safeValue)}" data-theme-color-for="${escapeHtml(key)}">` : ""}
+    </label>
+  `;
+}
+
+function themeFieldInput(fields, key) {
+  return [...(fields?.querySelectorAll(".themeValueInput") || [])].find((input) => input.dataset.themeVar === key) || null;
+}
+
+function themeColorInput(fields, key) {
+  return [...(fields?.querySelectorAll(".themeColorInput") || [])].find((input) => input.dataset.themeColorFor === key) || null;
+}
+
+function openThemeAdjustDialog() {
+  const dialog = $("themeAdjustDialog");
+  if (!dialog) return;
+  themeAdjustRestoreTheme = normalizeTheme($("editorThemeSelect")?.value || localStorage.getItem("kloudyFabricTheme") || "pastel");
+  const current = themeById(themeAdjustRestoreTheme);
+  const values = themeFieldCurrentValues();
+  const nameInput = $("themeAdjustName");
+  if (nameInput) nameInput.value = current.builtin ? `${current.name} Custom` : current.name;
+  const fields = $("themeAdjustFields");
+  if (fields) {
+    fields.innerHTML = THEME_FIELDS
+      .map(([key, label]) => themeFieldInputRow(key, label, values[key]))
+      .join("");
+    fields.querySelectorAll(".themeValueInput").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.dataset.themeVar;
+        if (key) document.documentElement.style.setProperty(key, input.value);
+        const color = themeColorInput(fields, key);
+        if (color && /^#[0-9a-f]{6}$/i.test(input.value)) color.value = input.value;
+        syncDerivedThemeRgb(themeFieldCurrentValues());
+        applyEditorThemePreviewRefresh();
+      });
+    });
+    fields.querySelectorAll(".themeColorInput").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.dataset.themeColorFor;
+        const text = themeFieldInput(fields, key);
+        if (text) {
+          text.value = input.value;
+          text.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      });
+    });
+  }
+  try {
+    if (!dialog.open) dialog.showModal();
+  } catch (_err) {
+    dialog.setAttribute("open", "");
+  }
+}
+
+function applyEditorThemePreviewRefresh() {
+  if (!canvas) return;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
+  canvas.set("backgroundColor", bg);
+  styleAllTransformControls();
+  updateVisualGridLayer();
+  canvas.requestRenderAll();
+}
+
+async function saveAdjustedTheme() {
+  const name = cleanProjectBaseName($("themeAdjustName")?.value || "Custom Theme", "Custom Theme");
+  const values = {};
+  document.querySelectorAll(".themeValueInput[data-theme-var]").forEach((input) => {
+    values[input.dataset.themeVar] = input.value;
+  });
+  const saveButton = $("saveThemeAdjust");
+  if (saveButton) saveButton.disabled = true;
+  try {
+    const response = await fetch(EDITOR_THEMES_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, values }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadEditorThemes();
+    const themeId = data.theme?.id;
+    if (themeId) applyEditorTheme(themeId);
+    themeAdjustRestoreTheme = null;
+    $("themeAdjustDialog")?.close();
+    setStatus(`Saved custom editor theme: ${data.theme?.name || name}.`);
+  } catch (err) {
+    showError("Theme save failed", err);
+    setStatus(`Theme save failed: ${err.message || err}`);
+  } finally {
+    if (saveButton) saveButton.disabled = false;
+  }
+}
+
+function closeThemeAdjustDialog({ restore = true } = {}) {
+  if (restore && themeAdjustRestoreTheme) applyEditorTheme(themeAdjustRestoreTheme, { persist: false });
+  themeAdjustRestoreTheme = null;
+  $("themeAdjustDialog")?.close();
 }
 
 function cssColorVar(name, fallback) {
@@ -6059,6 +6305,33 @@ function insertDuplicateVinylObjects(clones, originals, mode) {
   return mode;
 }
 
+function selectionBoundsForObjects(objects) {
+  const points = [];
+  objects.forEach((obj) => {
+    const coords = objectCornerCoords(obj);
+    points.push(coords.tl, coords.tr, coords.bl, coords.br);
+  });
+  if (!points.length) return null;
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return {
+    left: minX,
+    top: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+  };
+}
+
+function reflectMatrixForBounds(bounds, axis) {
+  if (!bounds?.center) return null;
+  return axis === "x"
+    ? [-1, 0, 0, 1, bounds.center.x * 2, 0]
+    : [1, 0, 0, -1, 0, bounds.center.y * 2];
+}
+
 function applyReusableFontTransform(object, family) {
   if (!reuseLastFontSize || !isFontFamily(family) || !lastFontShapeTransform) return;
   object.set({
@@ -6283,7 +6556,7 @@ function toggleFavorite(family, index) {
   renderShapeGrid();
 }
 
-function duplicateSelected() {
+async function duplicateSelected() {
   const selected = selectedVinylObjects();
   const selectedSet = new Set(selected);
   const orderedSelection = orderedSelectedVinylObjects();
@@ -6312,29 +6585,30 @@ function duplicateSelected() {
       duplicateGroupNameMap.set(groupId, null);
     }
   });
-  Promise.all(objects.map((obj) => new Promise((resolve) => {
-    obj.clone((clone) => {
-      clone.set({ left: (obj.left || 0) + 30, top: (obj.top || 0) + 30 });
-      if (obj.__kloudySelectionOutline) {
-        clone.set({ shadow: obj.__kloudySelectionOutline.shadow || null });
+  try {
+    const clones = [];
+    for (const obj of objects) {
+      const shape = objectToShape(obj, { includeEditorMeta: true });
+      shape.data = Array.isArray(shape.data) ? shape.data.slice() : [];
+      shape.data[0] = round((Number(shape.data[0]) || 0) + 30);
+      shape.data[1] = round((Number(shape.data[1]) || 0) - 30);
+      if (shape.editor_group_id) {
+        const newGroupId = duplicateGroupMap.get(shape.editor_group_id);
+        shape.editor_group_id = newGroupId;
+        shape.editor_group_name = newGroupId ? duplicateGroupNameMap.get(obj.kloudy.group_id) : null;
       }
+      shape.editor_locked = false;
+      const clone = await makeFabricObject(shape);
+      if (obj.__kloudySelectionOutline) clone.set({ shadow: obj.__kloudySelectionOutline.shadow || null });
       delete clone.__kloudySelectionOutline;
-      clone.kloudy = JSON.parse(JSON.stringify(obj.kloudy));
-      if (clone.kloudy?.group_id) {
-        const newGroupId = duplicateGroupMap.get(clone.kloudy.group_id);
-        clone.kloudy.group_id = newGroupId;
-        clone.kloudy.group_name = newGroupId ? duplicateGroupNameMap.get(obj.kloudy.group_id) : null;
-      }
-      if (clone.kloudy?.locked) setObjectLocked(clone, false);
       applyMaskVisual(clone);
       clone.perPixelTargetFind = $("boxVisibleOnly")?.checked || $("pixelSelect")?.checked || false;
       clone.targetFindTolerance = clone.perPixelTargetFind ? VINYL_HIT_TOLERANCE : 0;
       clone.hoverCursor = "pointer";
       clone.moveCursor = "move";
       styleObjectTransformControls(clone);
-      resolve(clone);
-    });
-  }))).then((clones) => {
+      clones.push(clone);
+    }
     const mode = shapePlacementMode();
     const placement = insertDuplicateVinylObjects(clones, objects, mode);
     if (clones.length === 1) {
@@ -6349,7 +6623,10 @@ function duplicateSelected() {
     pushHistory(placement === "top" ? "duplicate" : `duplicate ${placement}`);
     const placementText = placement === "top" ? "at top" : `${placement} selected layer(s)`;
     setStatus(`Duplicated ${clones.length} layer(s) ${placementText}.${objects.length !== selectedSet.size ? ` Skipped ${selectedSet.size - objects.length} locked layer(s).` : ""}`);
-  });
+  } catch (err) {
+    showError("Duplicate failed", err);
+    setStatus(`Duplicate failed: ${err.message || err}`);
+  }
 }
 
 function deleteSelected() {
@@ -6457,8 +6734,13 @@ function flipSelected(axis) {
   }
   const active = canvas.getActiveObject();
   if (isActiveSelectionObject(active)) canvas.discardActiveObject();
+  const bounds = objects.length > 1 ? selectionBoundsForObjects(objects) : null;
+  const reflection = bounds ? reflectMatrixForBounds(bounds, axis) : null;
   objects.forEach((obj) => {
-    if (axis === "x") obj.set("flipX", !obj.flipX);
+    if (reflection) {
+      const matrix = fabric.util.multiplyTransformMatrices(reflection, obj.calcTransformMatrix());
+      fabric.util.applyTransformToObject(obj, matrix);
+    } else if (axis === "x") obj.set("flipX", !obj.flipX);
     else obj.set("flipY", !obj.flipY);
     updateObjectScaleSigns(obj);
     obj.setCoords();
@@ -7317,11 +7599,18 @@ async function maybeShowAutosaveRecovery() {
 
 function bindUi() {
   const initialTheme = localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme;
-  applyEditorTheme(initialTheme, { persist: false });
-  loadEditorThemePreference().then((serverTheme) => {
+  loadEditorThemes().then(() => loadEditorThemePreference()).then((serverTheme) => {
+    if (!serverTheme) applyEditorTheme(initialTheme, { persist: false });
     if (!serverTheme) saveEditorThemePreference(normalizeTheme(initialTheme));
   });
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
+  $("adjustTheme")?.addEventListener("click", openThemeAdjustDialog);
+  $("closeThemeAdjust")?.addEventListener("click", () => closeThemeAdjustDialog());
+  $("themeAdjustDialog")?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeThemeAdjustDialog();
+  });
+  $("saveThemeAdjust")?.addEventListener("click", saveAdjustedTheme);
   $("openJsonBrowser")?.addEventListener("click", openJsonBrowser);
   $("closeJsonBrowser")?.addEventListener("click", () => $("jsonBrowserDialog")?.close());
   $("refreshJsonBrowser")?.addEventListener("click", refreshJsonBrowser);

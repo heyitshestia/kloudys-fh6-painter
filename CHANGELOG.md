@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.49
+- Added a Fabric editor theme adjuster that can save custom file-backed editor themes.
+- Improved multi-shape/group flipping so selections flip as one object instead of flipping each layer independently.
+- Improved duplicated selection precision to avoid rounded scale drift.
+
 ## 2.0.48
 - Added an Open Folder shortcut to the Fabric editor project browser for bulk project-file imports.
 - Fabric editor project saves now preserve source overlay image data and exact overlay placement when an overlay was used.
