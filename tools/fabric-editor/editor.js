@@ -2247,6 +2247,16 @@ function syncCanvasObjectCoords() {
   canvas.getActiveObject()?.setCoords?.();
 }
 
+function finishCanvasPan() {
+  if (!canvas || !isPanning) return;
+  // Direct viewportTransform mutation is fast while dragging, but Fabric needs
+  // the transform re-applied before hit-testing lines up with the rendered view.
+  canvas.setViewportTransform(canvas.viewportTransform);
+  syncCanvasObjectCoords();
+  updateVisualGridLayer();
+  canvas.requestRenderAll();
+}
+
 function scheduleCanvasGeometrySync() {
   if (!canvas || canvasGeometryFrame) return;
   canvasGeometryFrame = requestAnimationFrame(() => {
@@ -2487,6 +2497,7 @@ function initCanvas() {
     if (activeToolMode === "guides") canvas._groupSelector = null;
     transformAnchorSnapshot = null;
     clearSnapOverlay();
+    finishCanvasPan();
     isPanning = false;
     canvas.selection = !shapeEyedropperActive && activeToolMode !== "guides" && activeToolMode !== "source";
     canvas.skipTargetFind = vBoxSelectActive;
@@ -3463,6 +3474,71 @@ function contactScaleAxis(contactKind) {
   return null;
 }
 
+function axisValueForContactPoint(point, axis) {
+  if (!point) return null;
+  if (axis === "x") return Number(point.x);
+  if (axis === "y") return Number(point.y);
+  return null;
+}
+
+function exactAxisResidual(point, line) {
+  if (!point || !line || (line.axis !== "x" && line.axis !== "y")) return null;
+  const value = axisValueForContactPoint(point, line.axis);
+  if (!Number.isFinite(value)) return null;
+  return Number(line.value) - value;
+}
+
+function refineAnchoredScaleSideToAxisLine(target, contact, line, maxIterations = 4) {
+  const scaleAxis = contactScaleAxis(contact?.kind);
+  if (!target || !contact || !line || line.axis !== scaleAxis) return null;
+  for (let attempt = 0; attempt < maxIterations; attempt++) {
+    const active = refreshedGuideContact(target, contact);
+    const residual = exactAxisResidual(active?.point, line);
+    if (residual === null) return null;
+    if (Math.abs(residual) <= 0.0000001) return { contact: active, residual };
+    const anchorResult = stabilizeOppositeTransformAnchor(target, contact, "scale");
+    const anchor = anchorResult?.originalAnchor;
+    if (!anchor) return { contact: active, residual };
+    const axisComponent = scaleAxis === "x" ? active.point.x - anchor.x : active.point.y - anchor.y;
+    const desiredComponent = Number(line.value) - (scaleAxis === "x" ? anchor.x : anchor.y);
+    if (Math.abs(axisComponent) < 0.0000001) return { contact: active, residual };
+    const factor = desiredComponent / axisComponent;
+    if (!Number.isFinite(factor) || Math.abs(factor) < 0.02 || Math.abs(factor) > 50) return { contact: active, residual };
+    if (scaleAxis === "x") target.set({ scaleX: (Number(target.scaleX) || 1) * factor });
+    else target.set({ scaleY: (Number(target.scaleY) || 1) * factor });
+    target.setCoords();
+    stabilizeOppositeTransformAnchor(target, contact, "scale");
+  }
+  const contactAfter = refreshedGuideContact(target, contact);
+  return { contact: contactAfter, residual: exactAxisResidual(contactAfter?.point, line) };
+}
+
+function finalizeAxisMoveSnap(target, bestX = null, bestY = null) {
+  if (!target || (!bestX && !bestY)) return null;
+  target.setCoords();
+  const rect = target.getBoundingRect(true, true);
+  let deltaX = 0;
+  let deltaY = 0;
+  if (bestX?.line?.axis === "x") {
+    const xPoints = axisSnapPointsForLine(rect, { source: "control", kind: bestX.point }, bestX.line).xPoints;
+    const point = xPoints.find((item) => item.kind === bestX.point) || xPoints[0];
+    if (point) deltaX = Number(bestX.line.value) - Number(point.value);
+  }
+  if (bestY?.line?.axis === "y") {
+    const yPoints = axisSnapPointsForLine(rect, { source: "control", kind: bestY.point }, bestY.line).yPoints;
+    const point = yPoints.find((item) => item.kind === bestY.point) || yPoints[0];
+    if (point) deltaY = Number(bestY.line.value) - Number(point.value);
+  }
+  if (Math.abs(deltaX) > 0.0000001 || Math.abs(deltaY) > 0.0000001) {
+    target.set({
+      left: (target.left || 0) + deltaX,
+      top: (target.top || 0) + deltaY,
+    });
+    target.setCoords();
+  }
+  return { deltaX, deltaY };
+}
+
 function snapAnchoredScaleSideToAxisLine(target, contact, anchorResult, threshold) {
   if (!target || !contact || !anchorResult || contact.kind === "center") return null;
   const scaleAxis = contactScaleAxis(contact.kind);
@@ -3506,17 +3582,19 @@ function snapAnchoredScaleSideToAxisLine(target, contact, anchorResult, threshol
   if (scaleAxis === "x") target.set({ scaleX: (Number(target.scaleX) || 1) * factor });
   else target.set({ scaleY: (Number(target.scaleY) || 1) * factor });
   target.setCoords();
-  const correctedAnchor = stabilizeOppositeTransformAnchor(target, contact, "scale");
-  const correctedContact = refreshedGuideContact(target, contact);
+  let correctedAnchor = stabilizeOppositeTransformAnchor(target, contact, "scale");
+  const refined = refineAnchoredScaleSideToAxisLine(target, contact, best.line);
+  correctedAnchor = stabilizeOppositeTransformAnchor(target, contact, "scale") || correctedAnchor;
+  const correctedContact = refined?.contact || refreshedGuideContact(target, contact);
   return {
     line: best.line,
     projection: intersection,
     from: active.point,
     contact: correctedContact,
     anchorKind: correctedAnchor?.anchorKind || anchorResult.anchorKind,
-    distance: scaleAxis === "x"
-      ? Math.abs(correctedContact.point.x - best.line.value)
-      : Math.abs(correctedContact.point.y - best.line.value),
+    distance: Math.abs(refined?.residual ?? (scaleAxis === "x"
+      ? correctedContact.point.x - best.line.value
+      : correctedContact.point.y - best.line.value)),
     scaleAxis,
   };
 }
@@ -3946,6 +4024,7 @@ function snapTargetToGuides(target, event = null) {
       });
     }
     target.setCoords();
+    finalizeAxisMoveSnap(target, bestX, bestY);
     overlayContact = refreshedGuideContact(target, { kind: axisSnapContactKind(bestX, bestY) });
   }
   renderSnapOverlayForTarget(target, overlayContact, overlayResult);
