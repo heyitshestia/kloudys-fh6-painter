@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.48
+- Added an Open Folder shortcut to the Fabric editor project browser for bulk project-file imports.
+- Fabric editor project saves now preserve source overlay image data and exact overlay placement when an overlay was used.
+
 ## 2.0.47
 - Improved Fabric editor shape selection accuracy for small edge-cleanup details.
 - Reduced Fabric editor canvas lag while panning, zooming, and editing high-layer vinyls.

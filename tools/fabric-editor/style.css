@@ -1620,6 +1620,10 @@ dialog::backdrop {
   min-width: 150px;
 }
 
+.compactIconButton {
+  white-space: nowrap;
+}
+
 #jsonBrowserSummary {
   min-width: 0;
   flex: 1;

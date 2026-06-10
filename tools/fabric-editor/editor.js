@@ -20,6 +20,7 @@ const EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json";
 const PROJECT_BROWSER_API = "/api/fabric-editor/project-browser";
 const PROJECT_FILE_API = "/api/fabric-editor/project-file";
 const PROJECT_SAVE_API = "/api/fabric-editor/save-project";
+const PROJECT_OPEN_FOLDER_API = "/api/fabric-editor/open-project-folder";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
@@ -124,6 +125,7 @@ let shapeEyedropperActive = false;
 let activeToolMode = "select";
 let overlaySampler = null;
 let layeredOverlayState = null;
+let overlaySourceState = null;
 let liveOverlayColorFrame = null;
 let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
 let collapsedLayerGroups = new Set();
@@ -4527,6 +4529,23 @@ async function refreshProjectBrowser() {
   }
 }
 
+async function openProjectFolder() {
+  const button = $("openProjectFolder");
+  if (button) button.disabled = true;
+  setProjectBrowserStatus("Opening internal project folder...");
+  try {
+    const response = await fetch(PROJECT_OPEN_FOLDER_API, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    setProjectBrowserStatus("Project folder opened. Drop .fabric-project.json files there, then click Refresh.");
+  } catch (err) {
+    showError("Open project folder failed", err);
+    setProjectBrowserStatus(err.message || String(err));
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function openProjectBrowser() {
   const dialog = $("projectBrowserDialog");
   if (!dialog) return;
@@ -5786,6 +5805,8 @@ async function saveProject() {
     editor_guides: savedGuideState(),
     editor_collapsed_groups: collapsedLayerGroupIds(),
   };
+  const sourceOverlay = sourceOverlayProjectState();
+  if (sourceOverlay) payload.editor_source_overlay = sourceOverlay;
   projectSaveInProgress = true;
   const saveButton = $("saveProject");
   if (saveButton) saveButton.disabled = true;
@@ -5817,6 +5838,7 @@ async function loadProjectPayload(payload, displayName = "project") {
       editor_collapsed_groups: payload.editor_collapsed_groups || [],
     });
     applySavedGuideState(payload.editor_guides || null);
+    await restoreSourceOverlayFromProject(payload.editor_source_overlay || null);
   } catch (err) {
     loadedName = previousName;
     currentProjectName = null;
@@ -6623,6 +6645,107 @@ function rebuildOverlaySampler(img) {
   };
 }
 
+function sourceOverlayProjectState() {
+  if (!overlayImage || !overlaySourceState) return null;
+  const source = {
+    version: 1,
+    kind: overlaySourceState.kind || "image",
+    file_name: overlaySourceState.fileName || "source-overlay",
+    mime_type: overlaySourceState.mimeType || null,
+    data_url: overlaySourceState.dataUrl || null,
+    svg_text: overlaySourceState.svgText || null,
+    intrinsic_width: overlaySampler?.width || overlayImage.width || null,
+    intrinsic_height: overlaySampler?.height || overlayImage.height || null,
+    object_width: overlayImage.width || null,
+    object_height: overlayImage.height || null,
+    rendered_width: overlayImage.getScaledWidth?.() || null,
+    rendered_height: overlayImage.getScaledHeight?.() || null,
+    transform: {
+      left: round(overlayImage.left || 0),
+      top: round(overlayImage.top || 0),
+      scaleX: Number(overlayImage.scaleX) || 1,
+      scaleY: Number(overlayImage.scaleY) || 1,
+      angle: Number(overlayImage.angle) || 0,
+      skewX: Number(overlayImage.skewX) || 0,
+      skewY: Number(overlayImage.skewY) || 0,
+      flipX: Boolean(overlayImage.flipX),
+      flipY: Boolean(overlayImage.flipY),
+      opacity: Number(overlayImage.opacity ?? 1),
+      visible: overlayImage.visible !== false,
+    },
+    controls: {
+      scale_percent: Number($("overlayScalePercent")?.value || $("overlayScale")?.value || 100),
+      opacity_percent: Number($("overlayOpacity")?.value || Math.round((overlayImage.opacity ?? 1) * 100)),
+      layer_mode: overlayLayerMode,
+    },
+  };
+  if (layeredOverlayState) {
+    source.layered_svg = {
+      selected_index: Number(layeredOverlayState.selectedIndex) || 0,
+      view_mode: String(layeredOverlayState.viewMode || "original"),
+      width: Number(layeredOverlayState.width) || null,
+      height: Number(layeredOverlayState.height) || null,
+      layers: Array.isArray(layeredOverlayState.layers) ? layeredOverlayState.layers.map((layer) => ({ ...layer })) : [],
+    };
+  }
+  return source;
+}
+
+function clearSourceOverlayState() {
+  if (overlayImage && canvas?.getObjects().includes(overlayImage)) canvas.remove(overlayImage);
+  overlayImage = null;
+  overlaySampler = null;
+  overlaySourceState = null;
+  clearLayeredOverlayState();
+  updateSourceInteractivity();
+}
+
+async function restoreSourceOverlayFromProject(state) {
+  if (!state) {
+    clearSourceOverlayState();
+    return;
+  }
+  const fileName = String(state.file_name || "source-overlay");
+  if (state.kind === "layered_svg" && state.svg_text) {
+    layeredOverlayState = parseLayeredSvg(String(state.svg_text), fileName);
+    const layered = state.layered_svg || {};
+    layeredOverlayState.selectedIndex = Math.max(0, Math.min(
+      Number(layered.selected_index) || 0,
+      Math.max(0, layeredOverlayState.layers.length - 1)
+    ));
+    layeredOverlayState.viewMode = String(layered.view_mode || "original");
+    const url = layeredSvgDataUrl();
+    if (!url) throw new Error("Saved layered SVG overlay could not be rendered.");
+    await loadOverlayImageFromUrl(url, fileName, { mimeType: state.mime_type || "image/svg+xml", projectState: state });
+    return;
+  }
+  if (!state.data_url) {
+    clearSourceOverlayState();
+    return;
+  }
+  clearLayeredOverlayState();
+  await loadOverlayImageFromUrl(String(state.data_url), fileName, { mimeType: state.mime_type || null, projectState: state });
+}
+
+function applyOverlayProjectTransform(state) {
+  if (!overlayImage || !state?.transform) return;
+  const transform = state.transform;
+  overlayImage.set({
+    left: Number(transform.left) || 0,
+    top: Number(transform.top) || 0,
+    scaleX: Number(transform.scaleX) || 1,
+    scaleY: Number(transform.scaleY) || 1,
+    angle: Number(transform.angle) || 0,
+    skewX: Number(transform.skewX) || 0,
+    skewY: Number(transform.skewY) || 0,
+    flipX: Boolean(transform.flipX),
+    flipY: Boolean(transform.flipY),
+    opacity: Number.isFinite(Number(transform.opacity)) ? Number(transform.opacity) : 1,
+    visible: transform.visible !== false,
+  });
+  overlayImage.setCoords();
+}
+
 function clearLayeredOverlayState() {
   layeredOverlayState = null;
   setHidden("layeredOverlayControls", true);
@@ -6945,35 +7068,57 @@ function sampleOverlayColorForSelected() {
   }
 }
 
-function loadOverlayImageFromUrl(url, fileName) {
-  const img = new Image();
-  img.onload = () => {
-    if (overlayImage) canvas.remove(overlayImage);
-    rebuildOverlaySampler(img);
-    overlayImage = new fabric.Image(img, {
-      originX: "center",
-      originY: "center",
-      left: 0,
-      top: 0,
-      opacity: Number($("overlayOpacity").value) / 100,
-      selectable: false,
-      evented: false,
-      excludeFromExport: true,
-    });
-    overlayImage.kloudyOverlay = true;
-    const fit = 1800 / Math.max(img.width, img.height);
-    const factor = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100) / 100;
-    overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
-    canvas.add(overlayImage);
-    if (layeredOverlayState) populateLayeredOverlayControls();
-    if (activeToolMode === "source") updateSourceInteractivity();
-    else layerEditorHelpers();
-    canvas.requestRenderAll();
-    setStatus(layeredOverlayState ? `Layered SVG overlay loaded: ${fileName}` : `Overlay loaded: ${fileName}`);
-    updateHud();
-  };
-  img.onerror = () => setStatus(`Overlay load failed: ${fileName} is not a usable image.`);
-  img.src = url;
+function loadOverlayImageFromUrl(url, fileName, options = {}) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      if (overlayImage) canvas.remove(overlayImage);
+      rebuildOverlaySampler(img);
+      overlaySourceState = {
+        kind: layeredOverlayState ? "layered_svg" : "image",
+        fileName,
+        mimeType: options.mimeType || null,
+        dataUrl: layeredOverlayState ? null : url,
+        svgText: layeredOverlayState?.sourceText || null,
+      };
+      overlayImage = new fabric.Image(img, {
+        originX: "center",
+        originY: "center",
+        left: 0,
+        top: 0,
+        opacity: Number($("overlayOpacity").value) / 100,
+        selectable: false,
+        evented: false,
+        excludeFromExport: true,
+      });
+      overlayImage.kloudyOverlay = true;
+      if (options.projectState) {
+        applyOverlayProjectTransform(options.projectState);
+        if (options.projectState.controls) {
+          syncOverlayScaleControls(options.projectState.controls.scale_percent || 100);
+          if ($("overlayOpacity")) $("overlayOpacity").value = Math.round((overlayImage.opacity ?? 1) * 100);
+        }
+      } else {
+        const fit = 1800 / Math.max(img.width, img.height);
+        const factor = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100) / 100;
+        overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
+      }
+      canvas.add(overlayImage);
+      if (layeredOverlayState) populateLayeredOverlayControls();
+      if (activeToolMode === "source") updateSourceInteractivity();
+      else layerEditorHelpers();
+      canvas.requestRenderAll();
+      setStatus(layeredOverlayState ? `Layered SVG overlay loaded: ${fileName}` : `Overlay loaded: ${fileName}`);
+      updateHud();
+      resolve(overlayImage);
+    };
+    img.onerror = () => {
+      const error = new Error(`${fileName} is not a usable image.`);
+      setStatus(`Overlay load failed: ${error.message}`);
+      reject(error);
+    };
+    img.src = url;
+  });
 }
 
 function addOverlayFile(file) {
@@ -6995,13 +7140,13 @@ function addOverlayFile(file) {
         setStatus(`Overlay load failed: ${file.name} could not be rendered.`);
         return;
       }
-      loadOverlayImageFromUrl(url, file.name);
+      loadOverlayImageFromUrl(url, file.name, { mimeType: file.type || "image/svg+xml" });
     };
     reader.readAsText(file);
     return;
   }
   clearLayeredOverlayState();
-  reader.onload = () => loadOverlayImageFromUrl(reader.result, file.name);
+  reader.onload = () => loadOverlayImageFromUrl(reader.result, file.name, { mimeType: file.type || null });
   reader.readAsDataURL(file);
 }
 
@@ -7037,6 +7182,7 @@ function removeOverlay() {
   canvas.remove(overlayImage);
   overlayImage = null;
   overlaySampler = null;
+  overlaySourceState = null;
   clearLayeredOverlayState();
   updateSourceInteractivity();
   canvas.requestRenderAll();
@@ -7184,6 +7330,7 @@ function bindUi() {
   $("loadProject")?.addEventListener("click", openProjectBrowser);
   $("closeProjectBrowser")?.addEventListener("click", () => $("projectBrowserDialog")?.close());
   $("refreshProjectBrowser")?.addEventListener("click", refreshProjectBrowser);
+  $("openProjectFolder")?.addEventListener("click", openProjectFolder);
   $("selectProjectEntry")?.addEventListener("click", loadSelectedProject);
   $("importJsonFromDisk")?.addEventListener("click", () => $("jsonInput")?.click());
   $("jsonInput").addEventListener("change", (event) => {

@@ -7,9 +7,11 @@ import http.server
 import io
 import json
 import math
+import os
 import re
 import socket
 import socketserver
+import subprocess
 import sys
 import threading
 import time
@@ -39,6 +41,7 @@ EDITOR_EXPORT_API = "/api/fabric-editor/save-editor-json"
 PROJECT_BROWSER_API = "/api/fabric-editor/project-browser"
 PROJECT_FILE_API = "/api/fabric-editor/project-file"
 PROJECT_SAVE_API = "/api/fabric-editor/save-project"
+PROJECT_OPEN_FOLDER_API = "/api/fabric-editor/open-project-folder"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 HANDMADE_ROOT = ROOT / "imgs" / "handmade"
 EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
@@ -336,6 +339,16 @@ def _project_entries() -> list[dict]:
         except Exception:
             continue
     return sorted(entries, key=lambda item: (item["mtime"], item["title"]), reverse=True)
+
+
+def _open_folder(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    if sys.platform.startswith("win"):
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
 
 
 def _read_stable_file_bytes(path: Path, checks: int = 2, delay: float = 0.035) -> bytes | None:
@@ -906,6 +919,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "path": str(target),
                 "name": target.name,
                 "title": project_name,
+            })
+            return
+        if parsed.path == PROJECT_OPEN_FOLDER_API:
+            try:
+                _open_folder(EDITOR_PROJECT_ROOT)
+            except Exception as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({
+                "ok": True,
+                "folder": str(EDITOR_PROJECT_ROOT),
             })
             return
         self._send_json({"error": "not found"}, status=404)
