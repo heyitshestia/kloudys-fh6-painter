@@ -144,7 +144,7 @@ exit /b 0
 :check_update_locks
 set "LOCK_REPORT=%TEMP%\kloudys-update-locks-%RANDOM%.txt"
 if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $names=@('KloudysGeneratorV7.exe','KloudysGeneratorV6.exe','KloudysGeneratorV6-Go.exe','KloudysGeneratorV5.exe','KloudysGeneratorV5DetailLock.exe','KloudysGeneratorV4.exe','KloudysGeneratorV2.exe','KloudysGeneratorV2Fast.exe','KloudysGeneratorV2Speed.exe','ForzaVinylStudio.exe'); $match={ ($names -contains $_.Name) -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; $locks=Get-CimInstance Win32_Process | Where-Object $match; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 800; $remaining=Get-CimInstance Win32_Process | Where-Object $match; if($remaining){ 'Still running after termination attempt:' | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $remaining | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 } }; exit 0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $names=@('KloudysGalateaGenesis.exe','KloudysGeneratorV7.exe','KloudysGeneratorV6.exe','KloudysGeneratorV6-Go.exe','KloudysGeneratorV5.exe','KloudysGeneratorV5DetailLock.exe','KloudysGeneratorV4.exe','KloudysGeneratorV2.exe','KloudysGeneratorV2Fast.exe','KloudysGeneratorV2Speed.exe','ForzaVinylStudio.exe'); $match={ ($names -contains $_.Name) -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; $locks=Get-CimInstance Win32_Process | Where-Object $match; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 800; $remaining=Get-CimInstance Win32_Process | Where-Object $match; if($remaining){ 'Still running after termination attempt:' | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; $remaining | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Add-Content -LiteralPath '%LOCK_REPORT%' -Encoding ASCII; exit 2 } }; exit 0"
 if errorlevel 1 (
     call :log ""
     call :log "Update tried to stop KFPS processes, but Windows reports that one is still running."
@@ -256,6 +256,7 @@ for %%F in (
     "settings\b.okay-draft.ini"
     "settings\c.pretty-good.ini"
     "settings\d.slow-beautiful.ini"
+    "KloudysGeneratorV7.exe"
     "KloudysGeneratorV2.exe"
     "KloudysGeneratorV2Fast.exe"
     "KloudysGeneratorV2Speed.exe"

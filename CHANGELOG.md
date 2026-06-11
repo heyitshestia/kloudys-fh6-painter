@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.50
+- Replaced the bundled V7 generator with Kloudy's Galatea Genesis.
+- Updated generation, release packaging, and updater process handling for the new generator executable name.
+
 ## 2.0.49
 - Added a Fabric editor theme adjuster that can save custom file-backed editor themes.
 - Improved multi-shape/group flipping so selections flip as one object instead of flipping each layer independently.

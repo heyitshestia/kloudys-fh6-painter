@@ -73,7 +73,7 @@ Kloudys Painter Standalone/
     05_check_environment.bat
     app_qt.py
     launcher_qt.py
-    KloudysGeneratorV7.exe
+    KloudysGalateaGenesis.exe
     python/
     settings/
     tools/
