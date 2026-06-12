@@ -799,7 +799,7 @@ def checkpoint_step_from_save_at(save_at_text, target_count):
     return "250" if target_count <= 1000 else "500"
 
 
-def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False, output_dir=None):
+def build_generator_command(image_path, setting, enable_repair=False, enable_overshoot=False, output_dir=None, seed=0):
     image_path = Path(image_path)
     output_dir = Path(output_dir) if output_dir is not None else generator_output_dir(image_path)
     reports_dir = generator_run_subdir(output_dir, REPORTS_DIR_NAME)
@@ -840,6 +840,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
             "targeted_repair": bool(enable_repair or setting_repair),
             "vroom_boost": bool(setting.get("vroom_boost")),
         },
+        "seed": int(seed or 0),
         "generator_command_options": {
             "target_shapes": target_shapes,
             "reserved_import_layers": reserved_import_layers,
@@ -852,6 +853,7 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
             "overshoot_ratio": "1.12" if enable_overshoot else "1.0",
             "overshoot_max_extra": "400" if enable_overshoot else "0",
             "repair_enabled": bool(enable_repair or setting_repair),
+            "seed": int(seed or 0),
         },
     }
     run_metadata_path.parent.mkdir(parents=True, exist_ok=True)
@@ -892,4 +894,6 @@ def build_generator_command(image_path, setting, enable_repair=False, enable_ove
         cmd.append("--enable-repair")
     else:
         cmd.append("--disable-refine")
+    if int(seed or 0) > 0:
+        cmd.extend(["--seed", str(int(seed))])
     return cmd

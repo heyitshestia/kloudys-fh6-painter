@@ -3108,6 +3108,7 @@ class MainWindow(QMainWindow):
         self.refresh_generated_browser()
         self.render_lists()
         if self.images:
+            self.auto_select_profile_for_image(self.images[0])
             self.show_preview_bytes(render_source_image(self.images[0]) or b"")
             self.update_source_check_banner(self.images[0])
             self.sync_auto_summary()
@@ -3503,6 +3504,28 @@ class MainWindow(QMainWindow):
         self.vroom.stateChanged.connect(self.sync_auto_summary)
         self.vroom_row = self.checkbox_with_help(self.vroom, "sample_goblin")
         quality_layout.addWidget(self.vroom_row)
+        seed_row = QHBoxLayout()
+        seed_row.addWidget(QLabel("Seed"))
+        self.seed_input = QLineEdit()
+        self.seed_input.setPlaceholderText("0 = random")
+        self.seed_input.setText(str(self.app_settings.get("generator_seed", "0") or "0"))
+        self.seed_input.textEdited.connect(self.save_generator_seed_settings)
+        seed_row.addWidget(self.seed_input, 1)
+        self.seed_mode_combo = self.make_combo(max_visible=2, min_height=34)
+        self.seed_mode_combo.addItem("Randomize", "randomize")
+        self.seed_mode_combo.addItem("Fixed", "fixed")
+        self.seed_mode_combo.addItem("Increment", "increment")
+        self.seed_mode_combo.addItem("Decrement", "decrement")
+        saved_seed_mode = str(self.app_settings.get("generator_seed_mode", "randomize")).strip().lower()
+        saved_seed_index = max(0, self.seed_mode_combo.findData(saved_seed_mode))
+        self.seed_mode_combo.setCurrentIndex(saved_seed_index)
+        self.seed_mode_combo.currentIndexChanged.connect(self.save_generator_seed_settings)
+        seed_row.addWidget(self.seed_mode_combo)
+        seed_random = QPushButton("New")
+        seed_random.setToolTip("Generate a new reproducible seed now.")
+        seed_random.clicked.connect(self.randomize_seed_field)
+        seed_row.addWidget(seed_random)
+        quality_layout.addLayout(seed_row)
         preset_actions = QHBoxLayout()
         save_preset = QPushButton("Save custom preset")
         save_preset.clicked.connect(self.save_current_custom_preset)
@@ -4626,6 +4649,89 @@ class MainWindow(QMainWindow):
         self.update_setting_description()
         self.sync_auto_summary()
 
+    def auto_preset_key_for_image(self, image_path: Path) -> str:
+        loaded = load_cv2()
+        if not loaded:
+            return "shaded"
+        cv2, np = loaded
+        data = read_stable_file_bytes(Path(image_path))
+        image = decode_image_bytes(data, flags=cv2.IMREAD_UNCHANGED) if data else None
+        if image is None:
+            return "shaded"
+        height, width = image.shape[:2]
+        scale = min(384 / max(1, width), 384 / max(1, height), 1.0)
+        if scale < 1.0:
+            image = cv2.resize(image, (max(1, int(width * scale)), max(1, int(height * scale))), interpolation=cv2.INTER_AREA)
+        if image.ndim == 2:
+            bgr = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            alpha = np.full(image.shape, 255, dtype=np.uint8)
+        elif image.shape[2] >= 4:
+            bgr = image[:, :, :3]
+            alpha = image[:, :, 3]
+        else:
+            bgr = image[:, :, :3]
+            alpha = np.full(image.shape[:2], 255, dtype=np.uint8)
+        visible = alpha > 24
+        if int(np.count_nonzero(visible)) < 32:
+            return "shaded"
+        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 48, 128)
+        edge_density = float(np.mean(edges[visible] > 0))
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        visible_rgb = rgb[visible]
+        sample_limit = 20000
+        if len(visible_rgb) > sample_limit:
+            step = max(1, len(visible_rgb) // sample_limit)
+            visible_rgb = visible_rgb[::step]
+        quantized = (visible_rgb // 24).astype(np.uint8)
+        color_bins = int(len(np.unique(quantized, axis=0)))
+        color_ratio = color_bins / max(1, len(visible_rgb))
+        luma = gray[visible].astype(np.float32)
+        luma_std = float(np.std(luma))
+        blur = cv2.GaussianBlur(gray, (0, 0), 1.4)
+        local_detail = float(np.mean(np.abs(gray.astype(np.float32) - blur.astype(np.float32))[visible]))
+
+        if color_bins <= 90 and color_ratio < 0.030 and edge_density >= 0.045:
+            return "flat"
+        if edge_density < 0.070 and color_bins >= 140 and local_detail < 12.0 and luma_std >= 28.0:
+            return "gradient"
+        return "shaded"
+
+    def setting_for_auto_preset_key(self, preset_key: str):
+        shape_mode, name_hint = {
+            "flat": ("mixed_edge_bias", "flat"),
+            "gradient": ("mixed_soft_detail", "gradient"),
+            "shaded": ("mixed_smart_detail", "shaded"),
+        }.get(preset_key, ("mixed_smart_detail", "shaded"))
+        fallback = None
+        for item in self.settings:
+            if item.get("is_user_preset"):
+                continue
+            values = item.get("values", {})
+            name = f"{item.get('name', '')} {item.get('label', '')} {item.get('path', '')}".lower()
+            if str(values.get("shapeMode", "")).strip().lower() == shape_mode:
+                return item
+            if fallback is None and name_hint in name:
+                fallback = item
+        return fallback
+
+    def auto_select_profile_for_image(self, image_path: Path) -> dict | None:
+        if not hasattr(self, "profile_combo") or not self.settings:
+            return None
+        setting = self.setting_for_auto_preset_key(self.auto_preset_key_for_image(image_path))
+        if not setting:
+            return None
+        target_path = Path(setting.get("path", ""))
+        for index in range(self.profile_combo.count()):
+            item = self.profile_combo.itemData(index)
+            if item and Path(item.get("path", "")) == target_path:
+                if self.profile_combo.currentIndex() != index:
+                    self.profile_combo.setCurrentIndex(index)
+                else:
+                    self.update_setting_description()
+                return item
+        return None
+
     def current_custom_values(self):
         values = {
             "stopAt": self.custom_layers.text(),
@@ -4659,6 +4765,62 @@ class MainWindow(QMainWindow):
             "randomSamples": self.custom_random.text(),
             "mutatedSamples": self.custom_mutated.text(),
         }
+
+    def generator_seed_mode(self) -> str:
+        if hasattr(self, "seed_mode_combo"):
+            mode = self.seed_mode_combo.currentData()
+            return mode if mode in ("randomize", "fixed", "increment", "decrement") else "randomize"
+        return str(self.app_settings.get("generator_seed_mode", "randomize") or "randomize")
+
+    def generator_seed_value(self) -> int:
+        if not hasattr(self, "seed_input"):
+            return 0
+        text = self.seed_input.text().strip()
+        if not text:
+            return 0
+        try:
+            return max(0, min(int(text), 2147483647))
+        except ValueError:
+            return 0
+
+    def new_generator_seed(self) -> int:
+        return random.randint(1, 2147483647)
+
+    def seed_for_batch_item(self, seed_mode: str, seed_value: int, item_index: int) -> int:
+        seed_value = int(seed_value or 0)
+        if seed_mode == "randomize":
+            return self.new_generator_seed()
+        if seed_mode == "increment":
+            base = seed_value if seed_value > 0 else self.new_generator_seed()
+            return min(2147483647, base + max(0, item_index - 1))
+        if seed_mode == "decrement":
+            base = seed_value if seed_value > 0 else self.new_generator_seed()
+            return max(1, base - max(0, item_index - 1))
+        return seed_value
+
+    def next_seed_after_batch(self, seed_mode: str, seed_value: int, image_count: int, last_seed: int) -> int:
+        if seed_mode == "randomize":
+            return int(last_seed or seed_value or 0)
+        if seed_mode == "increment":
+            base = int(seed_value or last_seed or 0)
+            return min(2147483647, base + max(1, image_count))
+        if seed_mode == "decrement":
+            base = int(seed_value or last_seed or 1)
+            return max(1, base - max(1, image_count))
+        return int(seed_value or 0)
+
+    def randomize_seed_field(self):
+        if not hasattr(self, "seed_input"):
+            return
+        self.seed_input.setText(str(self.new_generator_seed()))
+        self.save_generator_seed_settings()
+
+    def save_generator_seed_settings(self, *_args):
+        if not hasattr(self, "app_settings"):
+            return
+        self.app_settings["generator_seed"] = str(self.generator_seed_value())
+        self.app_settings["generator_seed_mode"] = self.generator_seed_mode()
+        save_app_settings(self.app_settings)
 
     def save_current_custom_preset(self):
         setting = self.selected_setting()
@@ -4947,6 +5109,7 @@ class MainWindow(QMainWindow):
         self.image_list.setCurrentRow(0)
         self.detail_heatmap_preview_active = False
         self.preview_heatmap_button.setText("Preview heatmap")
+        self.auto_select_profile_for_image(self.images[0])
         self.show_preview_bytes(render_source_image(self.images[0]) or b"")
         self.update_source_check_banner(self.images[0])
         self.sync_auto_summary()
@@ -5142,6 +5305,7 @@ class MainWindow(QMainWindow):
                 self.detail_heatmap_preview_active = False
             if hasattr(self, "preview_heatmap_button"):
                 self.preview_heatmap_button.setText("Preview heatmap")
+            self.auto_select_profile_for_image(self.images[row])
             self.show_preview_bytes(render_source_image(self.images[row]) or b"")
             self.update_source_check_banner(self.images[row])
             self.sync_auto_summary()
@@ -5345,6 +5509,8 @@ class MainWindow(QMainWindow):
         ui_overrides.update(self.detail_heatmap_values())
         pro_overrides = self.pro_custom_values()
         sample_boost = self.vroom.isChecked()
+        seed_mode = self.generator_seed_mode()
+        seed_value = self.generator_seed_value()
         repair_enabled = self.repair_enabled.isChecked()
         self.shutdown_event.clear()
         self.stop_generation_event.clear()
@@ -5360,7 +5526,7 @@ class MainWindow(QMainWindow):
         self.start_dialup_sound_if_needed()
         threading.Thread(
             target=self.generate_worker,
-            args=(setting_snapshot, images, repair_enabled, ui_overrides, pro_overrides, sample_boost),
+            args=(setting_snapshot, images, repair_enabled, ui_overrides, pro_overrides, sample_boost, seed_mode, seed_value),
             daemon=True,
         ).start()
 
@@ -5381,13 +5547,16 @@ class MainWindow(QMainWindow):
         self.set_status("Stopping")
         self.log_line("Stop requested. Finalize Checkpoints will finish the current image, then the batch will stop.")
 
-    def generate_worker(self, setting, images, repair_enabled, ui_overrides, pro_overrides, sample_boost):
+    def generate_worker(self, setting, images, repair_enabled, ui_overrides, pro_overrides, sample_boost, seed_mode="randomize", seed_value=0):
         failures = 0
         try:
             self.bus.log.emit(f"Selected Kloudy preset: {setting.get('label') or setting['path'].name}")
             self.bus.log.emit("Preset settings: resolution and samples are fixed by the selected preset unless Pro settings are enabled.")
             self.bus.log.emit(f"Edge Repair: {'on' if repair_enabled else 'off'}")
             total_images = len(images)
+            if seed_mode in ("increment", "decrement") and int(seed_value or 0) <= 0:
+                seed_value = self.new_generator_seed()
+            last_seed = int(seed_value or 0)
             for index, image_path in enumerate(images, start=1):
                 if self.stop_generation_event.is_set():
                     self.bus.log.emit("Batch stopped before starting the next image.")
@@ -5397,6 +5566,11 @@ class MainWindow(QMainWindow):
                 if total_images > 1:
                     self.bus.log.emit(f"Batch item {index}/{total_images}: {image_path.name}")
                     self.bus.phase.emit("building", f"Batch generation running: {index}/{total_images}. Final import JSONs are not ready yet.")
+                run_seed = self.seed_for_batch_item(seed_mode, seed_value, index)
+                last_seed = run_seed
+                if seed_mode in ("randomize", "increment", "decrement"):
+                    next_seed = self.next_seed_after_batch(seed_mode, seed_value, index, last_seed)
+                    self.bus.ui_call.emit(lambda value=next_seed: (self.seed_input.setText(str(value)), self.save_generator_seed_settings()) if hasattr(self, "seed_input") else None)
                 effective = self.effective_setting_from_snapshot(
                     setting,
                     image_path,
@@ -5421,6 +5595,7 @@ class MainWindow(QMainWindow):
                 self.bus.log.emit(f"Target template layers: {values.get('stopAt', 'n/a')}")
                 self.bus.log.emit(f"Finalize at layers: {values.get('saveAt', values.get('stopAt', 'n/a'))}")
                 self.bus.log.emit(f"Preset effort: maxRes={values.get('maxResolution', 'n/a')} random={values.get('randomSamples', 'n/a')} mutated={values.get('mutatedSamples', 'n/a')}")
+                self.bus.log.emit(f"Seed: {run_seed if run_seed else 'random'}")
                 self.bus.log.emit(f"Detail Heatmap: {values.get('detailHeatmapMode', 'off')}")
                 auto_summary = effective.get("auto_tune") or {}
                 source_summary = auto_summary.get("source") or {}
@@ -5436,7 +5611,7 @@ class MainWindow(QMainWindow):
                 src = render_source_image(image_path)
                 if src:
                     self.bus.preview_bytes.emit(src)
-                cmd = build_generator_command(image_path, effective, enable_repair=repair_enabled, enable_overshoot=False, output_dir=run_dir)
+                cmd = build_generator_command(image_path, effective, enable_repair=repair_enabled, enable_overshoot=False, output_dir=run_dir, seed=run_seed)
                 self.bus.log.emit(f"Running patched vinyl builder with {effective['path'].name}")
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1, text=True, encoding="utf-8", errors="replace", creationflags=flags)
@@ -6065,6 +6240,7 @@ class MainWindow(QMainWindow):
                 self.latest_final_combo.blockSignals(True)
                 self.latest_final_combo.setCurrentIndex(index)
                 self.latest_final_combo.blockSignals(False)
+                self.select_generated_entry_for_import(combo_entry)
                 return
         if isinstance(entry, dict):
             label = self.latest_final_combo_label(entry)
@@ -6077,6 +6253,7 @@ class MainWindow(QMainWindow):
         self.latest_final_combo.blockSignals(False)
         if hasattr(self, "latest_final_entries"):
             self.latest_final_entries.insert(0, entry)
+        self.select_generated_entry_for_import(entry)
 
     def set_hidden_generated_selection(self, path: Path):
         if not hasattr(self, "generated_checkpoint_list"):
@@ -6166,9 +6343,9 @@ class MainWindow(QMainWindow):
         if self.generated_folder_combo.count() > 0:
             self.generated_folder_combo.setCurrentIndex(0)
         self.generated_folder_combo.blockSignals(False)
-        self.populate_generated_checkpoint_list(self.generated_folder_combo.currentText())
+        self.populate_generated_checkpoint_list(self.generated_folder_combo.currentText(), select_first=False)
 
-    def populate_generated_checkpoint_list(self, folder_label: str):
+    def populate_generated_checkpoint_list(self, folder_label: str, select_first: bool = True):
         self.generated_checkpoint_entries = list(self.generated_folder_entries.get(folder_label, []))
         self.generated_checkpoint_list.clear()
         if not self.generated_checkpoint_entries:
@@ -6179,7 +6356,8 @@ class MainWindow(QMainWindow):
             item.setSizeHint(QSize(0, 92))
             item.setData(Qt.ItemDataRole.UserRole, entry)
             self.generated_checkpoint_list.addItem(item)
-        self.generated_checkpoint_list.setCurrentRow(0)
+        if select_first:
+            self.generated_checkpoint_list.setCurrentRow(0)
 
     def selected_generated_entry(self):
         item = self.generated_checkpoint_list.currentItem()
