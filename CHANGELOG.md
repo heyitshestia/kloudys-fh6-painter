@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.53
+- Added generator seed controls with randomize, fixed, increment, and decrement modes.
+- Fixed source-aware preset selection not refreshing after choosing a different image.
+- Fixed the import tab sometimes showing a newer finalized JSON while still importing a previously selected JSON.
+
 ## 2.0.52
 - Tuned the Galatea Genesis shaded character preset for cleaner fine detail on detailed anime/digital-art sources.
 - Raised the shaded character working resolution after harness testing on multiple character images.
