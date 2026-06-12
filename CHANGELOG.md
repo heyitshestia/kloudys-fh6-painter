@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.52
+- Tuned the Galatea Genesis shaded character preset for cleaner fine detail on detailed anime/digital-art sources.
+- Raised the shaded character working resolution after harness testing on multiple character images.
+- Kept the generator executable unchanged; this update only adjusts the shipped preset/version metadata.
+
 ## 2.0.51
 - Updated Galatea Genesis with layer-count-aware late mutation scaling.
 - Tuned shaded character generation for faster high-layer detail runs.
