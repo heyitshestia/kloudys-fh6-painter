@@ -192,6 +192,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSON metadata from the UI describing selected presets, overrides, and toggles.",
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Optional raw generator RNG seed. Default: 0, which keeps the generator's normal time-based seed.",
+    )
+    parser.add_argument(
         "--finalize-only",
         action="store_true",
         help="Skip raw generation and finalize existing checkpoints in --out-dir.",
@@ -2165,7 +2171,7 @@ def stem_from_image(path: Path) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem).strip("_") or "image"
 
 
-def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, preview_dir: Path, out_stem: str, stop_file: Path | None = None) -> bool:
+def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, preview_dir: Path, out_stem: str, stop_file: Path | None = None, seed: int = 0) -> bool:
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     preview_dir.mkdir(parents=True, exist_ok=True)
     out_base = checkpoint_dir / out_stem
@@ -2183,6 +2189,8 @@ def run_generator(image: Path, settings_path: Path, checkpoint_dir: Path, previe
         "-preview",
         str(preview_path),
     ]
+    if seed:
+        cmd.extend(["-seed", str(seed)])
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW") else 0
     proc = subprocess.Popen(
         cmd,
@@ -2434,7 +2442,7 @@ def main() -> int:
         interrupted = True
         print("RESUME FINALIZE CHECKPOINTS. Reusing existing internal checkpoints; no raw generation will run.", flush=True)
     else:
-        interrupted = run_generator(generation_image_path, v2_settings_path, checkpoint_dir, previews_dir, stem, stop_file=stop_file)
+        interrupted = run_generator(generation_image_path, v2_settings_path, checkpoint_dir, previews_dir, stem, stop_file=stop_file, seed=int(args.seed or 0))
         print("INTERNAL BUILD COMPLETE. Finalize Checkpoints is starting now; do not close the app yet.", flush=True)
     print("Finalized JSONs are the only import-ready vinyl files. Internal checkpoints are not final.", flush=True)
 

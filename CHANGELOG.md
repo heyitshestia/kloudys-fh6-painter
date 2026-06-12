@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.51
+- Updated Galatea Genesis with layer-count-aware late mutation scaling.
+- Tuned shaded character generation for faster high-layer detail runs.
+- Kept flat/livery generation on the fuller search profile for better solid color adhesion.
+- Updated bundled generator preset descriptions for Galatea Genesis.
+
 ## 2.0.50
 - Replaced the bundled V7 generator with Kloudy's Galatea Genesis.
 - Updated generation, release packaging, and updater process handling for the new generator executable name.
