@@ -2268,6 +2268,7 @@ class FinalJsonBrowserDialog(QDialog):
         self.checkpoint_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.checkpoint_list.setWordWrap(True)
         self.checkpoint_list.currentRowChanged.connect(self.select_checkpoint_row)
+        self.checkpoint_list.itemClicked.connect(lambda _item: self.select_checkpoint_row(self.checkpoint_list.currentRow()))
         preview_splitter.addWidget(self.final_preview)
         preview_splitter.addWidget(self.checkpoint_list)
         preview_splitter.setSizes([390, 430])
@@ -2434,8 +2435,7 @@ class FinalJsonBrowserDialog(QDialog):
         return f"{entry.get('layers') or 0} layers - {entry.get('type') or 'Final JSON'}{tags}{error_text}\n{preset}\n{Path(entry['path']).name}"
 
     def select_checkpoint_row(self, row: int):
-        item = self.checkpoint_list.item(row)
-        entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+        entry = self.current_checkpoint_entry(row)
         self.selected_entry = entry
         self.select_button.setEnabled(bool(entry and entry.get("import_safe", True)))
         if not entry:
@@ -2464,6 +2464,13 @@ class FinalJsonBrowserDialog(QDialog):
         self.final_preview.clear("Rendering preview in the background...")
         threading.Thread(target=self.render_entry_preview_worker, args=(request_id, path), daemon=True).start()
 
+    def current_checkpoint_entry(self, row: int | None = None) -> dict | None:
+        if row is None or row < 0:
+            row = self.checkpoint_list.currentRow()
+        item = self.checkpoint_list.item(row)
+        entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+        return entry if isinstance(entry, dict) else None
+
     def render_entry_preview_worker(self, request_id: int, path: Path):
         cache_path = self.app.rendered_preview_cache_path(path)
         data = None
@@ -2491,11 +2498,15 @@ class FinalJsonBrowserDialog(QDialog):
             self.final_preview.set_bytes(data)
 
     def accept_selected(self):
+        self.selected_entry = self.current_checkpoint_entry()
         if self.selected_entry and self.selected_entry.get("import_safe", True):
             self.accept()
 
     @property
     def selected_path(self) -> Path | None:
+        entry = self.current_checkpoint_entry()
+        if entry:
+            self.selected_entry = entry
         if not self.selected_entry:
             return None
         return Path(self.selected_entry["path"])
@@ -6044,17 +6055,28 @@ class MainWindow(QMainWindow):
             self.select_generated_entry_for_import(entry)
             self.set_hidden_generated_selection(entry["path"])
 
-    def set_latest_final_combo_to_path(self, path: Path):
+    def set_latest_final_combo_to_path(self, path: Path, entry: dict | None = None):
         if not hasattr(self, "latest_final_combo"):
             return
         target = Path(path)
         for index in range(self.latest_final_combo.count()):
-            entry = self.latest_final_combo.itemData(index)
-            if isinstance(entry, dict) and Path(entry["path"]) == target:
+            combo_entry = self.latest_final_combo.itemData(index)
+            if isinstance(combo_entry, dict) and Path(combo_entry["path"]) == target:
                 self.latest_final_combo.blockSignals(True)
                 self.latest_final_combo.setCurrentIndex(index)
                 self.latest_final_combo.blockSignals(False)
-                break
+                return
+        if isinstance(entry, dict):
+            label = self.latest_final_combo_label(entry)
+        else:
+            label = f"{target.name} | browser selection"
+            entry = {"path": target, "layers": count_json_shapes(target), "source": "browser selection"}
+        self.latest_final_combo.blockSignals(True)
+        self.latest_final_combo.insertItem(0, label, entry)
+        self.latest_final_combo.setCurrentIndex(0)
+        self.latest_final_combo.blockSignals(False)
+        if hasattr(self, "latest_final_entries"):
+            self.latest_final_entries.insert(0, entry)
 
     def set_hidden_generated_selection(self, path: Path):
         if not hasattr(self, "generated_checkpoint_list"):
@@ -6094,12 +6116,19 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_path:
             selected_path = dialog.selected_path
             selected_entry = next((entry for entry in entries if Path(entry["path"]) == selected_path), None)
+            if selected_entry and not selected_entry.get("import_safe", True):
+                self.selected_import_json_path = None
+                self.update_selected_json_label("Selected final JSON: none - highlighted file is over the layer budget and cannot be imported.")
+                self.preview_json(selected_path)
+                self.log_line(f"Cannot import over-budget browser JSON: {selected_path} ({selected_entry.get('layers') or 0} layers > {selected_entry.get('import_budget') or 'target budget'})")
+                return
             if selected_entry:
-                self.select_generated_entry_for_import(selected_entry)
-                self.set_latest_final_combo_to_path(selected_path)
+                self.select_import_json(selected_path, "visual JSON browser")
+                self.set_latest_final_combo_to_path(selected_path, selected_entry)
                 self.set_hidden_generated_selection(selected_path)
             else:
                 self.select_import_json(selected_path, "visual JSON browser")
+                self.set_latest_final_combo_to_path(selected_path)
 
     def refresh_generated_browser(self):
         mode = self.current_json_browser_mode()
