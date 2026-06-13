@@ -147,7 +147,7 @@ small,
 .editorShell {
   height: 100vh;
   display: grid;
-  grid-template-rows: 64px 42px 1fr 30px;
+  grid-template-rows: 60px 40px 1fr 30px;
   background: rgba(var(--surface-rgb), 0.72);
 }
 
@@ -245,10 +245,11 @@ small,
 .contextBar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 14px;
+  gap: 10px;
+  padding: 5px 14px;
   border-bottom: 1px solid var(--line);
   background: rgba(var(--panel-rgb), 0.96);
+  overflow: hidden;
 }
 
 .contextItem,
@@ -293,7 +294,7 @@ small,
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 72px minmax(620px, 1fr) 430px;
+  grid-template-columns: 72px minmax(680px, 1fr) clamp(540px, 32vw, 620px);
 }
 
 .toolRail {
@@ -413,7 +414,7 @@ small,
 .rightDock {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(430px, 1fr) 300px;
+  grid-template-rows: minmax(0, 1fr);
   border-left: 1px solid var(--line);
   background: rgba(var(--panel-rgb), 0.96);
 }
@@ -421,12 +422,7 @@ small,
 .dockGroup {
   min-height: 0;
   display: grid;
-  grid-template-rows: 38px 1fr;
-  border-bottom: 1px solid var(--line);
-}
-
-.secondaryDock {
-  border-bottom: 0;
+  grid-template-rows: 42px minmax(0, 1fr);
 }
 
 .dockTabs {
@@ -436,15 +432,20 @@ small,
   padding: 6px 8px 0;
   background: rgba(var(--surface-rgb), 0.76);
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .dockTab {
+  flex: 0 0 auto;
   height: 31px;
   padding: 6px 10px;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   border-bottom-color: transparent;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .dockTab.active {
@@ -457,7 +458,7 @@ small,
 .dockPane {
   min-height: 0;
   overflow: auto;
-  padding: 12px;
+  padding: 14px;
   background: var(--panel);
 }
 
@@ -695,6 +696,11 @@ input[type="range"] {
 .shapePlacementPanel label {
   grid-template-columns: 52px minmax(0, 1fr);
   margin: 0 0 7px;
+}
+
+.shapePlacementPanel .shapePlacementSelect {
+  grid-template-columns: 86px minmax(0, 1fr);
+  margin: 0 0 9px;
 }
 
 .shapePlacementPanel label.inline {
@@ -1226,7 +1232,7 @@ body.layerGroupingActive .layerGroupRow.layerDropTarget {
 
 #shapeGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
   gap: 9px;
   padding-right: 10px;
 }
@@ -1404,6 +1410,110 @@ body.layerGroupingActive .layerGroupRow.layerDropTarget {
   color: var(--text);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.editorTourLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.editorTourLayer[hidden] {
+  display: none;
+}
+
+.editorTourBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 8, 12, 0.38);
+}
+
+.editorTourSpotlight {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 120px;
+  height: 60px;
+  border: 2px solid rgba(var(--accent2-rgb), 0.96);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.30),
+    0 0 0 6px rgba(var(--accent-rgb), 0.16),
+    0 0 34px rgba(var(--accent-rgb), 0.55);
+  transform: translate3d(0, 0, 0);
+  transition: left 180ms ease, top 180ms ease, width 180ms ease, height 180ms ease, border-radius 180ms ease;
+  pointer-events: none;
+}
+
+.editorTourCanvasPulse {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220px;
+  height: 150px;
+  border: 2px dashed rgba(var(--accent2-rgb), 0.98);
+  border-radius: 22px;
+  background:
+    linear-gradient(90deg, transparent 49%, rgba(var(--accent2-rgb), 0.50) 50%, transparent 51%),
+    linear-gradient(0deg, transparent 49%, rgba(var(--accent2-rgb), 0.50) 50%, transparent 51%),
+    rgba(var(--accent-rgb), 0.10);
+  box-shadow: 0 0 34px rgba(var(--accent-rgb), 0.45);
+  transform: translate(-50%, -50%) scale(0.92);
+  animation: tourCanvasPulse 1.15s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes tourCanvasPulse {
+  to { transform: translate(-50%, -50%) scale(1.04); }
+}
+
+.editorTourCard {
+  position: absolute;
+  width: min(380px, calc(100vw - 32px));
+  display: grid;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: 18px;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(var(--accent-rgb), 0.18), transparent 8rem),
+    rgba(var(--panel-rgb), 0.98);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.42);
+  pointer-events: auto;
+  transition: left 180ms ease, top 180ms ease;
+}
+
+.editorTourKicker {
+  color: var(--soft);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.editorTourCard h2 {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.editorTourCard p {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.editorTourActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+body.editorTourActive .editorTourTarget {
+  position: relative;
+  z-index: 121;
 }
 
 .spinner {
@@ -2091,7 +2201,7 @@ dialog::backdrop {
 
 @media (max-width: 1320px) {
   .workspace {
-    grid-template-columns: 64px minmax(520px, 1fr) 380px;
+    grid-template-columns: 64px minmax(560px, 1fr) 440px;
   }
   .brandBlock {
     flex-basis: 250px;

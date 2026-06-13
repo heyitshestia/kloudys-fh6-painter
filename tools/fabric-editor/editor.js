@@ -231,6 +231,7 @@ let exportSaveInProgress = false;
 let projectSaveInProgress = false;
 let toastTimer = null;
 let pixelArtSourceFile = null;
+let editorTourState = null;
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -7985,6 +7986,234 @@ async function maybeShowAutosaveRecovery() {
   return true;
 }
 
+const EDITOR_TOUR_STEPS = [
+  {
+    title: "Start With File Actions",
+    body: "Import JSON opens generated finals, handmade JSONs, and editor exports. Save Project stores editable work for later; Export FH6 JSON creates the file you send back to the main KFPS importer.",
+    target: ".menuGroup:first-child",
+    panel: "layersPane",
+    tool: "select",
+  },
+  {
+    title: "Use The Left Tool Rail",
+    body: "The left rail is your tool belt: Select, Shapes, Dropper, Guides, Overlay, Source Move, and Mask. Keyboard shortcuts match the letters shown on each button.",
+    target: ".toolRail",
+    tool: "select",
+  },
+  {
+    title: "Canvas Is The Main Workspace",
+    body: "The canvas is where you move, scale, rotate, skew, snap, and clean up vinyl layers. Mouse wheel zooms, middle or right drag pans, and the HUD shows position, zoom, layer count, and hover info.",
+    target: ".canvasStage",
+    panel: "layersPane",
+    tool: "select",
+    canvasPulse: true,
+  },
+  {
+    title: "Layers Control Draw Order",
+    body: "Top rows draw over lower rows, like Krita or Photoshop layers. You can select rows, range-select with Shift, multi-select with Control, group internally, hide, lock, rename groups, and reorder depth.",
+    target: "#layersPane",
+    panel: "layersPane",
+    tool: "select",
+  },
+  {
+    title: "Properties Are For Exact Edits",
+    body: "Use Properties for exact position, scale, rotation, skew, alpha, nudge size, and selection behavior. This is where visible-only select and invert box-select live now.",
+    target: "#propertiesPane",
+    panel: "propertiesPane",
+    tool: "select",
+  },
+  {
+    title: "Shape Library Places And Replaces",
+    body: "Library shows the FH shape set. Shape click mode decides if a tile adds a new shape, inserts above or below the current layer, or replaces selected shapes while preserving color and transform.",
+    target: "#shapeLibraryPane",
+    panel: "shapeLibraryPane",
+    tool: "shapeLibrary",
+  },
+  {
+    title: "Color And Dropper",
+    body: "Color holds saved swatches, alpha tools, and overlay sampling. Dropper can pick from existing vinyl layers, or from the source overlay if no shape is under the click.",
+    target: "#colorPane",
+    panel: "colorPane",
+    tool: "dropper",
+  },
+  {
+    title: "Overlay Is Reference Only",
+    body: "Overlay loads source images or layered SVGs for tracing, color sampling, and alignment. It can draw above or below the vinyl, but it never exports as a layer.",
+    target: "#overlayPane",
+    panel: "overlayPane",
+    tool: "overlay",
+  },
+  {
+    title: "Guides, Grid, And Pixel Art",
+    body: "Guides and grid help with clean alignment and snapping. Pixel Art Auto Fill converts a source pixel grid into exact-color stretched square layers for shape-efficient pixel work.",
+    target: "#guidesPane",
+    panel: "guidesPane",
+    tool: "guides",
+    canvasPulse: true,
+  },
+  {
+    title: "Export Check Before Import",
+    body: "Export Check gives the final sanity pass. When the layer count and warnings look right, use Export FH6 JSON, then import that JSON through the main KFPS Import JSON tab.",
+    target: "#exportCheckPane",
+    panel: "exportCheckPane",
+    tool: "select",
+  },
+];
+
+function tourElements() {
+  return {
+    layer: $("editorTourLayer"),
+    card: $("editorTourCard"),
+    spotlight: $("editorTourSpotlight"),
+    pulse: $("editorTourCanvasPulse"),
+    progress: $("editorTourProgress"),
+    title: $("editorTourTitle"),
+    body: $("editorTourBody"),
+    back: $("editorTourBack"),
+    next: $("editorTourNext"),
+  };
+}
+
+function clearTourTarget() {
+  document.querySelectorAll(".editorTourTarget").forEach((el) => el.classList.remove("editorTourTarget"));
+}
+
+function clampTourCard(value, min, max) {
+  if (max < min) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function tourTargetRect(target) {
+  if (!target) return null;
+  const rect = target.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return rect;
+}
+
+function positionTourCard(target) {
+  const { card, spotlight, pulse } = tourElements();
+  if (!card || !spotlight) return;
+  const rect = tourTargetRect(target) || {
+    left: window.innerWidth / 2 - 120,
+    top: window.innerHeight / 2 - 80,
+    width: 240,
+    height: 160,
+    right: window.innerWidth / 2 + 120,
+    bottom: window.innerHeight / 2 + 80,
+  };
+  const pad = 10;
+  spotlight.style.left = `${Math.max(8, rect.left - pad)}px`;
+  spotlight.style.top = `${Math.max(8, rect.top - pad)}px`;
+  spotlight.style.width = `${Math.min(window.innerWidth - 16, rect.width + pad * 2)}px`;
+  spotlight.style.height = `${Math.min(window.innerHeight - 16, rect.height + pad * 2)}px`;
+  spotlight.style.borderRadius = rect.width > 520 || rect.height > 360 ? "24px" : "16px";
+
+  const cardRect = card.getBoundingClientRect();
+  const gap = 18;
+  const preferRight = rect.left + rect.width / 2 < window.innerWidth / 2;
+  let left = preferRight ? rect.right + gap : rect.left - cardRect.width - gap;
+  if (left < 16 || left + cardRect.width > window.innerWidth - 16) {
+    left = clampTourCard(rect.left + rect.width / 2 - cardRect.width / 2, 16, window.innerWidth - cardRect.width - 16);
+  }
+  let top = clampTourCard(rect.top + rect.height / 2 - cardRect.height / 2, 16, window.innerHeight - cardRect.height - 16);
+  if (rect.width > window.innerWidth * 0.48 && rect.height > window.innerHeight * 0.38) {
+    left = clampTourCard(window.innerWidth - cardRect.width - 24, 16, window.innerWidth - cardRect.width - 16);
+    top = 110;
+  }
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+
+  if (pulse) {
+    const canvasRect = document.querySelector(".canvasStage")?.getBoundingClientRect();
+    if (canvasRect) {
+      pulse.style.left = `${canvasRect.left + canvasRect.width / 2}px`;
+      pulse.style.top = `${canvasRect.top + canvasRect.height / 2}px`;
+      pulse.style.width = `${Math.min(320, Math.max(180, canvasRect.width * 0.24))}px`;
+      pulse.style.height = `${Math.min(220, Math.max(130, canvasRect.height * 0.22))}px`;
+    }
+  }
+}
+
+function prepareTourStep(step) {
+  if (step.panel) activateDockPanel(step.panel);
+  if (step.tool) {
+    const button = document.querySelector(`.toolButton[data-tool-mode="${step.tool}"]`);
+    if (button) setToolRailMode(step.tool, button.dataset.tool || button.textContent.trim());
+  }
+  if (step.target) {
+    const target = document.querySelector(step.target);
+    target?.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" });
+  }
+}
+
+function showTourStep(index) {
+  if (!editorTourState?.active) return;
+  const step = EDITOR_TOUR_STEPS[index];
+  if (!step) {
+    stopEditorTour(true);
+    return;
+  }
+  editorTourState.index = index;
+  prepareTourStep(step);
+  clearTourTarget();
+  const { layer, pulse, progress, title, body, back, next } = tourElements();
+  if (!layer) return;
+  layer.hidden = false;
+  document.body.classList.add("editorTourActive");
+  const target = document.querySelector(step.target || ".editorShell") || document.querySelector(".editorShell");
+  target?.classList.add("editorTourTarget");
+  if (progress) progress.textContent = `Step ${index + 1} of ${EDITOR_TOUR_STEPS.length}`;
+  if (title) title.textContent = step.title;
+  if (body) body.textContent = step.body;
+  if (back) back.disabled = index <= 0;
+  if (next) next.textContent = index >= EDITOR_TOUR_STEPS.length - 1 ? "Finish" : "Next";
+  if (pulse) pulse.hidden = !step.canvasPulse;
+  setStatus(`Tour: ${step.title}`);
+  requestAnimationFrame(() => requestAnimationFrame(() => positionTourCard(target)));
+}
+
+function startEditorTour() {
+  $("helpDialog")?.close();
+  $("shortcutsDialog")?.close();
+  $("autosaveRecoveryDialog")?.close();
+  editorTourState = {
+    active: true,
+    index: 0,
+    previousTool: activeToolMode,
+    previousPanel: document.querySelector(".dockPane.active")?.id || "layersPane",
+  };
+  showTourStep(0);
+}
+
+function stopEditorTour(completed = false) {
+  if (!editorTourState) return;
+  const previousTool = editorTourState.previousTool || "select";
+  const previousPanel = editorTourState.previousPanel || "layersPane";
+  editorTourState = null;
+  clearTourTarget();
+  document.body.classList.remove("editorTourActive");
+  const { layer, pulse } = tourElements();
+  if (layer) layer.hidden = true;
+  if (pulse) pulse.hidden = true;
+  activateDockPanel(previousPanel);
+  const button = document.querySelector(`.toolButton[data-tool-mode="${previousTool}"]`) || document.querySelector(".toolButton[data-tool-mode='select']");
+  if (button) setToolRailMode(button.dataset.toolMode || "select", button.dataset.tool || button.textContent.trim());
+  if (previousTool !== "dropper") setShapeEyedropper(false, { keepTool: true, silent: true });
+  setStatus(completed ? "Editor tour complete. Use Help any time for the full reference." : "Editor tour closed.");
+}
+
+function nextTourStep(delta) {
+  if (!editorTourState?.active) return;
+  showTourStep(editorTourState.index + delta);
+}
+
+function repositionEditorTour() {
+  if (!editorTourState?.active) return;
+  const step = EDITOR_TOUR_STEPS[editorTourState.index];
+  const target = document.querySelector(step?.target || ".editorShell") || document.querySelector(".editorShell");
+  positionTourCard(target);
+}
+
 function bindUi() {
   const initialTheme = localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme;
   loadEditorThemes().then(() => loadEditorThemePreference()).then((serverTheme) => {
@@ -7993,6 +8222,12 @@ function bindUi() {
   });
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
   $("adjustTheme")?.addEventListener("click", openThemeAdjustDialog);
+  $("startEditorTour")?.addEventListener("click", startEditorTour);
+  $("editorTourSkip")?.addEventListener("click", () => stopEditorTour(false));
+  $("editorTourBack")?.addEventListener("click", () => nextTourStep(-1));
+  $("editorTourNext")?.addEventListener("click", () => nextTourStep(1));
+  window.addEventListener("resize", repositionEditorTour);
+  window.addEventListener("scroll", repositionEditorTour, true);
   $("closeThemeAdjust")?.addEventListener("click", () => closeThemeAdjustDialog());
   $("themeAdjustDialog")?.addEventListener("cancel", (event) => {
     event.preventDefault();
@@ -8210,6 +8445,19 @@ function bindUi() {
   renderShortcutEditor();
   updateShortcutLabels();
   document.addEventListener("keydown", (event) => {
+    if (editorTourState?.active) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        stopEditorTour(false);
+      } else if (event.key === "Enter" || event.key === "ArrowRight") {
+        event.preventDefault();
+        nextTourStep(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        nextTourStep(-1);
+      }
+      return;
+    }
     if (event.target && event.target.classList?.contains("shortcutCapture")) return;
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
     const toolAction = ["selectTool", "shapeLibrary", "dropper", "guides", "overlay", "sourceTool"].find((action) => shortcutMatches(event, action));

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kloudy's FH6 Vinyl Editor Prototype</title>
+  <title>KFPS Vinyl Editor</title>
   <script>
     document.documentElement.dataset.editorTheme = localStorage.getItem("kloudyFabricTheme") || "pastel";
   </script>
@@ -14,7 +14,7 @@
   <div class="editorShell">
     <header class="appBar">
       <div class="brandBlock">
-        <h1>Kloudy's FH6 Vinyl Editor</h1>
+        <h1>KFPS Vinyl Editor</h1>
         <div class="brandMeta">
           <p>Import JSON, edit FH6 vinyl layers, validate, export.</p>
           <label class="themePicker">Theme
@@ -23,6 +23,7 @@
               <option value="dark">Dark</option>
             </select>
             <button id="adjustTheme" type="button" title="Adjust the current editor color scheme and save it as a custom file-backed theme.">Adjust</button>
+            <button id="startEditorTour" type="button" title="Start an interactive guided tour of the editor workspace.">Tour</button>
           </label>
         </div>
       </div>
@@ -65,27 +66,6 @@
         <span class="contextLabel">Selection</span>
         <b id="contextSelection">No layer selected</b>
       </div>
-      <label class="toolbarToggle" title="When on, clicks must land on the visible shape itself. Turn off only when you intentionally want box-style picking.">
-        <input id="boxVisibleOnly" type="checkbox" checked> Visible-only select
-      </label>
-      <label class="toolbarToggle" title="Box-select everything outside the dragged box instead of inside it. Single clicks are unaffected.">
-        <input id="invertBoxSelect" type="checkbox"> Invert box select
-      </label>
-      <label class="toolbarSelect" title="Dropper samples a vinyl layer if clicked, otherwise it samples the source overlay.">
-        <span class="contextLabel">Dropper</span>
-        <select id="eyedropperMode" disabled>
-          <option value="auto" selected>Auto layer/overlay</option>
-        </select>
-      </label>
-      <label class="toolbarSelect compactOption" title="Choose what happens when you click a shape tile.">
-        <span class="contextLabel">Shape Click</span>
-        <select id="shapePlacementMode" title="Choose where a clicked shape tile is added.">
-          <option value="top" selected>Add at top</option>
-          <option value="above">Insert above selected</option>
-          <option value="below">Insert below selected</option>
-          <option value="replace">Replace selected shape</option>
-        </select>
-      </label>
       <button id="quickColorSwatch" type="button" title="Open color picker and saved colors"></button>
       <div class="quickActionGroup" aria-label="Selected layer quick actions">
         <button id="quickDuplicateLayer" type="button" title="Duplicate selected layer(s). Respects Shape Click above/below placement mode.">Duplicate</button>
@@ -108,6 +88,22 @@
       <b id="cornerNoticeTitle">Saved</b>
       <span id="cornerNoticeBody">Ready.</span>
     </aside>
+
+    <div id="editorTourLayer" class="editorTourLayer" hidden>
+      <div id="editorTourBackdrop" class="editorTourBackdrop"></div>
+      <div id="editorTourSpotlight" class="editorTourSpotlight"></div>
+      <div id="editorTourCanvasPulse" class="editorTourCanvasPulse" hidden></div>
+      <section id="editorTourCard" class="editorTourCard" role="dialog" aria-live="polite" aria-label="Editor tour">
+        <div class="editorTourKicker" id="editorTourProgress">Tour</div>
+        <h2 id="editorTourTitle">Editor Tour</h2>
+        <p id="editorTourBody">Learn the editor basics.</p>
+        <div class="editorTourActions">
+          <button id="editorTourSkip" type="button">Skip</button>
+          <button id="editorTourBack" type="button">Back</button>
+          <button id="editorTourNext" class="primary" type="button">Next</button>
+        </div>
+      </section>
+    </div>
 
     <main class="workspace">
       <aside class="toolRail" aria-label="Tools">
@@ -139,8 +135,13 @@
         <div class="dockGroup primaryDock">
           <div class="dockTabs" role="tablist">
             <button class="dockTab active" data-panel="layersPane">Layers</button>
-            <button class="dockTab" data-panel="propertiesPane">Properties</button>
-            <button class="dockTab" data-panel="shapeLibraryPane">Shape Library</button>
+            <button class="dockTab" data-panel="propertiesPane">Props</button>
+            <button class="dockTab" data-panel="shapeLibraryPane">Library</button>
+            <button class="dockTab" data-panel="colorPane">Color</button>
+            <button class="dockTab" data-panel="guidesPane">Guides</button>
+            <button class="dockTab" data-panel="overlayPane">Overlay</button>
+            <button class="dockTab" data-panel="historyPane">History</button>
+            <button class="dockTab" data-panel="exportCheckPane">Export</button>
           </div>
 
           <section id="layersPane" class="dockPane active">
@@ -217,6 +218,15 @@
               <label>Nudge step <input id="nudgeStep" type="number" step="0.1" value="1"></label>
               <label class="inline"><input id="pixelSelect" type="checkbox" checked> Select only visible pixels</label>
             </div>
+            <div class="propertySection">
+              <h3>Selection Behavior</h3>
+              <label class="inline" title="When on, clicks must land on the visible shape itself. Turn off only when you intentionally want box-style picking.">
+                <input id="boxVisibleOnly" type="checkbox" checked> Visible-only select
+              </label>
+              <label class="inline" title="Box-select everything outside the dragged box instead of inside it. Single clicks are unaffected.">
+                <input id="invertBoxSelect" type="checkbox"> Invert box select
+              </label>
+            </div>
           </section>
 
           <section id="shapeLibraryPane" class="dockPane" hidden>
@@ -229,7 +239,16 @@
             <input id="shapeSearch" placeholder="Search name, number, family, or type code">
             <select id="shapeFamily"></select>
             <div class="shapePlacementPanel">
-              <b>Shape click mode: <span id="shapePlacementModeLabel">Add at top</span></b>
+              <label class="shapePlacementSelect" title="Choose what happens when you click a shape tile.">
+                Shape click
+                <select id="shapePlacementMode" title="Choose where a clicked shape tile is added.">
+                  <option value="top" selected>Add at top</option>
+                  <option value="above">Insert above selected</option>
+                  <option value="below">Insert below selected</option>
+                  <option value="replace">Replace selected shape</option>
+                </select>
+              </label>
+              <b>Current mode: <span id="shapePlacementModeLabel">Add at top</span></b>
               <label class="inline" title="When adding font shapes, reuse the last edited font size and rotation.">
                 <input id="reuseLastFontSize" type="checkbox"> Reuse last font size
               </label>
@@ -241,18 +260,8 @@
             </div>
             <div id="shapeGrid"></div>
           </section>
-        </div>
 
-        <div class="dockGroup secondaryDock">
-          <div class="dockTabs" role="tablist">
-            <button class="dockTab active" data-panel="colorPane">Color</button>
-            <button class="dockTab" data-panel="guidesPane">Guides</button>
-            <button class="dockTab" data-panel="overlayPane">Overlay</button>
-            <button class="dockTab" data-panel="historyPane">History</button>
-            <button class="dockTab" data-panel="exportCheckPane">Export Check</button>
-          </div>
-
-          <section id="colorPane" class="dockPane active">
+          <section id="colorPane" class="dockPane" hidden>
             <div class="panelHeader">
               <div>
                 <h2>Color</h2>
@@ -267,6 +276,11 @@
               </div>
             </div>
             <button id="sampleOverlayColor" title="Set selected layer color from the dominant overlay color under its current bounds.">Sample overlay under selection</button>
+            <label title="Dropper samples a vinyl layer if clicked, otherwise it samples the source overlay.">Dropper
+              <select id="eyedropperMode" disabled>
+                <option value="auto" selected>Auto layer/overlay</option>
+              </select>
+            </label>
             <label>Mode
               <select id="overlaySampleMode">
                 <option value="dominant" selected>Dominant color under shape</option>

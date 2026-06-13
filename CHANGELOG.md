@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.55
+- Reworked the Fabric editor layout into a cleaner Krita-style workspace with a dominant canvas and one larger right-side dock.
+- Added an interactive editor tour that switches tools/tabs and explains the main workflow from import through export.
+- Made the editor launch in a dedicated fullscreen/maximized browser app window when Edge or Chrome is available.
+
 ## 2.0.54
 - Added a pixel-art auto-fill tool to the Fabric editor that detects the source pixel grid and builds square vinyl rectangles from it.
 - Pixel-art conversion now keeps exact visible source colors, skips transparent cells, and merges only identical-color blocks horizontally or vertically.

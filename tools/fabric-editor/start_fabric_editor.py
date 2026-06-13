@@ -1039,6 +1039,46 @@ def find_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def _browser_app_candidates() -> list[Path]:
+    if sys.platform != "win32":
+        return []
+    candidates: list[Path] = []
+    for env_name, suffixes in (
+        ("ProgramFiles", ("Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe")),
+        ("ProgramFiles(x86)", ("Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe")),
+        ("LocalAppData", ("Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe")),
+    ):
+        root = os.environ.get(env_name)
+        if not root:
+            continue
+        for suffix in suffixes:
+            candidates.append(Path(root) / suffix)
+    return candidates
+
+
+def open_editor_window(url: str) -> None:
+    """Open the editor like a desktop workspace while keeping the local server simple."""
+    for browser in _browser_app_candidates():
+        if not browser.exists():
+            continue
+        try:
+            subprocess.Popen(
+                [
+                    str(browser),
+                    f"--app={url}",
+                    "--new-window",
+                    "--start-maximized",
+                    "--start-fullscreen",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+        except Exception:
+            continue
+    webbrowser.open(url)
+
+
 def main() -> int:
     if not EDITOR.exists():
         print(f"Missing editor: {EDITOR}")
@@ -1049,7 +1089,7 @@ def main() -> int:
         print("KFPS Fabric editor")
         print(f"Serving: {ROOT}")
         print(f"Open:    {url}")
-        threading.Timer(0.35, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.35, lambda: open_editor_window(url)).start()
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
