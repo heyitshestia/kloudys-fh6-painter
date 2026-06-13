@@ -295,6 +295,19 @@
               <label>Opacity <input id="gridOpacity" type="range" min="5" max="65" value="20"></label>
               <label class="inline"><input id="snapGrid" type="checkbox" checked> Snap to grid too</label>
             </div>
+            <div class="propertySection compactSection pixelArtSection">
+              <h3>Pixel Art Auto Fill</h3>
+              <input id="pixelArtInput" type="file" accept="image/*">
+              <div class="fieldGrid">
+                <label>Detected W <input id="pixelArtGridW" type="number" min="1" max="512" step="1" value="0" readonly></label>
+                <label>Detected H <input id="pixelArtGridH" type="number" min="1" max="512" step="1" value="0" readonly></label>
+                <label>Alpha <input id="pixelArtAlphaCutoff" type="number" min="0" max="255" step="1" value="128"></label>
+                <label>Tolerance <input id="pixelArtTolerance" type="number" min="0" max="80" step="1" value="24"></label>
+              </div>
+              <label class="inline"><input id="pixelArtClearPrevious" type="checkbox" checked> Replace previous pixel-art group</label>
+              <button id="generatePixelArt" type="button">Generate pixel rectangles</button>
+              <p id="pixelArtStatus" class="hint">Detects the source pixel grid, fills height, and merges same-color pixel blocks into stretched square layers.</p>
+            </div>
             <div class="propertySection compactSection">
               <h3>Guide Drawing</h3>
               <label>Line type

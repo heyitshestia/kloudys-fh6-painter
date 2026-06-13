@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.54
+- Added a pixel-art auto-fill tool to the Fabric editor that detects the source pixel grid and builds square vinyl rectangles from it.
+- Pixel-art conversion now keeps exact visible source colors, skips transparent cells, and merges only identical-color blocks horizontally or vertically.
+- Removed the earlier pixel-art resolution presets in favor of source-faithful grid detection.
+
 ## 2.0.53
 - Added generator seed controls with randomize, fixed, increment, and decrement modes.
 - Fixed source-aware preset selection not refreshing after choosing a different image.

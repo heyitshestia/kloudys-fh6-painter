@@ -26,6 +26,7 @@ const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
 const VINYL_HIT_TOLERANCE = 0;
+const PIXEL_ART_SQUARE_SIZE = 128.498032;
 
 const DEFAULT_SHORTCUTS = {
   selectTool: "V",
@@ -229,6 +230,7 @@ let pendingGlobalShapeReplacement = null;
 let exportSaveInProgress = false;
 let projectSaveInProgress = false;
 let toastTimer = null;
+let pixelArtSourceFile = null;
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -6474,6 +6476,392 @@ async function addShape(family, index) {
   pushHistory(mode === "top" ? "add shape" : `insert shape ${mode}`);
 }
 
+function setPixelArtStatus(message) {
+  setText("pixelArtStatus", message);
+  setStatus(message);
+}
+
+function numberInputValue(id, fallback, min, max) {
+  const raw = Number($(id)?.value);
+  const value = Number.isFinite(raw) ? raw : fallback;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function setPixelArtGridInputs(grid) {
+  if (!grid) return;
+  const widthInput = $("pixelArtGridW");
+  const heightInput = $("pixelArtGridH");
+  if (widthInput) widthInput.value = String(grid.gridW);
+  if (heightInput) heightInput.value = String(grid.gridH);
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error("Choose a pixel-art source image first."));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Could not read image: ${file.name || "source"}`));
+    };
+    image.src = url;
+  });
+}
+
+function colorDistance(a, b) {
+  return Math.max(
+    Math.abs(Number(a?.[0] || 0) - Number(b?.[0] || 0)),
+    Math.abs(Number(a?.[1] || 0) - Number(b?.[1] || 0)),
+    Math.abs(Number(a?.[2] || 0) - Number(b?.[2] || 0)),
+    Math.abs(Number(a?.[3] ?? 255) - Number(b?.[3] ?? 255)),
+  );
+}
+
+function pixelArtImageData(image) {
+  const width = Number(image?.naturalWidth || image?.width || 1);
+  const height = Number(image?.naturalHeight || image?.height || 1);
+  const sampler = document.createElement("canvas");
+  sampler.width = width;
+  sampler.height = height;
+  const ctx = sampler.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0);
+  return { width, height, data: ctx.getImageData(0, 0, width, height).data };
+}
+
+function pixelArtColorAt(pixelData, x, y) {
+  const offset = ((y * pixelData.width) + x) * 4;
+  return [
+    pixelData.data[offset],
+    pixelData.data[offset + 1],
+    pixelData.data[offset + 2],
+    pixelData.data[offset + 3],
+  ];
+}
+
+function pixelArtVisible(color, alphaCutoff) {
+  return Number(color?.[3] || 0) > alphaCutoff;
+}
+
+function pixelArtEdgeBetween(a, b, alphaCutoff, tolerance) {
+  const aVisible = pixelArtVisible(a, alphaCutoff);
+  const bVisible = pixelArtVisible(b, alphaCutoff);
+  if (aVisible !== bVisible) return true;
+  return aVisible && bVisible && colorDistance(a, b) > tolerance;
+}
+
+function collectPixelArtEdges(pixelData, axis, alphaCutoff, tolerance) {
+  const edges = [];
+  if (axis === "x") {
+    const rowStep = Math.max(1, Math.floor(pixelData.height / 160));
+    for (let y = 0; y < pixelData.height; y += rowStep) {
+      for (let x = 1; x < pixelData.width; x++) {
+        if (pixelArtEdgeBetween(
+          pixelArtColorAt(pixelData, x - 1, y),
+          pixelArtColorAt(pixelData, x, y),
+          alphaCutoff,
+          tolerance,
+        )) {
+          edges.push(x);
+        }
+      }
+    }
+  } else {
+    const colStep = Math.max(1, Math.floor(pixelData.width / 160));
+    for (let x = 0; x < pixelData.width; x += colStep) {
+      for (let y = 1; y < pixelData.height; y++) {
+        if (pixelArtEdgeBetween(
+          pixelArtColorAt(pixelData, x, y - 1),
+          pixelArtColorAt(pixelData, x, y),
+          alphaCutoff,
+          tolerance,
+        )) {
+          edges.push(y);
+        }
+      }
+    }
+  }
+  return [...new Set(edges)].sort((a, b) => a - b);
+}
+
+function dominantPixelArtStep(edges, dimension) {
+  if (!edges.length) return Math.max(1, Math.ceil(dimension / 256));
+  const counts = new Map();
+  for (let index = 1; index < edges.length; index++) {
+    const diff = edges[index] - edges[index - 1];
+    if (diff < 2 || diff > 96) continue;
+    counts.set(diff, (counts.get(diff) || 0) + 1);
+  }
+  let bestStep = 1;
+  let bestCount = 0;
+  counts.forEach((count, step) => {
+    if (count > bestCount || (count === bestCount && step > bestStep)) {
+      bestStep = step;
+      bestCount = count;
+    }
+  });
+  if (bestCount < 4) return Math.max(1, Math.ceil(dimension / 256));
+  return Math.max(1, bestStep);
+}
+
+function dominantPixelArtOffset(edges, step) {
+  if (step <= 1 || !edges.length) return 0;
+  const counts = new Map();
+  edges.forEach((edge) => {
+    const offset = ((edge % step) + step) % step;
+    counts.set(offset, (counts.get(offset) || 0) + 1);
+  });
+  let bestOffset = 0;
+  let bestCount = 0;
+  counts.forEach((count, offset) => {
+    if (count > bestCount || (count === bestCount && offset < bestOffset)) {
+      bestOffset = offset;
+      bestCount = count;
+    }
+  });
+  return bestOffset;
+}
+
+function pixelArtIntervals(dimension, step, offset) {
+  const effectiveStep = Math.max(1, step);
+  const boundaries = new Set([0, dimension]);
+  for (let position = offset; position < dimension; position += effectiveStep) {
+    if (position > 0) boundaries.add(position);
+  }
+  const sorted = [...boundaries].sort((a, b) => a - b);
+  const intervals = [];
+  for (let index = 1; index < sorted.length; index++) {
+    const start = sorted[index - 1];
+    const end = sorted[index];
+    if (end > start) intervals.push({ start, end, size: end - start });
+  }
+  return intervals;
+}
+
+function dominantPixelArtCell(pixelData, xInterval, yInterval, alphaCutoff, tolerance) {
+  let visible = 0;
+  const area = Math.max(1, xInterval.size * yInterval.size);
+  const exact = new Map();
+  for (let y = yInterval.start; y < yInterval.end; y++) {
+    for (let x = xInterval.start; x < xInterval.end; x++) {
+      const color = pixelArtColorAt(pixelData, x, y);
+      if (!pixelArtVisible(color, alphaCutoff)) continue;
+      visible++;
+      const exactKey = `${color[0]}:${color[1]}:${color[2]}`;
+      exact.set(exactKey, (exact.get(exactKey) || 0) + 1);
+    }
+  }
+  if (!visible || visible / area < 0.55) return null;
+  let bestColor = null;
+  let bestCount = 0;
+  exact.forEach((count, exactKey) => {
+    const color = exactKey.split(":").map((value) => Number(value));
+    if (count > bestCount) {
+      bestCount = count;
+      bestColor = color;
+    }
+  });
+  if (!bestColor) return null;
+  return [bestColor[0], bestColor[1], bestColor[2], 255];
+}
+
+function sampleDetectedPixelArtGrid(image, alphaCutoff, tolerance) {
+  const pixelData = pixelArtImageData(image);
+  const xEdges = collectPixelArtEdges(pixelData, "x", alphaCutoff, tolerance);
+  const yEdges = collectPixelArtEdges(pixelData, "y", alphaCutoff, tolerance);
+  let stepX = dominantPixelArtStep(xEdges, pixelData.width);
+  let stepY = dominantPixelArtStep(yEdges, pixelData.height);
+  if (stepX > 1 && stepY > 1 && Math.max(stepX, stepY) / Math.min(stepX, stepY) <= 1.35) {
+    const sharedStep = Math.min(stepX, stepY);
+    stepX = sharedStep;
+    stepY = sharedStep;
+  }
+  const offsetX = dominantPixelArtOffset(xEdges, stepX);
+  const offsetY = dominantPixelArtOffset(yEdges, stepY);
+  const xIntervals = pixelArtIntervals(pixelData.width, stepX, offsetX);
+  const yIntervals = pixelArtIntervals(pixelData.height, stepY, offsetY);
+  const rows = yIntervals.map((yInterval) => (
+    xIntervals.map((xInterval) => dominantPixelArtCell(pixelData, xInterval, yInterval, alphaCutoff, tolerance))
+  ));
+  return {
+    rows,
+    gridW: xIntervals.length,
+    gridH: yIntervals.length,
+    stepX,
+    stepY,
+    offsetX,
+    offsetY,
+  };
+}
+
+function pixelArtExactColorKey(color) {
+  return `${Number(color?.[0] || 0)}:${Number(color?.[1] || 0)}:${Number(color?.[2] || 0)}:${Number(color?.[3] ?? 255)}`;
+}
+
+function buildPixelArtRuns(rows) {
+  const rowRuns = rows.map((row, y) => {
+    const runs = [];
+    let x = 0;
+    while (x < row.length) {
+      const startColor = row[x];
+      if (!startColor) {
+        x++;
+        continue;
+      }
+      const start = x;
+      const runKey = pixelArtExactColorKey(startColor);
+      x++;
+      while (x < row.length && row[x] && pixelArtExactColorKey(row[x]) === runKey) x++;
+      runs.push({
+        x: start,
+        y,
+        width: x - start,
+        height: 1,
+        key: runKey,
+        color: [...startColor],
+      });
+    }
+    return runs;
+  });
+  const merged = [];
+  let active = new Map();
+  rowRuns.forEach((runs) => {
+    const nextActive = new Map();
+    runs.forEach((run) => {
+      const mergeKey = `${run.x}:${run.width}:${run.key}`;
+      const previous = active.get(mergeKey);
+      if (previous && previous.y + previous.height === run.y) {
+        previous.height += 1;
+        nextActive.set(mergeKey, previous);
+      } else {
+        const copy = { ...run };
+        merged.push(copy);
+        nextActive.set(mergeKey, copy);
+      }
+    });
+    active = nextActive;
+  });
+  return merged;
+}
+
+function pixelArtCanvasLayout(gridW, gridH, fitMode) {
+  if (fitMode === "canvas") {
+    return {
+      left: FH6_BOUNDS.left,
+      top: FH6_BOUNDS.top,
+      cellW: FH6_BOUNDS.width / gridW,
+      cellH: FH6_BOUNDS.height / gridH,
+    };
+  }
+  const cellH = FH6_BOUNDS.height / gridH;
+  const width = cellH * gridW;
+  return {
+    left: -width / 2,
+    top: FH6_BOUNDS.top,
+    cellW: cellH,
+    cellH,
+  };
+}
+
+function clearPreviousPixelArtLayers() {
+  const previous = vinylObjects().filter((obj) => obj.kloudy?.pixel_art_generated);
+  previous.forEach((obj) => canvas.remove(obj));
+  return previous.length;
+}
+
+async function generatePixelArtRectangles() {
+  try {
+    if (!canvas) return;
+    const alphaCutoff = numberInputValue("pixelArtAlphaCutoff", 128, 0, 255);
+    const tolerance = numberInputValue("pixelArtTolerance", 24, 0, 80);
+    setBusy("Detecting source pixel grid...");
+    const image = await loadImageFromFile(pixelArtSourceFile);
+    const detected = sampleDetectedPixelArtGrid(image, alphaCutoff, tolerance);
+    const gridW = detected.gridW;
+    const gridH = detected.gridH;
+    setPixelArtGridInputs(detected);
+    setBusy(`Detected ${gridW}x${gridH} source pixel grid. Building rectangles...`);
+    const rows = detected.rows;
+    const runs = buildPixelArtRuns(rows);
+    if (!runs.length) {
+      setText("pixelArtStatus", "No visible pixel-art cells found.");
+      clearBusy("No visible pixel-art cells found.");
+      return;
+    }
+    if (runs.length > 3000) {
+      const ok = window.confirm(`This will create ${runs.length} layers. FH6 supports 3000 layers per vinyl. Continue anyway?`);
+      if (!ok) {
+        setText("pixelArtStatus", "Pixel-art generation cancelled.");
+        clearBusy("Pixel-art generation cancelled.");
+        return;
+      }
+    }
+    const removed = $("pixelArtClearPrevious")?.checked ? clearPreviousPixelArtLayers() : 0;
+    const layout = pixelArtCanvasLayout(gridW, gridH, "height");
+    const groupId = `pixel-art-${Date.now().toString(36)}`;
+    const groupName = `Pixel Art ${gridW}x${gridH}`;
+    const typeCode = resourceToTypeCode("Primitives", 1);
+    const shapeWord = resourceToShapeWord("Primitives", 1);
+    const created = [];
+    historyLocked = true;
+    try {
+      for (const run of runs) {
+        const width = run.width * layout.cellW;
+        const height = (run.height || 1) * layout.cellH;
+        const centerX = layout.left + (run.x * layout.cellW) + width / 2;
+        const centerY = layout.top + (run.y * layout.cellH) + height / 2;
+        const shape = {
+          type: typeCode,
+          type_word: shapeWord,
+          resource_family: "Primitives",
+          resource_index: 1,
+          shape_name: "Square",
+          data: [
+            round(centerX),
+            round(-centerY),
+            round(width / PIXEL_ART_SQUARE_SIZE),
+            round(height / PIXEL_ART_SQUARE_SIZE),
+            0,
+            0,
+            0,
+          ],
+          color: run.color,
+          mask: false,
+          score: 0,
+          editor_group_id: groupId,
+          editor_group_name: groupName,
+        };
+        const object = await makeFabricObject(shape);
+        object.kloudy.pixel_art_generated = true;
+        canvas.add(object);
+        created.push(object);
+      }
+    } finally {
+      historyLocked = false;
+    }
+    bringGuidesToBack();
+    syncCanvasObjectCoords();
+    selectObjects(created.slice(0, 200), "pixel-art generation");
+    refreshLayers();
+    pushHistory("generate pixel art");
+    const message = `Generated ${created.length} pixel-art rectangle layer(s) from detected ${gridW}x${gridH} grid, source step ${detected.stepX}x${detected.stepY}px.${removed ? ` Removed ${removed} previous pixel-art layer(s).` : ""}`;
+    setText("pixelArtStatus", message);
+    clearBusy(message);
+  } catch (err) {
+    historyLocked = false;
+    setText("pixelArtStatus", `Pixel-art generation failed: ${err.message || err}`);
+    showError("Pixel-art generation failed", err);
+  }
+}
+
 function buildShapeLibrary() {
   const select = $("shapeFamily");
   FAMILY_ORDER.forEach((family) => {
@@ -7782,6 +8170,15 @@ function bindUi() {
     el.addEventListener(el.tagName === "SELECT" ? "change" : "input", syncGuideStateFromUi);
     el.addEventListener("change", syncGuideStateFromUi);
   });
+  $("pixelArtInput")?.addEventListener("change", (event) => {
+    pixelArtSourceFile = event.target.files?.[0] || null;
+    if (!pixelArtSourceFile) {
+      setPixelArtStatus("Choose a pixel-art source image.");
+      return;
+    }
+    setPixelArtStatus(`Pixel-art source loaded: ${pixelArtSourceFile.name}. Press Generate to detect its pixel grid.`);
+  });
+  $("generatePixelArt")?.addEventListener("click", generatePixelArtRectangles);
   $("deleteGuide")?.addEventListener("click", deleteSelectedGuide);
   $("clearGuides")?.addEventListener("click", clearGuides);
   $("toggleOverlay").addEventListener("click", toggleOverlay);
