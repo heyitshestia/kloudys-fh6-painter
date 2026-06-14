@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.59
+- Fixed updater path handling for Windows usernames and folders with apostrophes.
+
 ## 2.0.58
 - bongocat
 
