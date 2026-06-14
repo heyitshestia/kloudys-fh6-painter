@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.58
+- bongocat
+
 ## 2.0.57
 - Added a Settings option for app UI scale to help users with unusual Windows display scaling.
 - The scale setting is saved locally and applies after restarting KFPS.

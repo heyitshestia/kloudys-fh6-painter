@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QPoint, QRectF, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QBrush, QColor, QDesktopServices, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QIcon, QImage, QLinearGradient, QMovie, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -94,6 +94,7 @@ REPO_NAME = "kloudys-forza-painter-suite"
 BRANCH = "main"
 GITHUB_VERSION_RAW = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/VERSION"
 KOFI_URL = "https://ko-fi.com/O7O020EQNQ"
+KOFI_BONGO_GIF = ROOT / "assets" / "app" / "bongocat-kofi-cropped.gif"
 EMBEDDED_PYTHON = ROOT / "python" / "python.exe"
 PROBE_DIR = ROOT / "webui-data" / "probes"
 APP_SETTINGS_PATH = ROOT / "runtime" / "app_settings.json"
@@ -259,6 +260,11 @@ QFrame#dashboardCard {
     border-radius: 18px;
     padding: 14px;
 }
+QFrame#dashboardKofiCard {
+    border: 2px solid rgba(255, 126, 178, 150);
+    border-radius: 18px;
+    padding: 16px;
+}
 QFrame#tutorialSectionFrame {
     border-radius: 14px;
     padding: 0;
@@ -296,9 +302,31 @@ QLabel#dashboardCardText {
     background: transparent;
     font-size: 10pt;
 }
+QLabel#dashboardKofiTitle {
+    background: transparent;
+    font-size: 15pt;
+    font-weight: 950;
+}
+QLabel#dashboardKofiText {
+    background: transparent;
+    font-size: 10pt;
+    font-weight: 760;
+}
 QLabel#bugReportPrivacy {
     background: transparent;
     font-weight: 850;
+}
+QWidget#kofiBongoWrap {
+    background: transparent;
+}
+QLabel#kofiBongoCat {
+    background: transparent;
+    border: none;
+}
+QPushButton#kofiButton {
+    min-height: 30px;
+    max-height: 34px;
+    padding: 5px 14px;
 }
 """
 
@@ -313,6 +341,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #a83f67; color: #ffffff; border: 1px solid #793047; }
         QListWidget#workflowNav::item:disabled { color: #7f3d58; }
         QFrame#dashboardCard { background: rgba(255, 253, 253, 245); border: 1px solid #e5b9c8; }
+        QFrame#dashboardKofiCard { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fff8fb, stop:0.45 #ffe3ef, stop:1 #fffdfd); border: 2px solid #d65f89; }
+        QLabel#dashboardKofiTitle { color: #a83f67; }
+        QLabel#dashboardKofiText { color: #5d2d41; }
         QFrame#tutorialSectionFrame { background: rgba(255, 253, 253, 210); border: 1px solid #e5b9c8; }
         QToolButton#tutorialSectionButton { background: #f3c7d6; color: #3d2430; border: 1px solid #9f6479; }
         QToolButton#tutorialSectionButton:hover { background: #f8d9e4; }
@@ -329,6 +360,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff4a2b, stop:0.55 #ffb000, stop:1 #24e9ff); color: #050914; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #ffb000; }
         QFrame#dashboardCard { background: rgba(12, 26, 38, 222); border: 1px solid rgba(36, 233, 255, 100); }
+        QFrame#dashboardKofiCard { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,74,126,95), stop:0.52 rgba(8,22,35,235), stop:1 rgba(36,233,255,65)); border: 2px solid rgba(255,176,0,190); }
+        QLabel#dashboardKofiTitle { color: #ffd166; }
+        QLabel#dashboardKofiText { color: #fff6fb; }
         QFrame#tutorialSectionFrame { background: rgba(12, 26, 38, 205); border: 1px solid rgba(36, 233, 255, 100); }
         QToolButton#tutorialSectionButton { background: rgba(8, 22, 35, 230); color: #e8fbff; border: 1px solid rgba(36, 233, 255, 135); }
         QToolButton#tutorialSectionButton:hover { background: rgba(18, 50, 66, 238); border: 1px solid #24e9ff; }
@@ -345,6 +379,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected { background: #ffffff; color: #000000; border: 1px solid #ffffff; }
         QListWidget#workflowNav::item:disabled { color: #bdbdbd; }
         QFrame#dashboardCard { background: #080808; border: 1px solid rgba(255, 255, 255, 145); }
+        QFrame#dashboardKofiCard { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #18040d, stop:0.50 #080808, stop:1 #1a0c12); border: 2px solid rgba(255,126,178,180); }
+        QLabel#dashboardKofiTitle { color: #ff9fc3; }
+        QLabel#dashboardKofiText { color: #f4f4f4; }
         QFrame#tutorialSectionFrame { background: #050505; border: 1px solid rgba(255, 255, 255, 120); }
         QToolButton#tutorialSectionButton { background: #050505; color: #f4f4f4; border: 1px solid rgba(255, 255, 255, 105); }
         QToolButton#tutorialSectionButton:hover { background: #121212; color: #ffffff; border: 1px solid rgba(255, 255, 255, 190); }
@@ -363,6 +400,9 @@ def shell_theme_qss(theme_key: str) -> str:
             QListWidget#workflowNav::item:selected {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f3cf75, stop:0.48 #a87522, stop:1 #f7df94); color: #130201; border: 1px solid #fff0bd; }}
             QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
             QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+            QFrame#dashboardKofiCard {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f0705, stop:0.48 {tokens["panel_alt"]}, stop:1 #55320c); border: 2px solid #d8a83f; }}
+            QLabel#dashboardKofiTitle {{ color: #f7df94; }}
+            QLabel#dashboardKofiText {{ color: {tokens["text"]}; }}
             QFrame#tutorialSectionFrame {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
             QToolButton#tutorialSectionButton {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #55320c, stop:0.32 #d8a83f, stop:0.58 #7f541b, stop:1 #240403); color: #fff0bd; border: 1px solid #7d2112; }}
             QToolButton#tutorialSectionButton:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #805017, stop:0.34 #f0c965, stop:0.62 #9b671f, stop:1 #3a0704); color: #ffffff; border: 1px solid #e8bb58; }}
@@ -378,6 +418,9 @@ def shell_theme_qss(theme_key: str) -> str:
         QListWidget#workflowNav::item:selected {{ background: {tokens["accent"]}; color: {tokens["select_fg"]}; border: 1px solid {tokens["frame_light"]}; }}
         QListWidget#workflowNav::item:disabled {{ color: {tokens["hint"]}; }}
         QFrame#dashboardCard {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
+        QFrame#dashboardKofiCard {{ background: {tokens["panel_alt"]}; border: 2px solid {tokens["accent"]}; }}
+        QLabel#dashboardKofiTitle {{ color: {tokens["accent"]}; }}
+        QLabel#dashboardKofiText {{ color: {tokens["text"]}; }}
         QFrame#tutorialSectionFrame {{ background: {tokens["panel_alt"]}; border: 1px solid {tokens["border"]}; }}
         QToolButton#tutorialSectionButton {{ background: {tokens["button"]}; color: {tokens["button_fg"]}; border: 1px solid {tokens["border"]}; }}
         QToolButton#tutorialSectionButton:hover {{ background: {tokens["button_active"]}; color: {tokens["button_active_fg"]}; border: 1px solid {tokens["accent"]}; }}
@@ -393,6 +436,9 @@ def shell_theme_qss(theme_key: str) -> str:
     QListWidget#workflowNav::item:selected { background: #9f6ad8; color: #ffffff; border: 1px solid #7b4eb0; }
     QListWidget#workflowNav::item:disabled { color: #6c3fa0; }
     QFrame#dashboardCard { background: rgba(255, 253, 248, 245); border: 1px solid #e3d1f5; }
+    QFrame#dashboardKofiCard { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fffdf8, stop:0.50 #ffe8f2, stop:1 #f5edff); border: 2px solid #d65f89; }
+    QLabel#dashboardKofiTitle { color: #a83f67; }
+    QLabel#dashboardKofiText { color: #3b244d; }
     QFrame#tutorialSectionFrame { background: rgba(255, 253, 248, 220); border: 1px solid #e3d1f5; }
     QToolButton#tutorialSectionButton { background: #eadcff; color: #3b244d; border: 1px solid #c7a8ea; }
     QToolButton#tutorialSectionButton:hover { background: #dfc9ff; }
@@ -2971,6 +3017,8 @@ class SparkleLinkPanel(QWidget):
 
 
 class WorkflowShell(QFrame):
+    pageChanged = Signal(str)
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("workflowShell")
@@ -3045,6 +3093,7 @@ class WorkflowShell(QFrame):
         title = self.page_titles[index] if 0 <= index < len(self.page_titles) else "Dashboard"
         self.title.setText(title)
         self.subtitle.setText(WORKFLOW_SUBTITLES.get(title, ""))
+        self.pageChanged.emit(title)
 
 
 class DashboardCard(QFrame):
@@ -3066,6 +3115,24 @@ class DashboardCard(QFrame):
         layout.addWidget(title_label)
         layout.addWidget(body, 1)
         layout.addWidget(button)
+
+
+class KofiBongoButton(QWidget):
+    def __init__(self, gif_path: Path, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("kofiBongoWrap")
+        self.setFixedSize(196, 36)
+        self.button = QPushButton("Support on Ko-fi", self)
+        self.button.setObjectName("kofiButton")
+        self.button.setToolTip("Support KFPS on Ko-fi")
+        self.button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.button.setGeometry(8, 1, 180, 34)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        button_width = min(180, max(150, self.width() - 16))
+        button_x = (self.width() - button_width) // 2
+        self.button.setGeometry(button_x, 1, button_width, 34)
 
 
 class MainWindow(QMainWindow):
@@ -3155,7 +3222,7 @@ class MainWindow(QMainWindow):
         self.background_widget = central
         root = QVBoxLayout(central)
         root.setContentsMargins(12, 12, 12, 10)
-        root.setSpacing(12)
+        root.setSpacing(6)
         top_bar = QFrame()
         top_bar.setObjectName("topBar")
         top_layout = QHBoxLayout(top_bar)
@@ -3182,6 +3249,7 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.update_alarm, 1)
         root.addWidget(top_bar)
         self.tabs = WorkflowShell()
+        self.tabs.pageChanged.connect(lambda _title: QTimer.singleShot(0, self.position_kofi_bongo))
         root.addWidget(self.tabs, 1)
         self._build_dashboard_tab()
         self._build_tutorial_tab()
@@ -3197,26 +3265,25 @@ class MainWindow(QMainWindow):
         self.update_setting_description()
         self.sync_custom_state()
         footer = QHBoxLayout()
+        footer.setContentsMargins(0, 0, 0, 0)
+        footer.setSpacing(8)
         self.status_label = QLabel("Ready")
         self.progress_label = QLabel("")
-        footer.addWidget(QLabel("Status:"))
-        footer.addWidget(self.status_label)
+        footer.addWidget(QLabel("Status:"), 0, Qt.AlignmentFlag.AlignTop)
+        footer.addWidget(self.status_label, 0, Qt.AlignmentFlag.AlignTop)
         footer.addSpacing(24)
-        footer.addWidget(QLabel("Progress:"))
+        footer.addWidget(QLabel("Progress:"), 0, Qt.AlignmentFlag.AlignTop)
         footer.addWidget(self.progress_label, 1)
         optional_label = QLabel("optional ->")
         optional_label.setObjectName("kofiOptionalLabel")
         optional_label.setToolTip("Optional support link.")
-        footer.addWidget(optional_label)
-        self.kofi_button = QPushButton("Support on Ko-fi")
-        self.kofi_button.setObjectName("kofiButton")
-        self.kofi_button.setToolTip("Support KFPS on Ko-fi")
-        self.kofi_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.kofi_button.setFixedHeight(24)
-        self.kofi_button.setMinimumWidth(122)
-        self.kofi_button.setMaximumWidth(150)
+        optional_label.setFixedHeight(20)
+        optional_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        footer.addWidget(optional_label, 0, Qt.AlignmentFlag.AlignTop)
+        self.kofi_widget = KofiBongoButton(KOFI_BONGO_GIF)
+        self.kofi_button = self.kofi_widget.button
         self.kofi_button.clicked.connect(self.open_kofi)
-        footer.addWidget(self.kofi_button)
+        footer.addWidget(self.kofi_widget, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(footer)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -3224,6 +3291,7 @@ class MainWindow(QMainWindow):
         self.log.setMaximumHeight(150)
         root.addWidget(self.log)
         self.setCentralWidget(central)
+        self.setup_kofi_bongo_overlay()
 
     def make_combo(self, items=None, *, max_visible: int = 16, min_height: int = 34, editable: bool = False) -> QComboBox:
         combo = configure_combo_box(QComboBox(), max_visible=max_visible, min_height=min_height, editable=editable)
@@ -3234,6 +3302,54 @@ class MainWindow(QMainWindow):
 
     def open_kofi(self):
         QDesktopServices.openUrl(QUrl(KOFI_URL))
+
+    def setup_kofi_bongo_overlay(self):
+        self.kofi_bongo_label = QLabel(self.background_widget)
+        self.kofi_bongo_label.setObjectName("kofiBongoCat")
+        self.kofi_bongo_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.kofi_bongo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.kofi_bongo_label.setFixedSize(96, 55)
+        self.kofi_bongo_movie = QMovie(str(KOFI_BONGO_GIF)) if KOFI_BONGO_GIF.exists() else None
+        self.kofi_bongo_timer = QTimer(self)
+        self.kofi_bongo_timer.setSingleShot(True)
+        self.kofi_bongo_timer.timeout.connect(self.play_kofi_bongo)
+        if self.kofi_bongo_movie and self.kofi_bongo_movie.isValid():
+            self.kofi_bongo_movie.setParent(self)
+            self.kofi_bongo_movie.setCacheMode(QMovie.CacheMode.CacheAll)
+            self.kofi_bongo_movie.setScaledSize(QSize(96, 55))
+            self.kofi_bongo_label.setMovie(self.kofi_bongo_movie)
+            self.kofi_bongo_movie.start()
+            self.kofi_bongo_movie.jumpToFrame(0)
+            self.kofi_bongo_movie.stop()
+            self.position_kofi_bongo()
+            self.kofi_bongo_label.show()
+            QTimer.singleShot(450, self.play_kofi_bongo)
+        else:
+            self.kofi_bongo_label.hide()
+
+    def position_kofi_bongo(self):
+        if not all(hasattr(self, name) for name in ("kofi_bongo_label", "kofi_button", "background_widget")):
+            return
+        top_left = self.kofi_button.mapTo(self.background_widget, QPoint(0, 0))
+        x = top_left.x() + (self.kofi_button.width() - self.kofi_bongo_label.width()) // 2
+        y = top_left.y() - self.kofi_bongo_label.height() + 2
+        self.kofi_bongo_label.move(max(0, x), max(0, y))
+        self.kofi_bongo_label.raise_()
+
+    def play_kofi_bongo(self):
+        if not getattr(self, "kofi_bongo_movie", None) or not self.kofi_bongo_movie.isValid():
+            return
+        self.position_kofi_bongo()
+        self.kofi_bongo_movie.stop()
+        self.kofi_bongo_movie.jumpToFrame(0)
+        self.kofi_bongo_movie.start()
+        QTimer.singleShot(5000, self.stop_kofi_bongo)
+
+    def stop_kofi_bongo(self):
+        if getattr(self, "kofi_bongo_movie", None) and self.kofi_bongo_movie.isValid():
+            self.kofi_bongo_movie.stop()
+            self.kofi_bongo_movie.jumpToFrame(0)
+            self.kofi_bongo_timer.start(600_000)
 
     def go_to_workflow(self, title: str):
         if hasattr(self, "tabs") and hasattr(self.tabs, "switch_to"):
@@ -3410,18 +3526,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(editor_ad)
 
         kofi_ad = QFrame()
-        kofi_ad.setObjectName("dashboardCard")
+        kofi_ad.setObjectName("dashboardKofiCard")
         kofi_layout = QVBoxLayout(kofi_ad)
         kofi_layout.setSpacing(10)
-        kofi_title = QLabel("tiny optional ko-fi note")
-        kofi_title.setObjectName("dashboardCardTitle")
+        kofi_title = QLabel("Want to help KFPS grow?")
+        kofi_title.setObjectName("dashboardKofiTitle")
         kofi_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         kofi_body = QLabel(
-            "hi, tiny ko-fi note: this is completely optional, but if the app helped you and you want to throw a little support my way, "
-            "it would help me commission a proper logo/mascot someday instead of making everything myself badly lol\n\n"
-            "tip button is in the bottom right."
+            "KFPS is free, but if it saved you time or helped you make something cute, a small tip genuinely helps. "
+            "Support goes toward testing, polish, better project assets, and maybe a proper little mascot someday.\n\n"
+            "Completely optional. The tip button is in the bottom right."
         )
-        kofi_body.setObjectName("dashboardCardText")
+        kofi_body.setObjectName("dashboardKofiText")
         kofi_body.setWordWrap(True)
         kofi_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         kofi_layout.addWidget(kofi_title)
@@ -4676,6 +4792,7 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.position_update_alarm()
+        self.position_kofi_bongo()
 
     def populate_profile_list(self, select_path: Path | None = None):
         if not hasattr(self, "profile_combo"):
