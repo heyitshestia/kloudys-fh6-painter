@@ -154,6 +154,16 @@ THEMES = {
     "Matrix Green": "matrix_green",
 }
 DEFAULT_THEME = "Blackout"
+APP_UI_SCALE_OPTIONS = {
+    "75%": 0.75,
+    "85%": 0.85,
+    "90%": 0.90,
+    "100%": 1.0,
+    "110%": 1.10,
+    "125%": 1.25,
+    "150%": 1.50,
+}
+DEFAULT_APP_UI_SCALE = "100%"
 
 WORKFLOW_META = {
     "Dashboard": ("Command Center", "Start the common workflows without hunting through tabs."),
@@ -1497,6 +1507,30 @@ def save_app_settings(settings: dict) -> None:
         APP_SETTINGS_PATH.write_text(json.dumps(settings, indent=2, sort_keys=True), encoding="utf-8")
     except OSError:
         pass
+
+
+def normalized_app_ui_scale(value) -> str:
+    text = str(value or DEFAULT_APP_UI_SCALE).strip()
+    if text in APP_UI_SCALE_OPTIONS:
+        return text
+    try:
+        numeric = float(text.rstrip("%"))
+    except ValueError:
+        return DEFAULT_APP_UI_SCALE
+    if numeric <= 3:
+        numeric *= 100
+    nearest = min(APP_UI_SCALE_OPTIONS, key=lambda key: abs(float(key.rstrip("%")) - numeric))
+    return nearest
+
+
+def apply_saved_app_ui_scale() -> None:
+    scale_name = normalized_app_ui_scale(load_app_settings().get("app_ui_scale", DEFAULT_APP_UI_SCALE))
+    factor = APP_UI_SCALE_OPTIONS.get(scale_name, 1.0)
+    os.environ["QT_SCALE_FACTOR_ROUNDING_POLICY"] = "PassThrough"
+    if abs(factor - 1.0) < 0.001:
+        os.environ.pop("QT_SCALE_FACTOR", None)
+    else:
+        os.environ["QT_SCALE_FACTOR"] = f"{factor:.2f}"
 
 
 def local_app_version() -> str:
@@ -4186,6 +4220,16 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(QLabel("Game-inspired themes include Eurocorp, Elite, CryNet, UNATCO, New Eden, Red Phosphorous, Arc Reactor Red, Blue Terminal 90s, and Matrix Green."))
         theme_layout.addWidget(QLabel("Blackout Violet mixes the low-glare Blackout base with a purple neon edge."))
         theme_layout.addWidget(QLabel("Blackout remains the full opaque low-glare default."))
+        self.app_ui_scale_combo = self.make_combo(list(APP_UI_SCALE_OPTIONS.keys()), max_visible=len(APP_UI_SCALE_OPTIONS), min_height=38)
+        saved_ui_scale = normalized_app_ui_scale(self.app_settings.get("app_ui_scale", DEFAULT_APP_UI_SCALE))
+        self.app_ui_scale_combo.setCurrentText(saved_ui_scale)
+        self.app_ui_scale_combo.activated.connect(self.save_app_ui_scale_setting)
+        theme_layout.addWidget(QLabel("App UI scale"))
+        theme_layout.addWidget(self.app_ui_scale_combo)
+        theme_layout.addWidget(QLabel("Use this if Windows display scaling makes KFPS too large, too small, or clipped. Restart KFPS after changing it."))
+        self.app_ui_scale_notice = QLabel("")
+        self.app_ui_scale_notice.setWordWrap(True)
+        theme_layout.addWidget(self.app_ui_scale_notice)
         layout.addWidget(theme)
 
         generator = QGroupBox("Generator Pro Settings")
@@ -4205,6 +4249,16 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
         self.tabs.addTab(tab, "Settings")
+
+    def save_app_ui_scale_setting(self, *_args):
+        if not hasattr(self, "app_settings") or not hasattr(self, "app_ui_scale_combo"):
+            return
+        scale_name = normalized_app_ui_scale(self.app_ui_scale_combo.currentText())
+        self.app_settings["app_ui_scale"] = scale_name
+        save_app_settings(self.app_settings)
+        if hasattr(self, "app_ui_scale_notice"):
+            self.app_ui_scale_notice.setText(f"Saved UI scale {scale_name}. Restart KFPS for the change to apply.")
+        self.log_line(f"Saved app UI scale {scale_name}. Restart KFPS for the change to apply.")
 
     def save_generator_settings(self, *_args):
         if hasattr(self, "blue_terminal_dialup_enabled"):
@@ -7307,6 +7361,7 @@ class MainWindow(QMainWindow):
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    apply_saved_app_ui_scale()
     app = QApplication(sys.argv[:1])
     try:
         require_project_presence()

@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.57
+- Added a Settings option for app UI scale to help users with unusual Windows display scaling.
+- The scale setting is saved locally and applies after restarting KFPS.
+
 ## 2.0.56
 - Added experimental Forza Motorsport export detection.
 - FM exports now convert Motorsport shape resources into FH6-compatible JSONs for editor preview and FH6 import.
