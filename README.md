@@ -384,7 +384,7 @@ Older reference examples are kept below for continuity.
 
 A very, very big thank you to LanceMuscles for insights into the deep and almost forgotten lore of Forza Horizon image-to-vinyl generation.
 
-Many more thanks to River, Elu, Wolfie, WKD_Will, Big Nut, Korinthian, Catinus, Soypoka, Slasher, Melon, Eddie, Frozander, Kanyeshine, slaigh., Asayunon, and Astral_Cat for suggestions, testing, tips, and solutions.
+Many more thanks to River, Elu, Wolfie, WKD_Will, Big Nut, Korinthian, Catinus, Soypoka, Slasher, Melon, Eddie, Frozander, Kuroshine, slaigh., Asayunon, and Astral_Cat for suggestions, testing, tips, and solutions.
 
 Thank you to dcinside.com and minnn for the detailed guide coverage and feedback.
 
