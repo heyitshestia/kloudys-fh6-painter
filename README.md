@@ -14,6 +14,10 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
+> **NEWS: Experimental Forza Motorsport 8 export support is now available in KFPS.**
+>
+> FM8 vinyls can now be exported to KFPS JSON, previewed or edited in the KFPS editor, and used as FH6-compatible JSONs. This is still experimental: ungrouped vinyls are safest, some edge-case/community shapes may need more testing, and first in-game previews or thumbnails can look odd until the vinyl is saved and reloaded.
+
 KFPS is a Windows-focused Forza Horizon 6 vinyl suite. It can generate vinyl JSON from source art, finalize and preview import-ready checkpoints, import compatible JSON through one FH6 importer, and open a browser-based editor for manual JSON work.
 
 This page is the start-here guide. The full user manual is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md), and the detailed FH6 template/import guide is in [docs/FH6_IMPORT_GUIDE.md](docs/FH6_IMPORT_GUIDE.md).
