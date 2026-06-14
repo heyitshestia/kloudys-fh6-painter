@@ -38,6 +38,204 @@ EXPORT_VALIDATION_WARNING = (
     "Continuing because a live group/table was located; only export designs you own or have permission to export."
 )
 
+# Motorsport uses the same visible library order, but several raw layer words
+# differ from FH5/FH6. Convert FM exports to canonical FH6 words so exported
+# JSON can be imported into FH6, while preserving raw FM words in the report.
+FM_EXPORT_RESOURCE_MAP = {
+    2103: ("Community_Vinyls_1", 1),
+    2107: ("Community_Vinyls_1", 2),
+    2123: ("Community_Vinyls_1", 3),
+    2136: ("Community_Vinyls_1", 4),
+    2109: ("Community_Vinyls_1", 5),
+    2110: ("Community_Vinyls_1", 6),
+    2132: ("Community_Vinyls_1", 7),
+    2125: ("Community_Vinyls_1", 8),
+    2139: ("Community_Vinyls_1", 9),
+    2119: ("Community_Vinyls_1", 10),
+    2135: ("Community_Vinyls_1", 11),
+    2117: ("Community_Vinyls_1", 12),
+    2127: ("Community_Vinyls_1", 13),
+    2133: ("Community_Vinyls_1", 14),
+    2129: ("Community_Vinyls_1", 15),
+    2116: ("Community_Vinyls_1", 16),
+    2138: ("Community_Vinyls_1", 17),
+    2115: ("Community_Vinyls_1", 18),
+    2137: ("Community_Vinyls_1", 19),
+    2101: ("Community_Vinyls_1", 20),
+    2105: ("Community_Vinyls_1", 21),
+    2108: ("Community_Vinyls_1", 22),
+    2126: ("Community_Vinyls_1", 23),
+    2118: ("Community_Vinyls_1", 24),
+    2106: ("Community_Vinyls_1", 25),
+    2124: ("Community_Vinyls_1", 26),
+    2131: ("Community_Vinyls_1", 27),
+    2140: ("Community_Vinyls_1", 28),
+    2102: ("Community_Vinyls_1", 29),
+    2111: ("Community_Vinyls_1", 30),
+    2104: ("Community_Vinyls_1", 31),
+    2112: ("Community_Vinyls_1", 32),
+    2134: ("Community_Vinyls_1", 33),
+    2113: ("Community_Vinyls_1", 34),
+    2114: ("Community_Vinyls_1", 35),
+    2120: ("Community_Vinyls_1", 36),
+    2128: ("Community_Vinyls_1", 37),
+    2130: ("Community_Vinyls_1", 38),
+    2122: ("Community_Vinyls_1", 39),
+    2121: ("Community_Vinyls_1", 40),
+    2201: ("Community_Vinyls_2", 1),
+    2218: ("Community_Vinyls_2", 2),
+    2226: ("Community_Vinyls_2", 3),
+    2210: ("Community_Vinyls_2", 4),
+    2230: ("Community_Vinyls_2", 5),
+    2240: ("Community_Vinyls_2", 6),
+    2238: ("Community_Vinyls_2", 7),
+    2217: ("Community_Vinyls_2", 8),
+    2231: ("Community_Vinyls_2", 9),
+    2209: ("Community_Vinyls_2", 10),
+    2202: ("Community_Vinyls_2", 11),
+    2219: ("Community_Vinyls_2", 12),
+    2227: ("Community_Vinyls_2", 13),
+    2211: ("Community_Vinyls_2", 14),
+    2206: ("Community_Vinyls_2", 15),
+    2234: ("Community_Vinyls_2", 16),
+    2239: ("Community_Vinyls_2", 17),
+    2205: ("Community_Vinyls_2", 18),
+    2223: ("Community_Vinyls_2", 19),
+    2233: ("Community_Vinyls_2", 20),
+    2203: ("Community_Vinyls_2", 21),
+    2220: ("Community_Vinyls_2", 22),
+    2228: ("Community_Vinyls_2", 23),
+    2212: ("Community_Vinyls_2", 24),
+    2222: ("Community_Vinyls_2", 25),
+    2235: ("Community_Vinyls_2", 26),
+    2225: ("Community_Vinyls_2", 27),
+    2215: ("Community_Vinyls_2", 28),
+    2224: ("Community_Vinyls_2", 29),
+    2208: ("Community_Vinyls_2", 30),
+    2204: ("Community_Vinyls_2", 31),
+    2221: ("Community_Vinyls_2", 32),
+    2229: ("Community_Vinyls_2", 33),
+    2213: ("Community_Vinyls_2", 34),
+    2214: ("Community_Vinyls_2", 35),
+    2237: ("Community_Vinyls_2", 36),
+    2236: ("Community_Vinyls_2", 37),
+    2207: ("Community_Vinyls_2", 38),
+    2232: ("Community_Vinyls_2", 39),
+    2216: ("Community_Vinyls_2", 40),
+    2301: ("Community_Vinyls_3", 1),
+    2321: ("Community_Vinyls_3", 2),
+    2317: ("Community_Vinyls_3", 3),
+    2308: ("Community_Vinyls_3", 4),
+    2327: ("Community_Vinyls_3", 5),
+    2310: ("Community_Vinyls_3", 6),
+    2339: ("Community_Vinyls_3", 7),
+    2335: ("Community_Vinyls_3", 8),
+    2316: ("Community_Vinyls_3", 9),
+    2325: ("Community_Vinyls_3", 10),
+    2302: ("Community_Vinyls_3", 11),
+    2311: ("Community_Vinyls_3", 12),
+    2318: ("Community_Vinyls_3", 13),
+    2337: ("Community_Vinyls_3", 14),
+    2336: ("Community_Vinyls_3", 15),
+    2329: ("Community_Vinyls_3", 16),
+    2332: ("Community_Vinyls_3", 17),
+    2334: ("Community_Vinyls_3", 18),
+    2324: ("Community_Vinyls_3", 19),
+    2333: ("Community_Vinyls_3", 20),
+    2322: ("Community_Vinyls_3", 21),
+    2312: ("Community_Vinyls_3", 22),
+    2319: ("Community_Vinyls_3", 23),
+    2307: ("Community_Vinyls_3", 24),
+    2338: ("Community_Vinyls_3", 25),
+    2330: ("Community_Vinyls_3", 26),
+    2303: ("Community_Vinyls_3", 27),
+    2305: ("Community_Vinyls_3", 28),
+    2314: ("Community_Vinyls_3", 29),
+    2304: ("Community_Vinyls_3", 30),
+    2331: ("Community_Vinyls_3", 31),
+    2309: ("Community_Vinyls_3", 32),
+    2328: ("Community_Vinyls_3", 33),
+    2326: ("Community_Vinyls_3", 34),
+    2323: ("Community_Vinyls_3", 35),
+    2320: ("Community_Vinyls_3", 36),
+    2313: ("Community_Vinyls_3", 37),
+    2306: ("Community_Vinyls_3", 38),
+    2315: ("Community_Vinyls_3", 39),
+    2340: ("Community_Vinyls_3", 40),
+    2401: ("Community_Vinyls_4", 1),
+    2421: ("Community_Vinyls_4", 2),
+    2417: ("Community_Vinyls_4", 3),
+    2408: ("Community_Vinyls_4", 4),
+    2427: ("Community_Vinyls_4", 5),
+    2413: ("Community_Vinyls_4", 6),
+    2406: ("Community_Vinyls_4", 7),
+    2430: ("Community_Vinyls_4", 8),
+    2414: ("Community_Vinyls_4", 9),
+    2410: ("Community_Vinyls_4", 10),
+    2402: ("Community_Vinyls_4", 11),
+    2411: ("Community_Vinyls_4", 12),
+    2418: ("Community_Vinyls_4", 13),
+    2437: ("Community_Vinyls_4", 14),
+    2436: ("Community_Vinyls_4", 15),
+    2433: ("Community_Vinyls_4", 16),
+    2435: ("Community_Vinyls_4", 17),
+    2434: ("Community_Vinyls_4", 18),
+    2424: ("Community_Vinyls_4", 19),
+    2420: ("Community_Vinyls_4", 20),
+    2422: ("Community_Vinyls_4", 21),
+    2412: ("Community_Vinyls_4", 22),
+    2419: ("Community_Vinyls_4", 23),
+    2407: ("Community_Vinyls_4", 24),
+    2438: ("Community_Vinyls_4", 25),
+    2425: ("Community_Vinyls_4", 26),
+    2440: ("Community_Vinyls_4", 27),
+    2404: ("Community_Vinyls_4", 28),
+    2432: ("Community_Vinyls_4", 29),
+    2415: ("Community_Vinyls_4", 30),
+    2431: ("Community_Vinyls_4", 31),
+    2409: ("Community_Vinyls_4", 32),
+    2428: ("Community_Vinyls_4", 33),
+    2426: ("Community_Vinyls_4", 34),
+    2423: ("Community_Vinyls_4", 35),
+    2429: ("Community_Vinyls_4", 36),
+    2416: ("Community_Vinyls_4", 37),
+    2405: ("Community_Vinyls_4", 38),
+    2403: ("Community_Vinyls_4", 39),
+    2439: ("Community_Vinyls_4", 40),
+}
+
+FM_EXPORT_COMPACT_TAB_BASES = {
+    101: "Primitives",
+    201: "Gradient_Shapes",
+    301: "Stripes",
+    401: "Tears",
+    501: "Racing_Icons",
+    601: "Flames",
+    701: "Paint_Splats",
+    801: "Tribal",
+    901: "Nature",
+}
+
+
+CANONICAL_COMPACT_TAB_BASES = {
+    "Primitives": 101,
+    "Gradient_Shapes": 201,
+    "Stripes": 301,
+    "Tears": 401,
+    "Racing_Icons": 501,
+    "Flames": 601,
+    "Paint_Splats": 701,
+    "Tribal": 801,
+    "Nature": 901,
+}
+
+CANONICAL_COMMUNITY_TAB_BASES = {
+    "Community_Vinyls_1": 2101,
+    "Community_Vinyls_2": 2201,
+    "Community_Vinyls_3": 2301,
+    "Community_Vinyls_4": 2401,
+}
+
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.OpenProcess.restype = wintypes.HANDLE
 k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
@@ -304,6 +502,68 @@ def decode_layer(raw, index, ptr, include_raw=False):
     if include_raw:
         layer["raw_hex"] = raw.hex()
     return shape, layer
+
+
+def canonical_fh6_word_for_resource(family, index):
+    family = str(family)
+    index = int(index)
+    if family == "Primitives":
+        return 100 + index
+    if family in CANONICAL_COMPACT_TAB_BASES:
+        return int(CANONICAL_COMPACT_TAB_BASES[family]) + index - 1
+    if family in CANONICAL_COMMUNITY_TAB_BASES:
+        return int(CANONICAL_COMMUNITY_TAB_BASES[family]) + index - 1
+    return None
+
+
+def fm_direct_community_resource(raw_word):
+    for base_word, family in (
+        (2100, "Community_Vinyls_1"),
+        (2200, "Community_Vinyls_2"),
+        (2300, "Community_Vinyls_3"),
+        (2400, "Community_Vinyls_4"),
+    ):
+        index = int(raw_word) - base_word
+        if 1 <= index <= 40:
+            return family, index
+    return None
+
+
+def annotate_fm_export_resource(shape, layer, game):
+    if str(game).lower() != "fm":
+        return False
+    raw_word = int(shape.get("type_word") or 0) & 0xFFFF
+    resource = fm_direct_community_resource(raw_word)
+    if not resource:
+        for base_word, family in sorted(FM_EXPORT_COMPACT_TAB_BASES.items(), reverse=True):
+            offset = raw_word - int(base_word)
+            if 0 <= offset < 40:
+                resource = (family, offset + 1)
+                break
+    if not resource:
+        return False
+    family, index = resource
+    raw_type = int(shape.get("type") or 0)
+    raw_word = int(shape.get("type_word") or 0) & 0xFFFF
+    canonical_word = canonical_fh6_word_for_resource(family, int(index))
+    shape["resource_family"] = family
+    shape["resource_index"] = int(index)
+    if canonical_word is not None:
+        shape["type_word"] = canonical_word
+        shape["type_word_hex"] = hx(canonical_word)
+        shape["type"] = TYPE_CODE_BASE + canonical_word
+        layer["fm_raw_type_word"] = raw_word
+        layer["fm_raw_type_word_hex"] = hx(raw_word)
+        layer["fm_raw_type"] = raw_type
+        layer["fh6_type_word"] = canonical_word
+        layer["fh6_type_word_hex"] = hx(canonical_word)
+        layer["fh6_type"] = TYPE_CODE_BASE + canonical_word
+        layer["type_word"] = canonical_word
+        layer["type_code"] = TYPE_CODE_BASE + canonical_word
+    layer["resource_family"] = family
+    layer["resource_index"] = int(index)
+    layer["resource_normalized_for_game"] = "fm"
+    return True
 
 
 def read_transform_fields(handle, address):
@@ -684,6 +944,7 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--report", default=None)
     parser.add_argument("--probe-report", default=None)
+    parser.add_argument("--game", default="fh6", choices=("fh6", "fh5", "fm"))
     parser.add_argument("--include-raw", action="store_true")
     parser.add_argument("--skip-transparent", action="store_true")
     args = parser.parse_args()
@@ -698,6 +959,7 @@ def main():
     failures = []
     flatten_stats = {}
     validation_warnings = []
+    fm_resource_normalizations = 0
     try:
         if not args.probe_report:
             write_refusal_report(args, table, group, report_path, reasons=["export requires a locator validation report"])
@@ -756,6 +1018,8 @@ def main():
                 })
                 continue
             shape, layer = decode_layer(raw, index, ptr, include_raw=args.include_raw)
+            if annotate_fm_export_resource(shape, layer, args.game):
+                fm_resource_normalizations += 1
             apply_parent_transform(shape, layer, parent_matrix, parent_sx_sign)
             layer["read_size"] = layer_size
             if len(raw) >= 0xB0:
@@ -772,7 +1036,7 @@ def main():
         "format": "fh6_typecode_json_export_v1",
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "source": {
-            "game": "fh6",
+            "game": str(args.game).lower(),
             "pid": int(args.pid),
             "group": hx(group) if group is not None else None,
             "table": hx(table),
@@ -785,6 +1049,10 @@ def main():
                 "warnings": validation_warnings,
             },
             "flattened_export": flatten_stats,
+            "fm_resource_normalization": {
+                "game": str(args.game).lower(),
+                "normalized_shape_count": fm_resource_normalizations,
+            },
         },
         "summary": summary,
         "shapes": shapes,
@@ -807,6 +1075,10 @@ def main():
         },
         "validation_warnings": validation_warnings,
         "flattened_export": flatten_stats,
+        "fm_resource_normalization": {
+            "game": str(args.game).lower(),
+            "normalized_shape_count": fm_resource_normalizations,
+        },
         "preferred_layer_read_size": hx(FULL_LAYER_SIZE),
         "fallback_layer_read_size": hx(GROUPED_SAFE_LAYER_SIZE),
         "minimum_decode_size": hx(MIN_LAYER_DECODE_SIZE),

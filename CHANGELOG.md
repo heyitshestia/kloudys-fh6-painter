@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.56
+- Added experimental Forza Motorsport export detection.
+- FM exports now convert Motorsport shape resources into FH6-compatible JSONs for editor preview and FH6 import.
+- Kept FH5 and FH6 import/export behavior separate from the FM conversion path.
+
 ## 2.0.55
 - Reworked the Fabric editor layout into a cleaner Krita-style workspace with a dominant canvas and one larger right-side dock.
 - Added an interactive editor tour that switches tools/tabs and explains the main workflow from import through export.

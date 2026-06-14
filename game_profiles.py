@@ -50,6 +50,16 @@ PROFILES: Dict[str, GameProfile] = {
         signature_patterns=(KNOWN_LIVERY_SIGNATURE,),
         scan_regions=COMMON_SCAN_REGIONS,
     ),
+    "fm": GameProfile(
+        key="fm",
+        label="Forza Motorsport",
+        process_names=(
+            "ForzaMotorsport.exe",
+            "forza_steamworks_release_final.exe",
+        ),
+        signature_patterns=(KNOWN_LIVERY_SIGNATURE,),
+        scan_regions=COMMON_SCAN_REGIONS,
+    ),
 }
 
 

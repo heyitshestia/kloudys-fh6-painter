@@ -11,7 +11,7 @@ from pathlib import Path
 
 import psutil
 
-from game_profiles import get_profile
+from game_profiles import PROFILES, get_profile
 from native import dereference_pointer, get_base_address, read_int, read_process_memory
 
 
@@ -2170,7 +2170,7 @@ def probe_count(pid, profile, count, limit_mb, max_matches, max_seconds, progres
 def main():
     parser = argparse.ArgumentParser(description="Read-only FH6 vinyl structure probe.")
     parser.add_argument("--pid", type=int, required=True)
-    parser.add_argument("--game", default="fh6", choices=("fh6", "fh5"))
+    parser.add_argument("--game", default="fh6", choices=tuple(PROFILES.keys()))
     parser.add_argument("--layer-count", type=int, required=True, help="Exact ungrouped layer count currently loaded.")
     parser.add_argument("--inspect-table", type=parse_int, default=None, help="Inspect a known layer table address, e.g. 0x16e5cf34168.")
     parser.add_argument("--inspect-count", type=parse_int, default=None, help="Inspect memory around a candidate layer-count address.")

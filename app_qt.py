@@ -5463,9 +5463,30 @@ class MainWindow(QMainWindow):
 
     def update_game_compatibility_notices(self):
         if hasattr(self, "import_game_notice"):
-            self.import_game_notice.setVisible((self.game_combo.currentText() or "").strip().lower() == "fh5")
+            import_game = (self.game_combo.currentText() or "").strip().lower()
+            if import_game == "fm":
+                self.import_game_notice.setText(
+                    "Forza Motorsport import is experimental and not the focus of KFPS. "
+                    "FM exports are intended to become FH6-compatible JSONs."
+                )
+                self.import_game_notice.setVisible(True)
+            else:
+                self.import_game_notice.setText(
+                    "FH5 import/export is provided as-is. KFPS focuses on FH6; FH5 may be reviewed later once the app is in a steadier state."
+                )
+                self.import_game_notice.setVisible(import_game == "fh5")
         if hasattr(self, "export_game_notice") and hasattr(self, "export_game_combo"):
-            self.export_game_notice.setVisible((self.export_game_combo.currentText() or "").strip().lower() == "fh5")
+            export_game = (self.export_game_combo.currentText() or "").strip().lower()
+            if export_game == "fm":
+                self.export_game_notice.setText(
+                    "Forza Motorsport export is experimental. Exported FM shape words are converted to FH6-compatible JSON for importing into FH6."
+                )
+                self.export_game_notice.setVisible(True)
+            else:
+                self.export_game_notice.setText(
+                    "FH5 import/export is provided as-is. KFPS focuses on FH6; FH5 may be reviewed later once the app is in a steadier state."
+                )
+                self.export_game_notice.setVisible(export_game == "fh5")
 
     def selected_pid_value(self, combo: QComboBox | None = None) -> int | None:
         combo = combo or self.pid_combo
@@ -7178,6 +7199,8 @@ class MainWindow(QMainWindow):
                 export_report,
                 "--probe-report",
                 locator_report,
+                "--game",
+                game,
             ]
             self.bus.log.emit(f"Reading current {game.upper()} group into compatible JSON...")
             code = self.run_subprocess(export_cmd, timeout=240)
