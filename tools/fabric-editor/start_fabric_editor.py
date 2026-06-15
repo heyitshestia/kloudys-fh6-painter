@@ -1057,7 +1057,19 @@ def _browser_app_candidates() -> list[Path]:
 
 
 def open_editor_window(url: str) -> None:
-    """Open the editor like a desktop workspace while keeping the local server simple."""
+    """Open the editor with the user's default browser.
+
+    The previous app-window path preferred Edge whenever it was installed. That
+    looked cleaner, but it ignored the browser Windows is configured to use.
+    """
+    try:
+        if webbrowser.open(url, new=1, autoraise=True):
+            return
+    except Exception:
+        pass
+
+    # Last-resort fallback for machines where the OS default browser handler is
+    # broken. This may use Edge/Chrome, but only after the default browser fails.
     for browser in _browser_app_candidates():
         if not browser.exists():
             continue

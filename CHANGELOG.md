@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.60
+- The Fabric editor now opens with the system default browser instead of preferring Microsoft Edge when Edge is installed.
+
 ## 2.0.59
 - Fixed updater path handling for Windows usernames and folders with apostrophes.
 
