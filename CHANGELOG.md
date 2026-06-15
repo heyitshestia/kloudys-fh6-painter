@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.61
+- Adjusted Fabric editor transform handles so they sit farther from small shapes and rotate with the selected shape.
+- Improved editor rendering for large vector shapes and expanded gradient-preview detection to more gradient/shadow shape types.
+
 ## 2.0.60
 - The Fabric editor now opens with the system default browser instead of preferring Microsoft Edge when Edge is installed.
 

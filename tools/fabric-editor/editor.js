@@ -142,6 +142,18 @@ const VINYL_TYPE_BASES = {
   Upper_Letters_11: 1052277,
   Lower_Letters_11: 1052377,
 };
+const GRADIENT_RESOURCE_SLOTS = {
+  Gradient_Shapes: Array.from({ length: 40 }, (_value, index) => index + 1),
+  Community_Vinyls_1: [8, 20, 40],
+  Community_Vinyls_2: [1, 2, 3, 4, 9, 11, 12, 13, 14, 19, 21, 22, 23, 24, 31, 32, 33, 34, 40],
+  Community_Vinyls_4: [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 20, 21, 22, 23, 24, 25, 26, 27, 31, 32, 33, 34, 35, 36, 37, 40],
+  Stripes: [23],
+};
+const GRADIENT_SHAPE_WORDS = new Set(
+  Object.entries(GRADIENT_RESOURCE_SLOTS).flatMap(([family, slots]) => (
+    slots.map((index) => resourceToShapeWord(family, index))
+  ))
+);
 
 const FAMILY_ORDER = Object.keys(VINYL_TYPE_BASES);
 const FAVORITE_COLOR_SLOTS = 16;
@@ -718,11 +730,24 @@ function colorWithAlpha(color, alpha) {
 }
 
 function isGradientResource(resource) {
-  return resource?.family === "Gradient_Shapes";
+  if (!resource?.family || !resource?.index) return false;
+  const explicitWord = Number(resource.shapeWord);
+  const shapeWord = Number.isFinite(explicitWord)
+    ? (explicitWord & 0xffff)
+    : resourceToShapeWord(resource.family, resource.index);
+  if (GRADIENT_SHAPE_WORDS.has(shapeWord)) return true;
+  const name = shapeNames?.families?.[resource.family]?.[String(resource.index)] || "";
+  return /\b(gradient|shadow|faded)\b/i.test(String(name));
 }
 
 function isGradientObject(object) {
-  return object?.kloudy?.resource_family === "Gradient_Shapes";
+  const meta = object?.kloudy;
+  if (!meta?.resource_family || !meta?.resource_index) return false;
+  return isGradientResource({
+    family: meta.resource_family,
+    index: Number(meta.resource_index),
+    shapeWord: Number(meta.type_word),
+  });
 }
 
 function applyObjectColor(object, color) {
@@ -807,7 +832,7 @@ function figmaControlPushDistance(name, object) {
     case "tr":
     case "bl":
     case "br":
-      return (5 + 11 * small) * visualScale;
+      return (11 + 21 * small) * visualScale;
     case "ml":
     case "mr":
     case "mt":
@@ -1123,11 +1148,17 @@ function roundedRectPath(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+function shapeLockedControlRenderTransform(ctx, left, top, fabricObject) {
+  ctx.translate(left, top);
+  const angle = Number(fabricObject?.angle) || 0;
+  if (angle) ctx.rotate(fabric.util.degreesToRadians(angle));
+}
+
 function renderFigmaCornerControl(ctx, left, top, styleOverride, fabricObject) {
   const colors = editorTransformColors();
   const size = Math.max(14, styleOverride.cornerSize || fabricObject.cornerSize || 16);
   ctx.save();
-  ctx.translate(left, top);
+  shapeLockedControlRenderTransform(ctx, left, top, fabricObject);
   ctx.fillStyle = colors.corner;
   ctx.strokeStyle = colors.cornerStroke;
   ctx.lineWidth = 2;
@@ -1145,7 +1176,7 @@ function renderFigmaSideControl(name) {
     const width = vertical ? Math.max(9, base * 0.62) : Math.max(21, base * 1.45);
     const height = vertical ? Math.max(21, base * 1.45) : Math.max(9, base * 0.62);
     ctx.save();
-    ctx.translate(left, top);
+    shapeLockedControlRenderTransform(ctx, left, top, fabricObject);
     ctx.fillStyle = colors.corner;
     ctx.strokeStyle = colors.cornerStroke;
     ctx.lineWidth = 2;
@@ -1160,7 +1191,7 @@ function renderFigmaRotateControl(ctx, left, top, styleOverride, fabricObject) {
   const colors = editorTransformColors();
   const size = Math.max(17, styleOverride.cornerSize || fabricObject.cornerSize || 16);
   ctx.save();
-  ctx.translate(left, top);
+  shapeLockedControlRenderTransform(ctx, left, top, fabricObject);
   ctx.fillStyle = colors.corner;
   ctx.strokeStyle = colors.cornerStroke;
   ctx.lineWidth = 2.2;
@@ -1781,14 +1812,15 @@ async function makeFabricObject(shape, name = null) {
   const object = gradientResource
     ? await loadFabricImage(await resolveVinylResourceUrl(resolved.family, resolved.index, ".png"))
     : new fabric.Path(d);
+  const useBitmapCache = gradientResource;
   object.set({
     originX: "center",
     originY: "center",
     ...fabricPropsFromFh6Data(data),
     stroke: null,
     strokeWidth: 0,
-    objectCaching: true,
-    noScaleCache: true,
+    objectCaching: useBitmapCache,
+    noScaleCache: useBitmapCache,
     perPixelTargetFind: true,
     targetFindTolerance: VINYL_HIT_TOLERANCE,
     hoverCursor: "pointer",
