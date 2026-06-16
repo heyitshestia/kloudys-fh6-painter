@@ -139,6 +139,7 @@
             <button class="dockTab" data-panel="shapeLibraryPane">Library</button>
             <button class="dockTab" data-panel="colorPane">Color</button>
             <button class="dockTab" data-panel="guidesPane">Guides</button>
+            <button class="dockTab" data-panel="textPane">Text</button>
             <button class="dockTab" data-panel="overlayPane">Overlay</button>
             <button class="dockTab" data-panel="historyPane">History</button>
             <button class="dockTab" data-panel="exportCheckPane">Export</button>
@@ -345,6 +346,40 @@
             <div class="smallTools">
               <button id="deleteGuide" title="Delete the selected guide line.">Delete Selected Guide</button>
               <button id="clearGuides" title="Remove every guide line and grid helper.">Clear Guides</button>
+            </div>
+          </section>
+
+          <section id="textPane" class="dockPane" hidden>
+            <div class="panelHeader">
+              <div>
+                <h2>Text</h2>
+                <p>Generate editable vinyl text from real Forza font shapes.</p>
+              </div>
+            </div>
+            <div class="propertySection compactSection textVinylSection">
+              <h3>Forza Text To Vinyl</h3>
+              <textarea id="textVinylInput" rows="4" placeholder="Type text to convert into editable vinyl layers"></textarea>
+              <div class="fieldGrid">
+                <label>Forza font
+                  <select id="textVinylForzaFont">
+                    <option value="1">Forza Font 1</option>
+                    <option value="2">Forza Font 2</option>
+                    <option value="3">Forza Font 3</option>
+                    <option value="4">Forza Font 4</option>
+                    <option value="5">Forza Font 5</option>
+                    <option value="6">Forza Font 6</option>
+                    <option value="7">Forza Font 7</option>
+                    <option value="8">Forza Font 8</option>
+                    <option value="9">Forza Font 9</option>
+                    <option value="10">Forza Font 10</option>
+                    <option value="11">Forza Font 11</option>
+                  </select>
+                </label>
+                <label>Height <input id="textVinylHeight" type="number" min="20" max="2000" step="10" value="360"></label>
+              </div>
+              <label class="inline"><input id="textVinylClearPrevious" type="checkbox" checked> Replace previous text group</label>
+              <button id="generateTextVinyl" type="button">Generate text vinyl</button>
+              <p id="textVinylStatus" class="hint">Uses real in-game Forza letter shapes. Unsupported characters are skipped. Custom-font fitting is archived for later research.</p>
             </div>
           </section>
 

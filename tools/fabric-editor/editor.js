@@ -25,8 +25,19 @@ const PROJECT_OPEN_FOLDER_API = "/api/fabric-editor/open-project-folder";
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
+const TEXT_VINYL_FONT_KEY = "kloudyFabricTextVinylFont";
+const TEXT_VINYL_CUSTOM_FONT_KEY = "kloudyFabricTextVinylCustomFont";
 const VINYL_HIT_TOLERANCE = 0;
 const PIXEL_ART_SQUARE_SIZE = 128.498032;
+
+function isTextVinylHarnessRun() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    return params.has("harness") || params.has("textVinylHarness");
+  } catch (_err) {
+    return false;
+  }
+}
 
 const DEFAULT_SHORTCUTS = {
   selectTool: "V",
@@ -159,6 +170,7 @@ const FAMILY_ORDER = Object.keys(VINYL_TYPE_BASES);
 const FAVORITE_COLOR_SLOTS = 16;
 const resourceCache = new Map();
 const resourceOutlineCache = new Map();
+const textVinylMeshCache = new Map();
 let canvas;
 let isPanning = false;
 let lastPan = null;
@@ -244,6 +256,7 @@ let projectSaveInProgress = false;
 let toastTimer = null;
 let pixelArtSourceFile = null;
 let editorTourState = null;
+const TEXT_VINYL_SOURCE_FLAG = "kfps_text_vinyl";
 
 try {
   const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
@@ -6514,6 +6527,11 @@ function setPixelArtStatus(message) {
   setStatus(message);
 }
 
+function setTextVinylStatus(message) {
+  setText("textVinylStatus", message);
+  setStatus(message);
+}
+
 function numberInputValue(id, fallback, min, max) {
   const raw = Number($(id)?.value);
   const value = Number.isFinite(raw) ? raw : fallback;
@@ -6892,6 +6910,1492 @@ async function generatePixelArtRectangles() {
     historyLocked = false;
     setText("pixelArtStatus", `Pixel-art generation failed: ${err.message || err}`);
     showError("Pixel-art generation failed", err);
+  }
+}
+
+function textVinylFontString(fontFamily, fontSize, bold, italic) {
+  const style = italic ? "italic" : "normal";
+  const weight = bold ? "700" : "400";
+  return `${style} ${weight} ${fontSize}px ${fontFamily || "sans-serif"}`;
+}
+
+function selectedTextVinylFontFamily() {
+  const select = $("textVinylFontSelect");
+  const custom = $("textVinylCustomFont");
+  if (select?.value === "custom") return (custom?.value || "Segoe UI, Meiryo, sans-serif").trim();
+  return (select?.value || "Segoe UI, Meiryo, sans-serif").trim();
+}
+
+function syncTextVinylFontUi() {
+  const select = $("textVinylFontSelect");
+  const custom = $("textVinylCustomFont");
+  if (!select || !custom) return;
+  custom.hidden = select.value !== "custom";
+}
+
+function loadTextVinylFontPreference() {
+  const select = $("textVinylFontSelect");
+  const custom = $("textVinylCustomFont");
+  if (!select || !custom) return;
+  const saved = localStorage.getItem(TEXT_VINYL_FONT_KEY);
+  const savedCustom = localStorage.getItem(TEXT_VINYL_CUSTOM_FONT_KEY);
+  if (savedCustom) custom.value = savedCustom;
+  if (saved && [...select.options].some((option) => option.value === saved)) {
+    select.value = saved;
+  }
+  syncTextVinylFontUi();
+}
+
+function saveTextVinylFontPreference() {
+  const select = $("textVinylFontSelect");
+  const custom = $("textVinylCustomFont");
+  if (!select || !custom) return;
+  localStorage.setItem(TEXT_VINYL_FONT_KEY, select.value);
+  localStorage.setItem(TEXT_VINYL_CUSTOM_FONT_KEY, custom.value || "");
+}
+
+function renderTextVinylMask(text, options) {
+  const lines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.length ? line : " ");
+  const probe = document.createElement("canvas");
+  const probeCtx = probe.getContext("2d", { willReadFrequently: true });
+  probeCtx.font = textVinylFontString(options.fontFamily, options.fontSize, options.bold, options.italic);
+  const lineHeight = Math.ceil(options.fontSize * 1.22);
+  const padding = Math.max(8, Math.ceil(options.fontSize * 0.18));
+  const width = Math.max(1, Math.ceil(Math.max(...lines.map((line) => probeCtx.measureText(line).width))));
+  const height = Math.max(1, lineHeight * lines.length);
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = width + padding * 2;
+  canvasEl.height = height + padding * 2;
+  const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  ctx.font = textVinylFontString(options.fontFamily, options.fontSize, options.bold, options.italic);
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#ffffff";
+  ctx.imageSmoothingEnabled = true;
+  lines.forEach((line, index) => {
+    ctx.fillText(line, padding, padding + index * lineHeight);
+  });
+  return canvasEl;
+}
+
+function textVinylCellsFromMask(mask, cellSize, alphaCutoff, coverageThreshold) {
+  const width = Math.max(1, mask.width);
+  const height = Math.max(1, mask.height);
+  const gridW = Math.max(1, Math.ceil(width / cellSize));
+  const gridH = Math.max(1, Math.ceil(height / cellSize));
+  const ctx = mask.getContext("2d", { willReadFrequently: true });
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const rows = [];
+  for (let gy = 0; gy < gridH; gy++) {
+    const row = [];
+    const startY = gy * cellSize;
+    const endY = Math.min(height, startY + cellSize);
+    for (let gx = 0; gx < gridW; gx++) {
+      const startX = gx * cellSize;
+      const endX = Math.min(width, startX + cellSize);
+      let total = 0;
+      let filled = 0;
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          total++;
+          if (data[((y * width) + x) * 4 + 3] >= alphaCutoff) filled++;
+        }
+      }
+      row.push(total > 0 && filled / total >= coverageThreshold);
+    }
+    rows.push(row);
+  }
+  return { rows, gridW, gridH };
+}
+
+function textVinylMaskImageData(mask) {
+  const width = Math.max(1, mask.width);
+  const height = Math.max(1, mask.height);
+  const ctx = mask.getContext("2d", { willReadFrequently: true });
+  return { width, height, data: ctx.getImageData(0, 0, width, height).data };
+}
+
+function textVinylAlphaCoverage(pixelData, startX, endX, startY, endY, alphaCutoff) {
+  let total = 0;
+  let filled = 0;
+  for (let y = Math.max(0, startY); y < Math.min(pixelData.height, endY); y++) {
+    for (let x = Math.max(0, startX); x < Math.min(pixelData.width, endX); x++) {
+      total++;
+      if (pixelData.data[((y * pixelData.width) + x) * 4 + 3] >= alphaCutoff) filled++;
+    }
+  }
+  return total ? filled / total : 0;
+}
+
+function buildTextVinylCurveBands(mask, bandSize, alphaCutoff, coverageThreshold) {
+  const pixelData = textVinylMaskImageData(mask);
+  const runs = [];
+  for (let y = 0; y < pixelData.height; y += bandSize) {
+    const endY = Math.min(pixelData.height, y + bandSize);
+    let x = 0;
+    while (x < pixelData.width) {
+      while (x < pixelData.width && textVinylAlphaCoverage(pixelData, x, x + 1, y, endY, alphaCutoff) < coverageThreshold) x++;
+      if (x >= pixelData.width) break;
+      const start = x;
+      while (x < pixelData.width && textVinylAlphaCoverage(pixelData, x, x + 1, y, endY, alphaCutoff) >= coverageThreshold) x++;
+      const width = x - start;
+      if (width > 0) runs.push({ x: start, y, width, height: endY - y });
+    }
+  }
+  return {
+    runs,
+    gridW: pixelData.width,
+    gridH: pixelData.height,
+  };
+}
+
+function buildTextVinylRects(rows) {
+  const gridH = rows.length;
+  const gridW = rows[0]?.length || 0;
+  const visited = rows.map((row) => row.map(() => false));
+  const rects = [];
+  for (let y = 0; y < gridH; y++) {
+    for (let x = 0; x < gridW; x++) {
+      if (!rows[y][x] || visited[y][x]) continue;
+      let width = 1;
+      while (x + width < gridW && rows[y][x + width] && !visited[y][x + width]) width++;
+      let height = 1;
+      let canGrow = true;
+      while (y + height < gridH && canGrow) {
+        for (let dx = 0; dx < width; dx++) {
+          if (!rows[y + height][x + dx] || visited[y + height][x + dx]) {
+            canGrow = false;
+            break;
+          }
+        }
+        if (canGrow) height++;
+      }
+      for (let dy = 0; dy < height; dy++) {
+        for (let dx = 0; dx < width; dx++) visited[y + dy][x + dx] = true;
+      }
+      rects.push({ x, y, width, height });
+    }
+  }
+  return rects;
+}
+
+function textVinylLayout(gridW, gridH, targetHeight) {
+  const center = viewportCenterPoint();
+  const cellH = Math.max(0.1, targetHeight / Math.max(1, gridH));
+  const cellW = cellH;
+  const width = cellW * gridW;
+  const height = cellH * gridH;
+  return {
+    left: center.x - width / 2,
+    top: center.y - height / 2,
+    cellW,
+    cellH,
+  };
+}
+
+function textVinylShapeFromBox(box, layout, resource, color, groupId, groupName, label) {
+  const width = Math.max(0.01, box.width * layout.cellW);
+  const height = Math.max(0.01, box.height * layout.cellH);
+  const centerX = layout.left + (box.x * layout.cellW) + width / 2;
+  const centerY = layout.top + (box.y * layout.cellH) + height / 2;
+  const rotation = Number(box.rotation) || 0;
+  const mesh = resource?.family && resource?.index ? textVinylMeshCache.get(`${resource.family}:${resource.index}`) : null;
+  const naturalWidth = Math.max(0.001, mesh?.bounds?.width || PIXEL_ART_SQUARE_SIZE);
+  const naturalHeight = Math.max(0.001, mesh?.bounds?.height || PIXEL_ART_SQUARE_SIZE);
+  return {
+    type: resource.typeCode,
+    type_word: resource.shapeWord,
+    resource_family: "Primitives",
+    resource_index: resource.index,
+    shape_name: label,
+    data: [
+      round(centerX),
+      round(-centerY),
+      round(width / naturalWidth),
+      round(height / naturalHeight),
+      round(-rotation),
+      0,
+      0,
+    ],
+    color,
+    mask: false,
+    score: 0,
+    source_format: TEXT_VINYL_SOURCE_FLAG,
+    editor_group_id: groupId,
+    editor_group_name: groupName,
+  };
+}
+
+function textVinylGridPoints(rows) {
+  const points = [];
+  const set = new Set();
+  rows.forEach((row, y) => {
+    row.forEach((filled, x) => {
+      if (!filled) return;
+      const key = `${x},${y}`;
+      points.push({ x, y, key });
+      set.add(key);
+    });
+  });
+  return { points, set };
+}
+
+function textVinylPointKey(x, y) {
+  return `${x},${y}`;
+}
+
+function textVinylGridGet(rows, x, y) {
+  return y >= 0 && y < rows.length && x >= 0 && x < (rows[0]?.length || 0) && Boolean(rows[y][x]);
+}
+
+async function loadTextVinylResourceMesh(resource) {
+  if (!resource?.family || !resource?.index) return null;
+  const key = `${resource.family}:${resource.index}`;
+  if (textVinylMeshCache.has(key)) return textVinylMeshCache.get(key);
+  const url = await resolveVinylResourceUrl(resource.family, resource.index, "");
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Missing shape mesh resource: ${url}`);
+  const payload = await response.json();
+  const vertices = (payload.Vertices || []).map((vertex) => ({
+    x: Number(vertex.X) || 0,
+    y: Number(vertex.Y) || 0,
+  }));
+  const indices = payload.Indices || [];
+  const triangles = [];
+  for (let index = 0; index + 2 < indices.length; index += 3) {
+    const a = vertices[indices[index]];
+    const b = vertices[indices[index + 1]];
+    const c = vertices[indices[index + 2]];
+    if (a && b && c) triangles.push([a, b, c]);
+  }
+  const xs = vertices.map((vertex) => vertex.x);
+  const ys = vertices.map((vertex) => vertex.y);
+  const bounds = {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+  bounds.width = Math.max(0.001, bounds.maxX - bounds.minX);
+  bounds.height = Math.max(0.001, bounds.maxY - bounds.minY);
+  bounds.cx = (bounds.minX + bounds.maxX) / 2;
+  bounds.cy = (bounds.minY + bounds.maxY) / 2;
+  const mesh = { triangles, bounds };
+  textVinylMeshCache.set(key, mesh);
+  return mesh;
+}
+
+async function prepareTextVinylFitterMeshes(resources) {
+  const unique = new Map();
+  Object.values(resources || {}).forEach((resource) => {
+    if (resource?.family && resource?.index) unique.set(`${resource.family}:${resource.index}`, resource);
+  });
+  await Promise.all([...unique.values()].map((resource) => loadTextVinylResourceMesh(resource)));
+}
+
+function textVinylPointInTriangle(px, py, a, b, c) {
+  const d1 = (px - b.x) * (a.y - b.y) - (a.x - b.x) * (py - b.y);
+  const d2 = (px - c.x) * (b.y - c.y) - (b.x - c.x) * (py - c.y);
+  const d3 = (px - a.x) * (c.y - a.y) - (c.x - a.x) * (py - a.y);
+  const hasNeg = d1 < -1e-6 || d2 < -1e-6 || d3 < -1e-6;
+  const hasPos = d1 > 1e-6 || d2 > 1e-6 || d3 > 1e-6;
+  return !(hasNeg && hasPos);
+}
+
+function textVinylMeshContains(mesh, meshX, meshY) {
+  return Boolean(mesh?.triangles?.some(([a, b, c]) => textVinylPointInTriangle(meshX, meshY, a, b, c)));
+}
+
+function textVinylCandidateCellsFromMesh(candidate, gridW, gridH) {
+  if (!candidate?.resource?.family || !candidate?.resource?.index) return null;
+  const mesh = textVinylMeshCache.get(`${candidate.resource.family}:${candidate.resource.index}`);
+  if (!mesh?.triangles?.length) return null;
+  const angle = Number(candidate.rotation) || 0;
+  const skew = Number(candidate.skew) || 0;
+  const rad = angle * Math.PI / 180;
+  const skewTan = Math.tan(skew * Math.PI / 180);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const halfW = Math.max(0.01, Math.abs(candidate.width) / 2);
+  const halfH = Math.max(0.01, Math.abs(candidate.height) / 2);
+  const radius = Math.hypot(halfW + Math.abs(skewTan) * halfH, halfH) + 1;
+  const minX = Math.max(0, Math.floor(candidate.cx - radius));
+  const maxX = Math.min(gridW - 1, Math.ceil(candidate.cx + radius));
+  const minY = Math.max(0, Math.floor(candidate.cy - radius));
+  const maxY = Math.min(gridH - 1, Math.ceil(candidate.cy + radius));
+  const cells = [];
+  const { bounds } = mesh;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = (x + 0.5) - candidate.cx;
+      const dy = (y + 0.5) - candidate.cy;
+      let localX = dx * cos + dy * sin;
+      const localY = -dx * sin + dy * cos;
+      if (skewTan) localX -= skewTan * localY;
+      if (Math.abs(localX) > halfW || Math.abs(localY) > halfH) continue;
+      const meshX = bounds.cx + (localX / Math.max(0.001, Math.abs(candidate.width))) * bounds.width;
+      const meshY = bounds.cy + (localY / Math.max(0.001, Math.abs(candidate.height))) * bounds.height;
+      if (textVinylMeshContains(mesh, meshX, meshY)) cells.push({ x, y, key: textVinylPointKey(x, y) });
+    }
+  }
+  return cells;
+}
+
+function textVinylCandidateCells(candidate, gridW, gridH) {
+  const meshCells = textVinylCandidateCellsFromMesh(candidate, gridW, gridH);
+  if (meshCells) return meshCells;
+  const angle = Number(candidate.rotation) || 0;
+  const rad = angle * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const halfW = Math.max(0.01, candidate.width / 2);
+  const halfH = Math.max(0.01, candidate.height / 2);
+  const radius = Math.hypot(halfW, halfH) + 1;
+  const minX = Math.max(0, Math.floor(candidate.cx - radius));
+  const maxX = Math.min(gridW - 1, Math.ceil(candidate.cx + radius));
+  const minY = Math.max(0, Math.floor(candidate.cy - radius));
+  const maxY = Math.min(gridH - 1, Math.ceil(candidate.cy + radius));
+  const cells = [];
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = (x + 0.5) - candidate.cx;
+      const dy = (y + 0.5) - candidate.cy;
+      const localX = dx * cos + dy * sin;
+      const localY = -dx * sin + dy * cos;
+      const nx = halfW ? localX / halfW : 0;
+      const ny = halfH ? localY / halfH : 0;
+      let inside = Math.abs(localX) <= halfW && Math.abs(localY) <= halfH;
+      if (inside && candidate.shapeKind === "ellipse") {
+        inside = (nx * nx) + (ny * ny) <= 1.0;
+      } else if (inside && candidate.shapeKind === "quarterCircle") {
+        inside = (nx * nx) + (ny * ny) <= 1.0 && nx >= -0.02 && ny >= -0.02;
+      } else if (inside && candidate.shapeKind === "halfCircle") {
+        inside = (nx * nx) + (ny * ny) <= 1.0 && nx >= -0.02;
+      } else if (inside && candidate.shapeKind === "ellipseBorder") {
+        const d = (nx * nx) + (ny * ny);
+        const inner = Number(candidate.innerRatio) || 0.58;
+        inside = d <= 1.0 && d >= inner * inner;
+      } else if (inside && candidate.shapeKind === "rectBorder") {
+        const inner = Number(candidate.innerRatio) || 0.58;
+        inside = Math.abs(nx) <= 1.0 && Math.abs(ny) <= 1.0 && (Math.abs(nx) >= inner || Math.abs(ny) >= inner);
+      } else if (inside && candidate.shapeKind === "roundedSquareBorder") {
+        const corner = 0.52;
+        const inner = Number(candidate.innerRatio) || 0.58;
+        const ax = Math.abs(nx);
+        const ay = Math.abs(ny);
+        const outer = ax <= 1 && ay <= 1 && (
+          ax <= corner || ay <= corner || ((ax - corner) ** 2 + (ay - corner) ** 2 <= (1 - corner) ** 2)
+        );
+        const innerCorner = corner * inner;
+        const innerShape = ax <= inner && ay <= inner && (
+          ax <= innerCorner || ay <= innerCorner || ((ax - innerCorner) ** 2 + (ay - innerCorner) ** 2 <= (inner - innerCorner) ** 2)
+        );
+        inside = outer && !innerShape;
+      } else if (inside && candidate.shapeKind === "triangle") {
+        inside = ny >= -1.0 && ny <= (1.0 - Math.abs(nx) * 2.0);
+      } else if (inside && candidate.shapeKind === "triangleBorder") {
+        const outer = ny >= -1.0 && ny <= (1.0 - Math.abs(nx) * 2.0);
+        const innerScale = Number(candidate.innerRatio) || 0.56;
+        const iny = ny / innerScale;
+        const inx = nx / innerScale;
+        const inner = iny >= -1.0 && iny <= (1.0 - Math.abs(inx) * 2.0);
+        inside = outer && !inner;
+      } else if (inside && candidate.shapeKind === "rightTriangle") {
+        inside = nx >= -1.0 && ny >= -1.0 && nx + ny <= 0.05;
+      } else if (inside && candidate.shapeKind === "rightTriangleBorder") {
+        const outer = nx >= -1.0 && ny >= -1.0 && nx + ny <= 0.05;
+        const innerScale = Number(candidate.innerRatio) || 0.56;
+        const inx = (nx + 1) / innerScale - 1;
+        const iny = (ny + 1) / innerScale - 1;
+        const inner = inx >= -1.0 && iny >= -1.0 && inx + iny <= 0.05;
+        inside = outer && !inner;
+      } else if (inside && candidate.shapeKind === "halfCircleBorder") {
+        const d = (nx * nx) + (ny * ny);
+        const inner = Number(candidate.innerRatio) || 0.58;
+        inside = d <= 1.0 && d >= inner * inner && nx >= -0.02;
+      } else if (inside && candidate.shapeKind === "quarterDonut") {
+        const d = (nx * nx) + (ny * ny);
+        const inner = Number(candidate.innerRatio) || 0.58;
+        inside = d <= 1.0 && d >= inner * inner && nx >= -0.02 && ny >= -0.02;
+      } else if (inside && candidate.shapeKind === "taperedRect") {
+        const halfWidthAtY = 1.0 - Math.max(0, ny + 1.0) * 0.18;
+        inside = Math.abs(nx) <= Math.max(0.42, halfWidthAtY);
+      } else if (inside && candidate.shapeKind === "pentagon") {
+        const roof = 1.0 - Math.max(0, -ny - 0.15) * 1.15;
+        inside = Math.abs(nx) <= Math.max(0.15, roof);
+      } else if (inside && candidate.shapeKind === "roundedSquare") {
+        const corner = 0.52;
+        const ax = Math.abs(nx);
+        const ay = Math.abs(ny);
+        inside = ax <= 1 && ay <= 1 && (
+          ax <= corner || ay <= corner || ((ax - corner) ** 2 + (ay - corner) ** 2 <= (1 - corner) ** 2)
+        );
+      }
+      if (inside) {
+        cells.push({ x, y, key: textVinylPointKey(x, y) });
+      }
+    }
+  }
+  return cells;
+}
+
+function scoreTextVinylCandidate(candidate, rows, remaining) {
+  const gridH = rows.length;
+  const gridW = rows[0]?.length || 0;
+  const cells = textVinylCandidateCells(candidate, gridW, gridH);
+  if (!cells.length) return null;
+  let freshHits = 0;
+  let oldHits = 0;
+  let falseHits = 0;
+  cells.forEach((cell) => {
+    if (remaining.has(cell.key)) {
+      freshHits++;
+    } else if (textVinylGridGet(rows, cell.x, cell.y)) {
+      oldHits++;
+    } else {
+      falseHits++;
+    }
+  });
+  if (freshHits <= 0) return null;
+  const falseRatio = falseHits / Math.max(1, cells.length);
+  const coverageRatio = freshHits / Math.max(1, cells.length);
+  const elongation = Math.max(candidate.width, candidate.height) / Math.max(1, Math.min(candidate.width, candidate.height));
+  const score = freshHits * 5.0
+    + Math.min(12, elongation) * 0.8
+    - falseHits * 4.4
+    - oldHits * 0.7
+    - 2.0;
+  return {
+    ...candidate,
+    cells,
+    freshHits,
+    falseHits,
+    oldHits,
+    falseRatio,
+    coverageRatio,
+    score,
+  };
+}
+
+function textVinylCleanEnough(scored, maxFalsePerFresh = 0.10, maxFalseRatio = 0.14) {
+  if (!scored) return false;
+  if (scored.falseHits > Math.max(0, scored.freshHits * maxFalsePerFresh)) return false;
+  if (scored.falseRatio > maxFalseRatio) return false;
+  return true;
+}
+
+function textVinylCandidateFalseKeys(scored, rows) {
+  const keys = new Set();
+  (scored?.cells || []).forEach((cell) => {
+    if (!textVinylGridGet(rows, cell.x, cell.y)) keys.add(cell.key);
+  });
+  return keys;
+}
+
+function textVinylUnionSize(a, b) {
+  const union = new Set(a || []);
+  (b || []).forEach((value) => union.add(value));
+  return union.size;
+}
+
+function textVinylEstimatedFinishCost(rows, remaining, selectedCount, falseKeys) {
+  const residualCount = buildTextVinylResidualRects(rows, remaining).length;
+  return {
+    residualCount,
+    layers: selectedCount + residualCount,
+    falseCount: falseKeys?.size || 0,
+    cost: (selectedCount + residualCount) * 24 + (falseKeys?.size || 0) * 18,
+  };
+}
+
+function textVinylStateSignature(state) {
+  const remainingSample = [...state.remaining].sort().slice(0, 16).join("|");
+  return `${state.selected.length}:${state.remaining.size}:${state.falseKeys.size}:${remainingSample}`;
+}
+
+function textVinylSelectBudgetedCandidates(rows, initialRemaining, candidateEntries, options = {}) {
+  const maxSelected = Number(options.maxSelected) || 24;
+  const beamWidth = Number(options.beamWidth) || 8;
+  const candidateLimit = Number(options.candidateLimit) || 120;
+  const baseline = textVinylEstimatedFinishCost(rows, initialRemaining, 0, new Set());
+  let beam = [{
+    selected: [],
+    remaining: new Set(initialRemaining),
+    falseKeys: new Set(),
+    estimate: baseline,
+  }];
+  let best = beam[0];
+  const candidates = candidateEntries.slice(0, candidateLimit);
+
+  for (let depth = 0; depth < maxSelected; depth++) {
+    const next = [];
+    beam.forEach((state) => {
+      candidates.forEach((entry) => {
+        if (state.selected.some((selected) => selected.entry === entry)) return;
+        const rescored = scoreTextVinylCandidate(entry.candidate, rows, state.remaining);
+        if (!rescored || rescored.freshHits < 2) return;
+        if (!textVinylCleanEnough(rescored, 0.04, 0.055)) return;
+        if (rescored.falseHits > 1) return;
+        const freshRatio = rescored.freshHits / Math.max(1, entry.scored?.freshHits || rescored.freshHits);
+        if (freshRatio < 0.58) return;
+
+        const remaining = new Set(state.remaining);
+        rescored.cells.forEach((cell) => {
+          if (textVinylGridGet(rows, cell.x, cell.y)) remaining.delete(cell.key);
+        });
+        if (remaining.size >= state.remaining.size) return;
+
+        const falseKeys = new Set(state.falseKeys);
+        textVinylCandidateFalseKeys(rescored, rows).forEach((key) => falseKeys.add(key));
+        const estimate = textVinylEstimatedFinishCost(rows, remaining, state.selected.length + 1, falseKeys);
+        const previousEstimate = textVinylEstimatedFinishCost(rows, state.remaining, state.selected.length, state.falseKeys);
+        const localGain = previousEstimate.cost - estimate.cost;
+        if (localGain < 4) return;
+
+        next.push({
+          selected: [...state.selected, { entry, scored: rescored }],
+          remaining,
+          falseKeys,
+          estimate,
+        });
+      });
+    });
+    if (!next.length) break;
+    const deduped = new Map();
+    next.forEach((state) => {
+      const key = textVinylStateSignature(state);
+      const existing = deduped.get(key);
+      if (!existing || state.estimate.cost < existing.estimate.cost) deduped.set(key, state);
+    });
+    beam = [...deduped.values()]
+      .sort((a, b) => a.estimate.cost - b.estimate.cost)
+      .slice(0, beamWidth);
+    if (beam[0] && beam[0].estimate.cost < best.estimate.cost) best = beam[0];
+  }
+
+  if (best.estimate.layers >= baseline.layers && best.estimate.falseCount > 0) {
+    return { selected: [], remaining: new Set(initialRemaining), falseKeys: new Set(), baseline, estimate: baseline };
+  }
+  if (best.estimate.layers > baseline.layers) {
+    return { selected: [], remaining: new Set(initialRemaining), falseKeys: new Set(), baseline, estimate: baseline };
+  }
+  return { ...best, baseline };
+}
+
+function textVinylRunsForAngle(points, remaining, angle, bandWidth, minFresh) {
+  const rad = angle * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const bins = new Map();
+  points.forEach((point) => {
+    if (!remaining.has(point.key)) return;
+    const px = point.x + 0.5;
+    const py = point.y + 0.5;
+    const u = px * cos + py * sin;
+    const v = -px * sin + py * cos;
+    const bin = Math.round(v / bandWidth);
+    if (!bins.has(bin)) bins.set(bin, []);
+    bins.get(bin).push({ ...point, u, v });
+  });
+  const candidates = [];
+  bins.forEach((rows) => {
+    rows.sort((a, b) => a.u - b.u);
+    let run = [];
+    rows.forEach((point) => {
+      if (!run.length || point.u - run[run.length - 1].u <= 1.75) {
+        run.push(point);
+      } else {
+        if (run.length >= minFresh) candidates.push(run);
+        run = [point];
+      }
+    });
+    if (run.length >= minFresh) candidates.push(run);
+  });
+  return candidates.map((run) => {
+    const uValues = run.map((point) => point.u);
+    const vValues = run.map((point) => point.v);
+    const uMin = Math.min(...uValues) - 0.5;
+    const uMax = Math.max(...uValues) + 0.5;
+    const vMid = (Math.min(...vValues) + Math.max(...vValues)) / 2;
+    const uMid = (uMin + uMax) / 2;
+    return {
+      kind: "stroke",
+      cx: uMid * cos - vMid * sin,
+      cy: uMid * sin + vMid * cos,
+      width: Math.max(1, uMax - uMin),
+      height: Math.max(1, bandWidth),
+      rotation: angle,
+    };
+  });
+}
+
+function buildTextVinylResidualRects(rows, remaining) {
+  const residualRows = rows.map((row, y) => row.map((_filled, x) => remaining.has(textVinylPointKey(x, y))));
+  return buildTextVinylRects(residualRows);
+}
+
+function textVinylConnectedComponents(rows, remaining) {
+  const seen = new Set();
+  const components = [];
+  const neighborOffsets = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1],
+  ];
+  remaining.forEach((startKey) => {
+    if (seen.has(startKey)) return;
+    const [startX, startY] = startKey.split(",").map((value) => Number(value));
+    if (!Number.isFinite(startX) || !Number.isFinite(startY)) return;
+    const queue = [{ x: startX, y: startY, key: startKey }];
+    const cells = [];
+    seen.add(startKey);
+    for (let index = 0; index < queue.length; index++) {
+      const point = queue[index];
+      cells.push(point);
+      neighborOffsets.forEach(([dx, dy]) => {
+        const x = point.x + dx;
+        const y = point.y + dy;
+        const key = textVinylPointKey(x, y);
+        if (seen.has(key) || !remaining.has(key) || !textVinylGridGet(rows, x, y)) return;
+        seen.add(key);
+        queue.push({ x, y, key });
+      });
+    }
+    if (cells.length) components.push(cells);
+  });
+  return components;
+}
+
+function textVinylComponentBounds(component) {
+  const xs = component.map((cell) => cell.x);
+  const ys = component.map((cell) => cell.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+  };
+}
+
+function textVinylComponentHoles(component, rect) {
+  const componentKeys = new Set(component.map((cell) => cell.key));
+  const seen = new Set();
+  const holes = [];
+  const keyFor = (x, y) => textVinylPointKey(x, y);
+  const emptyInside = (x, y) => x >= rect.x
+    && x < rect.x + rect.width
+    && y >= rect.y
+    && y < rect.y + rect.height
+    && !componentKeys.has(keyFor(x, y));
+  const flood = (startX, startY) => {
+    const startKey = keyFor(startX, startY);
+    if (seen.has(startKey) || !emptyInside(startX, startY)) return [];
+    const queue = [{ x: startX, y: startY, key: startKey }];
+    const cells = [];
+    seen.add(startKey);
+    for (let index = 0; index < queue.length; index++) {
+      const point = queue[index];
+      cells.push(point);
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+        const x = point.x + dx;
+        const y = point.y + dy;
+        const key = keyFor(x, y);
+        if (seen.has(key) || !emptyInside(x, y)) return;
+        seen.add(key);
+        queue.push({ x, y, key });
+      });
+    }
+    return cells;
+  };
+  for (let x = rect.x; x < rect.x + rect.width; x++) {
+    flood(x, rect.y);
+    flood(x, rect.y + rect.height - 1);
+  }
+  for (let y = rect.y; y < rect.y + rect.height; y++) {
+    flood(rect.x, y);
+    flood(rect.x + rect.width - 1, y);
+  }
+  for (let y = rect.y; y < rect.y + rect.height; y++) {
+    for (let x = rect.x; x < rect.x + rect.width; x++) {
+      const cells = flood(x, y);
+      if (cells.length >= 3) holes.push(cells);
+    }
+  }
+  return holes.map((hole) => textVinylComponentBounds(hole));
+}
+
+function textVinylLoopCandidateRects(componentRect, holes) {
+  if (!holes.length) return [];
+  if (holes.length === 1) return [componentRect];
+  return holes.map((hole) => {
+    const pad = Math.max(2, Math.round(Math.min(hole.width, hole.height) * 0.55));
+    const x = Math.max(componentRect.x, hole.x - pad);
+    const y = Math.max(componentRect.y, hole.y - pad);
+    const maxX = Math.min(componentRect.x + componentRect.width, hole.x + hole.width + pad);
+    const maxY = Math.min(componentRect.y + componentRect.height, hole.y + hole.height + pad);
+    return {
+      x,
+      y,
+      width: Math.max(2, maxX - x),
+      height: Math.max(2, maxY - y),
+    };
+  });
+}
+
+function textVinylPrimitiveResource(index) {
+  return {
+    family: "Primitives",
+    index,
+    typeCode: resourceToTypeCode("Primitives", index),
+    shapeWord: resourceToShapeWord("Primitives", index),
+  };
+}
+
+function textVinylShapeCandidateFromBox(box, resource, shapeKind = "rect") {
+  return {
+    ...box,
+    cx: box.x + box.width / 2,
+    cy: box.y + box.height / 2,
+    shapeKind,
+    resource,
+  };
+}
+
+function textVinylFitterResourceSet() {
+  return {
+    square: textVinylPrimitiveResource(1),
+    circle: textVinylPrimitiveResource(2),
+    triangle: textVinylPrimitiveResource(3),
+    rightTriangle: textVinylPrimitiveResource(4),
+    roundedSquare: textVinylPrimitiveResource(7),
+    halfCircle: textVinylPrimitiveResource(9),
+    squareBorder: textVinylPrimitiveResource(11),
+    circleBorder: textVinylPrimitiveResource(12),
+    triangleBorder: textVinylPrimitiveResource(13),
+    rightTriangleBorder: textVinylPrimitiveResource(14),
+    roundedSquareBorder: textVinylPrimitiveResource(17),
+    halfCircleBorder: textVinylPrimitiveResource(19),
+    taperedRect: textVinylPrimitiveResource(20),
+    quarterDonut: textVinylPrimitiveResource(29),
+    quarterCircle: textVinylPrimitiveResource(30),
+    circleHalfBorder: textVinylPrimitiveResource(32),
+    pentagon: textVinylPrimitiveResource(35),
+  };
+}
+
+function textVinylShapeOptionsForRect(rect, rows, remaining, options = {}) {
+  const resources = textVinylFitterResourceSet();
+  const aspect = Math.max(rect.width, rect.height) / Math.max(1, Math.min(rect.width, rect.height));
+  const base = textVinylShapeCandidateFromBox(rect, resources.square, "rect");
+  const baseScore = scoreTextVinylCandidate(base, rows, remaining);
+  if (!baseScore) return [];
+  const candidates = [{
+    candidate: base,
+    resource: resources.square,
+    label: "Square",
+    kind: "rect",
+    score: baseScore.score,
+    scored: baseScore,
+  }];
+  if (rect.width >= 2 && rect.height >= 2 && aspect <= 2.2) {
+    [
+      { resource: resources.circle, label: aspect <= 1.25 ? "Circle" : "Circle", kind: "ellipse", minFreshRatio: 0.64, maxFalse: 0.10, bonus: 7 },
+      { resource: resources.roundedSquare, label: "Rounded Square", kind: "roundedSquare", minFreshRatio: 0.78, maxFalse: 0.08, bonus: 4 },
+      { resource: resources.pentagon, label: "Pentagon", kind: "pentagon", minFreshRatio: 0.68, maxFalse: 0.08, bonus: 3 },
+    ].forEach((option) => {
+      const candidate = textVinylShapeCandidateFromBox(rect, option.resource, option.kind);
+      const scored = scoreTextVinylCandidate(candidate, rows, remaining);
+      if (!scored) return;
+      if (scored.falseRatio > option.maxFalse) return;
+      if (!textVinylCleanEnough(scored, 0.10, option.maxFalse)) return;
+      if (scored.freshHits < baseScore.freshHits * option.minFreshRatio) return;
+      candidates.push({ ...option, candidate, score: scored.score + option.bonus, scored });
+    });
+  }
+  if (rect.width >= 2 && rect.height >= 2) {
+    [
+      { resource: resources.triangle, label: "Triangle", kind: "triangle", rotations: [0, 90, 180, 270], minFreshRatio: 0.48, maxFalse: 0.08, bonus: 6 },
+      { resource: resources.rightTriangle, label: "Right Triangle", kind: "rightTriangle", rotations: [0, 90, 180, 270], minFreshRatio: 0.46, maxFalse: 0.08, bonus: 7 },
+      { resource: resources.halfCircle, label: "Half Circle", kind: "halfCircle", rotations: [0, 90, 180, 270], minFreshRatio: 0.50, maxFalse: 0.10, bonus: 6 },
+      { resource: resources.taperedRect, label: "Tapered Rectangle", kind: "taperedRect", rotations: [0, 180], minFreshRatio: 0.58, maxFalse: 0.08, bonus: 4 },
+    ].forEach((option) => {
+      option.rotations.forEach((rotation) => {
+        const candidate = textVinylShapeCandidateFromBox({ ...rect, rotation }, option.resource, option.kind);
+        const scored = scoreTextVinylCandidate(candidate, rows, remaining);
+        if (!scored) return;
+        if (scored.falseRatio > option.maxFalse) return;
+        if (!textVinylCleanEnough(scored, 0.10, option.maxFalse)) return;
+        if (scored.freshHits < baseScore.freshHits * option.minFreshRatio) return;
+        candidates.push({ ...option, candidate, score: scored.score + option.bonus, scored });
+      });
+    });
+  }
+  if (options.includeSmallCorners && rect.width >= 2 && rect.height >= 2 && aspect <= 1.6) {
+    [0, 90, 180, 270].forEach((rotation) => {
+      const candidate = textVinylShapeCandidateFromBox({ ...rect, rotation }, resources.quarterCircle, "quarterCircle");
+      const scored = scoreTextVinylCandidate(candidate, rows, remaining);
+      if (!scored || !textVinylCleanEnough(scored, 0.08, 0.10) || scored.freshHits < Math.max(2, baseScore.freshHits * 0.42)) return;
+      candidates.push({
+        candidate,
+        resource: resources.quarterCircle,
+        label: "Quarter Circle",
+        kind: "quarterCircle",
+        score: scored.score + 8,
+        scored,
+      });
+    });
+  }
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
+function textVinylChooseResidualShape(rect, rows, remaining) {
+  const square = textVinylPrimitiveResource(1);
+  const candidate = textVinylShapeCandidateFromBox(rect, square, "rect");
+  return { candidate, resource: square, label: "Square", score: 0 };
+}
+
+function textVinylConvexCornerCandidates(rows, remaining) {
+  const quarter = textVinylFitterResourceSet().quarterCircle;
+  const candidates = [];
+  rows.forEach((row, y) => {
+    row.forEach((filled, x) => {
+      if (!filled || !remaining.has(textVinylPointKey(x, y))) return;
+      const up = textVinylGridGet(rows, x, y - 1);
+      const down = textVinylGridGet(rows, x, y + 1);
+      const left = textVinylGridGet(rows, x - 1, y);
+      const right = textVinylGridGet(rows, x + 1, y);
+      [
+        { ok: !up && !left, rotation: 180, x, y },
+        { ok: !up && !right, rotation: 270, x: x - 1, y },
+        { ok: !down && !left, rotation: 90, x, y: y - 1 },
+        { ok: !down && !right, rotation: 0, x: x - 1, y: y - 1 },
+      ].forEach((corner) => {
+        if (!corner.ok) return;
+        const candidate = textVinylShapeCandidateFromBox({
+          x: corner.x,
+          y: corner.y,
+          width: 2,
+          height: 2,
+          rotation: corner.rotation,
+        }, quarter, "quarterCircle");
+        const scored = scoreTextVinylCandidate(candidate, rows, remaining);
+        if (!scored) return;
+        if (scored.freshHits < 1 || !textVinylCleanEnough(scored, 0.08, 0.12)) return;
+        candidates.push(scored);
+      });
+    });
+  });
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
+function textVinylBroadShapeCandidates(rows, remaining) {
+  const residualRects = buildTextVinylResidualRects(rows, remaining)
+    .filter((rect) => rect.width >= 2 && rect.height >= 2)
+    .slice(0, 220);
+  const candidates = [];
+  residualRects.forEach((rect) => {
+    textVinylShapeOptionsForRect(rect, rows, remaining, { includeSmallCorners: true }).forEach((candidate) => {
+      if (candidate.kind === "rect") return;
+      if (!candidate.scored || candidate.scored.freshHits < 3) return;
+      candidates.push(candidate);
+    });
+  });
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
+function textVinylExpandedBox(rect, pad, gridW, gridH) {
+  const x = Math.max(0, rect.x - pad);
+  const y = Math.max(0, rect.y - pad);
+  const maxX = Math.min(gridW, rect.x + rect.width + pad);
+  const maxY = Math.min(gridH, rect.y + rect.height + pad);
+  return {
+    x,
+    y,
+    width: Math.max(1, maxX - x),
+    height: Math.max(1, maxY - y),
+  };
+}
+
+function textVinylEarlyNonSquareCandidates(rows, remaining) {
+  const gridH = rows.length;
+  const gridW = rows[0]?.length || 0;
+  const safeEarlyLabels = new Set([
+    "Circle",
+    "Rounded Square",
+    "Half Circle",
+    "Tapered Rectangle",
+    "Quarter Circle",
+    "Circle Border",
+    "Rounded Square Border",
+    "Half Circle Border",
+    "Quarter Donut",
+  ]);
+  const residualRects = buildTextVinylResidualRects(rows, remaining)
+    .filter((rect) => rect.width * rect.height >= 2)
+    .sort((a, b) => (b.width * b.height) - (a.width * a.height))
+    .slice(0, 260);
+  const candidates = [];
+  const seen = new Set();
+  residualRects.forEach((rect) => {
+    [0, 1, 2, 3].forEach((pad) => {
+      let box = textVinylExpandedBox(rect, pad, gridW, gridH);
+      if (box.width < 2 && box.height >= 2) box = textVinylExpandedBox({ ...rect, x: rect.x - 1, width: rect.width + 2 }, pad, gridW, gridH);
+      if (box.height < 2 && box.width >= 2) box = textVinylExpandedBox({ ...rect, y: rect.y - 1, height: rect.height + 2 }, pad, gridW, gridH);
+      if (box.width < 2 || box.height < 2) return;
+      textVinylShapeOptionsForRect(box, rows, remaining, { includeSmallCorners: true }).forEach((candidate) => {
+        if (candidate.kind === "rect") return;
+        if (!safeEarlyLabels.has(candidate.label)) return;
+        if (!candidate.scored || candidate.scored.freshHits < 2) return;
+        if (!textVinylCleanEnough(candidate.scored, 0.08, 0.10)) return;
+        const key = [
+          candidate.label,
+          candidate.kind,
+          Math.round(candidate.candidate.cx * 2),
+          Math.round(candidate.candidate.cy * 2),
+          Math.round(candidate.candidate.width * 2),
+          Math.round(candidate.candidate.height * 2),
+          Math.round(candidate.candidate.rotation || 0),
+        ].join(":");
+        if (seen.has(key)) return;
+        seen.add(key);
+        candidates.push(candidate);
+      });
+    });
+  });
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
+function textVinylComponentShapeCandidates(rows, remaining) {
+  const resources = textVinylFitterResourceSet();
+  const candidates = [];
+  textVinylConnectedComponents(rows, remaining)
+    .filter((component) => component.length >= 8)
+    .forEach((component) => {
+      const rect = textVinylComponentBounds(component);
+      if (rect.width < 3 || rect.height < 3) return;
+      const componentArea = rect.width * rect.height;
+      const density = component.length / Math.max(1, componentArea);
+      const aspect = Math.max(rect.width, rect.height) / Math.max(1, Math.min(rect.width, rect.height));
+      const holes = textVinylComponentHoles(component, rect);
+      const loopRects = textVinylLoopCandidateRects(rect, holes);
+      const baseOptions = [];
+      const addOption = (box, resource, label, kind, rotations = [0], extra = {}) => {
+        rotations.forEach((rotation) => {
+          baseOptions.push({ box, resource, label, kind, rotation, ...extra });
+        });
+      };
+      if (density <= 0.68 && rect.width >= 5 && rect.height >= 5) {
+        const boxes = loopRects.length ? loopRects : [rect];
+        boxes.forEach((box) => [0.52, 0.60, 0.68].forEach((innerRatio) => {
+          addOption(box, resources.circleBorder, "Circle Border", "ellipseBorder", [0], { innerRatio, bonus: aspect <= 1.8 ? 18 : 10 });
+          addOption(box, resources.roundedSquareBorder, "Rounded Square Border", "roundedSquareBorder", [0], { innerRatio, bonus: 12 });
+          addOption(box, resources.squareBorder, "Square Border", "rectBorder", [0], { innerRatio, bonus: 9 });
+        }));
+        boxes.forEach((box) => {
+          [0, 90, 180, 270].forEach((rotation) => {
+            addOption(box, resources.halfCircleBorder, "Half Circle Border", "halfCircleBorder", [rotation], { innerRatio: 0.58, bonus: 8 });
+            addOption(box, resources.quarterDonut, "Quarter Donut", "quarterDonut", [rotation], { innerRatio: 0.58, bonus: 8 });
+          });
+        });
+      }
+      if ((componentArea <= 72 || density >= 0.72) && aspect <= 1.65) {
+        addOption(rect, resources.circle, "Circle", "ellipse", [0], { bonus: 8 });
+        addOption(rect, resources.roundedSquare, "Rounded Square", "roundedSquare", [0], { bonus: 6 });
+      }
+      baseOptions.forEach((option) => {
+        const candidate = textVinylShapeCandidateFromBox({ ...option.box, rotation: option.rotation }, option.resource, option.kind);
+        candidate.innerRatio = option.innerRatio;
+        const scored = scoreTextVinylCandidate(candidate, rows, remaining);
+        if (!scored) return;
+        const componentCoverage = scored.freshHits / Math.max(1, component.length);
+        const minCoverage = option.kind.includes("Border") || option.kind === "quarterDonut" ? 0.24 : 0.42;
+        const maxFalse = option.kind.includes("Border") || option.kind === "quarterDonut" ? 0.12 : 0.08;
+        if (componentCoverage < minCoverage || !textVinylCleanEnough(scored, 0.10, maxFalse)) return;
+        candidates.push({
+          candidate,
+          resource: option.resource,
+          label: option.label,
+          kind: option.kind,
+          componentCoverage,
+          score: scored.score + (option.bonus || 0) + componentCoverage * 24,
+          scored,
+        });
+      });
+    });
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
+function buildTextVinylSmartFitShapes(rows, layout, color, groupId, groupName) {
+  const { points, set } = textVinylGridPoints(rows);
+  const remaining = new Set(set);
+  const resources = textVinylFitterResourceSet();
+  const square = resources.square;
+  const quarter = resources.quarterCircle;
+  const gridH = rows.length;
+  const gridW = rows[0]?.length || 0;
+  const shapes = [];
+  let componentShapeCount = 0;
+  const componentTypeCounts = new Map();
+  const componentSelection = textVinylSelectBudgetedCandidates(rows, remaining, textVinylComponentShapeCandidates(rows, remaining), {
+    maxSelected: 10,
+    beamWidth: 8,
+    candidateLimit: 90,
+  });
+  for (const selected of componentSelection.selected) {
+    if (componentShapeCount >= 10 || remaining.size <= 0) break;
+    const candidate = selected.entry;
+    const rescored = scoreTextVinylCandidate(candidate.candidate, rows, remaining);
+    if (!rescored) continue;
+    shapes.push(textVinylShapeFromBox({
+      x: rescored.cx - rescored.width / 2,
+      y: rescored.cy - rescored.height / 2,
+      width: rescored.width,
+      height: rescored.height,
+      rotation: rescored.rotation,
+    }, layout, candidate.resource, color, groupId, groupName, candidate.label));
+    rescored.cells.forEach((cell) => {
+      if (textVinylGridGet(rows, cell.x, cell.y)) remaining.delete(cell.key);
+    });
+    componentShapeCount++;
+    componentTypeCounts.set(candidate.label, (componentTypeCounts.get(candidate.label) || 0) + 1);
+  }
+
+  let earlyShapeCount = 0;
+  const earlyTypeCounts = new Map();
+  const earlySelection = textVinylSelectBudgetedCandidates(rows, remaining, [], {
+    maxSelected: 24,
+    beamWidth: 10,
+    candidateLimit: 150,
+  });
+  for (const selected of earlySelection.selected) {
+    if (remaining.size <= 0) break;
+    const candidate = selected.entry;
+    const rescored = scoreTextVinylCandidate(candidate.candidate, rows, remaining);
+    if (!rescored) continue;
+    shapes.push(textVinylShapeFromBox({
+      x: rescored.cx - rescored.width / 2,
+      y: rescored.cy - rescored.height / 2,
+      width: rescored.width,
+      height: rescored.height,
+      rotation: rescored.rotation,
+    }, layout, candidate.resource, color, groupId, groupName, candidate.label));
+    rescored.cells.forEach((cell) => {
+      if (textVinylGridGet(rows, cell.x, cell.y)) remaining.delete(cell.key);
+    });
+    earlyShapeCount++;
+    earlyTypeCounts.set(candidate.label, (earlyTypeCounts.get(candidate.label) || 0) + 1);
+  }
+
+  let strokeCount = 0;
+  const candidateRules = [
+    { angles: [0, 90, 45, 135], bandSizes: [1.4, 2.2, 3.2, 4.4], minFresh: 10, maxFalse: 0.10 },
+    { angles: [30, 60, 120, 150], bandSizes: [2.2, 3.2, 4.4], minFresh: 14, maxFalse: 0.08 },
+  ];
+  const candidates = [];
+  candidateRules.forEach((rule) => {
+    rule.angles.forEach((angle) => {
+      rule.bandSizes.forEach((bandWidth) => {
+        textVinylRunsForAngle(points, set, angle, bandWidth, rule.minFresh).forEach((candidate) => {
+          const scored = scoreTextVinylCandidate(candidate, rows, set);
+          if (!scored) return;
+          if (scored.falseRatio > rule.maxFalse) return;
+          if (scored.freshHits < rule.minFresh) return;
+          candidates.push({ ...scored, rule });
+        });
+      });
+    });
+  });
+  candidates.sort((a, b) => b.score - a.score);
+  const strokeEntries = candidates.slice(0, 900).map((candidate) => ({
+    candidate: {
+      cx: candidate.cx,
+      cy: candidate.cy,
+      width: candidate.width,
+      height: candidate.height,
+      rotation: candidate.rotation,
+      shapeKind: "rect",
+      resource: square,
+    },
+    resource: square,
+    label: "Square",
+    kind: "stroke",
+    scored: candidate,
+    score: candidate.score,
+  }));
+  const strokeSelection = textVinylSelectBudgetedCandidates(rows, remaining, strokeEntries, {
+    maxSelected: Math.min(80, Math.max(10, Math.floor(points.length / 9))),
+    beamWidth: 12,
+    candidateLimit: 260,
+  });
+  for (const selected of strokeSelection.selected) {
+    if (remaining.size <= 0) break;
+    const candidate = selected.entry;
+    const best = scoreTextVinylCandidate(candidate.candidate, rows, remaining);
+    if (!best) continue;
+    shapes.push(textVinylShapeFromBox({
+      x: best.cx - best.width / 2,
+      y: best.cy - best.height / 2,
+      width: best.width,
+      height: best.height,
+      rotation: best.rotation,
+    }, layout, square, color, groupId, groupName, "Square"));
+    best.cells.forEach((cell) => {
+      if (textVinylGridGet(rows, cell.x, cell.y)) remaining.delete(cell.key);
+    });
+    strokeCount++;
+  }
+
+  let cornerCount = 0;
+  const cornerEntries = textVinylConvexCornerCandidates(rows, remaining).slice(0, 100).map((corner) => ({
+    candidate: {
+      cx: corner.cx,
+      cy: corner.cy,
+      width: corner.width,
+      height: corner.height,
+      rotation: corner.rotation,
+      shapeKind: "quarterCircle",
+      resource: quarter,
+    },
+    resource: quarter,
+    label: "Quarter Circle",
+    kind: "corner",
+    scored: corner,
+    score: corner.score,
+  }));
+  const cornerSelection = textVinylSelectBudgetedCandidates(rows, remaining, cornerEntries, {
+    maxSelected: 32,
+    beamWidth: 8,
+    candidateLimit: 90,
+  });
+  for (const selected of cornerSelection.selected) {
+    if (cornerCount >= 32) break;
+    const corner = selected.entry;
+    const rescored = scoreTextVinylCandidate(corner.candidate, rows, remaining);
+    if (!rescored) continue;
+    shapes.push(textVinylShapeFromBox({
+      x: rescored.cx - rescored.width / 2,
+      y: rescored.cy - rescored.height / 2,
+      width: rescored.width,
+      height: rescored.height,
+      rotation: rescored.rotation,
+    }, layout, quarter, color, groupId, groupName, "Quarter Circle"));
+    rescored.cells.forEach((cell) => {
+      if (textVinylGridGet(rows, cell.x, cell.y)) remaining.delete(cell.key);
+    });
+    cornerCount++;
+  }
+
+  let broadShapeCount = 0;
+  const broadTypeCounts = new Map();
+  for (const candidate of textVinylBroadShapeCandidates(rows, remaining).slice(0, 0)) {
+    if (broadShapeCount >= 90) break;
+    const rescored = scoreTextVinylCandidate(candidate.candidate || candidate, rows, remaining);
+    if (!rescored || rescored.freshHits < 3 || !textVinylCleanEnough(rescored, 0.08, 0.10) || rescored.score < 2) continue;
+    shapes.push(textVinylShapeFromBox({
+      x: rescored.cx - rescored.width / 2,
+      y: rescored.cy - rescored.height / 2,
+      width: rescored.width,
+      height: rescored.height,
+      rotation: rescored.rotation,
+    }, layout, candidate.resource, color, groupId, groupName, candidate.label));
+    rescored.cells.forEach((cell) => {
+      if (textVinylGridGet(rows, cell.x, cell.y)) remaining.delete(cell.key);
+    });
+    broadShapeCount++;
+    broadTypeCounts.set(candidate.label, (broadTypeCounts.get(candidate.label) || 0) + 1);
+  }
+
+  const residualRects = buildTextVinylResidualRects(rows, remaining);
+  const residualTypeCounts = new Map();
+  residualRects.forEach((rect) => {
+    const chosen = textVinylChooseResidualShape(rect, rows, remaining);
+    shapes.push(textVinylShapeFromBox(chosen.candidate || rect, layout, chosen.resource, color, groupId, groupName, chosen.label));
+    residualTypeCounts.set(chosen.label, (residualTypeCounts.get(chosen.label) || 0) + 1);
+  });
+  const typeSummary = [...componentTypeCounts, ...earlyTypeCounts, ...broadTypeCounts, ...residualTypeCounts]
+    .reduce((map, [label, count]) => {
+      map.set(label, (map.get(label) || 0) + count);
+      return map;
+    }, new Map());
+  return {
+    shapes,
+    componentShapeCount,
+    earlyShapeCount,
+    strokeCount,
+    cornerCount,
+    broadShapeCount,
+    residualCount: residualRects.length,
+    typeSummary: [...typeSummary.entries()].sort((a, b) => b[1] - a[1]),
+    gridW,
+    gridH,
+  };
+}
+
+function textVinylForzaGlyphResource(char, fontNumber) {
+  const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const lower = "abcdefghijklmnopqrstuvwxyz";
+  const symbolMap = {
+    "%": 27,
+    ":": 28,
+    ";": 29,
+    "/": 30,
+    "$": 31,
+    "£": 32,
+    "¥": 33,
+    "€": 34,
+    "æ": 35,
+    "Æ": 35,
+    "^": 36,
+    "ß": 37,
+    "@": 38,
+    "#": 39,
+    "+": 40,
+  };
+  const safeFont = Math.max(1, Math.min(11, Number(fontNumber) || 1));
+  const upperIndex = upper.indexOf(char);
+  if (upperIndex >= 0) return { family: `Upper_Letters_${safeFont}`, index: upperIndex + 1 };
+  const lowerIndex = lower.indexOf(char);
+  if (lowerIndex >= 0) return { family: `Lower_Letters_${safeFont}`, index: lowerIndex + 1 };
+  if (symbolMap[char]) return { family: `Lower_Letters_${safeFont}`, index: symbolMap[char] };
+  return null;
+}
+
+function textVinylForzaLineWidth(line, fontNumber, advance) {
+  let width = 0;
+  for (const char of line) {
+    if (char === " ") {
+      width += advance * 0.58;
+      continue;
+    }
+    width += textVinylForzaGlyphResource(char, fontNumber) ? advance : advance * 0.5;
+  }
+  return width;
+}
+
+function buildTextVinylForzaLetterShapes(text, options, color, groupId, groupName) {
+  const fontNumber = numberInputValue("textVinylForzaFont", 1, 1, 11);
+  const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+  const center = viewportCenterPoint();
+  const lineHeight = options.targetHeight / Math.max(1, lines.length);
+  const glyphHeight = lineHeight * 0.82;
+  const scale = glyphHeight / PIXEL_ART_SQUARE_SIZE;
+  const advance = glyphHeight * 0.72;
+  const lineGap = lineHeight * 0.18;
+  const totalHeight = lines.length * lineHeight - lineGap;
+  const shapes = [];
+  let unsupported = 0;
+  lines.forEach((line, lineIndex) => {
+    const lineWidth = textVinylForzaLineWidth(line, fontNumber, advance);
+    let cursor = center.x - lineWidth / 2;
+    const y = center.y - totalHeight / 2 + lineIndex * lineHeight + glyphHeight / 2;
+    for (const char of line) {
+      if (char === " ") {
+        cursor += advance * 0.58;
+        continue;
+      }
+      const resource = textVinylForzaGlyphResource(char, fontNumber);
+      const charAdvance = resource ? advance : advance * 0.5;
+      if (!resource) {
+        unsupported++;
+        cursor += charAdvance;
+        continue;
+      }
+      const typeCode = resourceToTypeCode(resource.family, resource.index);
+      const shapeWord = resourceToShapeWord(resource.family, resource.index);
+      shapes.push({
+        type: typeCode,
+        type_word: shapeWord,
+        resource_family: resource.family,
+        resource_index: resource.index,
+        shape_name: shapeDisplayName(resource.family, resource.index),
+        data: [
+          round(cursor + charAdvance / 2),
+          round(-y),
+          round(scale),
+          round(scale),
+          0,
+          0,
+          0,
+        ],
+        color,
+        mask: false,
+        score: 0,
+        source_format: TEXT_VINYL_SOURCE_FLAG,
+        editor_group_id: groupId,
+        editor_group_name: groupName,
+      });
+      cursor += charAdvance;
+    }
+  });
+  return { shapes, unsupported, fontNumber };
+}
+
+function buildTextVinylCurveShapes(runs, layout, color, groupId, groupName) {
+  const square = {
+    index: 1,
+    typeCode: resourceToTypeCode("Primitives", 1),
+    shapeWord: resourceToShapeWord("Primitives", 1),
+  };
+  const circle = {
+    index: 2,
+    typeCode: resourceToTypeCode("Primitives", 2),
+    shapeWord: resourceToShapeWord("Primitives", 2),
+  };
+  const shapes = [];
+  runs.forEach((run) => {
+    const capWidth = Math.min(run.height, run.width / 2);
+    if (run.width <= run.height * 1.15) {
+      shapes.push(textVinylShapeFromBox(run, layout, circle, color, groupId, groupName, "Circle"));
+      return;
+    }
+    const centerWidth = Math.max(0, run.width - capWidth * 2);
+    if (centerWidth > 0.05) {
+      shapes.push(textVinylShapeFromBox({
+        x: run.x + capWidth,
+        y: run.y,
+        width: centerWidth,
+        height: run.height,
+      }, layout, square, color, groupId, groupName, "Square"));
+    }
+    shapes.push(textVinylShapeFromBox({
+      x: run.x,
+      y: run.y,
+      width: capWidth * 2,
+      height: run.height,
+    }, layout, circle, color, groupId, groupName, "Circle"));
+    shapes.push(textVinylShapeFromBox({
+      x: run.x + run.width - capWidth * 2,
+      y: run.y,
+      width: capWidth * 2,
+      height: run.height,
+    }, layout, circle, color, groupId, groupName, "Circle"));
+  });
+  return shapes;
+}
+
+function clearPreviousTextVinylLayers() {
+  const previous = vinylObjects().filter((obj) => obj.kloudy?.source_format === TEXT_VINYL_SOURCE_FLAG);
+  previous.forEach((obj) => canvas.remove(obj));
+  return previous.length;
+}
+
+async function generateTextVinylShapes() {
+  try {
+    if (!canvas) return;
+    const text = $("textVinylInput")?.value || "";
+    if (!text.trim()) {
+      setTextVinylStatus("Type some text first.");
+      return;
+    }
+    const options = {
+      fontFamily: selectedTextVinylFontFamily(),
+      mode: "forzaLetters",
+      fontSize: numberInputValue("textVinylFontSize", 96, 12, 360),
+      cellSize: numberInputValue("textVinylCellSize", 4, 1, 48),
+      bandSize: numberInputValue("textVinylBandSize", 4, 1, 36),
+      targetHeight: numberInputValue("textVinylHeight", 360, 20, 2000),
+      alphaCutoff: numberInputValue("textVinylAlphaCutoff", 96, 0, 255),
+      coverage: numberInputValue("textVinylCoverage", 18, 5, 95) / 100,
+      bold: Boolean($("textVinylBold")?.checked),
+      italic: Boolean($("textVinylItalic")?.checked),
+    };
+    setBusy("Rasterizing text...");
+    await nextFrame();
+    const mask = renderTextVinylMask(text, options);
+    const color = normalizeColor(currentPanelColor());
+    rememberColor(color);
+    let shapeSpecs = [];
+    let sourceWidth = 1;
+    let sourceHeight = 1;
+    let sourceLabel = "";
+    const groupId = `text-vinyl-${Date.now().toString(36)}`;
+    const groupName = `Text Vinyl ${text.trim().slice(0, 28) || "Text"}`;
+    if (options.mode === "forzaLetters") {
+      const built = buildTextVinylForzaLetterShapes(text, options, color, groupId, groupName);
+      shapeSpecs = built.shapes;
+      sourceWidth = shapeSpecs.length;
+      sourceHeight = 1;
+      sourceLabel = `Forza Font ${built.fontNumber}, ${shapeSpecs.length} glyph(s)${built.unsupported ? `, ${built.unsupported} unsupported character(s) skipped` : ""}`;
+    } else if (options.mode === "curveBands") {
+      const bands = buildTextVinylCurveBands(mask, options.bandSize, options.alphaCutoff, options.coverage);
+      sourceWidth = bands.gridW;
+      sourceHeight = bands.gridH;
+      const layout = textVinylLayout(sourceWidth, sourceHeight, options.targetHeight);
+      shapeSpecs = buildTextVinylCurveShapes(bands.runs, layout, color, groupId, groupName);
+      sourceLabel = `${bands.runs.length} scanline run(s)`;
+    } else if (options.mode === "smartFit") {
+      const grid = textVinylCellsFromMask(mask, options.cellSize, options.alphaCutoff, options.coverage);
+      const layout = textVinylLayout(grid.gridW, grid.gridH, options.targetHeight);
+      await prepareTextVinylFitterMeshes(textVinylFitterResourceSet());
+      const fitted = buildTextVinylSmartFitShapes(grid.rows, layout, color, groupId, groupName);
+      shapeSpecs = fitted.shapes;
+      sourceWidth = fitted.gridW;
+      sourceHeight = fitted.gridH;
+      const types = fitted.typeSummary.length
+        ? ` (${fitted.typeSummary.map(([name, count]) => `${count} ${name}`).join(", ")})`
+        : "";
+      sourceLabel = `${fitted.componentShapeCount} component shape(s) + ${fitted.earlyShapeCount} early shape(s) + ${fitted.strokeCount} fitted stroke(s) + ${fitted.cornerCount} curve corner(s) + ${fitted.broadShapeCount} scored shape(s) + ${fitted.residualCount} residual shape(s)${types}`;
+    } else {
+      const grid = textVinylCellsFromMask(mask, options.cellSize, options.alphaCutoff, options.coverage);
+      const rects = buildTextVinylRects(grid.rows);
+      sourceWidth = grid.gridW;
+      sourceHeight = grid.gridH;
+      const layout = textVinylLayout(grid.gridW, grid.gridH, options.targetHeight);
+      const square = {
+        index: 1,
+        typeCode: resourceToTypeCode("Primitives", 1),
+        shapeWord: resourceToShapeWord("Primitives", 1),
+      };
+      shapeSpecs = rects.map((rect) => textVinylShapeFromBox(rect, layout, square, color, groupId, groupName, "Square"));
+      sourceLabel = `${grid.gridW}x${grid.gridH} cells`;
+    }
+    if (!shapeSpecs.length) {
+      setTextVinylStatus("No supported Forza letter shapes found for this text.");
+      clearBusy("No supported Forza letter shapes found.");
+      return;
+    }
+    if (shapeSpecs.length > 3000) {
+      const ok = window.confirm(`This text needs ${shapeSpecs.length} layers. FH6 supports 3000 layers per vinyl. Increase Cell/Band px or continue anyway?`);
+      if (!ok) {
+        setTextVinylStatus("Text vinyl generation cancelled.");
+        clearBusy("Text vinyl generation cancelled.");
+        return;
+      }
+    }
+    setBusy(`Building ${shapeSpecs.length} text vinyl layer(s)...`);
+    const removed = $("textVinylClearPrevious")?.checked ? clearPreviousTextVinylLayers() : 0;
+    const created = [];
+    historyLocked = true;
+    try {
+      for (const shape of shapeSpecs) {
+        const object = await makeFabricObject(shape);
+        object.kloudy.source_format = TEXT_VINYL_SOURCE_FLAG;
+        canvas.add(object);
+        created.push(object);
+      }
+    } finally {
+      historyLocked = false;
+    }
+    bringGuidesToBack();
+    syncCanvasObjectCoords();
+    selectObjects(created.slice(0, 200), "text vinyl generation");
+    refreshLayers();
+    pushHistory("generate text vinyl");
+    const message = `Generated ${created.length} text layer(s) from ${sourceLabel}, source ${sourceWidth}x${sourceHeight}.${removed ? ` Removed ${removed} previous text layer(s).` : ""}`;
+    setTextVinylStatus(message);
+    clearBusy(message);
+  } catch (err) {
+    historyLocked = false;
+    setTextVinylStatus(`Text vinyl generation failed: ${err.message || err}`);
+    showError("Text vinyl generation failed", err);
   }
 }
 
@@ -7999,6 +9503,10 @@ async function recoverAutosavePayload(payload) {
 }
 
 async function maybeShowAutosaveRecovery() {
+  if (isTextVinylHarnessRun()) {
+    $("autosaveRecoveryDialog")?.close();
+    return false;
+  }
   const payload = await readAutosavePayload();
   if (!payload || !Array.isArray(payload.shapes) || payload.shapes.length <= 0) return false;
   recoveryAutosavePayload = payload;
@@ -8446,6 +9954,13 @@ function bindUi() {
     setPixelArtStatus(`Pixel-art source loaded: ${pixelArtSourceFile.name}. Press Generate to detect its pixel grid.`);
   });
   $("generatePixelArt")?.addEventListener("click", generatePixelArtRectangles);
+  loadTextVinylFontPreference();
+  $("textVinylFontSelect")?.addEventListener("change", () => {
+    syncTextVinylFontUi();
+    saveTextVinylFontPreference();
+  });
+  $("textVinylCustomFont")?.addEventListener("input", saveTextVinylFontPreference);
+  $("generateTextVinyl")?.addEventListener("click", generateTextVinylShapes);
   $("deleteGuide")?.addEventListener("click", deleteSelectedGuide);
   $("clearGuides")?.addEventListener("click", clearGuides);
   $("toggleOverlay").addEventListener("click", toggleOverlay);

@@ -784,18 +784,33 @@ input[type="range"] {
   display: flex;
 }
 
-.pixelArtSection input[type="file"] {
+.pixelArtSection input[type="file"],
+.textVinylSection textarea {
   width: 100%;
   min-width: 0;
   margin: 2px 0 8px;
 }
 
-.pixelArtSection button {
+.textVinylSection textarea {
+  min-height: 72px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+#textVinylCustomFont {
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 8px;
+}
+
+.pixelArtSection button,
+.textVinylSection button {
   width: 100%;
   margin-top: 6px;
 }
 
-.pixelArtSection .fieldGrid {
+.pixelArtSection .fieldGrid,
+.textVinylSection .fieldGrid {
   margin-bottom: 6px;
 }
 
