@@ -158,6 +158,7 @@
             <div class="smallTools">
               <button id="bringForward" title="Move selected layer(s) one step toward the top/front.">Forward</button>
               <button id="sendBackward" title="Move selected layer(s) one step toward the bottom/back.">Back</button>
+              <button id="selectionLockToggle" title="Keep the current selection active through accidental canvas misclicks." aria-pressed="false">Lock Selection</button>
               <button id="groupSelected" title="Create an editor-only group from the selected layers. Exports stay flat.">Group</button>
               <button id="renameSelectedGroup" title="Rename the selected editor-only group. Exports stay flat.">Rename Group</button>
               <button id="hideSelectedGroup" title="Hide or show every layer in the selected editor group.">Hide Group</button>
@@ -578,6 +579,8 @@
           <li><b><span data-shortcut-label="selectTool">V</span> / <span data-shortcut-label="shapeLibrary">S</span> / <span data-shortcut-label="dropper">I</span> / <span data-shortcut-label="guides">G</span> / <span data-shortcut-label="overlay">O</span> / <span data-shortcut-label="sourceTool">R</span></b>: Select, Shapes, Dropper, Guides, Overlay, Source Move. These shortcuts are ignored while typing in a text field.</li>
           <li><b>Drag empty canvas in Select mode</b>: Box-select layers.</li>
           <li><b>Hold V while dragging</b>: Force box-select, even if the drag starts on top of a shape.</li>
+          <li><b><span data-shortcut-label="axisLockX">X</span> / <span data-shortcut-label="axisLockY">Y</span> while dragging</b>: Constrain selected shapes to horizontal / vertical movement, Blender-style.</li>
+          <li><b data-shortcut-label="selectionLock">Shift+L</b>: Lock the current selection so accidental canvas clicks do not switch to another shape.</li>
           <li><b>Control while dragging/editing</b>: Snap to active guides or grid helpers.</li>
           <li><b>Shift while dragging a corner</b>: Uniform/global scale instead of skew.</li>
           <li><b>Delete / Backspace</b>: Delete selected layers.</li>
@@ -632,6 +635,8 @@
           <b data-shortcut-label="guides">G</b><span>Guides / Snap.</span>
           <b data-shortcut-label="overlay">O</b><span>Overlay / Reference.</span>
           <b data-shortcut-label="sourceTool">R</b><span>Source Move only.</span>
+          <b><span data-shortcut-label="axisLockX">X</span> / <span data-shortcut-label="axisLockY">Y</span></b><span>Hold while dragging selected shapes to lock movement to horizontal / vertical.</span>
+          <b data-shortcut-label="selectionLock">Shift+L</b><span>Lock current selection against accidental canvas misclicks.</span>
           <b>Ctrl</b><span>Snap while moving, scaling, skewing, or reshaping.</span>
           <b>Shift + corner drag</b><span>Uniform/global scale instead of corner skew.</span>
           <b>Mouse wheel</b><span>Zoom.</span>

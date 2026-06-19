@@ -625,6 +625,12 @@ input[type="range"] {
   margin: 8px 0;
 }
 
+.smallTools button.active {
+  border-color: rgba(var(--accent-rgb), 0.72);
+  background: rgba(var(--accent-rgb), 0.22);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.18) inset;
+}
+
 .globalShapeReplacePanel {
   margin: 10px 0;
   padding: 10px;

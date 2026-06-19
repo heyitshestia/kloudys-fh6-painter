@@ -55,6 +55,9 @@ const DEFAULT_SHORTCUTS = {
   flipVertical: "F",
   flipHorizontal: "Shift+F",
   makeMask: "M",
+  axisLockX: "X",
+  axisLockY: "Y",
+  selectionLock: "Shift+L",
 };
 
 const BUILTIN_EDITOR_THEMES = [
@@ -114,6 +117,9 @@ const SHORTCUT_LABELS = {
   flipVertical: "Flip vertical",
   flipHorizontal: "Flip horizontal",
   makeMask: "Toggle mask layer",
+  axisLockX: "Drag lock X axis",
+  axisLockY: "Drag lock Y axis",
+  selectionLock: "Lock current selection",
 };
 
 const VINYL_TYPE_BASES = {
@@ -211,6 +217,11 @@ let lastFontShapeTransform = loadLastFontShapeTransform();
 let selectedShapeOutlineObjects = new Set();
 let selectedShapeOutlineHelpers = new Map();
 let selectionInvertLocked = false;
+let dragAxisLock = null;
+let dragAxisSnapshot = null;
+let selectionLockActive = false;
+let selectionLockObjects = [];
+let selectionLockRestoring = false;
 let pendingDialogColor = null;
 let dialogColorFrame = null;
 let vBoxSelectActive = false;
@@ -2642,6 +2653,10 @@ function initCanvas() {
   canvas.on("selection:created", handleSelectionChanged);
   canvas.on("selection:updated", handleSelectionChanged);
   canvas.on("selection:cleared", () => {
+    if (selectionLockActive && !selectionLockRestoring) {
+      requestAnimationFrame(() => restoreSelectionLock("a canvas misclick"));
+      return;
+    }
     clearSnapOverlay();
     updateSelectionPanel();
   });
@@ -2686,7 +2701,9 @@ function initCanvas() {
     leaveGuideModeForLayerEdit();
     const target = interactiveVinylTarget(event.target);
     if (target !== event.target) mirrorMaskProxyToOwner(event.target);
+    applyDragAxisLock(target);
     snapTargetToGuides(target, { ...event, kloudyTransformAction: "move" });
+    applyDragAxisLock(target);
     if (target) syncSelectedShapeOutlines(undefined, { relayer: false });
     syncMaskPreviewForTarget(target);
     scheduleLiveOverlayColor(target);
@@ -2799,9 +2816,12 @@ function initCanvas() {
       canvas.skipTargetFind = true;
       transformAnchorSnapshot = null;
     } else if (interactiveVinylTarget(opt.target)?.kloudy || opt.target?.type === "activeSelection" || opt.target?.type === "activeselection") {
-      captureTransformAnchorSnapshot(interactiveVinylTarget(opt.target), opt);
+      const target = interactiveVinylTarget(opt.target);
+      captureTransformAnchorSnapshot(target, opt);
+      captureDragAxisSnapshot(target);
     } else {
       transformAnchorSnapshot = null;
+      dragAxisSnapshot = null;
     }
   });
   canvas.on("mouse:move", (opt) => {
@@ -2836,6 +2856,8 @@ function initCanvas() {
     }
     if (activeToolMode === "guides") canvas._groupSelector = null;
     transformAnchorSnapshot = null;
+    dragAxisSnapshot = null;
+    clearDragAxisLock();
     clearSnapOverlay();
     finishCanvasPan();
     isPanning = false;
@@ -3743,6 +3765,54 @@ function captureTransformAnchorSnapshot(target, event = null) {
     skewY: Number(target.skewY) || 0,
   };
   return transformAnchorSnapshot;
+}
+
+function captureDragAxisSnapshot(target) {
+  if (!target || target.kloudyGuide || target.kloudyOverlay) {
+    dragAxisSnapshot = null;
+    return null;
+  }
+  dragAxisSnapshot = {
+    target,
+    left: Number(target.left) || 0,
+    top: Number(target.top) || 0,
+  };
+  return dragAxisSnapshot;
+}
+
+function ensureDragAxisSnapshot(target) {
+  if (!target || target.kloudyGuide || target.kloudyOverlay) return null;
+  if (dragAxisSnapshot?.target !== target) return captureDragAxisSnapshot(target);
+  return dragAxisSnapshot;
+}
+
+function applyDragAxisLock(target) {
+  if (!target || !dragAxisLock) return false;
+  const snapshot = ensureDragAxisSnapshot(target);
+  if (!snapshot) return false;
+  if (dragAxisLock === "x") {
+    target.set({ top: snapshot.top });
+  } else if (dragAxisLock === "y") {
+    target.set({ left: snapshot.left });
+  } else {
+    return false;
+  }
+  target.setCoords();
+  return true;
+}
+
+function setDragAxisLock(axis) {
+  if (dragAxisLock === axis) return;
+  dragAxisLock = axis;
+  const label = axis === "x" ? "X / horizontal" : "Y / vertical";
+  setStatus(`Axis lock active: ${label}. Release ${axis.toUpperCase()} to drag freely.`);
+}
+
+function clearDragAxisLock(axis = null) {
+  if (axis && dragAxisLock !== axis) return;
+  const hadLock = Boolean(dragAxisLock);
+  dragAxisLock = null;
+  if (hadLock) setStatus("Axis lock released.");
 }
 
 function ensureTransformAnchorSnapshot(target) {
@@ -4978,6 +5048,85 @@ function isActiveSelectionObject(object) {
   return object && (object.type === "activeSelection" || object.type === "activeselection");
 }
 
+function selectionSetEquals(a, b) {
+  if (a.length !== b.length) return false;
+  const bSet = new Set(b);
+  return a.every((item) => bSet.has(item));
+}
+
+function validSelectionLockObjects() {
+  const current = new Set(vinylObjects());
+  return selectionLockObjects.filter((obj) => current.has(obj));
+}
+
+function setActiveObjectsForSelectionLock(objects) {
+  const normalized = [...new Set(objects.map(interactiveVinylTarget).filter((obj) => obj?.kloudy && !obj.kloudyGuide))];
+  if (!normalized.length) return false;
+  selectionLockRestoring = true;
+  try {
+    const active = canvas.getActiveObject();
+    if (active && (isActiveSelectionObject(active) || !selectionSetEquals(selectedVinylObjects(), normalized))) {
+      canvas.discardActiveObject();
+    }
+    normalized.forEach((obj) => obj.setCoords());
+    if (normalized.length === 1) canvas.setActiveObject(normalized[0]);
+    else canvas.setActiveObject(styledActiveSelection(normalized));
+    canvas.requestRenderAll();
+    updateSelectionPanel();
+    updateLayerSelectionStyles();
+  } finally {
+    selectionLockRestoring = false;
+  }
+  return true;
+}
+
+function updateSelectionLockButton() {
+  const button = $("selectionLockToggle");
+  if (!button) return;
+  button.classList.toggle("active", selectionLockActive);
+  button.setAttribute("aria-pressed", selectionLockActive ? "true" : "false");
+  button.textContent = selectionLockActive ? "Selection Locked" : "Lock Selection";
+}
+
+function releaseSelectionLock(message = "Selection lock released.") {
+  const hadLock = selectionLockActive;
+  selectionLockActive = false;
+  selectionLockObjects = [];
+  selectionLockRestoring = false;
+  updateSelectionLockButton();
+  if (hadLock && message) setStatus(message);
+}
+
+function restoreSelectionLock(reason = "misclick") {
+  if (!selectionLockActive || selectionLockRestoring) return false;
+  const objects = validSelectionLockObjects();
+  if (!objects.length) {
+    releaseSelectionLock("Selection lock released because the locked layer no longer exists.");
+    return false;
+  }
+  const selected = selectedVinylObjects();
+  if (selectionSetEquals(selected, objects)) return false;
+  setActiveObjectsForSelectionLock(objects);
+  setStatus(`Selection lock kept ${objects.length} layer(s) selected after ${reason}. Unlock to choose something else.`);
+  return true;
+}
+
+function toggleSelectionLock() {
+  if (selectionLockActive) {
+    releaseSelectionLock();
+    return;
+  }
+  const selected = selectedVinylObjects();
+  if (!selected.length) {
+    setStatus("Select one or more layers before locking the selection.");
+    return;
+  }
+  selectionLockActive = true;
+  selectionLockObjects = [...selected];
+  updateSelectionLockButton();
+  setStatus(`Selection locked to ${selected.length} layer(s). Misclicks will keep this selection.`);
+}
+
 function shouldInvertCurrentSelection(event = null) {
   if (!$("invertBoxSelect")?.checked || selectionInvertLocked) return false;
   const active = canvas?.getActiveObject();
@@ -5006,6 +5155,9 @@ function invertCurrentSelection(event = null) {
 }
 
 function handleSelectionChanged(event = null) {
+  if (selectionLockActive && !selectionLockRestoring && restoreSelectionLock("a selection change")) {
+    return;
+  }
   if (invertCurrentSelection(event)) {
     updateSelectionPanel();
     updateLayerSelectionStyles();
@@ -9800,6 +9952,7 @@ function bindUi() {
   $("resetView").addEventListener("click", resetView);
   $("undoBtn").addEventListener("click", undo);
   $("redoBtn").addEventListener("click", redo);
+  $("selectionLockToggle")?.addEventListener("click", toggleSelectionLock);
   $("helpBtn").addEventListener("click", () => $("helpDialog").showModal());
   $("closeHelp").addEventListener("click", () => $("helpDialog").close());
   $("shortcutsBtn")?.addEventListener("click", () => $("shortcutsDialog")?.showModal());
@@ -10071,6 +10224,21 @@ function bindUi() {
       toggleSelectedMaskLayers();
       return;
     }
+    if (shortcutMatches(event, "axisLockX")) {
+      event.preventDefault();
+      if (!event.repeat) setDragAxisLock("x");
+      return;
+    }
+    if (shortcutMatches(event, "axisLockY")) {
+      event.preventDefault();
+      if (!event.repeat) setDragAxisLock("y");
+      return;
+    }
+    if (shortcutMatches(event, "selectionLock")) {
+      event.preventDefault();
+      if (!event.repeat) toggleSelectionLock();
+      return;
+    }
     const step = (Number($("nudgeStep").value) || 1) * (event.shiftKey ? 10 : 1);
     if (event.key === "ArrowLeft") {
       event.preventDefault();
@@ -10093,6 +10261,18 @@ function bindUi() {
     }
   });
   document.addEventListener("keyup", (event) => {
+    if (event.target && event.target.classList?.contains("shortcutCapture")) return;
+    if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+    if (shortcutMatches(event, "axisLockX") || normalizeShortcutKey(event.key) === shortcutPrimaryKey("axisLockX")) {
+      event.preventDefault();
+      clearDragAxisLock("x");
+      return;
+    }
+    if (shortcutMatches(event, "axisLockY") || normalizeShortcutKey(event.key) === shortcutPrimaryKey("axisLockY")) {
+      event.preventDefault();
+      clearDragAxisLock("y");
+      return;
+    }
     if (normalizeShortcutKey(event.key) !== shortcutPrimaryKey("selectTool")) return;
     if (vBoxSelectActive) {
       event.preventDefault();
