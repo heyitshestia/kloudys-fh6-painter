@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -17,8 +18,13 @@ namespace KFPS.Wpf;
 
 public partial class MainWindow : Window
 {
+    private const string GitHubVersionUrl = "https://raw.githubusercontent.com/heyitshestia/kloudys-forza-painter-suite/refs/heads/main/VERSION";
+    private static readonly TimeSpan VersionCheckInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan VersionBlinkInterval = TimeSpan.FromMilliseconds(650);
+
     private readonly string _appRoot;
     private readonly List<ThemeDefinition> _themes;
+    private readonly HttpClient _versionHttpClient = new();
     private bool _loadingSettings;
     private string? _selectedSourceImage;
     private string? _selectedJson;
@@ -41,6 +47,12 @@ public partial class MainWindow : Window
     private bool _updatingJsonBrowser;
     private string? _selectedEditorProject;
     private bool _tutorialInitialized;
+    private DispatcherTimer? _versionCheckTimer;
+    private DispatcherTimer? _versionBlinkTimer;
+    private bool _checkingVersion;
+    private bool _updateAvailable;
+    private bool _versionBlinkVisible = true;
+    private string _localVersion = "unknown";
 
     public MainWindow()
     {
@@ -56,6 +68,7 @@ public partial class MainWindow : Window
         UpdateFinalCheckpointsForSelectedLayers();
         UpdateSeedButtons();
         RefreshPreviewState();
+        InitializeVersionCheck();
 
         Log("KFPS WPF prototype started.");
         Log($"App root: {_appRoot}", updateStatus: false);
@@ -69,7 +82,147 @@ public partial class MainWindow : Window
         }
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        _versionCheckTimer?.Stop();
+        _versionBlinkTimer?.Stop();
+        _versionHttpClient.Dispose();
+        base.OnClosed(e);
+    }
+
     private string SettingsPath => Path.Combine(_appRoot, "runtime", "wpf-shell-settings.json");
+
+    private void InitializeVersionCheck()
+    {
+        _localVersion = ReadLocalVersion();
+        SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Local version: {_localVersion}. Checking GitHub main...");
+
+        _versionCheckTimer = new DispatcherTimer { Interval = VersionCheckInterval };
+        _versionCheckTimer.Tick += async (_, _) => await CheckGitHubVersionAsync();
+        _versionCheckTimer.Start();
+
+        _versionBlinkTimer = new DispatcherTimer { Interval = VersionBlinkInterval };
+        _versionBlinkTimer.Tick += (_, _) => UpdateVersionBlink();
+        _versionBlinkTimer.Start();
+
+        _ = CheckGitHubVersionAsync();
+    }
+
+    private string ReadLocalVersion()
+    {
+        try
+        {
+            var versionPath = Path.Combine(_appRoot, "VERSION");
+            if (File.Exists(versionPath))
+            {
+                var value = File.ReadLines(versionPath).FirstOrDefault()?.Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+        }
+        catch
+        {
+            // Version display must never block startup.
+        }
+
+        return "unknown";
+    }
+
+    private async Task CheckGitHubVersionAsync()
+    {
+        if (_checkingVersion)
+        {
+            return;
+        }
+
+        _checkingVersion = true;
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{GitHubVersionUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
+            request.Headers.UserAgent.ParseAdd("KFPS-VersionCheck/1.0");
+            using var response = await _versionHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            var remoteVersion = (await response.Content.ReadAsStringAsync()).Trim();
+            if (string.IsNullOrWhiteSpace(remoteVersion))
+            {
+                SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, "Local version shown. GitHub version response was empty.");
+                return;
+            }
+
+            if (IsRemoteVersionNewer(_localVersion, remoteVersion))
+            {
+                SetVersionStatus($"KFPS v{_localVersion}  ->  v{remoteVersion} available", updateAvailable: true, $"Update available: local {_localVersion}, GitHub main {remoteVersion}.");
+            }
+            else
+            {
+                SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Up to date. Local {_localVersion}, GitHub main {remoteVersion}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!_updateAvailable)
+            {
+                SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Could not check GitHub version: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _checkingVersion = false;
+        }
+    }
+
+    private void SetVersionStatus(string text, bool updateAvailable, string tooltip)
+    {
+        _updateAvailable = updateAvailable;
+        _versionBlinkVisible = true;
+        VersionStatusText.Text = text;
+        VersionStatusPill.ToolTip = tooltip;
+        VersionStatusText.Opacity = 1.0;
+
+        if (updateAvailable)
+        {
+            VersionStatusText.Foreground = Brushes.White;
+            VersionStatusPill.Background = new SolidColorBrush(Color.FromRgb(186, 18, 54));
+            VersionStatusPill.BorderBrush = new SolidColorBrush(Color.FromRgb(255, 96, 126));
+        }
+        else
+        {
+            VersionStatusText.ClearValue(TextBlock.ForegroundProperty);
+            VersionStatusPill.ClearValue(Border.BackgroundProperty);
+            VersionStatusPill.ClearValue(Border.BorderBrushProperty);
+        }
+    }
+
+    private void UpdateVersionBlink()
+    {
+        if (!_updateAvailable)
+        {
+            VersionStatusText.Opacity = 1.0;
+            return;
+        }
+
+        _versionBlinkVisible = !_versionBlinkVisible;
+        VersionStatusText.Opacity = _versionBlinkVisible ? 1.0 : 0.22;
+    }
+
+    private static bool IsRemoteVersionNewer(string localVersion, string remoteVersion)
+    {
+        if (TryParseVersion(localVersion, out var local) && TryParseVersion(remoteVersion, out var remote))
+        {
+            return remote > local;
+        }
+
+        return !string.Equals(localVersion.Trim(), remoteVersion.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryParseVersion(string value, out Version version)
+    {
+        var cleaned = value.Trim().TrimStart('v', 'V');
+        return Version.TryParse(cleaned, out version!);
+    }
 
     private static string ResolveAppRoot()
     {

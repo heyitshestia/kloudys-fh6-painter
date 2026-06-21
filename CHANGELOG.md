@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.1
+- Added a centered native version indicator that checks GitHub main every minute.
+- The version indicator turns red and blinks when a newer version is available.
+
 ## 3.0.0
 - Replaced the old PySide launcher/app shell with the native KFPS desktop app.
 - Added native self-update handoff so KFPS closes before replacing the root executable.

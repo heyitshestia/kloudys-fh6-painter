@@ -56,9 +56,15 @@
                     <TextBlock Text="KFPS" FontSize="18" FontWeight="SemiBold" TextWrapping="NoWrap" VerticalAlignment="Center" />
                     <Border Width="1" Height="20" Background="{DynamicResource BorderBrushSoft}" Margin="12,0" />
                     <TextBlock x:Name="PageTitle" Text="Dashboard" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource MutedInkBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
-                    <TextBlock Text="  /  " Foreground="{DynamicResource DimInkBrush}" VerticalAlignment="Center" />
-                    <TextBlock x:Name="StatusText" Text="Ready" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" />
-                </StackPanel>
+	                    <TextBlock Text="  /  " Foreground="{DynamicResource DimInkBrush}" VerticalAlignment="Center" />
+	                    <TextBlock x:Name="StatusText" Text="Ready" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" />
+	                </StackPanel>
+                <Border x:Name="VersionStatusPill" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1"
+                        CornerRadius="999" Padding="14,5" ToolTip="KFPS version status">
+                    <TextBlock x:Name="VersionStatusText" Text="Version checking..." FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedInkBrush}" TextWrapping="NoWrap" />
+                </Border>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="THEME" Style="{StaticResource TinyLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <ComboBox x:Name="ThemeComboBox" Width="204" SelectionChanged="ThemeComboBox_SelectionChanged" />
