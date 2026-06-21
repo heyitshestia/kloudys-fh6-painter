@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.2
+- Switched the native version indicator to GitHub's contents API so checks do not get stale raw-cache results.
+
 ## 3.0.1
 - Added a centered native version indicator that checks GitHub main every minute.
 - The version indicator turns red and blinks when a newer version is available.

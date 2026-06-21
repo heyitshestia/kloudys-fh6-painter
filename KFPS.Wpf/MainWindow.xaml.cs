@@ -18,7 +18,7 @@ namespace KFPS.Wpf;
 
 public partial class MainWindow : Window
 {
-    private const string GitHubVersionUrl = "https://raw.githubusercontent.com/heyitshestia/kloudys-forza-painter-suite/refs/heads/main/VERSION";
+    private const string GitHubVersionApiUrl = "https://api.github.com/repos/heyitshestia/kloudys-forza-painter-suite/contents/VERSION?ref=main";
     private static readonly TimeSpan VersionCheckInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan VersionBlinkInterval = TimeSpan.FromMilliseconds(650);
 
@@ -140,12 +140,13 @@ public partial class MainWindow : Window
         _checkingVersion = true;
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{GitHubVersionUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{GitHubVersionApiUrl}&t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
             request.Headers.UserAgent.ParseAdd("KFPS-VersionCheck/1.0");
+            request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
             using var response = await _versionHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
 
-            var remoteVersion = (await response.Content.ReadAsStringAsync()).Trim();
+            var remoteVersion = ExtractVersionFromGitHubContents(await response.Content.ReadAsStringAsync());
             if (string.IsNullOrWhiteSpace(remoteVersion))
             {
                 SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, "Local version shown. GitHub version response was empty.");
@@ -215,7 +216,35 @@ public partial class MainWindow : Window
             return remote > local;
         }
 
+        if (localVersion.Equals("unknown", StringComparison.OrdinalIgnoreCase) ||
+            remoteVersion.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         return !string.Equals(localVersion.Trim(), remoteVersion.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ExtractVersionFromGitHubContents(string payload)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            if (document.RootElement.TryGetProperty("content", out var contentElement))
+            {
+                var encoded = contentElement.GetString()?.Replace("\n", string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(encoded))
+                {
+                    return Encoding.UTF8.GetString(Convert.FromBase64String(encoded)).Trim();
+                }
+            }
+        }
+        catch
+        {
+            // Fall through for raw/plain responses or malformed transient responses.
+        }
+
+        return payload.Trim();
     }
 
     private static bool TryParseVersion(string value, out Version version)
