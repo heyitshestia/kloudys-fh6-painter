@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.5
+- Restored the FH6 1000-layer group/table locator support script that was unintentionally left out of the native 3.x tree.
+
 ## 3.0.4
 - Limited the native theme dropdown to Sakura Glass while keeping the other theme definitions available in code.
 - Moved update controls into a dedicated Update tab with current/latest version display.
