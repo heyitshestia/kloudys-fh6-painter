@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import http.server
+import argparse
 import io
 import json
 import math
@@ -45,8 +46,8 @@ PROJECT_FILE_API = "/api/fabric-editor/project-file"
 PROJECT_SAVE_API = "/api/fabric-editor/save-project"
 PROJECT_OPEN_FOLDER_API = "/api/fabric-editor/open-project-folder"
 GENERATED_ROOT = ROOT / "imgs" / "generated"
-HANDMADE_ROOT = ROOT / "imgs" / "handmade"
 EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
+EXPORTED_JSON_ROOT = ROOT / "imgs" / "exported"
 EDITOR_PROJECT_ROOT = ROOT / "runtime" / "fabric-editor" / "projects"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
@@ -100,7 +101,7 @@ def _resolve_browser_id(path_id: str) -> Path:
     if not path_id or "\x00" in path_id:
         raise ValueError("missing JSON id")
     candidate = (ROOT / path_id).resolve()
-    allowed_roots = [GENERATED_ROOT.resolve(), HANDMADE_ROOT.resolve(), EDITOR_JSON_ROOT.resolve()]
+    allowed_roots = [GENERATED_ROOT.resolve(), EDITOR_JSON_ROOT.resolve(), EXPORTED_JSON_ROOT.resolve()]
     if not any(candidate.is_relative_to(root) for root in allowed_roots):
         raise ValueError("JSON path is outside the editable browser roots")
     if candidate.suffix.lower() != ".json" or not candidate.is_file():
@@ -286,29 +287,6 @@ def _generated_groups() -> list[dict]:
         group["count"] = len(group["entries"])
         group["max_layers"] = max((item["layers"] for item in group["entries"]), default=0)
     return sorted(groups.values(), key=lambda item: (item["mtime"], item["title"]), reverse=True)
-
-
-def _handmade_groups() -> list[dict]:
-    groups = []
-    if not HANDMADE_ROOT.exists():
-        return groups
-    for path in HANDMADE_ROOT.rglob("*.json"):
-        if _is_internal_json(path):
-            continue
-        entry = _json_entry(path, "handmade")
-        rel_parent = path.parent.relative_to(HANDMADE_ROOT)
-        folder = "" if str(rel_parent) == "." else rel_parent.as_posix()
-        title = path.name if not folder else f"{folder}/{path.name}"
-        groups.append({
-            "key": entry["id"],
-            "title": title,
-            "source": "handmade",
-            "mtime": entry["mtime"],
-            "count": 1,
-            "max_layers": entry["layers"],
-            "entries": [entry],
-        })
-    return sorted(groups, key=lambda item: (item["mtime"], item["title"]), reverse=True)
 
 
 def _single_file_groups(root: Path, source: str) -> list[dict]:
@@ -825,10 +803,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == JSON_BROWSER_API:
             query = parse_qs(parsed.query)
             source = (query.get("source") or ["generated"])[0]
-            if source == "handmade":
-                groups = _handmade_groups()
-            elif source == "editor":
+            if source == "editor":
                 groups = _editor_groups()
+            elif source in {"exported", "handmade"}:
+                source = "exported"
+                groups = _single_file_groups(EXPORTED_JSON_ROOT, "exported")
             else:
                 source = "generated"
                 groups = _generated_groups()
@@ -1092,12 +1071,18 @@ def open_editor_window(url: str) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Start the KFPS Fabric editor.")
+    parser.add_argument("--project-id", default="", help="Relative project id under runtime/fabric-editor/projects to load on startup.")
+    args = parser.parse_args()
+
     if not EDITOR.exists():
         print(f"Missing editor: {EDITOR}")
         return 1
     port = find_port()
     with socketserver.TCPServer(("127.0.0.1", port), Handler) as httpd:
         url = f"http://127.0.0.1:{port}/tools/fabric-editor/index.html"
+        if args.project_id:
+            url += f"?project={quote(args.project_id, safe='')}"
         print("KFPS Fabric editor")
         print(f"Serving: {ROOT}")
         print(f"Open:    {url}")

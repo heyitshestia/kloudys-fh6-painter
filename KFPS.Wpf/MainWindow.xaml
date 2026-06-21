@@ -1,0 +1,1137 @@
+<Window x:Class="KFPS.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="KFPS - Kloudy's Forza Painter Suite"
+        Width="1560"
+        Height="975"
+        MinWidth="1380"
+        MinHeight="865"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackgroundBrush}">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="56" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="160" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="126" />
+            <ColumnDefinition Width="310" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="314" />
+        </Grid.ColumnDefinitions>
+
+        <Canvas IsHitTestVisible="False" Panel.ZIndex="-1">
+            <Ellipse Width="90" Height="34" Fill="#33FF8FB5" Canvas.Left="94" Canvas.Top="-8" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <RotateTransform Angle="-24" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse Width="42" Height="16" Fill="#44FF9FBE" Canvas.Left="128" Canvas.Top="26" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <RotateTransform Angle="34" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse Width="120" Height="44" Fill="#28FF7EAD" Canvas.Right="18" Canvas.Bottom="8" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <RotateTransform Angle="-18" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse Width="54" Height="18" Fill="#33FF8FB5" Canvas.Right="138" Canvas.Top="74" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <RotateTransform Angle="22" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+        </Canvas>
+
+        <Border Grid.Row="0" Grid.ColumnSpan="4" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="assets/kfps-logo.png" Width="26" Height="26" Margin="0,0,10,0" />
+                    <TextBlock Text="KFPS" FontSize="18" FontWeight="SemiBold" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                    <Border Width="1" Height="20" Background="{DynamicResource BorderBrushSoft}" Margin="12,0" />
+                    <TextBlock x:Name="PageTitle" Text="Dashboard" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource MutedInkBrush}" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                    <TextBlock Text="  /  " Foreground="{DynamicResource DimInkBrush}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="StatusText" Text="Ready" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="THEME" Style="{StaticResource TinyLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox x:Name="ThemeComboBox" Width="204" SelectionChanged="ThemeComboBox_SelectionChanged" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,10,10,0" Padding="8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <Button Style="{StaticResource NavButton}" Click="ShowDashboard" ToolTip="Dashboard">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="⌂" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Home" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowGenerate" ToolTip="Generate Final Vinyl">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="◆" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Generate" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowImportExport" ToolTip="Import / Export JSON">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="⇄" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="JSON" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowEditor" ToolTip="Editor">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="✎" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Editor" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowImageTools" ToolTip="Image Tools">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="▧" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Images" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowTools" ToolTip="Tools">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="⚒" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Tools" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowTutorial" ToolTip="Tutorial">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="?" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Help" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowBugReports" ToolTip="Bug Reports">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="!" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Reports" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowSettings" ToolTip="Settings">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="⚙" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Settings" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <Button Grid.Row="1" Style="{StaticResource NavButton}" Click="OpenAppRoot" ToolTip="Open app root">
+                    <TextBlock Text="↗" FontSize="18" TextAlignment="Center" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <Border x:Name="WorkflowPanel" Grid.Row="1" Grid.Column="1" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,10,10,10" Padding="14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel>
+                    <TextBlock x:Name="WorkflowKicker" Text="CREATE" Style="{StaticResource TinyLabel}" />
+                    <TextBlock x:Name="WorkflowTitle" Text="Source and run controls" FontSize="20" FontWeight="SemiBold" Margin="0,3,0,12" />
+                </StackPanel>
+
+                <Grid Grid.Row="1" x:Name="DashboardView" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="KFPS workspace" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="A single control surface for generating, hand-editing, importing, exporting, and troubleshooting vinyl JSONs." Style="{StaticResource MutedText}" />
+                        <Button Content="Start with Generate" Style="{StaticResource PrimaryButton}" Click="ShowGenerate" Margin="0,16,0,8" />
+                        <Button Content="Open Editor" Click="StartFabricEditor" />
+                        <Button Content="Browse JSON" Click="ChooseJsonFile" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" x:Name="GenerateView">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+	                    <StackPanel>
+	                        <TextBlock Text="Source" Style="{StaticResource TinyLabel}" />
+	                        <Button Content="Choose source image(s)" Style="{StaticResource PrimaryButton}" Click="ChooseSourceImage" Margin="0,6,0,8" />
+	                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,14,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Preset" Style="{StaticResource TinyLabel}" />
+                        <ComboBox x:Name="PresetComboBox" Grid.Row="1" SelectedIndex="0" Margin="0,6,0,10" SelectionChanged="PresetComboBox_SelectionChanged">
+                            <ComboBoxItem Content="1. Shaded Character Art" />
+                            <ComboBoxItem Content="2. Flat / Logo Colors" />
+                            <ComboBoxItem Content="3. Gradients and Soft Art" />
+                        </ComboBox>
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Layers" Style="{StaticResource TinyLabel}" />
+                                <ComboBox x:Name="LayerComboBox" SelectedIndex="3" Margin="0,6,0,0" SelectionChanged="LayerComboBox_SelectionChanged" MouseDoubleClick="LayerComboBox_MouseDoubleClick" ToolTip="Double-click to add a custom layer count.">
+                                    <ComboBoxItem Content="500" />
+                                    <ComboBoxItem Content="1000" />
+                                    <ComboBoxItem Content="1500" />
+                                    <ComboBoxItem Content="2000" />
+                                    <ComboBoxItem Content="2500" />
+                                    <ComboBoxItem Content="3000" />
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                    <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                        <TextBlock Text="Options" Style="{StaticResource TinyLabel}" Margin="0,0,0,8" />
+                        <CheckBox x:Name="EdgeRepairCheckBox" Content="Edge Repair" IsChecked="False" />
+                        <CheckBox x:Name="DetailHeatmapCheckBox" Content="Automatic Detail Heatmap" />
+                        <CheckBox x:Name="LumaPrepCheckBox" Content="Luma Prep" />
+                        <CheckBox x:Name="SampleBoostCheckBox" Content="2x Mode" />
+                        <TextBlock Text="Final checkpoints" Style="{StaticResource TinyLabel}" Margin="0,12,0,6" />
+                        <TextBox x:Name="FinalCheckpointsTextBox" Text="500,1000,1250,1500,2000,2500,3000" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="3">
+                        <Button x:Name="GenerateButton" Content="Generate Final Vinyl" Style="{StaticResource PrimaryButton}" Click="StartNativeGeneration" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="HeatmapToggleButton" Content="Preview Heatmap" Click="ToggleHeatmapPreview" />
+                            <Button x:Name="StopButton" Grid.Column="2" Content="Stop" Click="StopNativeGeneration" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" x:Name="ImportExportView" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Import generated, editor, or exported JSONs. Export editable game groups." Style="{StaticResource MutedText}" />
+                        <TextBlock Text="Game" Style="{StaticResource TinyLabel}" Margin="0,16,0,6" />
+                        <ComboBox x:Name="TransferGameComboBox" SelectedIndex="0">
+                            <ComboBoxItem Content="FH6" />
+                            <ComboBoxItem Content="FH5" />
+                            <ComboBoxItem Content="FM8" />
+                        </ComboBox>
+                        <TextBlock Text="Loaded template / group layers" Style="{StaticResource TinyLabel}" Margin="0,12,0,6" />
+	                        <TextBox x:Name="TransferLayerCountTextBox" Text="3000" Height="42" Padding="8,7" VerticalContentAlignment="Center" ToolTip="For import: loaded template layer count. For export: visible layer count of the open group." />
+                        <TextBlock Text="JSON source" Style="{StaticResource TinyLabel}" Margin="0,12,0,6" />
+                        <ComboBox x:Name="JsonSourceComboBox" SelectedIndex="0" SelectionChanged="JsonSourceComboBox_SelectionChanged">
+                            <ComboBoxItem Content="Generated finals" />
+                            <ComboBoxItem Content="Editor exports" />
+                            <ComboBoxItem Content="Exported game JSONs" />
+                        </ComboBox>
+                        <Button Content="Refresh browser" Style="{StaticResource PrimaryButton}" Click="RefreshJsonBrowser" Margin="0,16,0,8" />
+                        <Button Content="Open selected source folder" Click="OpenSelectedJsonSourceFolder" Margin="0,0,0,8" />
+                        <Button Content="Browse JSON manually..." Click="ChooseJsonFile" Margin="0,0,0,8" />
+                        <TextBox x:Name="SelectedJsonText" Text="No JSON selected yet." IsReadOnly="True" Height="44" TextWrapping="Wrap" />
+                        <CheckBox x:Name="TransferClearUnusedCheckBox" Content="Clear unused template layers before trimming" IsChecked="True" Margin="0,16,0,8" />
+                        <Button x:Name="ImportJsonButton" Content="Import JSON" Style="{StaticResource PrimaryButton}" Click="StartNativeImport" />
+                        <Button x:Name="ExportJsonButton" Content="Export JSON" Click="StartNativeExport" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" x:Name="EditorView" Visibility="Collapsed">
+                    <StackPanel>
+                        <Button Content="Open Editor" Style="{StaticResource PrimaryButton}" Click="StartFabricEditor" Margin="0,16,0,8" />
+                        <Button Content="Refresh editor workspace" Click="RefreshEditorWorkspace" />
+                        <Button Content="Projects folder" Click="OpenEditorProjectsFolder" />
+                        <Button Content="Editor app folder" Click="OpenEditorFolder" />
+                    </StackPanel>
+                </Grid>
+
+	                <Grid Grid.Row="1" x:Name="ImageToolsView" Visibility="Collapsed">
+	                    <StackPanel>
+	                        <Button Content="Choose image" Style="{StaticResource PrimaryButton}" Click="ChooseSourceImage" Margin="0,16,0,8" />
+	                        <Button Content="Refresh report" Click="RefreshImageReport" />
+	                        <TextBlock Text="Same-aspect targets" Style="{StaticResource TinyLabel}" Margin="0,18,0,8" />
+	                        <TextBlock Text="1 MP  1000×1000&#10;2 MP  1414×1414&#10;4 MP  2000×2000&#10;6 MP  2450×2450" Style="{StaticResource MutedText}" />
+	                    </StackPanel>
+	                </Grid>
+
+	                <Grid Grid.Row="1" x:Name="ToolsView" Visibility="Collapsed">
+	                    <StackPanel>
+	                        <TextBlock Text="Browser-based helpers for source prep." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+	                        <Button Content="Background remover" Style="{StaticResource PrimaryButton}" Click="OpenBackgroundRemover" Margin="0,16,0,8" />
+	                        <Button Content="2x / 4x browser upscaler" Click="OpenBrowserUpscaler" Margin="0,0,0,8" />
+	                        <Button Content="Resize / compress image" Click="OpenSquoosh" />
+	                    </StackPanel>
+	                </Grid>
+
+	                <Grid Grid.Row="1" x:Name="TutorialView" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBox x:Name="TutorialSearchTextBox"
+                                 TextChanged="TutorialSearchTextChanged"
+                                 Margin="0,16,0,12"
+                                 ToolTip="Search help topics" />
+                        <Button x:Name="HelpTopicWorkflow" Content="Start here" Tag="workflow" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicGenerate" Content="Generate vinyls" Tag="generate" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicImages" Content="Image preparation" Tag="images" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicJson" Content="JSON browser" Tag="json" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicEditor" Content="Editor basics" Tag="editor" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicTransfer" Content="Import / Export" Tag="import" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicReports" Content="Bug reports" Tag="reports" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicSetup" Content="Checks and updates" Tag="setup" Click="ShowTutorialTopic" />
+                        <Button x:Name="HelpTopicTroubleshooting" Content="Troubleshooting" Tag="troubleshooting" Click="ShowTutorialTopic" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" x:Name="BugReportsView" Visibility="Collapsed">
+                    <StackPanel>
+                        <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,16,0,12">
+                            <TextBlock Text="Use the main panel to write details, preview exactly what will be saved, then save a markdown report into runtime/bug-reports." Style="{StaticResource MutedText}" />
+                        </Border>
+                        <Button Content="Open saved reports" Click="OpenReportsFolder" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" x:Name="SettingsView" Visibility="Collapsed">
+                    <StackPanel>
+	                        <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,16,0,12">
+	                            <TextBlock Text="The native package includes its own Python runtime and backend dependencies. Use Settings to verify the bundle or update app files." Style="{StaticResource MutedText}" />
+                        </Border>
+	                        <Button Content="Open runtime folder" Click="OpenRuntimeFolder" />
+	                        <Button Content="Open JSON folders" Click="OpenJsonFolders" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border x:Name="DashboardWideView"
+                Grid.Row="1"
+                Grid.Column="1"
+                Grid.ColumnSpan="3"
+                Visibility="Collapsed"
+                Background="{DynamicResource ControlBrush}"
+                BorderBrush="{DynamicResource BorderBrushSoft}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Margin="0,10,10,10"
+                Padding="18">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+	                <StackPanel>
+	                    <TextBlock Text="Welcome to KFPS" FontSize="26" FontWeight="SemiBold" />
+	                    <TextBlock Text="Generate vinyls, refine them by hand, import JSONs into the game, export editable work, and keep projects organized from one focused native app." Style="{StaticResource MutedText}" MaxWidth="980" />
+	                </StackPanel>
+
+                <Grid Grid.Row="1" Margin="0,18,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="1*" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="1*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Style="{StaticResource Card}" Margin="0">
+                        <StackPanel>
+	                            <TextBlock Text="1. Create or select a JSON" Style="{StaticResource SectionTitle}" />
+	                            <TextBlock Text="Start from a source image, a generated checkpoint, an editor export, or an exported game JSON." Style="{StaticResource MutedText}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button Content="Generate tab" Style="{StaticResource PrimaryButton}" Click="ShowGenerate" />
+                                <Button Content="Browse JSON" Click="ChooseJsonFile" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0">
+                        <StackPanel>
+                            <TextBlock Text="2. Edit by hand" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Text="Use the external vinyl editor for scratch builds, cleanup, source overlays, snapping, groups, masks, text, pixel art, colors, and exports." Style="{StaticResource MutedText}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button Content="Open editor" Style="{StaticResource PrimaryButton}" Click="StartFabricEditor" />
+                                <Button Content="Projects" Click="OpenEditorProjectsFolder" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="4" Style="{StaticResource Card}" Margin="0">
+                        <StackPanel>
+                            <TextBlock Text="3. Import or export" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Text="Import selected JSONs into the loaded template, export editable game groups, and keep generated, editor, and exported folders separated." Style="{StaticResource MutedText}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button Content="Transfer tab" Style="{StaticResource PrimaryButton}" Click="ShowImportExport" />
+                                <Button Content="Runtime" Click="OpenRuntimeFolder" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="0" Padding="0" CornerRadius="10" BorderThickness="2">
+                        <Border.BorderBrush>
+                            <SolidColorBrush x:Name="KofiRimBrush" Color="#FFFF6B9E" />
+                        </Border.BorderBrush>
+                        <Border.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <ColorAnimation Storyboard.TargetName="KofiRimBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#FFE9427F"
+                                                        Duration="0:0:1.25" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Border.Triggers>
+                        <Border.Effect>
+                            <DropShadowEffect Color="#FFFF6B9E" BlurRadius="18" ShadowDepth="0" Opacity="0.22" />
+                        </Border.Effect>
+                        <Border Background="#FFFFE3EE" CornerRadius="8" Padding="18">
+                            <Grid>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="720">
+                                    <TextBlock Text="HELLOOO!" FontSize="30" FontWeight="Bold" TextAlignment="Center" Foreground="#FFB8175C" />
+	                                    <TextBlock Text="If KFPS saved you time or helped finish a vinyl, a small tip is always appreciated." FontSize="14" TextAlignment="Center" Foreground="#FF6B2D48" Margin="0,5,0,14" />
+	                                    <Button Content="Open Ko-fi" Style="{StaticResource PrimaryButton}" Click="OpenKofi" HorizontalAlignment="Center" Padding="24,9" />
+	                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.Column="4" Style="{StaticResource Card}" Margin="0">
+                        <StackPanel>
+                            <TextBlock Text="JSON folders" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Text="Open the folder that contains generated finals, editor exports, and exported JSONs for import." Style="{StaticResource MutedText}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+	                                <Button Content="Open JSON folders" Style="{StaticResource PrimaryButton}" Click="OpenJsonFolders" />
+	                            </StackPanel>
+	                        </StackPanel>
+	                    </Border>
+	                </Grid>
+	            </Grid>
+        </Border>
+
+        <Grid x:Name="CenterHost" Grid.Row="1" Grid.Column="2" Margin="0,10,10,10">
+            <Border x:Name="DashboardCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Welcome to KFPS" FontSize="22" FontWeight="SemiBold" />
+                        <TextBlock Text="Create, edit, import, and export Forza vinyl JSONs from one focused workspace." Style="{StaticResource MutedText}" />
+                    </StackPanel>
+                    <UniformGrid Grid.Row="1" Columns="2" Rows="2" Margin="0,18,0,18">
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,10,10">
+                            <StackPanel>
+                                <TextBlock Text="Generate Final Vinyl" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="Image to vinyl with presets, source checks, and checkpoints." Style="{StaticResource MutedText}" />
+                                <Button Content="Open Generate" Style="{StaticResource PrimaryButton}" Click="ShowGenerate" Margin="0,14,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="Editor" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="Hand edit generated, exported, or editor JSONs with overlays and snapping." Style="{StaticResource MutedText}" />
+                                <Button Content="Open Editor" Style="{StaticResource PrimaryButton}" Click="StartFabricEditor" Margin="0,14,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,10,0">
+                            <StackPanel>
+                                <TextBlock Text="Import JSON" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="Pick generated, editor, or exported JSONs." Style="{StaticResource MutedText}" />
+                                <Button Content="Browse JSON" Click="ChooseJsonFile" Margin="0,14,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18">
+                            <StackPanel>
+                                <TextBlock Text="Quick Status" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="Dependencies ready&#10;Runtime logs available&#10;Updates through GitHub helper" Style="{StaticResource MutedText}" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                    <Border Grid.Row="2" Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                        <TextBlock Text="Tip: use the left rail for workflows, then work left-to-right inside each page." Style="{StaticResource MutedText}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="GenerateCenterView" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="42" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="96" />
+                    </Grid.RowDefinitions>
+                    <DockPanel>
+                        <TextBlock Text="LIVE OUTPUT PREVIEW" Style="{StaticResource TinyLabel}" DockPanel.Dock="Left" VerticalAlignment="Center" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="Refresh preview" Click="RefreshPreviews" Padding="11,6" />
+                            <Button Content="Open editor" Style="{StaticResource PrimaryButton}" Click="StartFabricEditor" Padding="11,6" />
+                        </StackPanel>
+                    </DockPanel>
+                    <Border Grid.Row="1" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="2">
+                        <Grid>
+                            <Image x:Name="LatestPreviewImage" Stretch="Uniform" Margin="14" />
+                            <StackPanel x:Name="LatestPreviewPlaceholder" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="No output selected" FontSize="22" FontWeight="SemiBold" TextAlignment="Center" />
+                                <TextBlock Text="Generate, choose a JSON, or pick a recent preview." Style="{StaticResource MutedText}" TextAlignment="Center" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Grid x:Name="GenerateStatusCardsPanel" Grid.Row="2" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                            <StackPanel>
+                                <TextBlock Text="Latest finals" Style="{StaticResource TinyLabel}" />
+                                <TextBlock Text="Checkpoint previews appear here after generation." Style="{StaticResource MutedText}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                            <StackPanel>
+                                <TextBlock Text="Queue" Style="{StaticResource TinyLabel}" />
+                                <TextBlock Text="Multi-image generation queue state." Style="{StaticResource MutedText}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="4" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                            <StackPanel>
+                                <TextBlock Text="Output folder" Style="{StaticResource TinyLabel}" />
+                                <Button Content="Open generated" Click="OpenGeneratedFolder" Padding="8,5" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+	                    <Border x:Name="ManualOverridesPanel"
+	                            Grid.Row="2"
+	                            Visibility="Collapsed"
+                            Background="{DynamicResource PanelSoftBrush}"
+                            BorderBrush="{DynamicResource BorderBrushSoft}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+	                            Padding="12"
+	                            Margin="0,10,0,0">
+	                        <Grid>
+	                            <Grid.RowDefinitions>
+	                                <RowDefinition Height="Auto" />
+	                                <RowDefinition Height="12" />
+	                                <RowDefinition Height="Auto" />
+	                            </Grid.RowDefinitions>
+	                            <Grid.ColumnDefinitions>
+	                                <ColumnDefinition Width="1.1*" />
+	                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="1*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="1*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="1*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Manual overrides" Style="{StaticResource TinyLabel}" />
+                                <TextBlock Text="Preset values shown. Edit only when needed." Style="{StaticResource MutedText}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Max resolution" Style="{StaticResource TinyLabel}" />
+                                <TextBox x:Name="ManualMaxResolutionTextBox" ToolTip="Generator maxResolution. Blank = preset." />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="Random samples" Style="{StaticResource TinyLabel}" />
+                                <TextBox x:Name="ManualRandomSamplesTextBox" ToolTip="Generator randomSamples. Blank = preset." />
+                            </StackPanel>
+	                            <StackPanel Grid.Column="6">
+	                                <TextBlock Text="Mutated samples" Style="{StaticResource TinyLabel}" />
+	                                <TextBox x:Name="ManualMutatedSamplesTextBox" ToolTip="Generator mutatedSamples. Blank = preset." />
+	                            </StackPanel>
+	                            <StackPanel Grid.Row="2" Grid.ColumnSpan="7">
+	                                <TextBlock Text="Seed" Style="{StaticResource TinyLabel}" />
+	                                <Grid Margin="0,6,0,0" MaxWidth="230" HorizontalAlignment="Left">
+	                                    <Grid.ColumnDefinitions>
+	                                        <ColumnDefinition Width="120" />
+	                                        <ColumnDefinition Width="6" />
+	                                        <ColumnDefinition Width="42" />
+	                                        <ColumnDefinition Width="6" />
+	                                        <ColumnDefinition Width="42" />
+	                                    </Grid.ColumnDefinitions>
+	                                    <TextBox x:Name="SeedTextBox" Text="-1" TextChanged="SeedTextBox_TextChanged" ToolTip="Use -1 for a random seed." />
+	                                    <Button x:Name="SeedLockButton" Grid.Column="2" Click="ToggleSeedLock" ToolTip="Reuse current seed" Padding="0" MinWidth="40">
+	                                        <TextBlock Text="↻" FontFamily="Segoe UI Symbol" FontSize="13" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" LineHeight="14" />
+	                                    </Button>
+	                                    <Button x:Name="SeedDiceButton" Grid.Column="4" Click="RandomizeSeedOnce" ToolTip="Roll one seed, then return to random each generation" Padding="0" MinWidth="40">
+	                                        <TextBlock Text="⚄" FontFamily="Segoe UI Symbol" FontSize="13" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" LineHeight="14" />
+	                                    </Button>
+	                                </Grid>
+	                            </StackPanel>
+	                        </Grid>
+	                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="ImportExportCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.1*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="1.0*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="1.1*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.ColumnSpan="5">
+                        <TextBlock Text="JSON Browser" FontSize="22" FontWeight="SemiBold" />
+                        <TextBlock Text="Pick a source on the left, choose a generation/folder, then click a checkpoint JSON. Click the chosen JSON again to clear it." Style="{StaticResource MutedText}" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,16,0,16" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="JsonGroupTitle" Text="Generations" Style="{StaticResource TinyLabel}" Margin="0,0,0,8" />
+                            <ListBox x:Name="JsonGroupList" Grid.Row="1" SelectionChanged="JsonGroupList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="3" Padding="10,8" Margin="0,0,0,7" ToolTip="{Binding FullPath}" Cursor="Hand">
+                                            <TextBlock Text="{Binding Display}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Grid.Column="2" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,16,0,16" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="JsonListTitle" Text="Checkpoint JSONs" Style="{StaticResource TinyLabel}" Margin="0,0,0,8" />
+                            <ListBox x:Name="JsonFileList" Grid.Row="1" SelectionChanged="JsonFileList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="3" Padding="10,8" Margin="0,0,0,7" MouseLeftButtonUp="JsonFileItem_MouseLeftButtonUp" ToolTip="{Binding FullPath}" Cursor="Hand">
+                                            <TextBlock Text="{Binding Display}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Grid.Column="4" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,16,0,16" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="3" Padding="8">
+                                <Grid>
+                                    <Image x:Name="JsonPreviewImage" Stretch="Uniform" />
+                                    <TextBlock x:Name="JsonPreviewPlaceholder" Text="Select a JSON to preview it here." Style="{StaticResource MutedText}" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                                <TextBlock Text="Inspector" Style="{StaticResource TinyLabel}" />
+                                <TextBlock x:Name="JsonDetailNameText" Text="Name: -" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="JsonDetailLayerText" Text="Layers: -" Style="{StaticResource MutedText}" />
+                                <TextBlock x:Name="JsonDetailFolderText" Text="Folder: -" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.ColumnSpan="5" Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                        <TextBlock x:Name="JsonBrowserStatusText" Text="Choose a JSON source to populate the browser." Style="{StaticResource MutedText}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="EditorCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.95*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.25*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Grid.ColumnSpan="3">
+                        <StackPanel>
+                            <TextBlock Text="Project browser" FontSize="22" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <Border Grid.Row="1" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,16,0,16" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+	                            <DockPanel Margin="0,0,0,8">
+	                                <TextBlock Text="Projects" Style="{StaticResource TinyLabel}" DockPanel.Dock="Left" />
+	                            </DockPanel>
+                            <ListBox x:Name="EditorProjectList" Grid.Row="1" SelectionChanged="EditorProjectList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Grid.Column="2" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,16,0,16" Padding="16">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Project inspector" Style="{StaticResource TinyLabel}" />
+                                <TextBlock x:Name="EditorDetailNameText" Text="Name: -" Style="{StaticResource SectionTitle}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                <TextBlock x:Name="EditorDetailLayerText" Text="Shapes: -" Style="{StaticResource MutedText}" />
+                                <TextBlock x:Name="EditorDetailFolderText" Text="File: -" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Border Grid.Row="1" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,16,0,16">
+                                <Grid>
+                                    <Image x:Name="EditorProjectPreviewImage" Stretch="Uniform" />
+                                    <TextBlock x:Name="EditorProjectPreviewPlaceholder" Text="Select a project to preview it here." Style="{StaticResource MutedText}" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <StackPanel Grid.Row="2">
+                                <Button Content="Use selected project in editor" Click="UseSelectedProjectInEditor" Style="{StaticResource PrimaryButton}" />
+                                <Button Content="Open projects folder" Click="OpenEditorProjectsFolder" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="EditorWorkspaceStatusText" Text="Editor workspace ready." Style="{StaticResource MutedText}" />
+                            <Button Grid.Column="1" Content="Projects folder" Click="OpenEditorProjectsFolder" Padding="10,5" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+	            <Border x:Name="ImageToolsCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+	                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel>
+                        <Button Content="Refresh report" DockPanel.Dock="Right" Click="RefreshImageReport" Padding="12,6" />
+                        <StackPanel>
+                            <TextBlock Text="Source check" FontSize="22" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </DockPanel>
+                    <Grid Grid.Row="1" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.45*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="0.95*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+                            <Grid>
+                                <Image x:Name="ImageToolsPreviewImage" Stretch="Uniform" />
+                                <TextBlock x:Name="ImageToolsPreviewPlaceholder"
+                                           Text="Choose an image from the left panel to preview it here."
+                                           Style="{StaticResource MutedText}"
+                                           TextWrapping="Wrap"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Margin="24" />
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Column="2">
+                            <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,14">
+                                <StackPanel>
+                                    <TextBlock Text="Live source report" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock x:Name="ImageToolsReportText"
+                                               Text="No source image selected."
+                                               Style="{StaticResource MutedText}"
+                                               TextWrapping="Wrap" />
+                                    <Border x:Name="ImageToolsSourceCheckBorder"
+                                            Background="#FFF3F4F6"
+                                            BorderBrush="#FFCBD5E1"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="12"
+                                            Margin="0,14,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Source check" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="ImageToolsSourceCheckText"
+                                                       Text="Choose an image to get a source check."
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                                <StackPanel>
+                                    <TextBlock Text="Megapixel targets" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="These are same-aspect examples, not hard rules. Resize only when the report says the image is clearly too tiny or unnecessarily huge." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                                    <TextBlock Text="1 MP  1000 x 1000&#10;2 MP  1414 x 1414&#10;4 MP  2000 x 2000&#10;6 MP  2450 x 2450" Style="{StaticResource MutedText}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+	                </Grid>
+	            </Border>
+
+	            <Border x:Name="ToolsCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+	                <Grid>
+	                    <Grid.RowDefinitions>
+	                        <RowDefinition Height="Auto" />
+	                        <RowDefinition Height="*" />
+	                    </Grid.RowDefinitions>
+	                    <StackPanel>
+	                        <TextBlock Text="Source prep tools" FontSize="22" FontWeight="SemiBold" />
+	                        <TextBlock Text="These open in your browser. Use them before generation when a source needs a clean cutout, a better size, or lighter compression." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+	                    </StackPanel>
+	                    <UniformGrid Grid.Row="1" Columns="3" Margin="0,18,0,0">
+	                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,12,0">
+	                            <StackPanel>
+	                                <TextBlock Text="Background remover" Style="{StaticResource SectionTitle}" />
+	                                <TextBlock Text="Cut out opaque backgrounds before generation so shapes are spent on the vinyl, not the backdrop." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+	                                <Button Content="Open PhotoRoom" Style="{StaticResource PrimaryButton}" Click="OpenBackgroundRemover" Margin="0,16,0,0" />
+	                            </StackPanel>
+	                        </Border>
+	                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,12,0">
+	                            <StackPanel>
+	                                <TextBlock Text="Browser upscaler" Style="{StaticResource SectionTitle}" />
+	                                <TextBlock Text="Upscale very small sources before using detail-heavy presets. This is most useful for tiny logos or low-resolution art." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+	                                <Button Content="Open upscaler" Style="{StaticResource PrimaryButton}" Click="OpenBrowserUpscaler" Margin="0,16,0,0" />
+	                            </StackPanel>
+	                        </Border>
+	                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18">
+	                            <StackPanel>
+	                                <TextBlock Text="Resize / compress" Style="{StaticResource SectionTitle}" />
+	                                <TextBlock Text="Resize oversized sources to a practical megapixel range and export clean PNG/WebP inputs." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+	                                <Button Content="Open Squoosh" Style="{StaticResource PrimaryButton}" Click="OpenSquoosh" Margin="0,16,0,0" />
+	                            </StackPanel>
+	                        </Border>
+	                    </UniformGrid>
+	                </Grid>
+	            </Border>
+
+	            <Border x:Name="TutorialCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+	                    <DockPanel>
+	                        <StackPanel>
+	                            <TextBlock Text="Guide browser" FontSize="24" FontWeight="SemiBold" />
+	                        </StackPanel>
+	                    </DockPanel>
+                    <Border Grid.Row="1" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="0" Margin="0,18,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,0,1" Padding="18,14">
+                                <StackPanel>
+                                    <TextBlock x:Name="TutorialContentTitle" Text="Start here" FontSize="22" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="TutorialContentSummary" Text="The basic path through KFPS." Style="{StaticResource MutedText}" />
+                                </StackPanel>
+                            </Border>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="18">
+                                <TextBlock x:Name="TutorialContentText"
+                                           Text="Select a help topic from the left."
+                                           Foreground="{DynamicResource InkBrush}"
+                                           FontSize="15"
+                                           LineHeight="23"
+                                           TextWrapping="Wrap" />
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="BugReportsCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel>
+                        <Button Content="Open saved reports" DockPanel.Dock="Right" Click="OpenReportsFolder" Padding="12,6" />
+                        <StackPanel>
+                            <TextBlock Text="Local feedback builder" FontSize="24" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </DockPanel>
+                    <Grid Grid.Row="1" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0.95*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="1.25*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Report details" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="Keep it specific. What happened, what you expected, and what you were doing right before it broke." Style="{StaticResource MutedText}" />
+                                </StackPanel>
+                                <Grid Grid.Row="1" Margin="0,16,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="TYPE" Style="{StaticResource TinyLabel}" />
+                                        <ComboBox x:Name="ReportTypeComboBox" SelectedIndex="0" Margin="0,6,0,0">
+                                            <ComboBoxItem Content="Bug" />
+                                            <ComboBoxItem Content="Suggestion" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="TITLE" Style="{StaticResource TinyLabel}" />
+                                        <TextBox x:Name="ReportTitleTextBox" Text="Title" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel Grid.Row="2">
+                                    <TextBlock Text="DETAILS" Style="{StaticResource TinyLabel}" />
+                                    <TextBox x:Name="ReportDetailsTextBox" Text="Details" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="132" />
+                                    <TextBlock Text="Include context" Style="{StaticResource TinyLabel}" Margin="0,10,0,6" />
+                                    <CheckBox x:Name="ReportIncludeContextCheckBox" Content="App version and selected theme" IsChecked="True" />
+                                    <CheckBox x:Name="ReportIncludeLogCheckBox" Content="Visible app log text" />
+                                    <CheckBox x:Name="ReportIncludePathsCheckBox" Content="Local file paths" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                                    <Button Content="Preview report" Style="{StaticResource PrimaryButton}" Click="PreviewLocalReport" Padding="16,8" />
+                                    <Button Content="Save local report" Click="SaveLocalReport" Padding="16,8" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Column="2" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,0,1" Padding="16,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Preview" Style="{StaticResource SectionTitle}" />
+                                        <TextBlock Text="This is exactly what gets saved." Style="{StaticResource MutedText}" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBox x:Name="ReportPreviewTextBox"
+                                         Grid.Row="1"
+                                         Text="Press Preview report to render the markdown here."
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Disabled"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Foreground="{DynamicResource InkBrush}"
+                                         FontFamily="Cascadia Mono, Consolas"
+                                         FontSize="12"
+                                         Padding="16" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border x:Name="SettingsCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+	                    <DockPanel>
+	                        <StackPanel>
+	                            <TextBlock Text="Checks and preferences" FontSize="24" FontWeight="SemiBold" />
+	                        </StackPanel>
+	                    </DockPanel>
+                    <Grid Grid.Row="1" Margin="0,18,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="1*" />
+                            <RowDefinition Height="16" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                            <StackPanel>
+	                                <TextBlock Text="Bundle checks and updates" Style="{StaticResource SectionTitle}" />
+	                                <TextBlock Text="Verify the bundled runtime or update app files. A complete native package should not need external Python." Style="{StaticResource MutedText}" Margin="0,0,0,14" />
+	                                <Button Content="Check bundled Python" Click="SetupPython" Padding="16,8" />
+	                                <Button Content="Check dependencies" Click="InstallDependencies" Padding="16,8" />
+	                                <Button Content="Update from GitHub" Style="{StaticResource PrimaryButton}" Click="UpdateFromGitHub" Padding="16,8" />
+	                                <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,12,0,0">
+	                                    <TextBlock Text="If generation, previews, editor launch, or import/export fail, run the checks here. Missing bundled files usually mean the package should be re-extracted." Style="{StaticResource MutedText}" />
+	                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Preferences" Style="{StaticResource SectionTitle}" />
+	                                <TextBlock Text="Keep defaults unless you are intentionally testing generator settings." Style="{StaticResource MutedText}" Margin="0,0,0,14" />
+                                <CheckBox x:Name="ManualOverridesCheckBox"
+	                                          Content="Enable manual generator overrides"
+                                          Checked="ManualOverridesChanged"
+                                          Unchecked="ManualOverridesChanged" />
+	                                <TextBlock Text="Shows advanced controls for resolution, sample counts, and seed." Style="{StaticResource MutedText}" Margin="22,-4,0,10" />
+                                <CheckBox Content="Blue Terminal dial-up sound" />
+                                <TextBlock Text="Only affects the retro terminal theme." Style="{StaticResource MutedText}" Margin="22,-4,0,10" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="2" Grid.ColumnSpan="3" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.3*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="1*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Current app root" Style="{StaticResource SectionTitle}" />
+                                    <TextBox x:Name="AppRootText" IsReadOnly="True" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <UniformGrid Grid.Column="2" Columns="2" Rows="2" VerticalAlignment="Center">
+	                                    <Button Content="Runtime" Click="OpenRuntimeFolder" Padding="12,7" />
+	                                    <Button Content="JSON folders" Click="OpenJsonFolders" Padding="12,7" />
+	                                    <Button Content="Generated" Click="OpenGeneratedFolder" Padding="12,7" />
+                                </UniformGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+
+        </Grid>
+
+        <Border x:Name="InspectorPanel" Grid.Row="1" Grid.Column="3" Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Margin="0,10,0,10" Padding="14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="185" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="INSPECTOR" Style="{StaticResource TinyLabel}" />
+                <Border Grid.Row="1" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="2" Margin="0,10,0,16">
+                    <Grid>
+                        <Image x:Name="SourcePreviewImage" Stretch="Uniform" Margin="8" />
+                        <TextBlock x:Name="SourcePreviewPlaceholder" Text="Source preview" Style="{StaticResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+                <DockPanel Grid.Row="2" Margin="0,0,0,8">
+                    <TextBlock Text="RECENT" Style="{StaticResource TinyLabel}" DockPanel.Dock="Left" />
+                    <Button Content="Refresh" DockPanel.Dock="Right" Click="RefreshPreviews" Padding="10,5" />
+                </DockPanel>
+                <ListBox x:Name="RecentFilesList" Grid.Row="3" SelectionChanged="RecentFilesList_SelectionChanged" />
+            </Grid>
+        </Border>
+
+	        <Border Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
+	            <Grid>
+	                <Grid.ColumnDefinitions>
+	                    <ColumnDefinition Width="*" />
+	                    <ColumnDefinition Width="Auto" />
+	                </Grid.ColumnDefinitions>
+	                <TextBox x:Name="LogBox"
+	                         IsReadOnly="True"
+	                         AcceptsReturn="True"
+	                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Hidden"
+                         HorizontalScrollBarVisibility="Disabled"
+                         FontFamily="Cascadia Mono, Consolas"
+	                         FontSize="12"
+	                         Background="#FFFFFFFF"
+	                         Margin="0,0,10,0" />
+	                <Button Grid.Column="1" Content="Clear" Click="ClearLog" Padding="12,6" VerticalAlignment="Top" />
+	            </Grid>
+	        </Border>
+
+        <Grid x:Name="FirstLaunchOverlay"
+              Grid.RowSpan="3"
+              Grid.ColumnSpan="4"
+              Panel.ZIndex="100"
+              Visibility="Collapsed"
+              Background="#99FFFFFF">
+            <Border Width="620"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrushSoft}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="24">
+                <StackPanel>
+	                    <TextBlock Text="KFPS first launch check" FontSize="24" FontWeight="SemiBold" />
+	                    <TextBlock Text="KFPS includes its own Python runtime and backend packages. This check confirms the bundle is complete before launching the workspace." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,8,0,18" />
+	                    <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,0,0,16">
+	                        <TextBlock x:Name="FirstLaunchStatusText" Text="Checking bundled runtime..." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                    </Border>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+	                        <Button x:Name="FirstLaunchPythonButton" Content="Check Python" Click="FirstLaunchInstallPython" Padding="14,10" />
+	                        <Button x:Name="FirstLaunchDepsButton" Grid.Column="2" Content="Check dependencies" Click="FirstLaunchInstallDependencies" Padding="14,10" />
+                        <Button x:Name="FirstLaunchLaunchButton" Grid.Column="4" Content="Launch" Style="{StaticResource PrimaryButton}" Click="FirstLaunchVerifyAndLaunch" Padding="14,10" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

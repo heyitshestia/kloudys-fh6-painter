@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.0
+- Replaced the old PySide launcher/app shell with the native KFPS desktop app.
+- Added native self-update handoff so KFPS closes before replacing the root executable.
+- Cleaned the packaged app layout and removed retired 2.x UI files from the shipped tree.
+- Kept generator, editor, importer, exporter, and bundled backend tools wired through the native interface.
+
 ## 2.0.64
 - Updated the FH6 fast locator profile from the latest calibration pass.
 - Fixed calibrated locator fallback so stale game-build profiles no longer block normal fallback scanning.

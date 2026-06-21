@@ -12,22 +12,19 @@
 
 1. 下载最新版 release zip。
 2. 解压整个文件夹，不要直接在 zip 里运行。
-3. 打开 `Kloudys Painter Launcher.exe`。
-4. 第一次使用时按启动器按钮从左到右执行：
-   - `Setup Python`
-   - `Install Dependencies`
-   - `Update`（如果显示有更新）
-   - `Launch App`
-5. 在 `Generate Final Vinyl` 里选择一张图片。
-6. 选择适合图片类型的预设：
+3. 打开 `KFPS.exe`。
+4. 如果程序提示运行环境异常，在 Settings 里检查内置 Python/runtime；完整 native 版本不需要手动安装 Python。
+5. 如果显示有更新，可以在 Settings 里使用 `Update from GitHub`。
+6. 在 `Generate Final Vinyl` 里选择一张图片。
+7. 选择适合图片类型的预设：
    - `Shaded Character Art`：动漫、人物、头发、眼睛、皮肤、混合线稿。
    - `Flat Colors`：贴纸、吉祥物、硬边、平涂区域。
    - `Smooth Gradients`：柔和阴影、渐变、高光过渡。
-7. 设置 `Template layers` 为 FH6 模板的准确层数。
-8. 普通用户默认不需要打开 Pro settings。Max resolution、Random samples、Mutated samples 会根据图片和预设自动计算。
-9. 等到日志显示 `FINALIZE CHECKPOINTS COMPLETE`。
-10. 在 FH6 里打开 Vinyl Group Editor，准备足够层数的模板，并确保模板已经 ungroup。
-11. 在 `Import Final JSON` 里选择 finalized checkpoint，输入 FH6 模板的准确层数，然后导入。
+8. 设置 `Template layers` 为 FH6 模板的准确层数。
+9. 普通用户默认不需要打开 Pro settings。Max resolution、Random samples、Mutated samples 会根据图片和预设自动计算。
+10. 等到日志显示 `FINALIZE CHECKPOINTS COMPLETE`。
+11. 在 FH6 里打开 Vinyl Group Editor，准备足够层数的模板，并确保模板已经 ungroup。
+12. 在 `Import Final JSON` 里选择 finalized checkpoint，输入 FH6 模板的准确层数，然后导入。
 
 ## 关键规则
 

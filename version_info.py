@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import subprocess
 from pathlib import Path
@@ -40,3 +40,4 @@ def get_version() -> str:
 
 def get_version_label() -> str:
     return f"Version: {get_version()}"
+

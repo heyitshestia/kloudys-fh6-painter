@@ -30,7 +30,7 @@
       <nav class="appMenus" aria-label="Editor actions">
         <div class="menuGroup">
           <span>File</span>
-          <button id="openJsonBrowser" title="Open the KFPS JSON browser for generated finals, handmade JSONs, and editor exports.">Import JSON</button>
+          <button id="openJsonBrowser" title="Open the KFPS JSON browser for generated finals, editor exports, and exported JSONs.">Import JSON</button>
           <input id="jsonInput" class="hiddenFileInput" type="file" accept=".json,application/json">
           <button id="loadProject" title="Open internally saved editor projects.">Load Project</button>
           <button id="saveProject" title="Save this editor state so you can keep editing later.">Save Project</button>
@@ -705,7 +705,7 @@
     <div class="helpHeader">
       <div>
         <h2>Open Vinyl JSON</h2>
-        <p>Choose a generated final, editor export, or a JSON dropped into imgs/handmade.</p>
+        <p>Choose a generated final, editor export, or a JSON dropped into imgs/exported.</p>
       </div>
       <button id="closeJsonBrowser">Close</button>
     </div>
@@ -713,8 +713,8 @@
       <label>Source
         <select id="jsonBrowserSource">
           <option value="generated" selected>Generated finals</option>
-          <option value="handmade">Handmade folder</option>
           <option value="editor">Editor exports</option>
+          <option value="exported">Exported JSONs</option>
         </select>
       </label>
       <button id="refreshJsonBrowser" type="button">Refresh</button>

@@ -82,7 +82,7 @@ Kloudys-FH6-Painter-<version>.zip
 The release should contain:
 
 ```text
-Kloudys Painter Launcher.exe
+KFPS.exe
 Images/
 KloudysFH6Painter/
 ```
@@ -92,27 +92,10 @@ The standalone release includes bundled Python 3.12, bundled Python dependencies
 ## First-Time Setup
 
 1. Extract the release zip into a normal writable folder such as `Desktop`.
-2. Open `Kloudys Painter Launcher.exe`.
-3. Press `Setup Python` if the launcher says Python is missing.
-4. Press `Install Dependencies` if the launcher says packages are missing.
-5. Press `Update` if the launcher says a newer GitHub main version is available.
-6. Press `Launch App`.
-
-<p align="center">
-  <img src="docs/screenshots/00-launcher.png" alt="KFPS launcher" width="820">
-</p>
-
-If you are using a source checkout instead of the standalone release, open:
-
-```text
-00_launcher.bat
-```
-
-If something does not start, run:
-
-```text
-05_check_environment.bat
-```
+2. Open `KFPS.exe`.
+3. Use Settings to verify the bundled Python/runtime if the app reports a problem.
+4. Press `Update from GitHub` only when the app says a newer version is available.
+5. Start from the Dashboard workflow buttons.
 
 ## Main Workflow
 
@@ -356,8 +339,8 @@ runtime/update-backups/
 
 | Problem | Most likely fix |
 | --- | --- |
-| App does not start | Open the launcher, run `Setup Python`, then `Install Dependencies`. |
-| Preview unavailable | Run launcher `Install Dependencies` or `02_install_dependencies.bat`. |
+| App does not start | Re-extract the full native package into a writable folder and open `KFPS.exe`. |
+| Preview unavailable | Use Settings to verify the bundled Python/runtime; re-extract the package if verification fails. |
 | GPU/OpenCL error | Install or repair the NVIDIA/AMD/Intel GPU driver so OpenCL is registered. |
 | FH6 process not found | Start FH6 and open Vinyl Group Editor before importing. |
 | Template not found | Reopen the saved 3000-layer template, ungroup it, and retry. |

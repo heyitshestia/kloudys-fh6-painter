@@ -39,6 +39,16 @@ function isTextVinylHarnessRun() {
   }
 }
 
+function startupProjectId() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const project = (params.get("project") || "").trim();
+    return project || "";
+  } catch (_err) {
+    return "";
+  }
+}
+
 const DEFAULT_SHORTCUTS = {
   selectTool: "V",
   shapeLibrary: "S",
@@ -1708,7 +1718,7 @@ async function resolveVinylResourceUrl(family, index, suffix = "") {
     const url = `${base}/${family}/${index}${suffix}`;
     lastUrl = url;
     try {
-      const response = await fetch(url, { method: "HEAD" });
+      const response = await fetch(url, { cache: "force-cache" });
       if (response.ok) {
         resolvedResourceBase = base;
         localStorage.setItem("kloudyFabricResourceBase", base);
@@ -4601,14 +4611,14 @@ function setJsonBrowserStatus(message) {
 }
 
 function jsonBrowserSourceLabel(source = jsonBrowserState.source) {
-  if (source === "handmade") return "Handmade JSON";
   if (source === "editor") return "Editor export";
+  if (source === "exported") return "Exported JSON";
   return "Generated final run";
 }
 
 function jsonBrowserSourceFolder(source = jsonBrowserState.source) {
-  if (source === "handmade") return "imgs/handmade";
   if (source === "editor") return "imgs/editor";
+  if (source === "exported") return "imgs/exported";
   return "imgs/generated";
 }
 
@@ -4640,10 +4650,10 @@ function renderJsonBrowserGroups() {
   if (!jsonBrowserState.groups.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    if (jsonBrowserState.source === "handmade") {
-      empty.textContent = "No handmade JSONs found. Drop files into imgs/handmade, then click Refresh.";
-    } else if (jsonBrowserState.source === "editor") {
+    if (jsonBrowserState.source === "editor") {
       empty.textContent = "No editor exports found. Export from the editor into imgs/editor, then click Refresh.";
+    } else if (jsonBrowserState.source === "exported") {
+      empty.textContent = "No exported JSONs found. Drop downloaded, shared, or game-exported JSONs into imgs/exported, then click Refresh.";
     } else {
       empty.textContent = "No generated final JSONs found yet. Generate a vinyl first, then click Refresh.";
     }
@@ -4938,6 +4948,24 @@ async function loadSelectedProject() {
   } catch (err) {
     showError("Project load failed", err);
     setProjectBrowserStatus(err.message || String(err));
+  }
+}
+
+async function loadStartupProjectFromQuery() {
+  const projectId = startupProjectId();
+  if (!projectId) return false;
+  setBusy("Loading selected project...");
+  try {
+    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadProjectPayload(data.payload, data.name || "project");
+    clearBusy(`Loaded project: ${data.name || projectId}`);
+    return true;
+  } catch (err) {
+    clearBusy("Project load failed.");
+    showError("Project load failed", err);
+    return false;
   }
 }
 
@@ -9681,7 +9709,7 @@ async function maybeShowAutosaveRecovery() {
 const EDITOR_TOUR_STEPS = [
   {
     title: "Start With File Actions",
-    body: "Import JSON opens generated finals, handmade JSONs, and editor exports. Save Project stores editable work for later; Export FH6 JSON creates the file you send back to the main KFPS importer.",
+    body: "Import JSON opens generated finals, editor exports, and exported JSONs. Save Project stores editable work for later; Export FH6 JSON creates the file you send back to the main KFPS importer.",
     target: ".menuGroup:first-child",
     panel: "layersPane",
     tool: "select",
@@ -10295,6 +10323,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderGuideObjects();
   updateSelectionPanel();
   updateShapePlacementLabel();
+  const loadedStartupProject = await loadStartupProjectFromQuery();
   const startupHelpShown = await maybeShowStartupHelp();
-  if (!startupHelpShown) maybeShowAutosaveRecovery();
+  if (!loadedStartupProject && !startupHelpShown) maybeShowAutosaveRecovery();
 });

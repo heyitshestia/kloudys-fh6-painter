@@ -1948,6 +1948,35 @@ dialog::backdrop {
   line-height: 1.35;
 }
 
+.jsonBrowserCard > span {
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jsonBrowserEntry > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.jsonBrowserEntry > span:first-child > b,
+.jsonBrowserEntry > span:first-child > span {
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jsonBrowserLayerPill {
+  white-space: nowrap;
+}
+
 .jsonBrowserDetails {
   display: grid;
   grid-template-rows: auto 1fr auto;

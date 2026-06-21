@@ -1,0 +1,3 @@
+﻿KFPS 3.x uses the native WPF launcher at the folder root: KFPS.exe
+The old PySide UI entry points were intentionally removed from this package.
+Backend Python scripts remain because the native app calls them for generation, preview, import, and export.
