@@ -11,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -336,9 +337,9 @@ public partial class MainWindow : Window
 
     private List<ThemeDefinition> SelectableThemes()
     {
-        // Keep the full theme list in code, but expose only Sakura until the native shell settles.
+        // Keep the full theme list in code, but expose only the polished native shell theme for now.
         return _themes
-            .Where(theme => theme.Name == "Sakura Glass")
+            .Where(theme => theme.Name is "Night Blossom")
             .ToList();
     }
 
@@ -347,11 +348,11 @@ public partial class MainWindow : Window
         return
         [
             new ThemeDefinition(
-                "Sakura Glass",
-                "#FFFFFFFF", "#FFFFFBFD", "#FFFFF6F9",
-                "#FF27212A", "#FF756A73", "#FFA1959D",
-                "#FFFFFFFF", "#FFFFF9FB", "#FFFFEDF4", "#FFFFFFFF",
-                "#FFFF6B9E", "#FFE9427F", "#55FF6B9E", "#FFE9D6DE"),
+                "Night Blossom",
+                "#FF171116", "#FF21131B", "#FF2A1822",
+                "#FFFFF1F6", "#FFC9AEB9", "#FF967B86",
+                "#CC271B23", "#B839222F", "#CC3D2532", "#E82E1F28",
+                "#FFFF6B9D", "#FFFF4D8B", "#66FF6B9D", "#3DFFB8D3"),
             new ThemeDefinition(
                 "KFPS Modern",
                 "#FF0B0F14", "#FF111821", "#FF16212D",
@@ -409,6 +410,10 @@ public partial class MainWindow : Window
     private void ApplyTheme(ThemeDefinition theme)
     {
         var resources = Application.Current.Resources;
+        var material = ThemeMaterial.For(theme.Name);
+
+        ApplyTemplateMaterial(resources, material);
+
         resources["InkBrush"] = Solid(theme.Ink);
         resources["MutedInkBrush"] = Solid(theme.MutedInk);
         resources["DimInkBrush"] = Solid(theme.DimInk);
@@ -421,11 +426,83 @@ public partial class MainWindow : Window
         resources["AccentGlowBrush"] = Solid(theme.AccentGlow);
         resources["BorderBrushSoft"] = Solid(theme.Border);
         resources["AppBackgroundBrush"] = Gradient(theme.BackgroundA, theme.BackgroundB, theme.BackgroundC);
+        resources["LogInkBrush"] = Solid(material.LogInk);
+    }
+
+    private static void ApplyTemplateMaterial(ResourceDictionary resources, ThemeMaterial material)
+    {
+        SetBrush(resources, "SakuraBackgroundBrush", material.Background);
+        SetBrush(resources, "SakuraBackgroundAltBrush", material.BackgroundAlt);
+        SetBrush(resources, "SakuraSurfaceBrush", material.Surface);
+        SetBrush(resources, "SakuraSurfaceSoftBrush", material.SurfaceSoft);
+        SetBrush(resources, "SakuraSurfaceStrongBrush", material.SurfaceStrong);
+        SetBrush(resources, "SakuraGlassHighlightBrush", material.GlassHighlight);
+        SetBrush(resources, "SakuraBorderBrush", material.Border);
+        SetBrush(resources, "SakuraBorderStrongBrush", material.BorderStrong);
+        SetBrush(resources, "SakuraTextBrush", material.Text);
+        SetBrush(resources, "SakuraTextMutedBrush", material.TextMuted);
+        SetBrush(resources, "SakuraTextSubtleBrush", material.TextSubtle);
+        SetBrush(resources, "SakuraPrimaryBrush", material.Primary);
+        SetBrush(resources, "SakuraPrimaryDeepBrush", material.PrimaryDeep);
+        SetBrush(resources, "SakuraPrimarySoftBrush", material.PrimarySoft);
+        SetBrush(resources, "SakuraHoverOverlayBrush", material.HoverOverlay);
+        SetBrush(resources, "SakuraPressedOverlayBrush", material.PressedOverlay);
+
+        SetGradient(resources, "SakuraWindowGradient", material.Background, material.BackgroundAlt);
+        SetGradient(resources, "SakuraGlassGradient", material.GlassA, material.GlassB, material.GlassC);
+        SetGradient(resources, "SakuraGlassSoftGradient", material.GlassSoftA, material.GlassSoftB);
+        SetGradient(resources, "SakuraPrimaryGradient", material.PrimaryLight, material.PrimaryDeep);
+        SetGradient(resources, "SakuraHeroGradient", material.HeroA, material.HeroB);
+
+        SetShadow(resources, "SakuraCardShadow", material.ShadowColor, material.ShadowOpacity, 18, 4);
+        SetShadow(resources, "SakuraRaisedShadow", material.ShadowColor, material.RaisedShadowOpacity, 30, 8);
+        SetShadow(resources, "SakuraPrimaryShadow", material.PrimaryShadowColor, material.PrimaryShadowOpacity, 18, 5);
+    }
+
+    private static void SetBrush(ResourceDictionary resources, string key, string color)
+    {
+        resources[key] = new SolidColorBrush(ParseColor(color));
+    }
+
+    private static void SetGradient(ResourceDictionary resources, string key, params string[] colors)
+    {
+        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 1) };
+        if (colors.Length == 1)
+        {
+            brush.GradientStops.Add(new GradientStop(ParseColor(colors[0]), 0));
+            brush.GradientStops.Add(new GradientStop(ParseColor(colors[0]), 1));
+            resources[key] = brush;
+            return;
+        }
+
+        for (var i = 0; i < colors.Length; i++)
+        {
+            var offset = colors.Length == 1 ? 0 : (double)i / (colors.Length - 1);
+            brush.GradientStops.Add(new GradientStop(ParseColor(colors[i]), offset));
+        }
+
+        resources[key] = brush;
+    }
+
+    private static void SetShadow(ResourceDictionary resources, string key, string color, double opacity, double blurRadius, double shadowDepth)
+    {
+        resources[key] = new DropShadowEffect
+        {
+            Color = ParseColor(color),
+            Opacity = opacity,
+            BlurRadius = blurRadius,
+            ShadowDepth = shadowDepth
+        };
+    }
+
+    private static Color ParseColor(string color)
+    {
+        return (Color)ColorConverter.ConvertFromString(color);
     }
 
     private static SolidColorBrush Solid(string color)
     {
-        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        var brush = new SolidColorBrush(ParseColor(color));
         brush.Freeze();
         return brush;
     }
@@ -437,9 +514,9 @@ public partial class MainWindow : Window
             StartPoint = new Point(0, 0),
             EndPoint = new Point(1, 1)
         };
-        brush.GradientStops.Add(new GradientStop((Color)ColorConverter.ConvertFromString(a), 0));
-        brush.GradientStops.Add(new GradientStop((Color)ColorConverter.ConvertFromString(b), 0.48));
-        brush.GradientStops.Add(new GradientStop((Color)ColorConverter.ConvertFromString(c), 1));
+        brush.GradientStops.Add(new GradientStop(ParseColor(a), 0));
+        brush.GradientStops.Add(new GradientStop(ParseColor(b), 0.48));
+        brush.GradientStops.Add(new GradientStop(ParseColor(c), 1));
         brush.Freeze();
         return brush;
     }
@@ -465,9 +542,9 @@ public partial class MainWindow : Window
                 if (settings != null)
                 {
                     var themeName = settings.ThemeName;
-                    if (themeName != "Sakura Glass")
+                    if (themeName is not "Night Blossom")
                     {
-                        themeName = "Sakura Glass";
+                        themeName = "Night Blossom";
                     }
                     var theme = SelectableThemes().FirstOrDefault(item => item.Name == themeName);
                     if (theme != null)
@@ -3980,6 +4057,59 @@ Write-HandoffLog "Native update handoff finished."
         builder.Append(value.Replace("\"", "\\\""));
         builder.Append('"');
         return builder.ToString();
+    }
+
+    private sealed record ThemeMaterial(
+        string Background,
+        string BackgroundAlt,
+        string Surface,
+        string SurfaceSoft,
+        string SurfaceStrong,
+        string GlassHighlight,
+        string Border,
+        string BorderStrong,
+        string Text,
+        string TextMuted,
+        string TextSubtle,
+        string Primary,
+        string PrimaryLight,
+        string PrimaryDeep,
+        string PrimarySoft,
+        string HoverOverlay,
+        string PressedOverlay,
+        string GlassA,
+        string GlassB,
+        string GlassC,
+        string GlassSoftA,
+        string GlassSoftB,
+        string HeroA,
+        string HeroB,
+        string ShadowColor,
+        double ShadowOpacity,
+        double RaisedShadowOpacity,
+        string PrimaryShadowColor,
+        double PrimaryShadowOpacity,
+        string LogInk)
+    {
+        public static ThemeMaterial For(string themeName)
+        {
+            return NightBlossom;
+        }
+
+        private static readonly ThemeMaterial NightBlossom = new(
+            "#FF171116", "#FF21131B",
+            "#C4271B23", "#9639222F", "#D82E1F28", "#42FFFFFF",
+            "#3DFFB8D3", "#63FFB8D3",
+            "#FFFFF1F6", "#FFC9AEB9", "#FF967B86",
+            "#FFFF6B9D", "#FFFF9ABD", "#FFFF4D8B", "#2EFF5D94",
+            "#18FFFFFF", "#24000000",
+            "#CC2E1F28", "#A83D2532", "#8839222F",
+            "#B839222F", "#782E1F28",
+            "#663D2532", "#CC271B23",
+            "#CC000000", 0.28, 0.34,
+            "#88FF4D8B", 0.35,
+            "#FF9D2253");
+
     }
 
     private sealed record ThemeDefinition(

@@ -1,0 +1,179 @@
+<UserControl x:Class="KFPS.Wpf.Theming.SakuraBackdrop"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False"
+             Focusable="False"
+             ClipToBounds="True"
+             Loaded="OnLoaded"
+             Unloaded="OnUnloaded">
+    <UserControl.Resources>
+        <LinearGradientBrush x:Key="BackdropPetalBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#F8FFFFFF" Offset="0"/>
+            <GradientStop Color="#E8FF8CB8" Offset="0.58"/>
+            <GradientStop Color="#D8ED3F82" Offset="1"/>
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="BackdropBranchBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#CC4F2639" Offset="0"/>
+            <GradientStop Color="#D87F3B55" Offset="0.56"/>
+            <GradientStop Color="#C89B4B67" Offset="1"/>
+        </LinearGradientBrush>
+
+        <ControlTemplate x:Key="BlossomTemplate" TargetType="ContentControl">
+            <Grid Width="34" Height="34" RenderTransformOrigin="0.5,0.5">
+                <Ellipse Width="10" Height="18" Fill="{StaticResource BackdropPetalBrush}" Margin="0,0,0,13" RenderTransformOrigin="0.5,1">
+                    <Ellipse.RenderTransform><RotateTransform Angle="0"/></Ellipse.RenderTransform>
+                </Ellipse>
+                <Ellipse Width="10" Height="18" Fill="{StaticResource BackdropPetalBrush}" Margin="0,0,0,13" RenderTransformOrigin="0.5,1">
+                    <Ellipse.RenderTransform><RotateTransform Angle="72"/></Ellipse.RenderTransform>
+                </Ellipse>
+                <Ellipse Width="10" Height="18" Fill="{StaticResource BackdropPetalBrush}" Margin="0,0,0,13" RenderTransformOrigin="0.5,1">
+                    <Ellipse.RenderTransform><RotateTransform Angle="144"/></Ellipse.RenderTransform>
+                </Ellipse>
+                <Ellipse Width="10" Height="18" Fill="{StaticResource BackdropPetalBrush}" Margin="0,0,0,13" RenderTransformOrigin="0.5,1">
+                    <Ellipse.RenderTransform><RotateTransform Angle="216"/></Ellipse.RenderTransform>
+                </Ellipse>
+                <Ellipse Width="10" Height="18" Fill="{StaticResource BackdropPetalBrush}" Margin="0,0,0,13" RenderTransformOrigin="0.5,1">
+                    <Ellipse.RenderTransform><RotateTransform Angle="288"/></Ellipse.RenderTransform>
+                </Ellipse>
+                <Ellipse Width="7" Height="7" Fill="#FFF5C76E" Stroke="#998A3456" StrokeThickness="1"/>
+            </Grid>
+        </ControlTemplate>
+
+        <ControlTemplate x:Key="PetalTemplate" TargetType="ContentControl">
+            <Grid Width="20" Height="14">
+                <Path Data="M 1,7 C 3,1 11,-1 19,4 C 16,11 8,15 1,7 Z"
+                      Fill="{StaticResource BackdropPetalBrush}"
+                      Stroke="#32A82A63"
+                      StrokeThickness="0.7"
+                      Stretch="Fill"/>
+                <Path Data="M 10,2 C 10,5 10,8 9,12" Stroke="#42A82A63" StrokeThickness="0.7"/>
+            </Grid>
+        </ControlTemplate>
+
+        <Storyboard x:Key="AmbientMotion">
+            <DoubleAnimation Storyboard.TargetName="BranchRotate"
+                             Storyboard.TargetProperty="Angle"
+                             From="-0.18" To="0.24"
+                             Duration="0:0:8"
+                             AutoReverse="True"
+                             RepeatBehavior="Forever">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal1" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0" Duration="0:0:19" RepeatBehavior="Forever">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:1" Value="0.78"/><EasingDoubleKeyFrame KeyTime="0:0:16" Value="0.62"/><EasingDoubleKeyFrame KeyTime="0:0:19" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal1Move" Storyboard.TargetProperty="X" From="0" To="1900" BeginTime="0:0:0" Duration="0:0:19" RepeatBehavior="Forever"/>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal1Move" Storyboard.TargetProperty="Y" BeginTime="0:0:0" Duration="0:0:19" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:6" Value="-32"/><EasingDoubleKeyFrame KeyTime="0:0:12" Value="48"/><EasingDoubleKeyFrame KeyTime="0:0:19" Value="130"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal1Rotate" Storyboard.TargetProperty="Angle" From="0" To="720" BeginTime="0:0:0" Duration="0:0:19" RepeatBehavior="Forever"/>
+
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal2" Storyboard.TargetProperty="Opacity" BeginTime="0:0:2" Duration="0:0:24" RepeatBehavior="Forever">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:1.3" Value="0.7"/><EasingDoubleKeyFrame KeyTime="0:0:21" Value="0.56"/><EasingDoubleKeyFrame KeyTime="0:0:24" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal2Move" Storyboard.TargetProperty="X" From="0" To="2050" BeginTime="0:0:2" Duration="0:0:24" RepeatBehavior="Forever"/>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal2Move" Storyboard.TargetProperty="Y" BeginTime="0:0:2" Duration="0:0:24" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:8" Value="72"/><EasingDoubleKeyFrame KeyTime="0:0:15" Value="-18"/><EasingDoubleKeyFrame KeyTime="0:0:24" Value="156"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal2Rotate" Storyboard.TargetProperty="Angle" From="25" To="785" BeginTime="0:0:2" Duration="0:0:24" RepeatBehavior="Forever"/>
+
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal3" Storyboard.TargetProperty="Opacity" BeginTime="0:0:5" Duration="0:0:21" RepeatBehavior="Forever">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:1" Value="0.74"/><EasingDoubleKeyFrame KeyTime="0:0:18" Value="0.58"/><EasingDoubleKeyFrame KeyTime="0:0:21" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal3Move" Storyboard.TargetProperty="X" From="0" To="1940" BeginTime="0:0:5" Duration="0:0:21" RepeatBehavior="Forever"/>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal3Move" Storyboard.TargetProperty="Y" BeginTime="0:0:5" Duration="0:0:21" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:7" Value="-55"/><EasingDoubleKeyFrame KeyTime="0:0:13" Value="16"/><EasingDoubleKeyFrame KeyTime="0:0:21" Value="116"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal3Rotate" Storyboard.TargetProperty="Angle" From="-20" To="700" BeginTime="0:0:5" Duration="0:0:21" RepeatBehavior="Forever"/>
+
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal4" Storyboard.TargetProperty="Opacity" BeginTime="0:0:8" Duration="0:0:27" RepeatBehavior="Forever">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:1.4" Value="0.66"/><EasingDoubleKeyFrame KeyTime="0:0:23" Value="0.5"/><EasingDoubleKeyFrame KeyTime="0:0:27" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal4Move" Storyboard.TargetProperty="X" From="0" To="2160" BeginTime="0:0:8" Duration="0:0:27" RepeatBehavior="Forever"/>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal4Move" Storyboard.TargetProperty="Y" BeginTime="0:0:8" Duration="0:0:27" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:9" Value="84"/><EasingDoubleKeyFrame KeyTime="0:0:17" Value="30"/><EasingDoubleKeyFrame KeyTime="0:0:27" Value="190"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal4Rotate" Storyboard.TargetProperty="Angle" From="20" To="820" BeginTime="0:0:8" Duration="0:0:27" RepeatBehavior="Forever"/>
+
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal5" Storyboard.TargetProperty="Opacity" BeginTime="0:0:11" Duration="0:0:18" RepeatBehavior="Forever">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:1" Value="0.72"/><EasingDoubleKeyFrame KeyTime="0:0:15" Value="0.55"/><EasingDoubleKeyFrame KeyTime="0:0:18" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal5Move" Storyboard.TargetProperty="X" From="0" To="1840" BeginTime="0:0:11" Duration="0:0:18" RepeatBehavior="Forever"/>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal5Move" Storyboard.TargetProperty="Y" BeginTime="0:0:11" Duration="0:0:18" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:6" Value="42"/><EasingDoubleKeyFrame KeyTime="0:0:12" Value="-28"/><EasingDoubleKeyFrame KeyTime="0:0:18" Value="104"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal5Rotate" Storyboard.TargetProperty="Angle" From="12" To="672" BeginTime="0:0:11" Duration="0:0:18" RepeatBehavior="Forever"/>
+
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal6" Storyboard.TargetProperty="Opacity" BeginTime="0:0:14" Duration="0:0:23" RepeatBehavior="Forever">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:1.2" Value="0.64"/><EasingDoubleKeyFrame KeyTime="0:0:20" Value="0.48"/><EasingDoubleKeyFrame KeyTime="0:0:23" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal6Move" Storyboard.TargetProperty="X" From="0" To="2020" BeginTime="0:0:14" Duration="0:0:23" RepeatBehavior="Forever"/>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Petal6Move" Storyboard.TargetProperty="Y" BeginTime="0:0:14" Duration="0:0:23" RepeatBehavior="Forever">
+                <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0"/><EasingDoubleKeyFrame KeyTime="0:0:8" Value="-44"/><EasingDoubleKeyFrame KeyTime="0:0:15" Value="54"/><EasingDoubleKeyFrame KeyTime="0:0:23" Value="148"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimation Storyboard.TargetName="Petal6Rotate" Storyboard.TargetProperty="Angle" From="-18" To="742" BeginTime="0:0:14" Duration="0:0:23" RepeatBehavior="Forever"/>
+        </Storyboard>
+    </UserControl.Resources>
+
+    <Grid Background="Transparent">
+        <Rectangle Fill="{StaticResource SakuraWindowGradient}"/>
+        <Ellipse Width="620" Height="420" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-170,-145,0,0" Opacity="0.32">
+            <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#78FF7FAF" Offset="0"/><GradientStop Color="#00FF7FAF" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
+        </Ellipse>
+        <Ellipse Width="680" Height="470" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-150,-180,0" Opacity="0.26">
+            <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#66FFC1D9" Offset="0"/><GradientStop Color="#00FFC1D9" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
+        </Ellipse>
+
+        <Viewbox HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Uniform" Width="1180" Height="500" Margin="-45,-38,0,0" Opacity="0.72">
+            <Canvas Width="1180" Height="500" RenderTransformOrigin="0,0">
+                <Canvas.RenderTransform><RotateTransform x:Name="BranchRotate"/></Canvas.RenderTransform>
+                <Path Data="M -85,318 C 83,275 156,219 287,161 C 435,95 596,95 775,27" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="18" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M 74,277 C 184,268 275,277 388,326" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="10" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M 202,205 C 247,158 277,107 298,37" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M 382,119 C 447,103 514,65 565,4" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M 517,94 C 615,117 704,154 789,222" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M 650,72 C 741,73 823,95 917,145" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M 777,28 C 880,31 973,5 1065,-41" Stroke="{StaticResource BackdropBranchBrush}" StrokeThickness="9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="108" Canvas.Top="239" Width="45" Height="45"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="174" Canvas.Top="211" Width="31" Height="31"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="226" Canvas.Top="168" Width="43" Height="43"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="280" Canvas.Top="119" Width="30" Height="30"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="284" Canvas.Top="51" Width="40" Height="40"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="413" Canvas.Top="91" Width="42" Height="42"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="492" Canvas.Top="59" Width="34" Height="34"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="542" Canvas.Top="4" Width="43" Height="43"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="635" Canvas.Top="116" Width="40" Height="40"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="710" Canvas.Top="156" Width="32" Height="32"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="768" Canvas.Top="202" Width="42" Height="42"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="817" Canvas.Top="85" Width="38" Height="38"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="897" Canvas.Top="128" Width="31" Height="31"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="975" Canvas.Top="-18" Width="42" Height="42"/>
+                <ContentControl Template="{StaticResource BlossomTemplate}" Canvas.Left="337" Canvas.Top="292" Width="32" Height="32"/>
+            </Canvas>
+        </Viewbox>
+
+        <Canvas x:Name="PetalCanvas" ClipToBounds="True">
+            <ContentControl x:Name="Petal1" Template="{StaticResource PetalTemplate}" Canvas.Left="120" Canvas.Top="105" Width="16" Height="11" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <ContentControl.RenderTransform><TransformGroup><RotateTransform x:Name="Petal1Rotate"/><TranslateTransform x:Name="Petal1Move"/></TransformGroup></ContentControl.RenderTransform>
+            </ContentControl>
+            <ContentControl x:Name="Petal2" Template="{StaticResource PetalTemplate}" Canvas.Left="210" Canvas.Top="165" Width="20" Height="14" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <ContentControl.RenderTransform><TransformGroup><RotateTransform x:Name="Petal2Rotate"/><TranslateTransform x:Name="Petal2Move"/></TransformGroup></ContentControl.RenderTransform>
+            </ContentControl>
+            <ContentControl x:Name="Petal3" Template="{StaticResource PetalTemplate}" Canvas.Left="320" Canvas.Top="84" Width="13" Height="9" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <ContentControl.RenderTransform><TransformGroup><RotateTransform x:Name="Petal3Rotate"/><TranslateTransform x:Name="Petal3Move"/></TransformGroup></ContentControl.RenderTransform>
+            </ContentControl>
+            <ContentControl x:Name="Petal4" Template="{StaticResource PetalTemplate}" Canvas.Left="395" Canvas.Top="195" Width="18" Height="13" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <ContentControl.RenderTransform><TransformGroup><RotateTransform x:Name="Petal4Rotate"/><TranslateTransform x:Name="Petal4Move"/></TransformGroup></ContentControl.RenderTransform>
+            </ContentControl>
+            <ContentControl x:Name="Petal5" Template="{StaticResource PetalTemplate}" Canvas.Left="510" Canvas.Top="70" Width="12" Height="8" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <ContentControl.RenderTransform><TransformGroup><RotateTransform x:Name="Petal5Rotate"/><TranslateTransform x:Name="Petal5Move"/></TransformGroup></ContentControl.RenderTransform>
+            </ContentControl>
+            <ContentControl x:Name="Petal6" Template="{StaticResource PetalTemplate}" Canvas.Left="610" Canvas.Top="145" Width="17" Height="12" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <ContentControl.RenderTransform><TransformGroup><RotateTransform x:Name="Petal6Rotate"/><TranslateTransform x:Name="Petal6Move"/></TransformGroup></ContentControl.RenderTransform>
+            </ContentControl>
+        </Canvas>
+    </Grid>
+</UserControl>

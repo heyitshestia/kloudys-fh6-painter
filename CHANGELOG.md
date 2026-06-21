@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.7
+- Set Night Blossom as the only exposed native theme and default theme.
+- Fixed native WPF theme resource updates so frozen brushes and gradients do not trigger UI warnings.
+- Kept the native app as a single-file bundle without loose WPF runtime DLLs.
+
 ## 3.0.6
 - Added the first native WPF resource dictionary for Sakura Glass theme materials.
 - Added reusable procedural texture resources and a subtle Sakura texture overlay.

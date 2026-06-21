@@ -8,278 +8,93 @@
                 <ResourceDictionary Source="Themes/SakuraGlass.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
-        </Style>
+            <!-- Compatibility aliases for the existing KFPS shell code. -->
+            <SolidColorBrush x:Key="InkBrush" Color="{StaticResource Sakura.Text}" />
+            <SolidColorBrush x:Key="MutedInkBrush" Color="{StaticResource Sakura.TextMuted}" />
+            <SolidColorBrush x:Key="DimInkBrush" Color="{StaticResource Sakura.TextSubtle}" />
+            <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource Sakura.Surface}" />
+            <SolidColorBrush x:Key="PanelSoftBrush" Color="{StaticResource Sakura.SurfaceSoft}" />
+            <SolidColorBrush x:Key="PanelLiftBrush" Color="{StaticResource Sakura.PrimarySoft}" />
+            <SolidColorBrush x:Key="ControlBrush" Color="{StaticResource Sakura.SurfaceStrong}" />
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Sakura.Primary}" />
+            <SolidColorBrush x:Key="AccentDeepBrush" Color="{StaticResource Sakura.PrimaryDeep}" />
+            <SolidColorBrush x:Key="AccentGlowBrush" Color="#66ED3F82" />
+            <SolidColorBrush x:Key="BorderBrushSoft" Color="{StaticResource Sakura.Border}" />
+            <SolidColorBrush x:Key="ButtonHoverBrush" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="ButtonPressedBrush" Color="#24000000" />
+            <SolidColorBrush x:Key="LogInkBrush" Color="#FF9D2253" />
+            <LinearGradientBrush x:Key="AppBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="{StaticResource Sakura.Background}" Offset="0" />
+                <GradientStop Color="{StaticResource Sakura.BackgroundAlt}" Offset="0.56" />
+                <GradientStop Color="#FFFFD8E8" Offset="1" />
+            </LinearGradientBrush>
+            <DrawingBrush x:Key="AppTextureBrush" TileMode="Tile" Viewport="0,0,180,180" ViewportUnits="Absolute" Stretch="None" Opacity="0.18">
+                <DrawingBrush.Drawing>
+                    <GeometryDrawing Brush="#14ED3F82">
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <EllipseGeometry Center="28,34" RadiusX="9" RadiusY="3" />
+                                <EllipseGeometry Center="78,112" RadiusX="6" RadiusY="2" />
+                                <EllipseGeometry Center="132,74" RadiusX="10" RadiusY="3" />
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingBrush.Drawing>
+            </DrawingBrush>
 
-        <Style x:Key="MutedText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource MutedInkBrush}" />
-            <Setter Property="LineHeight" Value="20" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
+            <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+            </Style>
 
-        <Style x:Key="TinyLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource DimInkBrush}" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="TextWrapping" Value="NoWrap" />
-            <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
-        </Style>
+            <Style x:Key="MutedText" TargetType="TextBlock" BasedOn="{StaticResource SakuraBody}" />
 
-        <Style x:Key="PageHeading" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-            <Setter Property="FontSize" Value="30" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="TextWrapping" Value="NoWrap" />
-        </Style>
+            <Style x:Key="TinyLabel" TargetType="TextBlock" BasedOn="{StaticResource SakuraEyebrow}">
+                <Setter Property="TextWrapping" Value="NoWrap" />
+            </Style>
 
-        <Style x:Key="SectionTitle" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-            <Setter Property="FontSize" Value="18" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Margin" Value="0,0,0,8" />
-        </Style>
+            <Style x:Key="PageHeading" TargetType="TextBlock" BasedOn="{StaticResource SakuraTitle}">
+                <Setter Property="TextWrapping" Value="NoWrap" />
+            </Style>
 
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Margin" Value="0,0,10,10" />
-        </Style>
+            <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource SakuraHeading}">
+                <Setter Property="Margin" Value="0,0,0,8" />
+            </Style>
 
-        <Style x:Key="TightCard" TargetType="Border" BasedOn="{StaticResource Card}">
-            <Setter Property="CornerRadius" Value="4" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Margin" Value="0,0,0,10" />
-        </Style>
+            <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource SakuraCard}" />
+            <Style x:Key="TightCard" TargetType="Border" BasedOn="{StaticResource SakuraGlassPanelSoft}">
+                <Setter Property="Padding" Value="12" />
+                <Setter Property="Margin" Value="0,0,0,10" />
+            </Style>
 
-        <Style TargetType="Button">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Background" Value="{DynamicResource PanelLiftBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="13,8" />
-            <Setter Property="Margin" Value="0,0,8,8" />
-            <Setter Property="MinWidth" Value="76" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border x:Name="Root"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="3" />
-                            <Border x:Name="HoverOverlay"
-                                    Background="{DynamicResource AccentGlowBrush}"
-                                    BorderBrush="{DynamicResource AccentBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="3"
-                                    Opacity="0"
-                                    IsHitTestVisible="False" />
-                            <ContentPresenter Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="Center" />
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <EventTrigger RoutedEvent="MouseEnter">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="0.22"
-                                                         Duration="0:0:0.16" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                            <EventTrigger RoutedEvent="MouseLeave">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="0"
-                                                         Duration="0:0:0.16" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style TargetType="Button" BasedOn="{StaticResource SakuraButton}" />
+            <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource SakuraPrimaryButton}" />
+            <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource SakuraButton}">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="10,8" />
+                <Setter Property="Margin" Value="0,0,0,6" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Height" Value="56" />
+            </Style>
 
-        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="{DynamicResource AccentDeepBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-        </Style>
+            <Style TargetType="TextBox" BasedOn="{StaticResource SakuraTextBox}" />
+            <Style TargetType="ComboBox" BasedOn="{StaticResource SakuraComboBox}" />
+            <Style TargetType="ComboBoxItem" BasedOn="{StaticResource SakuraComboBoxItem}" />
+            <Style TargetType="CheckBox" BasedOn="{StaticResource SakuraCheckBox}" />
+            <Style TargetType="ListBox" BasedOn="{StaticResource SakuraListBox}" />
+            <Style TargetType="ListBoxItem" BasedOn="{StaticResource SakuraListBoxItem}" />
+            <Style TargetType="ProgressBar" BasedOn="{StaticResource SakuraProgressBar}" />
 
-        <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="12,10" />
-            <Setter Property="Margin" Value="0,0,0,6" />
-            <Setter Property="Background" Value="#00FFFFFF" />
-        </Style>
-
-        <Style TargetType="TextBox">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10" />
-            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
-            <Setter Property="SelectionBrush" Value="{DynamicResource AccentDeepBrush}" />
-        </Style>
-
-        <Style TargetType="ComboBox">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Background" Value="{DynamicResource PanelLiftBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBox">
-                        <Grid>
-                            <ToggleButton x:Name="ToggleButton"
-                                          Background="{TemplateBinding Background}"
-                                          BorderBrush="{TemplateBinding BorderBrush}"
-                                          BorderThickness="1"
-                                          Focusable="False"
-                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border x:Name="Root"
-                                                Background="{TemplateBinding Background}"
-                                                BorderBrush="{TemplateBinding BorderBrush}"
-                                                BorderThickness="{TemplateBinding BorderThickness}"
-                                                CornerRadius="3">
-                                            <Grid>
-                                                <ContentPresenter Margin="10,0,30,0"
-                                                                  HorizontalAlignment="Left"
-                                                                  VerticalAlignment="Center"
-                                                                  Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}" />
-                                                <Path HorizontalAlignment="Right"
-                                                      VerticalAlignment="Center"
-                                                      Margin="0,0,11,0"
-                                                      Fill="{DynamicResource MutedInkBrush}"
-                                                      Data="M 0 0 L 8 0 L 4 5 Z" />
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-                            <Popup x:Name="Popup"
-                                   Placement="Bottom"
-                                   IsOpen="{TemplateBinding IsDropDownOpen}"
-                                   AllowsTransparency="True"
-                                   Focusable="False"
-                                   PopupAnimation="Fade">
-                                <Border Background="{DynamicResource PanelLiftBrush}"
-                                        BorderBrush="{DynamicResource AccentBrush}"
-                                        BorderThickness="1"
-                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
-                                    <ScrollViewer MaxHeight="260">
-                                        <ItemsPresenter />
-                                    </ScrollViewer>
-                                </Border>
-                            </Popup>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Background" Value="{DynamicResource PanelLiftBrush}" />
-            <Setter Property="Padding" Value="8,6" />
-        </Style>
-
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Margin" Value="0,0,12,9" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <StackPanel Orientation="Horizontal">
-                            <Border x:Name="Box"
-                                    Width="16"
-                                    Height="16"
-                                    Background="{DynamicResource ControlBrush}"
-                                    BorderBrush="{DynamicResource BorderBrushSoft}"
-                                    BorderThickness="1"
-                                    CornerRadius="2"
-                                    Margin="0,0,6,0">
-                                <Path x:Name="Tick"
-                                      Visibility="Collapsed"
-                                      Stroke="{DynamicResource AccentBrush}"
-                                      StrokeThickness="2"
-                                      Data="M 3 8 L 7 12 L 13 4" />
-                            </Border>
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Box" Property="Background" Value="{DynamicResource PanelLiftBrush}" />
-                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="ListBox">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="6" />
-        </Style>
-
-        <Style TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
-        </Style>
-
-        <Style TargetType="Expander">
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10" />
-            <Setter Property="Margin" Value="0,0,0,10" />
-        </Style>
+            <Style TargetType="Expander">
+                <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="10" />
+                <Setter Property="Margin" Value="0,0,0,10" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
