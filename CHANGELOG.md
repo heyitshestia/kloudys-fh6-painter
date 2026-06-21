@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.6
+- Added the first native WPF resource dictionary for Sakura Glass theme materials.
+- Added reusable procedural texture resources and a subtle Sakura texture overlay.
+- Added resource-backed animated button hover/press visuals for future texture and animation work.
+
 ## 3.0.5
 - Restored the FH6 1000-layer group/table locator support script that was unintentionally left out of the native 3.x tree.
 

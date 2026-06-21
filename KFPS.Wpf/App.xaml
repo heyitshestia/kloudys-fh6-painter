@@ -3,23 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="InkBrush" Color="#FF27212A" />
-        <SolidColorBrush x:Key="MutedInkBrush" Color="#FF756A73" />
-        <SolidColorBrush x:Key="DimInkBrush" Color="#FFA1959D" />
-        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFFFF" />
-        <SolidColorBrush x:Key="PanelSoftBrush" Color="#FFFFF9FB" />
-        <SolidColorBrush x:Key="PanelLiftBrush" Color="#FFFFEDF4" />
-        <SolidColorBrush x:Key="ControlBrush" Color="#FFFFFFFF" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#FFFF6B9E" />
-        <SolidColorBrush x:Key="AccentDeepBrush" Color="#FFE9427F" />
-        <SolidColorBrush x:Key="AccentGlowBrush" Color="#55FF6B9E" />
-        <SolidColorBrush x:Key="BorderBrushSoft" Color="#FFE9D6DE" />
-
-        <LinearGradientBrush x:Key="AppBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#FFFFFFFF" Offset="0" />
-            <GradientStop Color="#FFFFFBFD" Offset="0.52" />
-            <GradientStop Color="#FFFFF6F9" Offset="1" />
-        </LinearGradientBrush>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/SakuraGlass.xaml" />
+            </ResourceDictionary.MergedDictionaries>
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
@@ -86,22 +73,50 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                        <Grid>
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="3" />
+                            <Border x:Name="HoverOverlay"
+                                    Background="{DynamicResource AccentGlowBrush}"
+                                    BorderBrush="{DynamicResource AccentBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Opacity="0"
+                                    IsHitTestVisible="False" />
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="Center" />
-                        </Border>
+                        </Grid>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="MouseEnter">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.22"
+                                                         Duration="0:0:0.16" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0"
+                                                         Duration="0:0:0.16" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Root" Property="Background" Value="#FFFFDCE8" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentDeepBrush}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Root" Property="Opacity" Value="0.45" />
@@ -265,5 +280,6 @@
             <Setter Property="Padding" Value="10" />
             <Setter Property="Margin" Value="0,0,0,10" />
         </Style>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
