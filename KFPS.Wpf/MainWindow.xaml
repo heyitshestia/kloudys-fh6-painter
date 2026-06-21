@@ -60,8 +60,7 @@
 	                    <TextBlock x:Name="StatusText" Text="Ready" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" />
 	                </StackPanel>
                 <Border x:Name="VersionStatusPill" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1"
-                        CornerRadius="999" Padding="14,5" ToolTip="KFPS version status">
+                        Background="Transparent" BorderThickness="0" Padding="14,5" ToolTip="KFPS version status">
                     <TextBlock x:Name="VersionStatusText" Text="Version checking..." FontSize="12" FontWeight="SemiBold"
                                Foreground="{DynamicResource MutedInkBrush}" TextWrapping="NoWrap" />
                 </Border>
@@ -121,15 +120,21 @@
                             <TextBlock Text="Help" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowBugReports" ToolTip="Bug Reports">
+	                    <Button Style="{StaticResource NavButton}" Click="ShowBugReports" ToolTip="Bug Reports">
+	                        <StackPanel HorizontalAlignment="Center">
+	                            <TextBlock Text="!" FontSize="18" TextAlignment="Center" />
+	                            <TextBlock Text="Reports" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+	                        </StackPanel>
+	                    </Button>
+                    <Button Style="{StaticResource NavButton}" Click="ShowUpdate" ToolTip="Update">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="!" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Reports" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="↻" FontSize="18" TextAlignment="Center" />
+                            <TextBlock Text="Update" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowSettings" ToolTip="Settings">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="⚙" FontSize="18" TextAlignment="Center" />
+	                    <Button Style="{StaticResource NavButton}" Click="ShowSettings" ToolTip="Settings">
+	                        <StackPanel HorizontalAlignment="Center">
+	                            <TextBlock Text="⚙" FontSize="18" TextAlignment="Center" />
                             <TextBlock Text="Settings" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
                         </StackPanel>
                     </Button>
@@ -308,13 +313,15 @@
                     </StackPanel>
                 </Grid>
 
+                <Grid Grid.Row="1" x:Name="UpdateView" Visibility="Collapsed" />
+
                 <Grid Grid.Row="1" x:Name="SettingsView" Visibility="Collapsed">
                     <StackPanel>
-	                        <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,16,0,12">
-	                            <TextBlock Text="The native package includes its own Python runtime and backend dependencies. Use Settings to verify the bundle or update app files." Style="{StaticResource MutedText}" />
-                        </Border>
-	                        <Button Content="Open runtime folder" Click="OpenRuntimeFolder" />
-	                        <Button Content="Open JSON folders" Click="OpenJsonFolders" />
+		                        <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,16,0,12">
+		                            <TextBlock Text="The native package includes its own Python runtime and backend dependencies. Use Settings to verify the bundle." Style="{StaticResource MutedText}" />
+	                        </Border>
+		                        <Button Content="Open runtime folder" Click="OpenRuntimeFolder" />
+		                        <Button Content="Open JSON folders" Click="OpenJsonFolders" />
                     </StackPanel>
                 </Grid>
             </Grid>
@@ -990,6 +997,35 @@
                 </Grid>
             </Border>
 
+            <Border x:Name="UpdateCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
+                <Grid>
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="420">
+                        <TextBlock Text="Update" FontSize="28" FontWeight="SemiBold" TextAlignment="Center" Margin="0,0,0,24" />
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,0,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Current version" Style="{StaticResource TinyLabel}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="CurrentVersionText" Grid.Column="1" Text="unknown" FontSize="18" FontWeight="SemiBold" />
+                            </Grid>
+                        </Border>
+                        <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,0,18">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Latest version" Style="{StaticResource TinyLabel}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="LatestVersionText" Grid.Column="1" Text="checking..." FontSize="18" FontWeight="SemiBold" />
+                            </Grid>
+                        </Border>
+                        <Button x:Name="UpdatePageButton" Content="Update from GitHub" Style="{StaticResource PrimaryButton}" Click="UpdateFromGitHub" Padding="18,11" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <Border x:Name="SettingsCenterView" Visibility="Collapsed" Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -1014,13 +1050,12 @@
                         </Grid.ColumnDefinitions>
                         <Border Background="{DynamicResource PanelSoftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="16">
                             <StackPanel>
-	                                <TextBlock Text="Bundle checks and updates" Style="{StaticResource SectionTitle}" />
-	                                <TextBlock Text="Verify the bundled runtime or update app files. A complete native package should not need external Python." Style="{StaticResource MutedText}" Margin="0,0,0,14" />
-	                                <Button Content="Check bundled Python" Click="SetupPython" Padding="16,8" />
-	                                <Button Content="Check dependencies" Click="InstallDependencies" Padding="16,8" />
-	                                <Button Content="Update from GitHub" Style="{StaticResource PrimaryButton}" Click="UpdateFromGitHub" Padding="16,8" />
-	                                <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,12,0,0">
-	                                    <TextBlock Text="If generation, previews, editor launch, or import/export fail, run the checks here. Missing bundled files usually mean the package should be re-extracted." Style="{StaticResource MutedText}" />
+		                                <TextBlock Text="Bundle checks" Style="{StaticResource SectionTitle}" />
+		                                <TextBlock Text="Verify the bundled runtime. A complete native package should not need external Python." Style="{StaticResource MutedText}" Margin="0,0,0,14" />
+		                                <Button Content="Check bundled Python" Click="SetupPython" Padding="16,8" />
+		                                <Button Content="Check dependencies" Click="InstallDependencies" Padding="16,8" />
+		                                <Border Background="{DynamicResource PanelLiftBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,12,0,0">
+		                                    <TextBlock Text="If generation, previews, editor launch, or import/export fail, run the checks here. Missing bundled files usually mean the package should be re-extracted." Style="{StaticResource MutedText}" />
 	                                </Border>
                             </StackPanel>
                         </Border>

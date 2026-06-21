@@ -53,6 +53,7 @@ public partial class MainWindow : Window
     private bool _updateAvailable;
     private bool _versionBlinkVisible = true;
     private string _localVersion = "unknown";
+    private string _latestVersion = "checking...";
 
     public MainWindow()
     {
@@ -95,6 +96,7 @@ public partial class MainWindow : Window
     private void InitializeVersionCheck()
     {
         _localVersion = ReadLocalVersion();
+        _latestVersion = "checking...";
         SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Local version: {_localVersion}. Checking GitHub main...");
 
         _versionCheckTimer = new DispatcherTimer { Interval = VersionCheckInterval };
@@ -149,10 +151,12 @@ public partial class MainWindow : Window
             var remoteVersion = ExtractVersionFromGitHubContents(await response.Content.ReadAsStringAsync());
             if (string.IsNullOrWhiteSpace(remoteVersion))
             {
+                _latestVersion = "unknown";
                 SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, "Local version shown. GitHub version response was empty.");
                 return;
             }
 
+            _latestVersion = remoteVersion;
             if (IsRemoteVersionNewer(_localVersion, remoteVersion))
             {
                 SetVersionStatus($"KFPS v{_localVersion}  ->  v{remoteVersion} available", updateAvailable: true, $"Update available: local {_localVersion}, GitHub main {remoteVersion}.");
@@ -166,6 +170,7 @@ public partial class MainWindow : Window
         {
             if (!_updateAvailable)
             {
+                _latestVersion = "unavailable";
                 SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Could not check GitHub version: {ex.Message}");
             }
         }
@@ -182,18 +187,15 @@ public partial class MainWindow : Window
         VersionStatusText.Text = text;
         VersionStatusPill.ToolTip = tooltip;
         VersionStatusText.Opacity = 1.0;
+        UpdateVersionPageState();
 
         if (updateAvailable)
         {
-            VersionStatusText.Foreground = Brushes.White;
-            VersionStatusPill.Background = new SolidColorBrush(Color.FromRgb(186, 18, 54));
-            VersionStatusPill.BorderBrush = new SolidColorBrush(Color.FromRgb(255, 96, 126));
+            VersionStatusText.Foreground = new SolidColorBrush(Color.FromRgb(210, 23, 62));
         }
         else
         {
             VersionStatusText.ClearValue(TextBlock.ForegroundProperty);
-            VersionStatusPill.ClearValue(Border.BackgroundProperty);
-            VersionStatusPill.ClearValue(Border.BorderBrushProperty);
         }
     }
 
@@ -202,11 +204,30 @@ public partial class MainWindow : Window
         if (!_updateAvailable)
         {
             VersionStatusText.Opacity = 1.0;
+            UpdatePageButton.Opacity = 1.0;
+            UpdatePageButton.ClearValue(Control.BackgroundProperty);
+            UpdatePageButton.ClearValue(Control.BorderBrushProperty);
+            UpdatePageButton.ClearValue(Control.ForegroundProperty);
             return;
         }
 
         _versionBlinkVisible = !_versionBlinkVisible;
         VersionStatusText.Opacity = _versionBlinkVisible ? 1.0 : 0.22;
+        UpdatePageButton.Opacity = 1.0;
+        UpdatePageButton.Foreground = Brushes.White;
+        UpdatePageButton.Background = new SolidColorBrush(_versionBlinkVisible ? Color.FromRgb(210, 23, 62) : Color.FromRgb(126, 10, 35));
+        UpdatePageButton.BorderBrush = new SolidColorBrush(Color.FromRgb(255, 96, 126));
+    }
+
+    private void UpdateVersionPageState()
+    {
+        CurrentVersionText.Text = _localVersion;
+        LatestVersionText.Text = _latestVersion;
+        LatestVersionText.Foreground = _updateAvailable
+            ? new SolidColorBrush(Color.FromRgb(210, 23, 62))
+            : (Brush)Application.Current.Resources["MutedInkBrush"];
+
+        UpdatePageButton.Content = _updateAvailable ? "Update available - update now" : "Update from GitHub";
     }
 
     private static bool IsRemoteVersionNewer(string localVersion, string remoteVersion)
@@ -307,10 +328,18 @@ public partial class MainWindow : Window
     {
         var wasLoading = _loadingSettings;
         _loadingSettings = true;
-        ThemeComboBox.ItemsSource = _themes;
+        ThemeComboBox.ItemsSource = SelectableThemes();
         ThemeComboBox.DisplayMemberPath = nameof(ThemeDefinition.Name);
         ThemeComboBox.SelectedIndex = 0;
         _loadingSettings = wasLoading;
+    }
+
+    private List<ThemeDefinition> SelectableThemes()
+    {
+        // Keep the full theme list in code, but expose only Sakura until the native shell settles.
+        return _themes
+            .Where(theme => theme.Name == "Sakura Glass")
+            .ToList();
     }
 
     private static List<ThemeDefinition> BuildThemes()
@@ -436,11 +465,11 @@ public partial class MainWindow : Window
                 if (settings != null)
                 {
                     var themeName = settings.ThemeName;
-                    if (string.IsNullOrWhiteSpace(themeName) || themeName == "KFPS Modern")
+                    if (themeName != "Sakura Glass")
                     {
                         themeName = "Sakura Glass";
                     }
-                    var theme = _themes.FirstOrDefault(item => item.Name == themeName);
+                    var theme = SelectableThemes().FirstOrDefault(item => item.Name == themeName);
                     if (theme != null)
                     {
                         ThemeComboBox.SelectedItem = theme;
@@ -488,6 +517,7 @@ public partial class MainWindow : Window
     private void ShowTools(object sender, RoutedEventArgs e) => ShowView("Tools", ToolsView);
     private void ShowTutorial(object sender, RoutedEventArgs e) => ShowView("Help", TutorialView);
     private void ShowBugReports(object sender, RoutedEventArgs e) => ShowView("Bug Reports", BugReportsView);
+    private void ShowUpdate(object sender, RoutedEventArgs e) => ShowView("Update", UpdateView);
     private void ShowSettings(object sender, RoutedEventArgs e) => ShowView("Settings", SettingsView);
 
     private void ShowView(string title, FrameworkElement view)
@@ -503,21 +533,24 @@ public partial class MainWindow : Window
             "Tools" => ("TOOLS", "External helpers"),
             "Help" => ("LEARN", "Search topics"),
             "Bug Reports" => ("REPORT", "Write local report"),
+            "Update" => ("UPDATE", "Version status"),
             "Settings" => ("SYSTEM", "Checks and preferences"),
             _ => ("WORKFLOW", title)
         };
-        foreach (var candidate in new[] { DashboardView, GenerateView, ImportExportView, EditorView, ImageToolsView, ToolsView, TutorialView, BugReportsView, SettingsView })
+        foreach (var candidate in new[] { DashboardView, GenerateView, ImportExportView, EditorView, ImageToolsView, ToolsView, TutorialView, BugReportsView, UpdateView, SettingsView })
         {
             candidate.Visibility = candidate == view ? Visibility.Visible : Visibility.Collapsed;
         }
 
         var isDashboard = title == "Dashboard";
-        WorkflowPanel.Visibility = isDashboard ? Visibility.Collapsed : Visibility.Visible;
+        var hideWorkflowPanel = isDashboard || title == "Update";
+        WorkflowPanel.Visibility = hideWorkflowPanel ? Visibility.Collapsed : Visibility.Visible;
         CenterHost.Visibility = isDashboard ? Visibility.Collapsed : Visibility.Visible;
-        var usesWideWorkbench = isDashboard || title == "Generate" || title == "Import / Export" || title == "Editor" || title == "Image Tools" || title == "Tools" || title == "Help" || title == "Bug Reports" || title == "Settings";
+        var usesWideWorkbench = isDashboard || title == "Generate" || title == "Import / Export" || title == "Editor" || title == "Image Tools" || title == "Tools" || title == "Help" || title == "Bug Reports" || title == "Update" || title == "Settings";
         InspectorPanel.Visibility = usesWideWorkbench ? Visibility.Collapsed : Visibility.Visible;
         DashboardWideView.Visibility = isDashboard ? Visibility.Visible : Visibility.Collapsed;
-        Grid.SetColumnSpan(CenterHost, title is "Generate" or "Import / Export" or "Editor" or "Image Tools" or "Tools" or "Help" or "Bug Reports" or "Settings" ? 2 : 1);
+        Grid.SetColumn(CenterHost, hideWorkflowPanel && !isDashboard ? 1 : 2);
+        Grid.SetColumnSpan(CenterHost, hideWorkflowPanel && !isDashboard ? 3 : title is "Generate" or "Import / Export" or "Editor" or "Image Tools" or "Tools" or "Help" or "Bug Reports" or "Settings" ? 2 : 1);
 
         var centerView = title switch
         {
@@ -529,11 +562,12 @@ public partial class MainWindow : Window
             "Tools" => ToolsCenterView,
             "Help" => TutorialCenterView,
             "Bug Reports" => BugReportsCenterView,
+            "Update" => UpdateCenterView,
             "Settings" => SettingsCenterView,
             _ => GenerateCenterView
         };
 
-        foreach (var candidate in new[] { DashboardCenterView, GenerateCenterView, ImportExportCenterView, EditorCenterView, ImageToolsCenterView, ToolsCenterView, TutorialCenterView, BugReportsCenterView, SettingsCenterView })
+        foreach (var candidate in new[] { DashboardCenterView, GenerateCenterView, ImportExportCenterView, EditorCenterView, ImageToolsCenterView, ToolsCenterView, TutorialCenterView, BugReportsCenterView, UpdateCenterView, SettingsCenterView })
         {
             candidate.Visibility = candidate == centerView ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -573,7 +607,8 @@ public partial class MainWindow : Window
                 ("Tools", ToolsView, "06-tools.png"),
                 ("Help", TutorialView, "07-help.png"),
                 ("Bug Reports", BugReportsView, "08-bug-reports.png"),
-                ("Settings", SettingsView, "09-settings.png")
+                ("Update", UpdateView, "09-update.png"),
+                ("Settings", SettingsView, "10-settings.png")
             };
 
             foreach (var page in pages)

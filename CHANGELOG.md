@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.4
+- Limited the native theme dropdown to Sakura Glass while keeping the other theme definitions available in code.
+- Moved update controls into a dedicated Update tab with current/latest version display.
+- Update availability now changes header text color and blinks the Update tab button instead of using a colored header pill.
+
 ## 3.0.3
 - Fixed the Generate preview panel so starting a new run immediately takes over from older JSON/export previews.
 - Live generation preview polling now refreshes when the generator reports preview progress.
