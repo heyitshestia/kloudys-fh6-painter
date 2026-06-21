@@ -718,6 +718,7 @@ public partial class MainWindow : Window
             _activePreviewLength = 0;
             _latestGenerationProgressLine = null;
             ClearGenerationLogQueue();
+            SetImage(LatestPreviewImage, LatestPreviewPlaceholder, _selectedSourceImage);
             GenerateButton.IsEnabled = false;
             StopButton.IsEnabled = true;
             StatusText.Text = "Generating";
@@ -916,6 +917,7 @@ public partial class MainWindow : Window
             {
                 _activeGenerationRunDir = line["WPF_RUN_DIR:".Length..].Trim();
                 Log($"Run folder: {_activeGenerationRunDir}");
+                RefreshActiveRunPreview();
                 return;
             }
 
@@ -928,6 +930,11 @@ public partial class MainWindow : Window
                 SetImage(LatestPreviewImage, LatestPreviewPlaceholder, preview);
                 Log($"Preview ready: {preview}");
                 return;
+            }
+
+            if (IsPreviewProgressLine(line))
+            {
+                RefreshActiveRunPreview();
             }
 
             EnqueueGenerationLog(line);
@@ -988,6 +995,13 @@ public partial class MainWindow : Window
                line.Contains("score=", StringComparison.OrdinalIgnoreCase) ||
                line.Contains("shape=", StringComparison.OrdinalIgnoreCase) ||
                line.Contains("sample", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPreviewProgressLine(string line)
+    {
+        return line.StartsWith("Updated preview", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains("Saved preview snapshot", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains("Final preview:", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsImportantGenerationLine(string line)

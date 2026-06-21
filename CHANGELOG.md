@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.3
+- Fixed the Generate preview panel so starting a new run immediately takes over from older JSON/export previews.
+- Live generation preview polling now refreshes when the generator reports preview progress.
+
 ## 3.0.2
 - Switched the native version indicator to GitHub's contents API so checks do not get stale raw-cache results.
 
