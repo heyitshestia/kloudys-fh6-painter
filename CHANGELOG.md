@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 2.0.64
+- Updated the FH6 fast locator profile from the latest calibration pass.
+- Fixed calibrated locator fallback so stale game-build profiles no longer block normal fallback scanning.
+
 ## 2.0.62
 - Added a dedicated Fabric editor Text tab for generating editable vinyl text from real Forza font shapes.
 - Moved text generation out of Guides and kept it focused on the supported in-game Forza fonts for now.

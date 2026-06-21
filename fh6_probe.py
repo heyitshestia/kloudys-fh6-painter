@@ -26,9 +26,9 @@ READABLE_WRITABLE_MASK = 0xCC
 ROOT = Path(__file__).resolve().parent
 
 FH6_CALIBRATED_RTTI_PROFILE = {
-    "update_code": b"98170067497080",
-    "descriptor_offset": 0x9E17E20,
-    "vtable_offsets": [0x6802470],
+    "update_code": b"90396176695449",
+    "descriptor_offset": 0x9E2B7D0,
+    "vtable_offsets": [0x680ECC0],
     "base_class_count": 4,
 }
 
@@ -824,8 +824,12 @@ def locate_calibrated_clivery_group_rtti(pid, profile):
         found_code = read_process_memory(pid, descriptor_address + 0x10, len(update_code)).rstrip(b"\x00 ")
     except Exception:
         found_code = b""
-    if found_code and found_code != update_code.rstrip(b"\x00 "):
+    if not found_code:
+        print("Calibrated FH6 locator profile could not be verified; trying fallback locator.", flush=True)
+        return None
+    if found_code != update_code.rstrip(b"\x00 "):
         print("Calibrated FH6 locator profile did not match this game build; trying fallback locator.", flush=True)
+        return None
     print("Using calibrated FH6 group locator profile.", flush=True)
     return {
         "descriptor_address": descriptor_address,
