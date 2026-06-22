@@ -2787,7 +2787,7 @@ def main() -> int:
         final_preview_path = v2_preview_path_for_tag(out_dir, stem, checkpoint_tag)
         if force_opaque_shapes:
             final_shapes = force_opaque_drawables(final_shapes)
-        final_payload = {"shapes": [background] + final_shapes}
+        final_payload = {"shapes": final_shapes}
         save_json(final_json_path, final_payload)
         preview_written = int(record["index"]) in preview_indices
         if preview_written:
@@ -2799,6 +2799,8 @@ def main() -> int:
                 "candidate_path": str(candidate_path),
                 "raw_drawables": raw_count,
                 "final_drawables": len(final_shapes),
+                "background_dropped": True,
+                "final_import_layers": len(final_shapes),
                 "error": final_error,
                 "base_error": record["base_error"],
                 "background": background,
@@ -2856,6 +2858,8 @@ def main() -> int:
             "candidate": item["candidate"],
             "raw_drawables": item["raw_drawables"],
             "final_drawables": item["final_drawables"],
+            "background_dropped": item.get("background_dropped", False),
+            "final_import_layers": item.get("final_import_layers", item["final_drawables"]),
             "shape_types": shape_type_counts(item.get("kept_shapes", [])),
             "error": item["error"],
             "base_error": item["base_error"],
@@ -2928,6 +2932,8 @@ def main() -> int:
             "checkpoint_tag": best_accuracy["checkpoint_tag"],
             "raw_drawables": best_accuracy["raw_drawables"],
             "final_drawables": best_accuracy["final_drawables"],
+            "background_dropped": best_accuracy.get("background_dropped", False),
+            "final_import_layers": best_accuracy.get("final_import_layers", best_accuracy["final_drawables"]),
             "error": best_accuracy["error"],
             "base_error": best_accuracy["base_error"],
             "repair_applied": best_accuracy["repair_applied"],
@@ -2940,6 +2946,8 @@ def main() -> int:
             "checkpoint_tag": latest_checkpoint["checkpoint_tag"],
             "raw_drawables": latest_checkpoint["raw_drawables"],
             "final_drawables": latest_checkpoint["final_drawables"],
+            "background_dropped": latest_checkpoint.get("background_dropped", False),
+            "final_import_layers": latest_checkpoint.get("final_import_layers", latest_checkpoint["final_drawables"]),
             "error": latest_checkpoint["error"],
             "base_error": latest_checkpoint["base_error"],
             "repair_applied": latest_checkpoint["repair_applied"],
@@ -2953,8 +2961,16 @@ def main() -> int:
     save_json(report_path, report)
 
     print()
-    print(f"Best accuracy: {best_accuracy['candidate']} -> {best_accuracy['final_drawables']} shapes, error {best_accuracy['error']:.6f}")
-    print(f"Latest finalized checkpoint: {latest_checkpoint['candidate']} -> {latest_checkpoint['final_drawables']} shapes, error {latest_checkpoint['error']:.6f}")
+    print(
+        f"Best accuracy: {best_accuracy['candidate']} -> "
+        f"{best_accuracy.get('final_import_layers', best_accuracy['final_drawables'])} import layers "
+        f"({best_accuracy['final_drawables']} drawable), error {best_accuracy['error']:.6f}"
+    )
+    print(
+        f"Latest finalized checkpoint: {latest_checkpoint['candidate']} -> "
+        f"{latest_checkpoint.get('final_import_layers', latest_checkpoint['final_drawables'])} import layers "
+        f"({latest_checkpoint['final_drawables']} drawable), error {latest_checkpoint['error']:.6f}"
+    )
     for item in sorted(results, key=lambda entry: (entry["raw_drawables"], entry["candidate"])):
         print(f"Final JSON:     {item['v2_json']}")
         print(f"Final preview:  {item['v2_preview']}")

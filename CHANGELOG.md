@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.8
+- Fixed generated final JSONs carrying an extra background/canvas layer, so checkpoint layer counts now match the selected target.
+- Added the KFPS logo JSON to the shipped exported JSON folder.
+
 ## 3.0.7
 - Set Night Blossom as the only exposed native theme and default theme.
 - Fixed native WPF theme resource updates so frozen brushes and gradients do not trigger UI warnings.
