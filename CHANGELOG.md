@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.11
+- Reworked the native Night Blossom shell with the dedicated animated blossom backdrop.
+- Added dashboard card hover motion and denser ambient petals.
+- Fixed the JSON tab layer-count field so the value is not clipped.
+
 ## 3.0.10
 - Fixed the native FM8 export option so it maps to the backend Forza Motorsport profile.
 

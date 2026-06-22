@@ -2,25 +2,25 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Night Blossom is the active native shell material set. -->
-    <Color x:Key="Sakura.Background">#FF171116</Color>
-    <Color x:Key="Sakura.BackgroundAlt">#FF21131B</Color>
-    <Color x:Key="Sakura.Surface">#C4271B23</Color>
-    <Color x:Key="Sakura.SurfaceSoft">#9639222F</Color>
-    <Color x:Key="Sakura.SurfaceStrong">#D82E1F28</Color>
-    <Color x:Key="Sakura.GlassHighlight">#42FFFFFF</Color>
-    <Color x:Key="Sakura.Danger">#FFC93762</Color>
-    <Color x:Key="Sakura.Branch">#FF6C334A</Color>
-    <Color x:Key="Sakura.Border">#3DFFB8D3</Color>
-    <Color x:Key="Sakura.BorderStrong">#63FFB8D3</Color>
-    <Color x:Key="Sakura.Text">#FFFFF1F6</Color>
-    <Color x:Key="Sakura.TextMuted">#FFC9AEB9</Color>
-    <Color x:Key="Sakura.TextSubtle">#FF967B86</Color>
-    <Color x:Key="Sakura.Primary">#FFFF6B9D</Color>
-    <Color x:Key="Sakura.PrimaryLight">#FFFF9ABD</Color>
-    <Color x:Key="Sakura.PrimaryDeep">#FFFF4D8B</Color>
-    <Color x:Key="Sakura.PrimarySoft">#2EFF5D94</Color>
-    <Color x:Key="Sakura.Success">#FF248264</Color>
+    <!-- Night Blossom preset dictionary adapted to the existing KFPS native shell resource keys. -->
+    <Color x:Key="Sakura.Background">#FF170D14</Color>
+    <Color x:Key="Sakura.BackgroundAlt">#FF2B1420</Color>
+    <Color x:Key="Sakura.Surface">#A1261620</Color>
+    <Color x:Key="Sakura.SurfaceSoft">#7D411F30</Color>
+    <Color x:Key="Sakura.SurfaceStrong">#CC2E1B27</Color>
+    <Color x:Key="Sakura.GlassHighlight">#1AFFFFFF</Color>
+    <Color x:Key="Sakura.Danger">#FFFF668E</Color>
+    <Color x:Key="Sakura.Branch">#FF6A2D49</Color>
+    <Color x:Key="Sakura.Border">#15FFA8CB</Color>
+    <Color x:Key="Sakura.BorderStrong">#45FFA8CB</Color>
+    <Color x:Key="Sakura.Text">#FFFFF3F7</Color>
+    <Color x:Key="Sakura.TextMuted">#FFD4ADBD</Color>
+    <Color x:Key="Sakura.TextSubtle">#FFA47D8D</Color>
+    <Color x:Key="Sakura.Primary">#FFFF5594</Color>
+    <Color x:Key="Sakura.PrimaryLight">#FFFF88B6</Color>
+    <Color x:Key="Sakura.PrimaryDeep">#FFFF3F86</Color>
+    <Color x:Key="Sakura.PrimarySoft">#2BFF5594</Color>
+    <Color x:Key="Sakura.Success">#FF5FC69F</Color>
 
     <SolidColorBrush x:Key="SakuraBackgroundBrush" Color="{StaticResource Sakura.Background}"/>
     <SolidColorBrush x:Key="SakuraBackgroundAltBrush" Color="{StaticResource Sakura.BackgroundAlt}"/>
@@ -40,47 +40,50 @@
     <SolidColorBrush x:Key="SakuraPrimarySoftBrush" Color="{StaticResource Sakura.PrimarySoft}"/>
     <SolidColorBrush x:Key="SakuraSuccessBrush" Color="{StaticResource Sakura.Success}"/>
     <SolidColorBrush x:Key="SakuraWhiteBrush" Color="White"/>
-    <SolidColorBrush x:Key="SakuraHoverOverlayBrush" Color="#18FFFFFF"/>
-    <SolidColorBrush x:Key="SakuraPressedOverlayBrush" Color="#24000000"/>
+    <SolidColorBrush x:Key="SakuraHoverOverlayBrush" Color="#12FFFFFF"/>
+    <SolidColorBrush x:Key="SakuraPressedOverlayBrush" Color="#30000000"/>
 
     <LinearGradientBrush x:Key="SakuraWindowGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FF171116" Offset="0"/>
-        <GradientStop Color="#FF21131B" Offset="1"/>
+        <GradientStop Color="#FF170D14" Offset="0"/>
+        <GradientStop Color="#FF2B1420" Offset="0.52"/>
+        <GradientStop Color="#FF3B1729" Offset="1"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="SakuraGlassGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#CC2E1F28" Offset="0"/>
-        <GradientStop Color="#A83D2532" Offset="0.52"/>
-        <GradientStop Color="#8839222F" Offset="1"/>
+        <GradientStop Color="#D63C2432" Offset="0"/>
+        <GradientStop Color="#B8291923" Offset="0.56"/>
+        <GradientStop Color="#9E1D1219" Offset="1"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="SakuraGlassSoftGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#B839222F" Offset="0"/>
-        <GradientStop Color="#782E1F28" Offset="1"/>
+        <GradientStop Color="#A1432435" Offset="0"/>
+        <GradientStop Color="#80301A27" Offset="1"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="SakuraPrimaryGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="{StaticResource Sakura.PrimaryLight}" Offset="0"/>
+        <GradientStop Color="{StaticResource Sakura.Primary}" Offset="0.52"/>
         <GradientStop Color="{StaticResource Sakura.PrimaryDeep}" Offset="1"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="SakuraHeroGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#663D2532" Offset="0"/>
-        <GradientStop Color="#CC271B23" Offset="1"/>
+        <GradientStop Color="#8F68213E" Offset="0"/>
+        <GradientStop Color="#CC2E1B27" Offset="0.58"/>
+        <GradientStop Color="#B81B1018" Offset="1"/>
     </LinearGradientBrush>
 
-    <!-- Effects: keep blur restrained for WPF rendering performance. -->
+    <!-- Effects: smoked-glass depth without blurring the full visual tree. -->
     <DropShadowEffect x:Key="SakuraCardShadow"
                       Color="#CC000000"
-                      BlurRadius="18"
-                      ShadowDepth="4"
-                      Opacity="0.28"/>
-    <DropShadowEffect x:Key="SakuraRaisedShadow"
-                      Color="#CC000000"
-                      BlurRadius="30"
-                      ShadowDepth="8"
-                      Opacity="0.34"/>
-    <DropShadowEffect x:Key="SakuraPrimaryShadow"
-                      Color="#72ED3F82"
-                      BlurRadius="18"
+                      BlurRadius="22"
                       ShadowDepth="5"
-                      Opacity="0.32"/>
+                      Opacity="0.34"/>
+    <DropShadowEffect x:Key="SakuraRaisedShadow"
+                      Color="#DD000000"
+                      BlurRadius="38"
+                      ShadowDepth="9"
+                      Opacity="0.44"/>
+    <DropShadowEffect x:Key="SakuraPrimaryShadow"
+                      Color="#90FF5594"
+                      BlurRadius="24"
+                      ShadowDepth="6"
+                      Opacity="0.38"/>
 
     <CubicEase x:Key="SakuraEaseOut" EasingMode="EaseOut"/>
     <BackEase x:Key="SakuraSpring" Amplitude="0.22" EasingMode="EaseOut"/>
@@ -132,6 +135,44 @@
         <Setter Property="Background" Value="{StaticResource SakuraHeroGradient}"/>
         <Setter Property="Padding" Value="24"/>
         <Setter Property="CornerRadius" Value="22"/>
+    </Style>
+
+    <Style x:Key="SakuraHoverCard" TargetType="Border" BasedOn="{StaticResource SakuraCard}">
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <TransformGroup>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                    <TranslateTransform Y="0"/>
+                </TransformGroup>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <EventTrigger RoutedEvent="MouseEnter">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                         To="1.004" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                         To="1.004" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                         To="-2" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+            <EventTrigger RoutedEvent="MouseLeave">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                         To="1" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                         To="1" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                         To="0" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Keyboard focus visual -->
@@ -435,8 +476,8 @@
 
     <Style x:Key="SakuraDangerButton" TargetType="Button" BasedOn="{StaticResource SakuraButton}">
         <Setter Property="Foreground" Value="{StaticResource SakuraDangerBrush}"/>
-        <Setter Property="Background" Value="#18C93762"/>
-        <Setter Property="BorderBrush" Value="#38C93762"/>
+        <Setter Property="Background" Value="#18FF668E"/>
+        <Setter Property="BorderBrush" Value="#38FF668E"/>
     </Style>
 
     <Style x:Key="SakuraIconButton" TargetType="Button" BasedOn="{StaticResource SakuraButton}">
@@ -603,7 +644,7 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="#12ED3F82"/>
+                            <Setter TargetName="Chrome" Property="Background" Value="#12FF5594"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Chrome" Property="Background" Value="{StaticResource SakuraPrimarySoftBrush}"/>
@@ -673,10 +714,10 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-	                            <Setter TargetName="Track" Property="Background" Value="{StaticResource SakuraPrimaryGradient}"/>
-	                            <Setter TargetName="Track" Property="BorderBrush" Value="Transparent"/>
-	                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
-	                        </Trigger>
+                            <Setter TargetName="Track" Property="Background" Value="{StaticResource SakuraPrimaryGradient}"/>
+                            <Setter TargetName="Track" Property="BorderBrush" Value="Transparent"/>
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Track" Property="Opacity" Value="0.45"/>
                         </Trigger>
@@ -699,6 +740,104 @@
         </Setter>
     </Style>
 
+
+
+    <!-- Wrap hoverable card content in a ContentControl using this style. All motion uses transforms/opacity. -->
+    <Style x:Key="SakuraInteractiveCard" TargetType="ContentControl">
+        <Setter Property="Foreground" Value="{StaticResource SakuraTextBrush}"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContentControl">
+                    <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="Scale" ScaleX="1" ScaleY="1"/>
+                                <TranslateTransform x:Name="Lift" Y="0"/>
+                            </TransformGroup>
+                        </Grid.RenderTransform>
+                        <Border x:Name="Chrome"
+                                Background="{StaticResource SakuraGlassGradient}"
+                                BorderBrush="{StaticResource SakuraBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="18"
+                                Padding="16"
+                                Effect="{StaticResource SakuraCardShadow}">
+                            <Grid ClipToBounds="True">
+                                <ContentPresenter/>
+                                <Border x:Name="Glow"
+                                        Margin="-16"
+                                        CornerRadius="18"
+                                        BorderBrush="{StaticResource SakuraPrimaryBrush}"
+                                        BorderThickness="1"
+                                        Opacity="0"/>
+                                <Border x:Name="Sheen"
+                                        Width="110"
+                                        Margin="-16"
+                                        HorizontalAlignment="Left"
+                                        Opacity="0"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#00FFFFFF" Offset="0"/>
+                                            <GradientStop Color="#20FFFFFF" Offset="0.48"/>
+                                            <GradientStop Color="#10FF5594" Offset="0.55"/>
+                                            <GradientStop Color="#00FFFFFF" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.RenderTransform>
+                                        <TransformGroup>
+                                            <SkewTransform AngleX="-16"/>
+                                            <TranslateTransform x:Name="SheenMove" X="-180"/>
+                                        </TransformGroup>
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="Lift" Storyboard.TargetProperty="Y" To="-2" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                    <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleX" To="1.004" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                    <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleY" To="1.004" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                    <DoubleAnimation Storyboard.TargetName="Glow" Storyboard.TargetProperty="Opacity" To="0.42" Duration="0:0:0.18"/>
+                                    <DoubleAnimation Storyboard.TargetName="Sheen" Storyboard.TargetProperty="Opacity" From="0" To="0.65" AutoReverse="True" Duration="0:0:0.34"/>
+                                    <DoubleAnimation Storyboard.TargetName="SheenMove" Storyboard.TargetProperty="X" From="-180" To="620" Duration="0:0:0.68" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="Lift" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                    <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                    <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.18" EasingFunction="{StaticResource SakuraEaseOut}"/>
+                                    <DoubleAnimation Storyboard.TargetName="Glow" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.18"/>
+                                    <DoubleAnimation Storyboard.TargetName="Sheen" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.10"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Storyboard x:Key="SakuraThemeSwapOut">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0.88" Duration="0:0:0.12" EasingFunction="{StaticResource SakuraEaseOut}"/>
+        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0.997" Duration="0:0:0.12"/>
+        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="0.997" Duration="0:0:0.12"/>
+    </Storyboard>
+
+    <Storyboard x:Key="SakuraThemeSwapIn">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.88" To="1" Duration="0:0:0.24" EasingFunction="{StaticResource SakuraEaseOut}"/>
+        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="0.997" To="1" Duration="0:0:0.24" EasingFunction="{StaticResource SakuraSpring}"/>
+        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="0.997" To="1" Duration="0:0:0.24" EasingFunction="{StaticResource SakuraSpring}"/>
+    </Storyboard>
+
+
     <!-- Static fallback branch for views that cannot host the animated SakuraBackdrop control. -->
     <DrawingBrush x:Key="SakuraBranchFallbackBrush"
                   Stretch="UniformToFill"
@@ -719,7 +858,7 @@
                 <GeometryDrawing Geometry="M 202,205 C 247,158 277,107 298,37 M 382,119 C 447,103 514,65 565,4 M 517,94 C 615,117 704,154 789,222 M 650,72 C 741,73 823,95 917,145">
                     <GeometryDrawing.Pen><Pen Brush="{StaticResource SakuraBranchBrush}" Thickness="7" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen>
                 </GeometryDrawing>
-                <GeometryDrawing Brush="#E8FF86B4" Geometry="M 112,250 C 121,238 136,239 142,252 C 133,265 119,267 112,250 Z M 232,179 C 242,165 258,168 264,181 C 254,194 240,195 232,179 Z M 420,101 C 430,87 446,90 451,104 C 441,117 427,117 420,101 Z M 643,124 C 654,109 670,113 675,127 C 664,140 650,140 643,124 Z M 824,92 C 835,78 851,82 856,96 C 845,109 831,109 824,92 Z"/>
+                <GeometryDrawing Brush="#B8FF6A9F" Geometry="M 112,250 C 121,238 136,239 142,252 C 133,265 119,267 112,250 Z M 232,179 C 242,165 258,168 264,181 C 254,194 240,195 232,179 Z M 420,101 C 430,87 446,90 451,104 C 441,117 427,117 420,101 Z M 643,124 C 654,109 670,113 675,127 C 664,140 650,140 643,124 Z M 824,92 C 835,78 851,82 856,96 C 845,109 831,109 824,92 Z"/>
             </DrawingGroup>
         </DrawingBrush.Drawing>
     </DrawingBrush>

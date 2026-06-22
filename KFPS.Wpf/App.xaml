@@ -62,7 +62,7 @@
                 <Setter Property="Margin" Value="0,0,0,8" />
             </Style>
 
-            <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource SakuraCard}" />
+            <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource SakuraHoverCard}" />
             <Style x:Key="TightCard" TargetType="Border" BasedOn="{StaticResource SakuraGlassPanelSoft}">
                 <Setter Property="Padding" Value="12" />
                 <Setter Property="Margin" Value="0,0,0,10" />

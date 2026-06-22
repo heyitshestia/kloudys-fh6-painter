@@ -351,10 +351,10 @@ public partial class MainWindow : Window
         [
             new ThemeDefinition(
                 "Night Blossom",
-                "#FF171116", "#FF21131B", "#FF2A1822",
-                "#FFFFF1F6", "#FFC9AEB9", "#FF967B86",
-                "#CC271B23", "#B839222F", "#CC3D2532", "#E82E1F28",
-                "#FFFF6B9D", "#FFFF4D8B", "#66FF6B9D", "#3DFFB8D3"),
+                "#FF170D14", "#FF2B1420", "#FF3B1729",
+                "#FFFFF3F7", "#FFD4ADBD", "#FFA47D8D",
+                "#A1261620", "#7D411F30", "#CC2E1B27", "#CC2E1B27",
+                "#FFFF5594", "#FFFF3F86", "#2BFF5594", "#45FFA8CB"),
             new ThemeDefinition(
                 "KFPS Modern",
                 "#FF0B0F14", "#FF111821", "#FF16212D",
@@ -4174,17 +4174,17 @@ Write-HandoffLog "Native update handoff finished."
         }
 
         private static readonly ThemeMaterial NightBlossom = new(
-            "#FF171116", "#FF21131B",
-            "#C4271B23", "#9639222F", "#D82E1F28", "#42FFFFFF",
-            "#3DFFB8D3", "#63FFB8D3",
-            "#FFFFF1F6", "#FFC9AEB9", "#FF967B86",
-            "#FFFF6B9D", "#FFFF9ABD", "#FFFF4D8B", "#2EFF5D94",
-            "#18FFFFFF", "#24000000",
-            "#CC2E1F28", "#A83D2532", "#8839222F",
-            "#B839222F", "#782E1F28",
-            "#663D2532", "#CC271B23",
-            "#CC000000", 0.28, 0.34,
-            "#88FF4D8B", 0.35,
+            "#FF170D14", "#FF2B1420",
+            "#A1261620", "#7D411F30", "#CC2E1B27", "#1AFFFFFF",
+            "#15FFA8CB", "#45FFA8CB",
+            "#FFFFF3F7", "#FFD4ADBD", "#FFA47D8D",
+            "#FFFF5594", "#FFFF88B6", "#FFFF3F86", "#2BFF5594",
+            "#12FFFFFF", "#30000000",
+            "#D63C2432", "#B8291923", "#9E1D1219",
+            "#A1432435", "#80301A27",
+            "#8F68213E", "#CC2E1B27",
+            "#CC000000", 0.34, 0.44,
+            "#90FF5594", 0.38,
             "#FF9D2253");
 
     }

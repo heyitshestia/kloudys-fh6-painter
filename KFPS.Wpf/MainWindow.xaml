@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBackgroundBrush}">
     <Grid>
-        <theme:SakuraBackdrop IsAmbientMotionEnabled="True" />
+        <theme:NightBlossomBackdrop IsAmbientMotionEnabled="True" />
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="56" />
@@ -254,7 +254,7 @@
                             <ComboBoxItem Content="FM8" />
                         </ComboBox>
                         <TextBlock Text="Loaded template / group layers" Style="{StaticResource TinyLabel}" Margin="0,12,0,6" />
-	                        <TextBox x:Name="TransferLayerCountTextBox" Text="3000" Height="42" Padding="8,7" VerticalContentAlignment="Center" ToolTip="For import: loaded template layer count. For export: visible layer count of the open group." />
+		                        <TextBox x:Name="TransferLayerCountTextBox" Text="3000" MinHeight="46" Padding="9,4" VerticalContentAlignment="Center" ToolTip="For import: loaded template layer count. For export: visible layer count of the open group." />
                         <TextBlock Text="JSON source" Style="{StaticResource TinyLabel}" Margin="0,12,0,6" />
                         <ComboBox x:Name="JsonSourceComboBox" SelectedIndex="0" SelectionChanged="JsonSourceComboBox_SelectionChanged">
                             <ComboBoxItem Content="Generated finals" />
