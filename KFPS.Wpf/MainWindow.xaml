@@ -8,12 +8,16 @@
         MinWidth="1140"
         MinHeight="720"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource AppBackgroundBrush}">
+        Background="{DynamicResource AppBackgroundBrush}"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
     <Grid>
         <theme:NightBlossomBackdrop IsAmbientMotionEnabled="True" />
     <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="56" />
+            <RowDefinition Height="60" />
             <RowDefinition Height="*" />
             <RowDefinition Height="160" />
         </Grid.RowDefinitions>
@@ -58,7 +62,8 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="244" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
                     <Border Width="34" Height="34" CornerRadius="12" Background="{DynamicResource AccentDeepBrush}" Margin="0,0,10,0">
@@ -70,13 +75,18 @@
 	                    <TextBlock Text="  /  " Foreground="{DynamicResource DimInkBrush}" VerticalAlignment="Center" />
 	                    <TextBlock x:Name="StatusText" Text="Ready" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" />
 	                </StackPanel>
-                <Border x:Name="VersionStatusPill" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Border x:Name="VersionStatusPill" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Panel.ZIndex="2"
-                        Background="Transparent" BorderThickness="0" Padding="14,5" ToolTip="KFPS version status">
-                    <TextBlock x:Name="VersionStatusText" Text="Version checking..." FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource MutedInkBrush}" TextWrapping="NoWrap" />
+                        Width="244" Height="32"
+                        Style="{StaticResource KfpsStatusPillStyle}"
+                        ToolTip="KFPS version status">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Ellipse x:Name="VersionUpdateDot" Width="8" Height="8" Fill="{DynamicResource Success}" Margin="0,0,8,0" Opacity="1" />
+                        <TextBlock x:Name="VersionStatusText" Text="Version checking..." FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Success}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                 </Border>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                     <TextBlock Text="THEME" Style="{StaticResource TinyLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <ComboBox x:Name="ThemeComboBox" Width="175" SelectionChanged="ThemeComboBox_SelectionChanged" />
                 </StackPanel>
@@ -90,68 +100,68 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <StackPanel>
-                    <Button Style="{StaticResource NavButton}" Click="ShowDashboard" ToolTip="Dashboard">
+                    <ToggleButton x:Name="NavDashboardButton" Style="{StaticResource NavButton}" Click="ShowDashboard" ToolTip="Dashboard">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="⌂" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Home" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Home" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowGenerate" ToolTip="Generate Final Vinyl">
+                    </ToggleButton>
+                    <ToggleButton x:Name="NavGenerateButton" Style="{StaticResource NavButton}" Click="ShowGenerate" ToolTip="Generate Final Vinyl">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="◆" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Generate" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Generate" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowImportExport" ToolTip="Import / Export JSON">
+                    </ToggleButton>
+                    <ToggleButton x:Name="NavJsonButton" Style="{StaticResource NavButton}" Click="ShowImportExport" ToolTip="Import / Export JSON">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="⇄" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="JSON" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="JSON" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowEditor" ToolTip="Editor">
+                    </ToggleButton>
+                    <ToggleButton x:Name="NavEditorButton" Style="{StaticResource NavButton}" Click="ShowEditor" ToolTip="Editor">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="✎" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Editor" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Editor" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowImageTools" ToolTip="Image Tools">
+                    </ToggleButton>
+                    <ToggleButton x:Name="NavImagesButton" Style="{StaticResource NavButton}" Click="ShowImageTools" ToolTip="Image Tools">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="▧" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Images" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Images" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowTools" ToolTip="Tools">
+                    </ToggleButton>
+                    <ToggleButton x:Name="NavToolsButton" Style="{StaticResource NavButton}" Click="ShowTools" ToolTip="Tools">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="⚒" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Tools" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Tools" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowTutorial" ToolTip="Tutorial">
+                    </ToggleButton>
+                    <ToggleButton x:Name="NavHelpButton" Style="{StaticResource NavButton}" Click="ShowTutorial" ToolTip="Tutorial">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="?" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Help" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Help" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-	                    <Button Style="{StaticResource NavButton}" Click="ShowBugReports" ToolTip="Bug Reports">
+                    </ToggleButton>
+	                    <ToggleButton x:Name="NavReportsButton" Style="{StaticResource NavButton}" Click="ShowBugReports" ToolTip="Bug Reports">
 	                        <StackPanel HorizontalAlignment="Center">
 	                            <TextBlock Text="!" FontSize="18" TextAlignment="Center" />
-	                            <TextBlock Text="Reports" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+	                            <TextBlock Text="Reports" FontSize="10" TextAlignment="Center" />
 	                        </StackPanel>
-	                    </Button>
-                    <Button Style="{StaticResource NavButton}" Click="ShowUpdate" ToolTip="Update">
+	                    </ToggleButton>
+                    <ToggleButton x:Name="NavUpdateButton" Style="{StaticResource NavButton}" Click="ShowUpdate" ToolTip="Update">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="↻" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Update" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Update" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
-	                    <Button Style="{StaticResource NavButton}" Click="ShowSettings" ToolTip="Settings">
+                    </ToggleButton>
+	                    <ToggleButton x:Name="NavSettingsButton" Style="{StaticResource NavButton}" Click="ShowSettings" ToolTip="Settings">
 	                        <StackPanel HorizontalAlignment="Center">
 	                            <TextBlock Text="⚙" FontSize="18" TextAlignment="Center" />
-                            <TextBlock Text="Settings" FontSize="10" TextAlignment="Center" Foreground="{DynamicResource MutedInkBrush}" />
+                            <TextBlock Text="Settings" FontSize="10" TextAlignment="Center" />
                         </StackPanel>
-                    </Button>
+                    </ToggleButton>
                 </StackPanel>
-                <Button Grid.Row="1" Style="{StaticResource NavButton}" Click="OpenAppRoot" ToolTip="Open app root">
+                <Button Grid.Row="1" Style="{StaticResource KfpsGhostButtonStyle}" Click="OpenAppRoot" ToolTip="Open app root" Height="46" Margin="0">
                     <TextBlock Text="↗" FontSize="18" TextAlignment="Center" />
                 </Button>
             </Grid>
@@ -303,6 +313,16 @@
                         <TextBox x:Name="TutorialSearchTextBox"
                                  TextChanged="TutorialSearchTextChanged"
                                  Margin="0,16,0,12"
+                                 Height="38"
+                                 Style="{x:Null}"
+                                 Background="{DynamicResource InputBackgroundBrush}"
+                                 Foreground="{DynamicResource Text}"
+                                 CaretBrush="{DynamicResource PrimaryBright}"
+                                 BorderThickness="0"
+                                 Padding="12,8"
+                                 FontFamily="{DynamicResource Font.Ui}"
+                                 FontSize="{DynamicResource Type.BodyCompact}"
+                                 VerticalContentAlignment="Center"
                                  ToolTip="Search help topics" />
                         <Button x:Name="HelpTopicWorkflow" Content="Start here" Tag="workflow" Click="ShowTutorialTopic" />
                         <Button x:Name="HelpTopicGenerate" Content="Generate vinyls" Tag="generate" Click="ShowTutorialTopic" />
@@ -344,25 +364,28 @@
                 Grid.Column="1"
                 Grid.ColumnSpan="3"
                 Visibility="Collapsed"
-                Background="{DynamicResource ControlBrush}"
-                BorderBrush="{DynamicResource BorderBrushSoft}"
-                BorderThickness="1"
-                CornerRadius="4"
+                Background="Transparent"
+                BorderThickness="0"
                 Margin="0,10,10,10"
-                Padding="18">
+                Padding="14">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="50" />
+                    <RowDefinition Height="10" />
+                    <RowDefinition Height="150" />
+                    <RowDefinition Height="10" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-	                <StackPanel>
-	                    <TextBlock Text="Welcome to KFPS" FontSize="26" FontWeight="SemiBold" />
-	                    <TextBlock Text="Generate vinyls, refine them by hand, import JSONs into the game, export editable work, and keep projects organized from one focused native app." Style="{StaticResource MutedText}" MaxWidth="980" />
-	                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Welcome to KFPS" Style="{StaticResource KfpsDashboardTitleText}" Height="32" />
+                    <TextBlock Text="Generate vinyls, refine them by hand, import JSONs into the game, and keep every project organized in one native workspace."
+                               Style="{StaticResource KfpsCompactBodyText}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxHeight="18" />
+                </StackPanel>
 
-                <Grid Grid.Row="1" Margin="0,18,0,18">
+                <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1*" />
                         <ColumnDefinition Width="12" />
@@ -370,85 +393,118 @@
                         <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="1*" />
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="1*" />
-                        <RowDefinition Height="12" />
-                        <RowDefinition Height="1*" />
-                    </Grid.RowDefinitions>
 
-                    <Border Style="{StaticResource Card}" Margin="0">
-                        <StackPanel>
-	                            <TextBlock Text="1. Create or select a JSON" Style="{StaticResource SectionTitle}" />
-	                            <TextBlock Text="Start from a source image, a generated checkpoint, an editor export, or an exported game JSON." Style="{StaticResource MutedText}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                <Button Content="Generate tab" Style="{StaticResource PrimaryButton}" Click="ShowGenerate" />
+                    <Border Style="{StaticResource Card}" Height="150">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="34" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource KfpsStepBadgeStyle}" Margin="0,0,10,0">
+                                    <TextBlock Text="1" Foreground="White" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="Create or select a JSON" Style="{StaticResource KfpsCardTitleText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1"
+                                       Text="Start from a source image, a generated checkpoint, an editor export, or a saved game JSON."
+                                       Style="{StaticResource KfpsCompactBodyText}"
+                                       Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                <Button Content="Generate" Style="{StaticResource PrimaryButton}" Click="ShowGenerate" MinWidth="118" />
                                 <Button Content="Browse JSON" Click="ChooseJsonFile" />
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
 
-                    <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0">
-                        <StackPanel>
-                            <TextBlock Text="2. Edit by hand" Style="{StaticResource SectionTitle}" />
-                            <TextBlock Text="Use the external vinyl editor for scratch builds, cleanup, source overlays, snapping, groups, masks, text, pixel art, colors, and exports." Style="{StaticResource MutedText}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                <Button Content="Open editor" Style="{StaticResource PrimaryButton}" Click="StartFabricEditor" />
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Height="150">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="34" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource KfpsStepBadgeStyle}" Margin="0,0,10,0">
+                                    <TextBlock Text="2" Foreground="White" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="Edit by hand" Style="{StaticResource KfpsCardTitleText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1"
+                                       Text="Open the external vinyl editor for cleanup, shape work, masks, text, pixel art, color, and final polish."
+                                       Style="{StaticResource KfpsCompactBodyText}"
+                                       Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                <Button Content="Open editor" Style="{StaticResource PrimaryButton}" Click="StartFabricEditor" MinWidth="118" />
                                 <Button Content="Projects" Click="OpenEditorProjectsFolder" />
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
 
-                    <Border Grid.Column="4" Style="{StaticResource Card}" Margin="0">
-                        <StackPanel>
-                            <TextBlock Text="3. Import or export" Style="{StaticResource SectionTitle}" />
-                            <TextBlock Text="Import selected JSONs into the loaded template, export editable game groups, and keep generated, editor, and exported folders separated." Style="{StaticResource MutedText}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                <Button Content="Transfer tab" Style="{StaticResource PrimaryButton}" Click="ShowImportExport" />
+                    <Border Grid.Column="4" Style="{StaticResource Card}" Height="150">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="34" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource KfpsStepBadgeStyle}" Margin="0,0,10,0">
+                                    <TextBlock Text="3" Foreground="White" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="Import or export" Style="{StaticResource KfpsCardTitleText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1"
+                                       Text="Load a game template, import the selected JSON, or export editable game groups without mixing output folders."
+                                       Style="{StaticResource KfpsCompactBodyText}"
+                                       Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                <Button Content="Transfer" Style="{StaticResource PrimaryButton}" Click="ShowImportExport" MinWidth="118" />
                                 <Button Content="Runtime" Click="OpenRuntimeFolder" />
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource KfpsHeroCardStyle}">
+                        <Grid>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="720">
+                                <TextBlock Text="HELLOOO!" FontSize="30" FontWeight="Bold" TextAlignment="Center" Foreground="{DynamicResource PrimaryBright}" />
+                                <TextBlock Text="If KFPS saved you time or helped finish a vinyl, a small tip is always appreciated."
+                                           Style="{StaticResource KfpsBodyText}"
+                                           TextAlignment="Center"
+                                           Margin="0,5,0,14" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button Content="Open Ko-fi" Style="{StaticResource PrimaryButton}" Click="OpenKofi" Padding="24,0" />
+                                    <Button Content="Read changelog" Click="RefreshDashboardChangelog" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="0" Padding="0" CornerRadius="10" BorderThickness="2">
-                        <Border.BorderBrush>
-                            <SolidColorBrush x:Name="KofiRimBrush" Color="#FFFF6B9E" />
-                        </Border.BorderBrush>
-                        <Border.Triggers>
-                            <EventTrigger RoutedEvent="Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                        <ColorAnimation Storyboard.TargetName="KofiRimBrush"
-                                                        Storyboard.TargetProperty="Color"
-                                                        To="#FFE9427F"
-                                                        Duration="0:0:1.25" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </Border.Triggers>
-                        <Border.Effect>
-                            <DropShadowEffect Color="#FFFF6B9E" BlurRadius="18" ShadowDepth="0" Opacity="0.22" />
-                        </Border.Effect>
-                        <Border Background="#FFFFE3EE" CornerRadius="8" Padding="18">
-                            <Grid>
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="720">
-                                    <TextBlock Text="HELLOOO!" FontSize="30" FontWeight="Bold" TextAlignment="Center" Foreground="#FFB8175C" />
-	                                    <TextBlock Text="If KFPS saved you time or helped finish a vinyl, a small tip is always appreciated." FontSize="14" TextAlignment="Center" Foreground="#FF6B2D48" Margin="0,5,0,14" />
-	                                    <Button Content="Open Ko-fi" Style="{StaticResource PrimaryButton}" Click="OpenKofi" HorizontalAlignment="Center" Padding="24,9" />
-	                                </StackPanel>
-                            </Grid>
-                        </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Card}">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="JSON folders and quick access" Style="{StaticResource KfpsCardTitleText}" />
+                                <TextBlock Text="Keep generated finals, editor exports, and game-ready JSONs separated and easy to inspect."
+                                           Style="{StaticResource KfpsCompactBodyText}"
+                                           Margin="0,8,0,0" />
+                            </StackPanel>
+                            <TextBlock Text="...\runtime\json\generated" Style="{StaticResource KfpsCompactBodyText}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0,0,0,44" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                                <Button Content="Open JSON folders" Style="{StaticResource PrimaryButton}" Click="OpenJsonFolders" />
+                                <Button Content="Open root" Click="OpenAppRoot" MinWidth="130" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
-
-                    <Border Grid.Row="2" Grid.Column="4" Style="{StaticResource Card}" Margin="0">
-                        <StackPanel>
-                            <TextBlock Text="JSON folders" Style="{StaticResource SectionTitle}" />
-                            <TextBlock Text="Open the folder that contains generated finals, editor exports, and exported JSONs for import." Style="{StaticResource MutedText}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-	                                <Button Content="Open JSON folders" Style="{StaticResource PrimaryButton}" Click="OpenJsonFolders" />
-	                            </StackPanel>
-	                        </StackPanel>
-	                    </Border>
-	                </Grid>
+                </Grid>
 	            </Grid>
         </Border>
 
@@ -946,26 +1002,38 @@
                                     <TextBlock Text="Keep it specific. What happened, what you expected, and what you were doing right before it broke." Style="{StaticResource MutedText}" />
                                 </StackPanel>
                                 <Grid Grid.Row="1" Margin="0,16,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="160" />
-                                        <ColumnDefinition Width="12" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="10" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <StackPanel>
+                                        <TextBlock Text="TITLE" Style="{StaticResource TinyLabel}" />
+                                        <TextBox x:Name="ReportTitleTextBox"
+                                                 Text="Title"
+                                                 Margin="0,6,0,0"
+                                                 Height="38"
+                                                 Style="{x:Null}"
+                                                 Background="{DynamicResource InputBackgroundBrush}"
+                                                 Foreground="{DynamicResource Text}"
+                                                 CaretBrush="{DynamicResource PrimaryBright}"
+                                                 BorderThickness="0"
+                                                 Padding="12,8"
+                                                 FontFamily="{DynamicResource Font.Ui}"
+                                                 FontSize="{DynamicResource Type.BodyCompact}"
+                                                 VerticalContentAlignment="Center" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="2">
                                         <TextBlock Text="TYPE" Style="{StaticResource TinyLabel}" />
-                                        <ComboBox x:Name="ReportTypeComboBox" SelectedIndex="0" Margin="0,6,0,0">
+                                        <ComboBox x:Name="ReportTypeComboBox" SelectedIndex="0" Margin="0,6,0,0" BorderThickness="0" Height="38">
                                             <ComboBoxItem Content="Bug" />
                                             <ComboBoxItem Content="Suggestion" />
                                         </ComboBox>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="TITLE" Style="{StaticResource TinyLabel}" />
-                                        <TextBox x:Name="ReportTitleTextBox" Text="Title" Margin="0,6,0,0" />
-                                    </StackPanel>
                                 </Grid>
                                 <StackPanel Grid.Row="2">
                                     <TextBlock Text="DETAILS" Style="{StaticResource TinyLabel}" />
-                                    <TextBox x:Name="ReportDetailsTextBox" Text="Details" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="132" />
+                                    <TextBox x:Name="ReportDetailsTextBox" Text="Details" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="148" />
                                     <TextBlock Text="Include context" Style="{StaticResource TinyLabel}" Margin="0,10,0,6" />
                                     <CheckBox x:Name="ReportIncludeContextCheckBox" Content="App version and selected theme" IsChecked="True" />
                                     <CheckBox x:Name="ReportIncludeLogCheckBox" Content="Visible app log text" />
@@ -1093,7 +1161,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Current app root" Style="{StaticResource SectionTitle}" />
-                                    <TextBox x:Name="AppRootText" IsReadOnly="True" TextWrapping="Wrap" />
+                                    <TextBox x:Name="AppRootText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="52" VerticalContentAlignment="Center" />
                                 </StackPanel>
                                 <UniformGrid Grid.Column="2" Columns="2" Rows="2" VerticalAlignment="Center">
 	                                    <Button Content="Runtime" Click="OpenRuntimeFolder" Padding="12,7" />
@@ -1141,16 +1209,18 @@
 	                         IsReadOnly="True"
 	                         AcceptsReturn="True"
 	                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Hidden"
+                             VerticalScrollBarVisibility="Hidden"
 		                         HorizontalScrollBarVisibility="Disabled"
 		                         FontFamily="Cascadia Mono, Consolas"
 		                         FontSize="12"
                                  Foreground="{DynamicResource LogInkBrush}"
-		                         Background="#FFFFFFFF"
+		                         Background="Transparent"
                                  BorderThickness="0"
                                  Padding="8,7"
+                                 MinHeight="118"
+                                 HorizontalAlignment="Stretch"
                                  VerticalAlignment="Stretch"
-                                 VerticalContentAlignment="Stretch"
+                                 VerticalContentAlignment="Top"
 		                         Margin="0,0,10,0" />
 	                <Button x:Name="LogActionButton" Grid.Column="1" Content="Clear" Click="ClearLog" Padding="12,6" VerticalAlignment="Top" />
 	            </Grid>

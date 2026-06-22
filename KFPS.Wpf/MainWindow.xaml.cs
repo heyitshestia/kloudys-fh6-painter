@@ -11,7 +11,6 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -162,11 +161,11 @@ public partial class MainWindow : Window
             _latestVersion = remoteVersion;
             if (IsRemoteVersionNewer(_localVersion, remoteVersion))
             {
-                SetVersionStatus($"KFPS v{_localVersion}  ->  v{remoteVersion} available", updateAvailable: true, $"Update available: local {_localVersion}, GitHub main {remoteVersion}.");
+                SetVersionStatus($"Update {remoteVersion} available", updateAvailable: true, $"Update available: local {_localVersion}, GitHub main {remoteVersion}.");
             }
             else
             {
-                SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Up to date. Local {_localVersion}, GitHub main {remoteVersion}.");
+                SetVersionStatus($"KFPS {_localVersion} is current", updateAvailable: false, $"Up to date. Local {_localVersion}, GitHub main {remoteVersion}.");
             }
         }
         catch (Exception ex)
@@ -174,7 +173,7 @@ public partial class MainWindow : Window
             if (!_updateAvailable)
             {
                 _latestVersion = "unavailable";
-                SetVersionStatus($"KFPS v{_localVersion}", updateAvailable: false, $"Could not check GitHub version: {ex.Message}");
+                SetVersionStatus($"KFPS {_localVersion}", updateAvailable: false, $"Could not check GitHub version: {ex.Message}");
             }
         }
         finally
@@ -190,15 +189,19 @@ public partial class MainWindow : Window
         VersionStatusText.Text = text;
         VersionStatusPill.ToolTip = tooltip;
         VersionStatusText.Opacity = 1.0;
+        VersionUpdateDot.Visibility = Visibility.Visible;
+        VersionUpdateDot.Opacity = 1.0;
         UpdateVersionPageState();
 
         if (updateAvailable)
         {
-            VersionStatusText.Foreground = new SolidColorBrush(Color.FromRgb(210, 23, 62));
+            VersionStatusText.Foreground = (Brush)Application.Current.Resources["Danger"];
+            VersionUpdateDot.Fill = (Brush)Application.Current.Resources["Danger"];
         }
         else
         {
-            VersionStatusText.ClearValue(TextBlock.ForegroundProperty);
+            VersionStatusText.Foreground = (Brush)Application.Current.Resources["Success"];
+            VersionUpdateDot.Fill = (Brush)Application.Current.Resources["Success"];
         }
     }
 
@@ -207,6 +210,9 @@ public partial class MainWindow : Window
         if (!_updateAvailable)
         {
             VersionStatusText.Opacity = 1.0;
+            VersionUpdateDot.Visibility = Visibility.Visible;
+            VersionUpdateDot.Opacity = 1.0;
+            VersionUpdateDot.Fill = (Brush)Application.Current.Resources["Success"];
             UpdatePageButton.Opacity = 1.0;
             UpdatePageButton.ClearValue(Control.BackgroundProperty);
             UpdatePageButton.ClearValue(Control.BorderBrushProperty);
@@ -215,7 +221,10 @@ public partial class MainWindow : Window
         }
 
         _versionBlinkVisible = !_versionBlinkVisible;
-        VersionStatusText.Opacity = _versionBlinkVisible ? 1.0 : 0.22;
+        VersionStatusText.Opacity = 1.0;
+        VersionUpdateDot.Visibility = Visibility.Visible;
+        VersionUpdateDot.Opacity = _versionBlinkVisible ? 1.0 : 0.35;
+        VersionUpdateDot.Fill = (Brush)Application.Current.Resources["Danger"];
         UpdatePageButton.Opacity = 1.0;
         UpdatePageButton.Foreground = Brushes.White;
         UpdatePageButton.Background = new SolidColorBrush(_versionBlinkVisible ? Color.FromRgb(210, 23, 62) : Color.FromRgb(126, 10, 35));
@@ -339,10 +348,7 @@ public partial class MainWindow : Window
 
     private List<ThemeDefinition> SelectableThemes()
     {
-        // Keep the full theme list in code, but expose only the polished native shell theme for now.
-        return _themes
-            .Where(theme => theme.Name is "Night Blossom")
-            .ToList();
+        return _themes;
     }
 
     private static List<ThemeDefinition> BuildThemes()
@@ -356,41 +362,11 @@ public partial class MainWindow : Window
                 "#A1261620", "#7D411F30", "#CC2E1B27", "#CC2E1B27",
                 "#FFFF5594", "#FFFF3F86", "#2BFF5594", "#45FFA8CB"),
             new ThemeDefinition(
-                "KFPS Modern",
-                "#FF0B0F14", "#FF111821", "#FF16212D",
-                "#FFEFF4F8", "#FF9DAAB7", "#FF697684",
-                "#FF121820", "#FF18212C", "#FF202B38", "#FF0E141B",
-                "#FF74D3FF", "#FF247BA0", "#5574D3FF", "#334C5B68"),
-            new ThemeDefinition(
-                "Blackout Neon",
-                "#FF050507", "#FF0C0F12", "#FF15151D",
-                "#FFF7F9FF", "#FFB4BAC7", "#FF727887",
-                "#EE08090C", "#CC10131A", "#EE1A1F2B", "#FF0B0E14",
-                "#FF60D5FF", "#FF1B6E9C", "#6660D5FF", "#55FFFFFF"),
-            new ThemeDefinition(
-                "Matrix Terminal",
-                "#FF001207", "#FF001C0B", "#FF00280F",
-                "#FFE6FFE8", "#FF9EE9AA", "#FF5BA566",
-                "#EE001006", "#CC001A0A", "#EE003313", "#FF001508",
-                "#FF52FF75", "#FF0F8F2C", "#6652FF75", "#6637FF5D"),
-            new ThemeDefinition(
-                "Arc Reactor Red",
-                "#FF140303", "#FF2C0606", "#FF3E0D05",
-                "#FFFFF5EA", "#FFE7C8A8", "#FF9F856B",
-                "#EE1A0806", "#CC2A0A07", "#EE4A120B", "#FF200706",
-                "#FFFFC35A", "#FFC23621", "#66FFCE7A", "#55FFDDA4"),
-            new ThemeDefinition(
-                "Deep Forge Blue",
-                "#FF06111C", "#FF071B2A", "#FF102B42",
-                "#FFF2FAFF", "#FFB6CEDD", "#FF728B9E",
-                "#FF06101A", "#FF0C2031", "#FF143149", "#FF081722",
-                "#FF8AC7FF", "#FF2D6594", "#668AC7FF", "#55C8E5FF"),
-            new ThemeDefinition(
-                "Windows Vista Aero",
-                "#FF20354A", "#FF2D5575", "#FF162A3E",
-                "#FFF4FAFF", "#FFC2D3E3", "#FF7C90A4",
-                "#FF102131", "#FF18334B", "#FF244C6D", "#FF0D1B28",
-                "#FF8ED9FF", "#FF2E7BC0", "#668ED9FF", "#55FFFFFF")
+                "Blackout",
+                "#FF020203", "#FF070609", "#FF100A0E",
+                "#FFF7F5F8", "#FFB7B0B8", "#FF77717A",
+                "#C4121216", "#941C171C", "#DC111015", "#DC111015",
+                "#FFFF3D82", "#FFFF245F", "#2EFF3D82", "#18FFFFFF")
         ];
     }
 
@@ -412,125 +388,28 @@ public partial class MainWindow : Window
     private void ApplyTheme(ThemeDefinition theme)
     {
         var resources = Application.Current.Resources;
-        var material = ThemeMaterial.For(theme.Name);
-
-        ApplyTemplateMaterial(resources, material);
-
-        resources["InkBrush"] = Solid(theme.Ink);
-        resources["MutedInkBrush"] = Solid(theme.MutedInk);
-        resources["DimInkBrush"] = Solid(theme.DimInk);
-        resources["PanelBrush"] = Solid(theme.Panel);
-        resources["PanelSoftBrush"] = Solid(theme.PanelSoft);
-        resources["PanelLiftBrush"] = Solid(theme.PanelLift);
-        resources["ControlBrush"] = Solid(theme.Control);
-        resources["AccentBrush"] = Solid(theme.Accent);
-        resources["AccentDeepBrush"] = Solid(theme.AccentDeep);
-        resources["AccentGlowBrush"] = Solid(theme.AccentGlow);
-        resources["BorderBrushSoft"] = Solid(theme.Border);
-        resources["AppBackgroundBrush"] = Gradient(theme.BackgroundA, theme.BackgroundB, theme.BackgroundC);
-        resources["LogInkBrush"] = Solid(material.LogInk);
+        ApplyKfpsThemeDictionary(theme.Name);
+        resources["LogInkBrush"] = resources["ConsoleTextBrush"];
     }
 
-    private static void ApplyTemplateMaterial(ResourceDictionary resources, ThemeMaterial material)
+    private static void ApplyKfpsThemeDictionary(string themeName)
     {
-        SetBrush(resources, "SakuraBackgroundBrush", material.Background);
-        SetBrush(resources, "SakuraBackgroundAltBrush", material.BackgroundAlt);
-        SetBrush(resources, "SakuraSurfaceBrush", material.Surface);
-        SetBrush(resources, "SakuraSurfaceSoftBrush", material.SurfaceSoft);
-        SetBrush(resources, "SakuraSurfaceStrongBrush", material.SurfaceStrong);
-        SetBrush(resources, "SakuraGlassHighlightBrush", material.GlassHighlight);
-        SetBrush(resources, "SakuraBorderBrush", material.Border);
-        SetBrush(resources, "SakuraBorderStrongBrush", material.BorderStrong);
-        SetBrush(resources, "SakuraTextBrush", material.Text);
-        SetBrush(resources, "SakuraTextMutedBrush", material.TextMuted);
-        SetBrush(resources, "SakuraTextSubtleBrush", material.TextSubtle);
-        SetBrush(resources, "SakuraPrimaryBrush", material.Primary);
-        SetBrush(resources, "SakuraPrimaryDeepBrush", material.PrimaryDeep);
-        SetBrush(resources, "SakuraPrimarySoftBrush", material.PrimarySoft);
-        SetBrush(resources, "SakuraHoverOverlayBrush", material.HoverOverlay);
-        SetBrush(resources, "SakuraPressedOverlayBrush", material.PressedOverlay);
+        var source = string.Equals(themeName, "Blackout", StringComparison.OrdinalIgnoreCase)
+            ? "Themes/Kfps.Theme.Blackout.xaml"
+            : "Themes/Kfps.Theme.NightBlossom.xaml";
 
-        SetGradient(resources, "SakuraWindowGradient", material.Background, material.BackgroundAlt);
-        SetGradient(resources, "SakuraGlassGradient", material.GlassA, material.GlassB, material.GlassC);
-        SetGradient(resources, "SakuraGlassSoftGradient", material.GlassSoftA, material.GlassSoftB);
-        SetGradient(resources, "SakuraPrimaryGradient", material.PrimaryLight, material.PrimaryDeep);
-        SetGradient(resources, "SakuraHeroGradient", material.HeroA, material.HeroB);
-
-        SetShadow(resources, "SakuraCardShadow", material.ShadowColor, material.ShadowOpacity, 18, 4);
-        SetShadow(resources, "SakuraRaisedShadow", material.ShadowColor, material.RaisedShadowOpacity, 30, 8);
-        SetShadow(resources, "SakuraPrimaryShadow", material.PrimaryShadowColor, material.PrimaryShadowOpacity, 18, 5);
-    }
-
-    private static void SetBrush(ResourceDictionary resources, string key, string color)
-    {
-        resources[key] = new SolidColorBrush(ParseColor(color));
-    }
-
-    private static void SetGradient(ResourceDictionary resources, string key, params string[] colors)
-    {
-        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 1) };
-        if (colors.Length == 1)
+        var dictionaries = Application.Current.Resources.MergedDictionaries;
+        if (dictionaries.Count == 0)
         {
-            brush.GradientStops.Add(new GradientStop(ParseColor(colors[0]), 0));
-            brush.GradientStops.Add(new GradientStop(ParseColor(colors[0]), 1));
-            resources[key] = brush;
+            dictionaries.Add(new ResourceDictionary { Source = new Uri(source, UriKind.Relative) });
             return;
         }
 
-        for (var i = 0; i < colors.Length; i++)
+        var current = dictionaries[0].Source?.OriginalString ?? string.Empty;
+        if (!current.Equals(source, StringComparison.OrdinalIgnoreCase))
         {
-            var offset = colors.Length == 1 ? 0 : (double)i / (colors.Length - 1);
-            brush.GradientStops.Add(new GradientStop(ParseColor(colors[i]), offset));
+            dictionaries[0] = new ResourceDictionary { Source = new Uri(source, UriKind.Relative) };
         }
-
-        resources[key] = brush;
-    }
-
-    private static void SetShadow(ResourceDictionary resources, string key, string color, double opacity, double blurRadius, double shadowDepth)
-    {
-        resources[key] = new DropShadowEffect
-        {
-            Color = ParseColor(color),
-            Opacity = opacity,
-            BlurRadius = blurRadius,
-            ShadowDepth = shadowDepth
-        };
-    }
-
-    private static Color ParseColor(string color)
-    {
-        return (Color)ColorConverter.ConvertFromString(color);
-    }
-
-    private static SolidColorBrush Solid(string color)
-    {
-        var brush = new SolidColorBrush(ParseColor(color));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static LinearGradientBrush Gradient(string a, string b, string c)
-    {
-        var brush = new LinearGradientBrush
-        {
-            StartPoint = new Point(0, 0),
-            EndPoint = new Point(1, 1)
-        };
-        brush.GradientStops.Add(new GradientStop(ParseColor(a), 0));
-        brush.GradientStops.Add(new GradientStop(ParseColor(b), 0.48));
-        brush.GradientStops.Add(new GradientStop(ParseColor(c), 1));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static string WithAlpha(string argbOrRgb, string alpha)
-    {
-        var value = argbOrRgb.TrimStart('#');
-        if (value.Length == 8)
-        {
-            value = value[2..];
-        }
-        return "#" + alpha + value;
     }
 
     private void LoadShellSettings()
@@ -544,7 +423,7 @@ public partial class MainWindow : Window
                 if (settings != null)
                 {
                     var themeName = settings.ThemeName;
-                    if (themeName is not "Night Blossom")
+                    if (!SelectableThemes().Any(item => item.Name == themeName))
                     {
                         themeName = "Night Blossom";
                     }
@@ -602,6 +481,7 @@ public partial class MainWindow : Window
     private void ShowView(string title, FrameworkElement view)
     {
         PageTitle.Text = title;
+        SetActiveNavButton(title);
         (WorkflowKicker.Text, WorkflowTitle.Text) = title switch
         {
             "Dashboard" => ("OVERVIEW", "KFPS workspace"),
@@ -669,6 +549,46 @@ public partial class MainWindow : Window
         }
 
         UpdateBottomPanelForView(isDashboard);
+    }
+
+    private void SetActiveNavButton(string title)
+    {
+        foreach (var button in new[]
+                 {
+                     NavDashboardButton,
+                     NavGenerateButton,
+                     NavJsonButton,
+                     NavEditorButton,
+                     NavImagesButton,
+                     NavToolsButton,
+                     NavHelpButton,
+                     NavReportsButton,
+                     NavUpdateButton,
+                     NavSettingsButton
+                 })
+        {
+            button.IsChecked = false;
+        }
+
+        var active = title switch
+        {
+            "Dashboard" => NavDashboardButton,
+            "Generate" => NavGenerateButton,
+            "Import / Export" => NavJsonButton,
+            "Editor" => NavEditorButton,
+            "Image Tools" => NavImagesButton,
+            "Tools" => NavToolsButton,
+            "Help" => NavHelpButton,
+            "Bug Reports" => NavReportsButton,
+            "Update" => NavUpdateButton,
+            "Settings" => NavSettingsButton,
+            _ => null
+        };
+
+        if (active != null)
+        {
+            active.IsChecked = true;
+        }
     }
 
     private void CaptureAllPagesAndClose()
@@ -3144,7 +3064,9 @@ Write-HandoffLog "Native update handoff finished."
         {
             Text = current.ToString(),
             Margin = new Thickness(0, 12, 0, 12),
-            MinHeight = 30
+            Height = 38,
+            MinHeight = 38,
+            VerticalContentAlignment = VerticalAlignment.Center
         };
         Grid.SetRow(input, 1);
         root.Children.Add(input);
@@ -4070,6 +3992,11 @@ Write-HandoffLog "Native update handoff finished."
         LogBox.ScrollToHome();
     }
 
+    private void RefreshDashboardChangelog(object sender, RoutedEventArgs e)
+    {
+        ShowDashboardChangelog();
+    }
+
     private string LoadChangelogText()
     {
         foreach (var path in ChangelogCandidates())
@@ -4134,59 +4061,6 @@ Write-HandoffLog "Native update handoff finished."
         builder.Append(value.Replace("\"", "\\\""));
         builder.Append('"');
         return builder.ToString();
-    }
-
-    private sealed record ThemeMaterial(
-        string Background,
-        string BackgroundAlt,
-        string Surface,
-        string SurfaceSoft,
-        string SurfaceStrong,
-        string GlassHighlight,
-        string Border,
-        string BorderStrong,
-        string Text,
-        string TextMuted,
-        string TextSubtle,
-        string Primary,
-        string PrimaryLight,
-        string PrimaryDeep,
-        string PrimarySoft,
-        string HoverOverlay,
-        string PressedOverlay,
-        string GlassA,
-        string GlassB,
-        string GlassC,
-        string GlassSoftA,
-        string GlassSoftB,
-        string HeroA,
-        string HeroB,
-        string ShadowColor,
-        double ShadowOpacity,
-        double RaisedShadowOpacity,
-        string PrimaryShadowColor,
-        double PrimaryShadowOpacity,
-        string LogInk)
-    {
-        public static ThemeMaterial For(string themeName)
-        {
-            return NightBlossom;
-        }
-
-        private static readonly ThemeMaterial NightBlossom = new(
-            "#FF170D14", "#FF2B1420",
-            "#A1261620", "#7D411F30", "#CC2E1B27", "#1AFFFFFF",
-            "#15FFA8CB", "#45FFA8CB",
-            "#FFFFF3F7", "#FFD4ADBD", "#FFA47D8D",
-            "#FFFF5594", "#FFFF88B6", "#FFFF3F86", "#2BFF5594",
-            "#12FFFFFF", "#30000000",
-            "#D63C2432", "#B8291923", "#9E1D1219",
-            "#A1432435", "#80301A27",
-            "#8F68213E", "#CC2E1B27",
-            "#CC000000", 0.34, 0.44,
-            "#90FF5594", 0.38,
-            "#FF9D2253");
-
     }
 
     private sealed record ThemeDefinition(

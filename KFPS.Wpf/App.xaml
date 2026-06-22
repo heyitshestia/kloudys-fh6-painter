@@ -5,32 +5,33 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Themes/SakuraGlass.xaml" />
+                <ResourceDictionary Source="Themes/Kfps.Theme.NightBlossom.xaml" />
+                <ResourceDictionary Source="Shared/Kfps.Metrics.xaml" />
+                <ResourceDictionary Source="Shared/Kfps.Icons.xaml" />
+                <ResourceDictionary Source="Shared/Kfps.Controls.xaml" />
+                <ResourceDictionary Source="Shared/Kfps.AdditionalControls.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Compatibility aliases for the existing KFPS shell code. -->
-            <SolidColorBrush x:Key="InkBrush" Color="{StaticResource Sakura.Text}" />
-            <SolidColorBrush x:Key="MutedInkBrush" Color="{StaticResource Sakura.TextMuted}" />
-            <SolidColorBrush x:Key="DimInkBrush" Color="{StaticResource Sakura.TextSubtle}" />
-            <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource Sakura.Surface}" />
-            <SolidColorBrush x:Key="PanelSoftBrush" Color="{StaticResource Sakura.SurfaceSoft}" />
-            <SolidColorBrush x:Key="PanelLiftBrush" Color="{StaticResource Sakura.PrimarySoft}" />
-            <SolidColorBrush x:Key="ControlBrush" Color="{StaticResource Sakura.SurfaceStrong}" />
-            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Sakura.Primary}" />
-            <SolidColorBrush x:Key="AccentDeepBrush" Color="{StaticResource Sakura.PrimaryDeep}" />
-            <SolidColorBrush x:Key="AccentGlowBrush" Color="#66ED3F82" />
-            <SolidColorBrush x:Key="BorderBrushSoft" Color="{StaticResource Sakura.Border}" />
-            <SolidColorBrush x:Key="ButtonHoverBrush" Color="#18FFFFFF" />
-            <SolidColorBrush x:Key="ButtonPressedBrush" Color="#24000000" />
-            <SolidColorBrush x:Key="LogInkBrush" Color="#FF9D2253" />
-            <LinearGradientBrush x:Key="AppBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="{StaticResource Sakura.Background}" Offset="0" />
-                <GradientStop Color="{StaticResource Sakura.BackgroundAlt}" Offset="0.56" />
-                <GradientStop Color="#FFFFD8E8" Offset="1" />
-            </LinearGradientBrush>
-            <DrawingBrush x:Key="AppTextureBrush" TileMode="Tile" Viewport="0,0,180,180" ViewportUnits="Absolute" Stretch="None" Opacity="0.18">
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+            <!-- Compatibility aliases for the production shell. -->
+            <SolidColorBrush x:Key="InkBrush" Color="{DynamicResource Color.Text}" />
+            <SolidColorBrush x:Key="MutedInkBrush" Color="{DynamicResource Color.Muted}" />
+            <SolidColorBrush x:Key="DimInkBrush" Color="{DynamicResource Color.Subtle}" />
+            <SolidColorBrush x:Key="PanelBrush" Color="{DynamicResource Color.Surface}" />
+            <SolidColorBrush x:Key="PanelSoftBrush" Color="{DynamicResource Color.SurfaceSoft}" />
+            <SolidColorBrush x:Key="PanelLiftBrush" Color="{DynamicResource Color.SurfaceStrong}" />
+            <SolidColorBrush x:Key="ControlBrush" Color="{DynamicResource Color.SurfaceStrong}" />
+            <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource Color.Primary}" />
+            <SolidColorBrush x:Key="AccentDeepBrush" Color="{DynamicResource Color.PrimaryDeep}" />
+            <SolidColorBrush x:Key="AccentGlowBrush" Color="#66E94D94" />
+            <SolidColorBrush x:Key="BorderBrushSoft" Color="{DynamicResource Color.Border}" />
+            <SolidColorBrush x:Key="ButtonHoverBrush" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="ButtonPressedBrush" Color="#28000000" />
+            <SolidColorBrush x:Key="LogInkBrush" Color="{DynamicResource Color.Muted}" />
+            <DrawingBrush x:Key="AppTextureBrush" TileMode="Tile" Viewport="0,0,180,180" ViewportUnits="Absolute" Stretch="None" Opacity="0.10">
                 <DrawingBrush.Drawing>
-                    <GeometryDrawing Brush="#14ED3F82">
+                    <GeometryDrawing Brush="#18E94D94">
                         <GeometryDrawing.Geometry>
                             <GeometryGroup>
                                 <EllipseGeometry Center="28,34" RadiusX="9" RadiusY="3" />
@@ -43,54 +44,53 @@
             </DrawingBrush>
 
             <Style TargetType="TextBlock">
-                <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Text}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+                <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+                <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
             </Style>
 
-            <Style x:Key="MutedText" TargetType="TextBlock" BasedOn="{StaticResource SakuraBody}" />
-
-            <Style x:Key="TinyLabel" TargetType="TextBlock" BasedOn="{StaticResource SakuraEyebrow}">
+            <Style x:Key="MutedText" TargetType="TextBlock" BasedOn="{StaticResource KfpsBodyText}" />
+            <Style x:Key="TinyLabel" TargetType="TextBlock" BasedOn="{StaticResource KfpsLabelText}">
                 <Setter Property="TextWrapping" Value="NoWrap" />
             </Style>
-
-            <Style x:Key="PageHeading" TargetType="TextBlock" BasedOn="{StaticResource SakuraTitle}">
+            <Style x:Key="PageHeading" TargetType="TextBlock" BasedOn="{StaticResource KfpsPageTitleText}">
                 <Setter Property="TextWrapping" Value="NoWrap" />
             </Style>
-
-            <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource SakuraHeading}">
+            <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource KfpsSectionTitleText}">
                 <Setter Property="Margin" Value="0,0,0,8" />
             </Style>
 
-            <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource SakuraHoverCard}" />
-            <Style x:Key="TightCard" TargetType="Border" BasedOn="{StaticResource SakuraGlassPanelSoft}">
+            <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource KfpsCardStyle}" />
+            <Style x:Key="TightCard" TargetType="Border" BasedOn="{StaticResource KfpsSoftCardStyle}">
                 <Setter Property="Padding" Value="12" />
                 <Setter Property="Margin" Value="0,0,0,10" />
             </Style>
+            <Style x:Key="SakuraCard" TargetType="Border" BasedOn="{StaticResource KfpsCardStyle}" />
+            <Style x:Key="SakuraGlassPanel" TargetType="Border" BasedOn="{StaticResource KfpsCardStyle}" />
+            <Style x:Key="SakuraSidebar" TargetType="Border" BasedOn="{StaticResource KfpsSidebarStyle}" />
+            <Style x:Key="SakuraTopBar" TargetType="Border" BasedOn="{StaticResource KfpsTopBarStyle}" />
+            <Style x:Key="SakuraWorkspace" TargetType="Border" BasedOn="{StaticResource KfpsCardStyle}" />
+            <Style x:Key="SakuraConsole" TargetType="Border" BasedOn="{StaticResource KfpsConsolePanelStyle}" />
 
-            <Style TargetType="Button" BasedOn="{StaticResource SakuraButton}" />
-            <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource SakuraPrimaryButton}" />
-            <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource SakuraButton}">
+            <Style TargetType="Button" BasedOn="{StaticResource KfpsGhostButtonStyle}" />
+            <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource KfpsPrimaryButtonStyle}" />
+            <Style x:Key="NavButton" TargetType="ToggleButton" BasedOn="{StaticResource KfpsNavButtonStyle}">
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                <Setter Property="Padding" Value="10,8" />
-                <Setter Property="Margin" Value="0,0,0,6" />
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderBrush" Value="Transparent" />
-                <Setter Property="Height" Value="56" />
+                <Setter Property="Margin" Value="0,0,0,4" />
+                <Setter Property="Height" Value="{DynamicResource Metric.NavButtonHeight}" />
             </Style>
 
-            <Style TargetType="TextBox" BasedOn="{StaticResource SakuraTextBox}" />
-            <Style TargetType="ComboBox" BasedOn="{StaticResource SakuraComboBox}" />
-            <Style TargetType="ComboBoxItem" BasedOn="{StaticResource SakuraComboBoxItem}" />
-            <Style TargetType="CheckBox" BasedOn="{StaticResource SakuraCheckBox}" />
-            <Style TargetType="ListBox" BasedOn="{StaticResource SakuraListBox}" />
-            <Style TargetType="ListBoxItem" BasedOn="{StaticResource SakuraListBoxItem}" />
-            <Style TargetType="ProgressBar" BasedOn="{StaticResource SakuraProgressBar}" />
+            <Style TargetType="TextBox" BasedOn="{StaticResource KfpsTextBoxStyle}" />
+            <Style TargetType="ComboBox" BasedOn="{StaticResource KfpsComboBoxStyle}" />
+            <Style TargetType="CheckBox" BasedOn="{StaticResource KfpsCheckBoxStyle}" />
+            <Style TargetType="ListBox" BasedOn="{StaticResource KfpsListBoxStyle}" />
+            <Style TargetType="ProgressBar" BasedOn="{StaticResource KfpsProgressBarStyle}" />
 
             <Style TargetType="Expander">
-                <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-                <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
+                <Setter Property="Foreground" Value="{DynamicResource Text}" />
+                <Setter Property="Background" Value="{DynamicResource GlassPanelSoftBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Padding" Value="10" />
                 <Setter Property="Margin" Value="0,0,0,10" />

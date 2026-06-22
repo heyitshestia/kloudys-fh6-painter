@@ -1,0 +1,787 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Typography -->
+    <Style x:Key="KfpsDashboardTitleText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.DashboardTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="LineHeight" Value="32" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="KfpsPageTitleText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.PageTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="LineHeight" Value="31" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="KfpsSectionTitleText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.SectionTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="LineHeight" Value="25" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+    </Style>
+
+    <Style x:Key="KfpsCardTitleText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.CardTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="LineHeight" Value="22" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="KfpsBodyText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.Body}" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="KfpsCompactBodyText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.BodyCompact}" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="LineHeight" Value="16" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="KfpsLabelText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.Label}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Subtle}" />
+        <Setter Property="LineHeight" Value="15" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+    </Style>
+
+    <!-- Shell surfaces -->
+    <Style x:Key="KfpsTopBarStyle" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="{DynamicResource GlassPanelStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Corner.Card}" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="Effect" Value="{DynamicResource PanelShadowEffect}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="KfpsSidebarStyle" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="{DynamicResource GlassPanelStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Corner.Card}" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="Effect" Value="{DynamicResource PanelShadowEffect}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="KfpsCardStyle" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="{DynamicResource GlassPanelBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Corner.Card}" />
+        <Setter Property="Padding" Value="{DynamicResource Spacing.Card}" />
+        <Setter Property="Effect" Value="{DynamicResource PanelShadowEffect}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="KfpsSoftCardStyle" TargetType="{x:Type Border}" BasedOn="{StaticResource KfpsCardStyle}">
+        <Setter Property="Background" Value="{DynamicResource GlassPanelSoftBrush}" />
+        <Setter Property="Effect" Value="{x:Null}" />
+    </Style>
+
+    <Style x:Key="KfpsHeroCardStyle" TargetType="{x:Type Border}" BasedOn="{StaticResource KfpsCardStyle}">
+        <Setter Property="Background" Value="{DynamicResource GlassPanelStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrong}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Corner.Hero}" />
+        <Setter Property="Padding" Value="{DynamicResource Spacing.Hero}" />
+        <Setter Property="Effect" Value="{DynamicResource RaisedShadowEffect}" />
+    </Style>
+
+    <Style x:Key="KfpsConsolePanelStyle" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="{DynamicResource ConsoleBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Corner.Card}" />
+        <Setter Property="Padding" Value="{DynamicResource Spacing.Console}" />
+        <Setter Property="Effect" Value="{DynamicResource PanelShadowEffect}" />
+    </Style>
+
+    <Style x:Key="KfpsStatusPillStyle" TargetType="{x:Type Border}">
+        <Setter Property="Height" Value="{DynamicResource Metric.VersionPillHeight}" />
+        <Setter Property="Background" Value="{DynamicResource GlassPanelSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Corner.Pill}" />
+        <Setter Property="Padding" Value="12,0" />
+    </Style>
+
+    <Style x:Key="KfpsStepBadgeStyle" TargetType="{x:Type Border}">
+        <Setter Property="Width" Value="24" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="Background" Value="{DynamicResource PrimaryDeep}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBright}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+    </Style>
+
+    <!-- Primary button -->
+    <Style x:Key="KfpsPrimaryButtonStyle" TargetType="{x:Type Button}">
+        <Setter Property="Height" Value="{DynamicResource Control.Height.Primary}" />
+        <Setter Property="MinWidth" Value="88" />
+        <Setter Property="Padding" Value="{DynamicResource Spacing.ControlHorizontal}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.BodyCompact}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="TransformRoot"
+                          RenderTransformOrigin="0.5,0.5"
+                          ClipToBounds="True">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="PressScale" ScaleX="1" ScaleY="1" />
+                                <TranslateTransform x:Name="LiftTransform" Y="0" />
+                            </TransformGroup>
+                        </Grid.RenderTransform>
+
+                        <Border x:Name="Chrome"
+                                Background="{DynamicResource PrimaryButtonBrush}"
+                                BorderBrush="{DynamicResource PrimaryBright}"
+                                BorderThickness="1"
+                                CornerRadius="{DynamicResource Corner.Control}">
+                            <Grid ClipToBounds="True">
+                                <Border x:Name="HoverOverlay"
+                                        Background="{DynamicResource HoverOverlayBrush}"
+                                        Opacity="0"
+                                        CornerRadius="{DynamicResource Corner.Control}" />
+                                <Rectangle x:Name="Sheen"
+                                           Width="72"
+                                           HorizontalAlignment="Left"
+                                           Opacity="0"
+                                           IsHitTestVisible="False">
+                                    <Rectangle.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#00FFFFFF" Offset="0" />
+                                            <GradientStop Color="#7AFFFFFF" Offset="0.5" />
+                                            <GradientStop Color="#00FFFFFF" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Rectangle.Fill>
+                                    <Rectangle.RenderTransform>
+                                        <TranslateTransform x:Name="SheenTransform" X="-120" />
+                                    </Rectangle.RenderTransform>
+                                </Rectangle>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  RecognizesAccessKey="True" />
+                            </Grid>
+                        </Border>
+
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="MouseOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="-1" Duration="0:0:0.14">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.22" Duration="0:0:0.12" />
+                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Sheen" Storyboard.TargetProperty="Opacity" Duration="0:0:0.42">
+                                            <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0" />
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.09" Value="0.42" />
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.42" Value="0" />
+                                        </DoubleAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="SheenTransform" Storyboard.TargetProperty="X" From="-120" To="360" Duration="0:0:0.42">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="0.985" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="0.985" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.10" Duration="0:0:0.07" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TransformRoot" Storyboard.TargetProperty="Opacity" To="0.45" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Ghost button -->
+    <Style x:Key="KfpsGhostButtonStyle" TargetType="{x:Type Button}">
+        <Setter Property="Height" Value="{DynamicResource Control.Height.Primary}" />
+        <Setter Property="MinWidth" Value="82" />
+        <Setter Property="Padding" Value="{DynamicResource Spacing.ControlHorizontal}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.BodyCompact}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="TransformRoot" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="PressScale" ScaleX="1" ScaleY="1" />
+                                <TranslateTransform x:Name="LiftTransform" Y="0" />
+                            </TransformGroup>
+                        </Grid.RenderTransform>
+                        <Border x:Name="Chrome"
+                                Background="{DynamicResource GhostButtonBrush}"
+                                BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1"
+                                CornerRadius="{DynamicResource Corner.Control}">
+                            <Grid>
+                                <Border x:Name="HoverOverlay"
+                                        Background="{DynamicResource HoverOverlayBrush}"
+                                        Opacity="0"
+                                        CornerRadius="{DynamicResource Corner.Control}" />
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  RecognizesAccessKey="True" />
+                            </Grid>
+                        </Border>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="MouseOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="-1" Duration="0:0:0.14">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.18" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="0.985" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="0.985" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.07" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TransformRoot" Storyboard.TargetProperty="Opacity" To="0.45" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Sidebar route ToggleButton -->
+    <Style x:Key="KfpsNavButtonStyle" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Height" Value="{DynamicResource Metric.NavButtonHeight}" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.NavLabel}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Grid x:Name="TransformRoot" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="PressScale" ScaleX="1" ScaleY="1" />
+                                <TranslateTransform x:Name="LiftTransform" Y="0" />
+                            </TransformGroup>
+                        </Grid.RenderTransform>
+
+                        <Border x:Name="Chrome"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1"
+                                CornerRadius="{DynamicResource Corner.Compact}">
+                            <Grid ClipToBounds="True">
+                                <Border x:Name="HoverFill"
+                                        Background="{DynamicResource NavHoverBrush}"
+                                        Opacity="0"
+                                        CornerRadius="{DynamicResource Corner.Compact}" />
+                                <Border x:Name="ActiveFill"
+                                        Background="{DynamicResource NavActiveSoftBrush}"
+                                        Opacity="0"
+                                        CornerRadius="{DynamicResource Corner.Compact}" />
+                                <Border x:Name="ActiveIndicator"
+                                        Width="3"
+                                        Margin="0,7,0,7"
+                                        HorizontalAlignment="Left"
+                                        Background="{DynamicResource PrimaryBright}"
+                                        CornerRadius="0,2,2,0"
+                                        Opacity="0"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="IndicatorScale" ScaleY="0.35" />
+                                    </Border.RenderTransform>
+                                </Border>
+                                <ContentPresenter Margin="5,3"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"
+                                                  RecognizesAccessKey="True" />
+                            </Grid>
+                        </Border>
+
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.11" />
+                                        <DoubleAnimation Storyboard.TargetName="HoverFill" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="MouseOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="-1" Duration="0:0:0.14">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="HoverFill" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="0.985" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="0.985" Duration="0:0:0.07" />
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.07" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TransformRoot" Storyboard.TargetProperty="Opacity" To="0.45" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Unchecked">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ActiveFill" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="ActiveIndicator" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="IndicatorScale" Storyboard.TargetProperty="ScaleY" To="0.35" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Checked">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ActiveFill" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.16" />
+                                        <DoubleAnimation Storyboard.TargetName="ActiveIndicator" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.16" />
+                                        <DoubleAnimation Storyboard.TargetName="IndicatorScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.16">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Indeterminate" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Primary}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Clickable card only. Do not use for passive information. -->
+    <Style x:Key="KfpsHoverCardStyle" TargetType="{x:Type ContentControl}">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ContentControl}">
+                    <Grid x:Name="TransformRoot" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="LiftTransform" Y="0" />
+                        </Grid.RenderTransform>
+                        <Border x:Name="Chrome"
+                                Background="{DynamicResource GlassPanelBrush}"
+                                BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1"
+                                CornerRadius="{DynamicResource Corner.Card}"
+                                Padding="{DynamicResource Spacing.Card}"
+                                Effect="{DynamicResource PanelShadowEffect}">
+                            <Grid>
+                                <Border x:Name="HoverOverlay"
+                                        Background="{DynamicResource HoverOverlayBrush}"
+                                        Opacity="0"
+                                        CornerRadius="{DynamicResource Corner.Card}" />
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Grid>
+                        </Border>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.14" />
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="MouseOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform" Storyboard.TargetProperty="Y" To="-2" Duration="0:0:0.14">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.12" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TransformRoot" Storyboard.TargetProperty="Opacity" To="0.48" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Text input -->
+    <Style x:Key="KfpsTextBoxStyle" TargetType="{x:Type TextBox}">
+        <Setter Property="MinHeight" Value="{DynamicResource Control.Height.Field}" />
+        <Setter Property="Padding" Value="{DynamicResource Spacing.FieldPadding}" />
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource PrimaryBright}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.BodyCompact}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type TextBox}">
+                    <Border x:Name="Chrome"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource Corner.Control}">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}"
+                                      HorizontalAlignment="Stretch"
+                                      Focusable="False"
+                                      SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource InputHoverBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource BorderStrong}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource PrimaryBright}" />
+                        </Trigger>
+                        <Trigger Property="AcceptsReturn" Value="True">
+                            <Setter Property="VerticalContentAlignment" Value="Top" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="KfpsBorderlessPillTextBoxStyle" TargetType="{x:Type TextBox}" BasedOn="{StaticResource KfpsTextBoxStyle}">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+    </Style>
+
+    <!-- Non-editable ComboBox reference template -->
+    <Style x:Key="KfpsComboBoxStyle" TargetType="{x:Type ComboBox}">
+        <Setter Property="Height" Value="{DynamicResource Control.Height.Field}" />
+        <Setter Property="Padding" Value="10,0,34,0" />
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.BodyCompact}" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ComboBox}">
+                    <Grid>
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource Corner.Control}">
+                            <Grid>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"
+                                                  HorizontalAlignment="Left"
+                                                  Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                                  IsHitTestVisible="False" />
+                                <Path Width="9"
+                                      Height="6"
+                                      Margin="0,0,12,0"
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Center"
+                                      Fill="{DynamicResource Muted}"
+                                      Data="M 0 0 L 9 0 L 4.5 6 Z"
+                                      IsHitTestVisible="False" />
+                            </Grid>
+                        </Border>
+                        <ToggleButton Background="Transparent"
+                                      BorderThickness="0"
+                                      Focusable="False"
+                                      ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                        <Popup x:Name="PART_Popup"
+                               Placement="Bottom"
+                               IsOpen="{TemplateBinding IsDropDownOpen}"
+                               AllowsTransparency="True"
+                               Focusable="False"
+                               PopupAnimation="Fade">
+                            <Border Margin="0,4,0,0"
+                                    MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                    MaxHeight="320"
+                                    Background="{DynamicResource GlassPanelStrongBrush}"
+                                    BorderBrush="{DynamicResource BorderStrong}"
+                                    BorderThickness="1"
+                                    CornerRadius="{DynamicResource Corner.Control}"
+                                    Padding="4"
+                                    Effect="{DynamicResource RaisedShadowEffect}">
+                                <ScrollViewer CanContentScroll="True">
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource InputHoverBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource BorderStrong}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource PrimaryBright}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type ComboBoxItem}">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+                    <Border x:Name="Chrome"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NavActiveSoftBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="KfpsCheckBoxStyle" TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{DynamicResource Type.BodyCompact}" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type CheckBox}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="Box"
+                                Width="18"
+                                Height="18"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource InputBackgroundBrush}"
+                                BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1"
+                                CornerRadius="5">
+                            <Path x:Name="CheckMark"
+                                  Width="10"
+                                  Height="8"
+                                  Stroke="White"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Data="M 0 4 L 3.5 7 L 10 0"
+                                  Opacity="0" />
+                        </Border>
+                        <ContentPresenter Grid.Column="2"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource PrimaryBright}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource Primary}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource PrimaryBright}" />
+                            <Setter TargetName="CheckMark" Property="Opacity" Value="1" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Folder/list row -->
+    <Style x:Key="KfpsFolderRowStyle" TargetType="{x:Type ListBoxItem}">
+        <Setter Property="MinHeight" Value="{DynamicResource Control.Height.ListRow}" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource KfpsFocusVisualStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                    <Border x:Name="Chrome"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="Transparent"
+                            BorderThickness="1"
+                            CornerRadius="7"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NavActiveSoftBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource BorderStrong}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Page-enter reference style. Apply to the page root after navigation. -->
+    <Style x:Key="KfpsPageEnterStyle" TargetType="{x:Type FrameworkElement}">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="RenderTransform">
+            <Setter.Value><TranslateTransform Y="4" /></Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="0" To="1" Duration="0:0:0.18" />
+                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                         From="4" To="0" Duration="0:0:0.18">
+                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                        </DoubleAnimation>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>

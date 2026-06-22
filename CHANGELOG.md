@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.12
+- Cleaned the native WPF theme bundle down to Night Blossom and Blackout.
+- Fixed clipped native text fields in Help, Reports, Settings, and custom layer prompts.
+- Removed extra inner borders from the Help search and report title fields.
+
 ## 3.0.11
 - Reworked the native Night Blossom shell with the dedicated animated blossom backdrop.
 - Added dashboard card hover motion and denser ambient petals.
