@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.9
+- Changed the dashboard bottom panel into a changelog view while keeping runtime logs on other tabs.
+- Fixed the top version text position so status updates no longer move it around.
+- Adjusted the dashboard changelog textbox spacing so text is not clipped at the top or bottom.
+
 ## 3.0.8
 - Fixed generated final JSONs carrying an extra background/canvas layer, so checkpoint layer counts now match the selected target.
 - Added the KFPS logo JSON to the shipped exported JSON folder.

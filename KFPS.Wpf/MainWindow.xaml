@@ -57,11 +57,10 @@
         <Border Grid.Row="0" Grid.ColumnSpan="4" Style="{StaticResource SakuraTopBar}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
                     <Border Width="34" Height="34" CornerRadius="12" Background="{DynamicResource AccentDeepBrush}" Margin="0,0,10,0">
                         <Image Source="assets/kfps-logo.png" Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -71,12 +70,13 @@
 	                    <TextBlock Text="  /  " Foreground="{DynamicResource DimInkBrush}" VerticalAlignment="Center" />
 	                    <TextBlock x:Name="StatusText" Text="Ready" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" />
 	                </StackPanel>
-                <Border x:Name="VersionStatusPill" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Border x:Name="VersionStatusPill" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Panel.ZIndex="2"
                         Background="Transparent" BorderThickness="0" Padding="14,5" ToolTip="KFPS version status">
                     <TextBlock x:Name="VersionStatusText" Text="Version checking..." FontSize="12" FontWeight="SemiBold"
                                Foreground="{DynamicResource MutedInkBrush}" TextWrapping="NoWrap" />
                 </Border>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                     <TextBlock Text="THEME" Style="{StaticResource TinyLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <ComboBox x:Name="ThemeComboBox" Width="175" SelectionChanged="ThemeComboBox_SelectionChanged" />
                 </StackPanel>
@@ -1147,8 +1147,12 @@
 		                         FontSize="12"
                                  Foreground="{DynamicResource LogInkBrush}"
 		                         Background="#FFFFFFFF"
+                                 BorderThickness="0"
+                                 Padding="8,7"
+                                 VerticalAlignment="Stretch"
+                                 VerticalContentAlignment="Stretch"
 		                         Margin="0,0,10,0" />
-	                <Button Grid.Column="1" Content="Clear" Click="ClearLog" Padding="12,6" VerticalAlignment="Top" />
+	                <Button x:Name="LogActionButton" Grid.Column="1" Content="Clear" Click="ClearLog" Padding="12,6" VerticalAlignment="Top" />
 	            </Grid>
 	        </Border>
 

@@ -55,6 +55,8 @@ public partial class MainWindow : Window
     private bool _versionBlinkVisible = true;
     private string _localVersion = "unknown";
     private string _latestVersion = "checking...";
+    private readonly StringBuilder _runtimeLog = new();
+    private bool _showingDashboardChangelog;
 
     public MainWindow()
     {
@@ -665,6 +667,8 @@ public partial class MainWindow : Window
         {
             InitializeTutorial();
         }
+
+        UpdateBottomPanelForView(isDashboard);
     }
 
     private void CaptureAllPagesAndClose()
@@ -3885,7 +3889,17 @@ Write-HandoffLog "Native update handoff finished."
         return null;
     }
 
-    private void ClearLog(object sender, RoutedEventArgs e) => LogBox.Clear();
+    private void ClearLog(object sender, RoutedEventArgs e)
+    {
+        if (_showingDashboardChangelog)
+        {
+            ShowDashboardChangelog();
+            return;
+        }
+
+        _runtimeLog.Clear();
+        LogBox.Clear();
+    }
 
     private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -4022,12 +4036,75 @@ Write-HandoffLog "Native update handoff finished."
     private void Log(string message, bool updateStatus = true)
     {
         var line = HasLeadingTimestamp(message) ? message : $"[{DateTime.Now:HH:mm:ss}] {message}";
-        LogBox.AppendText(line + Environment.NewLine);
-        LogBox.ScrollToEnd();
+        _runtimeLog.AppendLine(line);
+        if (!_showingDashboardChangelog)
+        {
+            LogBox.AppendText(line + Environment.NewLine);
+            LogBox.ScrollToEnd();
+        }
         if (updateStatus)
         {
             StatusText.Text = message.Length > 110 ? message[..110] + "..." : message;
         }
+    }
+
+    private void UpdateBottomPanelForView(bool isDashboard)
+    {
+        if (isDashboard)
+        {
+            ShowDashboardChangelog();
+            return;
+        }
+
+        _showingDashboardChangelog = false;
+        LogActionButton.Content = "Clear";
+        LogBox.Text = _runtimeLog.ToString();
+        LogBox.ScrollToEnd();
+    }
+
+    private void ShowDashboardChangelog()
+    {
+        _showingDashboardChangelog = true;
+        LogActionButton.Content = "Refresh";
+        LogBox.Text = LoadChangelogText();
+        LogBox.ScrollToHome();
+    }
+
+    private string LoadChangelogText()
+    {
+        foreach (var path in ChangelogCandidates())
+        {
+            try
+            {
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                var text = File.ReadAllText(path, Encoding.UTF8).Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text + Environment.NewLine;
+                }
+            }
+            catch
+            {
+                // Try the next package layout candidate.
+            }
+        }
+
+        return "KFPS changelog is not available in this package." + Environment.NewLine;
+    }
+
+    private IEnumerable<string> ChangelogCandidates()
+    {
+        yield return Path.Combine(_appRoot, "CHANGELOG.md");
+        var parent = Directory.GetParent(_appRoot)?.FullName;
+        if (!string.IsNullOrWhiteSpace(parent))
+        {
+            yield return Path.Combine(parent, "CHANGELOG.md");
+        }
+        yield return Path.Combine(AppContext.BaseDirectory, "CHANGELOG.md");
     }
 
     private static bool HasLeadingTimestamp(string message)
