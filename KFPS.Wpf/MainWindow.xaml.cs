@@ -64,6 +64,7 @@ public partial class MainWindow : Window
         _themes = BuildThemes();
         AppRootText.Text = _appRoot;
 
+        EnsureBundledLogoJsons();
         ConfigureThemes();
         LoadShellSettings();
         LoadManualOverrideFieldsFromPreset();
@@ -464,6 +465,35 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log($"Could not save WPF settings: {ex.Message}");
+        }
+    }
+
+    private void EnsureBundledLogoJsons()
+    {
+        try
+        {
+            var source = Path.Combine(_appRoot, "assets", "app", "KFPS Logo.json");
+            if (!File.Exists(source))
+            {
+                return;
+            }
+
+            var destinations = new[]
+            {
+                Path.Combine(_appRoot, "imgs", "generated", "KFPS Logo", "finals", "KFPS Logo.3000v2.json"),
+                Path.Combine(_appRoot, "imgs", "editor", "KFPS Logo", "KFPS Logo.json"),
+                Path.Combine(_appRoot, "imgs", "exported", "KFPS Logo.json")
+            };
+
+            foreach (var destination in destinations)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(source, destination, overwrite: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not refresh bundled KFPS logo JSONs: {ex.Message}");
         }
     }
 

@@ -4,6 +4,7 @@
 - Cleaned the native WPF theme bundle down to Night Blossom and Blackout.
 - Fixed clipped native text fields in Help, Reports, Settings, and custom layer prompts.
 - Removed extra inner borders from the Help search and report title fields.
+- Ships the KFPS logo JSON in every JSON browser source and refreshes those copies on app launch.
 
 ## 3.0.11
 - Reworked the native Night Blossom shell with the dedicated animated blossom backdrop.
