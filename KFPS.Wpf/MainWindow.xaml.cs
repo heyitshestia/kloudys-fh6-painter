@@ -1435,7 +1435,7 @@ public partial class MainWindow : Window
         if (TransferGameComboBox.SelectedItem is ComboBoxItem item)
         {
             var value = item.Content?.ToString()?.Trim().ToLowerInvariant() ?? "fh6";
-            return value.StartsWith("fm8", StringComparison.OrdinalIgnoreCase) ? "fm8" : value;
+            return value.StartsWith("fm8", StringComparison.OrdinalIgnoreCase) ? "fm" : value;
         }
 
         return "fh6";

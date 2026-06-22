@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.10
+- Fixed the native FM8 export option so it maps to the backend Forza Motorsport profile.
+
 ## 3.0.9
 - Changed the dashboard bottom panel into a changelog view while keeping runtime logs on other tabs.
 - Fixed the top version text position so status updates no longer move it around.
