@@ -1,0 +1,3 @@
+module Kfps.Theme
+singleton Theme 1.0 Theme.qml
+singleton Metrics 1.0 Metrics.qml

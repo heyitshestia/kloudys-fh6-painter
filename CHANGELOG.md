@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.13
+- Migrated the shipped app shell from the native WPF prototype to the QML KFPS desktop app.
+- Hardened the updater so existing WPF installs can migrate cleanly in one update.
+- Removed retired WPF app files from the repo layout and release package.
+- Split executable updates into a binary-only updater asset while keeping full bundled releases for fresh installs.
+
 ## 3.0.12
 - Cleaned the native WPF theme bundle down to Night Blossom and Blackout.
 - Fixed clipped native text fields in Help, Reports, Settings, and custom layer prompts.

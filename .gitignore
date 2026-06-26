@@ -29,3 +29,7 @@ BUILD_COMMIT
 *memory-count-*.jsonl
 *candidates.json
 guided-memory-*.jsonl
+KFPS.exe
+KFPS-*-binary.zip
+KFPS-*-bundled.zip
+KFPS.UI/Previews/

@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+UI = Path(__file__).resolve().parents[1]
+ROOT = UI.parent
+PAGES = [
+    "dashboard", "generate", "json", "editor", "images",
+    "tools", "help", "reports", "update", "settings",
+]
+DEFAULT_SIZES = [
+    (1140, 720),
+    (1280, 720),
+    (1366, 768),
+    (1548, 970),
+    (1600, 900),
+    (1920, 1080),
+    (2560, 1440),
+    (3440, 1440),
+]
+
+
+def parse_size(value: str) -> tuple[int, int]:
+    width, height = value.lower().split("x", 1)
+    return int(width), int(height)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Audit visible QML controls across window sizes.")
+    parser.add_argument("--size", action="append", type=parse_size, dest="sizes")
+    parser.add_argument("--page", action="append", choices=PAGES, dest="pages")
+    parser.add_argument("--ui-scale", type=float, default=1.0)
+    parser.add_argument("--output", type=Path, default=UI / "Previews" / "layout-audit")
+    args = parser.parse_args()
+
+    sizes = args.sizes or DEFAULT_SIZES
+    pages = args.pages or PAGES
+    args.output.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    env.setdefault("QT_QUICK_BACKEND", "software")
+    env.setdefault("QSG_RHI_BACKEND", "software")
+    env["KFPS_APP_ROOT"] = str(ROOT)
+
+    failures: list[dict] = []
+    summaries: list[dict] = []
+    for width, height in sizes:
+        case_dir = args.output / f"{width}x{height}_s{args.ui_scale:.2f}"
+        case_dir.mkdir(parents=True, exist_ok=True)
+        command = [
+            sys.executable,
+            str(UI / "app.py"),
+            "--allow-unsupported-python",
+            "--demo",
+            "--width", str(width),
+            "--height", str(height),
+            "--ui-scale", str(args.ui_scale),
+            "--layout-report-dir", str(case_dir),
+        ]
+        run = subprocess.run(
+            command,
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=45,
+        )
+        if run.returncode != 0:
+            failures.append({
+                "width": width,
+                "height": height,
+                "reason": f"process exit {run.returncode}",
+                "output": run.stdout,
+            })
+            continue
+
+        for page in pages:
+            report = case_dir / f"{page}.json"
+            if not report.exists():
+                failures.append({
+                    "page": page,
+                    "width": width,
+                    "height": height,
+                    "reason": "layout report missing",
+                    "output": run.stdout,
+                })
+                continue
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            summary = {
+                "page": page,
+                "width": width,
+                "height": height,
+                "uiScale": args.ui_scale,
+                "controlCount": len(payload.get("controls", [])),
+                "zeroSize": payload.get("zeroSize", []),
+                "tooSmall": payload.get("tooSmall", []),
+            }
+            summaries.append(summary)
+            if summary["zeroSize"] or summary["tooSmall"]:
+                failures.append({**summary, "reason": "invalid interactive geometry"})
+
+    aggregate = {
+        "sizes": sizes,
+        "pages": pages,
+        "uiScale": args.ui_scale,
+        "cases": summaries,
+        "failures": failures,
+    }
+    (args.output / "summary.json").write_text(json.dumps(aggregate, indent=2), encoding="utf-8")
+
+    print(f"Audited {len(summaries)} page/size cases at UI scale {args.ui_scale:.2f}.")
+    if failures:
+        print(f"FAILED: {len(failures)} case(s). See {args.output / 'summary.json'}")
+        return 1
+    print("PASS: no visible interactive control had zero or undersized geometry.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

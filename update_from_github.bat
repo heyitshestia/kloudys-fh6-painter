@@ -63,7 +63,8 @@ if errorlevel 8 (
     call :log "File copy failed during robocopy update copy. Robocopy exit code: %ERRORLEVEL%"
     goto :fail
 )
-
+call :install_qml_binary_payload
+if errorlevel 1 goto :fail
 call :cleanup_retired_files
 call :write_build_commit "%TMP_REPO%"
 
@@ -73,7 +74,7 @@ rmdir /s /q "%TMP_PARENT%" >nul 2>nul
 call :capture_current_version FINAL_VERSION
 call :log ""
 call :log "Update complete."
-call :log "Version: !OLD_VERSION! -> !FINAL_VERSION!"
+call :log "Version: !OLD_VERSION! to !FINAL_VERSION!"
 call :log "Backup folder: !BACKUP_DIR!"
 call :log "Run KFPS.exe from the main KFPS folder when you are ready."
 if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
@@ -224,8 +225,101 @@ if errorlevel 1 (
 echo PortableGit installed and ready.
 exit /b 0
 
+:try_local_qml_bundle_update
+call :init_qml_payload_defaults
+set "QML_BUNDLE_UPDATE_DONE="
+set "QML_LOCAL_BUNDLE="
+if defined KFPS_QML_BUNDLE_ZIP (
+    if exist "%KFPS_QML_BUNDLE_ZIP%" set "QML_LOCAL_BUNDLE=%KFPS_QML_BUNDLE_ZIP%"
+)
+if not defined QML_LOCAL_BUNDLE (
+    if exist "%CD%\..\%QML_BINARY_ASSET_NAME%" set "QML_LOCAL_BUNDLE=%CD%\..\%QML_BINARY_ASSET_NAME%"
+)
+if not defined QML_LOCAL_BUNDLE (
+    if exist "%USERPROFILE%\Desktop\%QML_BINARY_ASSET_NAME%" set "QML_LOCAL_BUNDLE=%USERPROFILE%\Desktop\%QML_BINARY_ASSET_NAME%"
+)
+if not defined QML_LOCAL_BUNDLE exit /b 0
+
+call :log "Local QML migration bundle found."
+call :log "Bundle: !QML_LOCAL_BUNDLE!"
+call :backup_existing_files
+if errorlevel 1 exit /b 1
+
+set "QML_STAGE=%TEMP%\kfps-qml-bundle-update-%RANDOM%-%RANDOM%"
+if exist "!QML_STAGE!" rmdir /s /q "!QML_STAGE!" >nul 2>nul
+mkdir "!QML_STAGE!" >nul 2>nul
+set "KFPS_QML_STAGE=!QML_STAGE!"
+set "KFPS_QML_BUNDLE=!QML_LOCAL_BUNDLE!"
+set "KFPS_APP_ROOT=%CD%"
+call :log "Extracting QML migration bundle..."
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Expand-Archive -LiteralPath $env:KFPS_QML_BUNDLE -DestinationPath $env:KFPS_QML_STAGE -Force; $bundleRoot=Get-ChildItem -LiteralPath $env:KFPS_QML_STAGE -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'KloudysFH6Painter') } | Select-Object -First 1; if(-not $bundleRoot){ if(Test-Path (Join-Path $env:KFPS_QML_STAGE 'KloudysFH6Painter')){ $bundleRoot=Get-Item -LiteralPath $env:KFPS_QML_STAGE } }; if(-not $bundleRoot){ throw 'QML bundle does not contain KloudysFH6Painter' }; Set-Content -LiteralPath (Join-Path $env:KFPS_QML_STAGE 'bundle-root.txt') -Value $bundleRoot.FullName -Encoding ASCII"
+if errorlevel 1 (
+    call :log "Failed to extract QML migration bundle."
+    exit /b 1
+)
+for /f "usebackq delims=" %%R in ("!QML_STAGE!\bundle-root.txt") do set "QML_BUNDLE_ROOT=%%R"
+if not exist "!QML_BUNDLE_ROOT!\KloudysFH6Painter\" (
+    call :log "Extracted QML bundle is missing KloudysFH6Painter."
+    exit /b 1
+)
+
+call :log "Copying QML app files into this install..."
+robocopy "!QML_BUNDLE_ROOT!\KloudysFH6Painter" "%CD%" /E /R:2 /W:1 /XD .git runtime imgs webui-data dist build __pycache__ python /XF "*.pyc" >nul
+if errorlevel 8 (
+    call :log "QML bundle app copy failed. Robocopy exit code: %ERRORLEVEL%"
+    exit /b 1
+)
+
+if exist "!QML_BUNDLE_ROOT!\KFPS.exe" (
+    copy /y "!QML_BUNDLE_ROOT!\KFPS.exe" "%CD%\KFPS.exe" >nul 2>nul
+) else (
+    call :log "QML bundle is missing parent KFPS.exe."
+    exit /b 1
+)
+
+call :cleanup_retired_files
+if exist "!QML_STAGE!" rmdir /s /q "!QML_STAGE!" >nul 2>nul
+set "QML_BUNDLE_UPDATE_DONE=1"
+exit /b 0
+
+:install_qml_binary_payload
+call :init_qml_payload_defaults
+if exist "KFPS.exe" (
+    call :log "QML native binary payload is already present in the app root."
+    exit /b 0
+)
+set "QML_PAYLOAD_ZIP="
+if defined KFPS_QML_BUNDLE_ZIP (
+    if exist "%KFPS_QML_BUNDLE_ZIP%" set "QML_PAYLOAD_ZIP=%KFPS_QML_BUNDLE_ZIP%"
+)
+if not defined QML_PAYLOAD_ZIP (
+    if exist "%CD%\..\%QML_BINARY_ASSET_NAME%" set "QML_PAYLOAD_ZIP=%CD%\..\%QML_BINARY_ASSET_NAME%"
+)
+if not defined QML_PAYLOAD_ZIP (
+    if exist "%USERPROFILE%\Desktop\%QML_BINARY_ASSET_NAME%" set "QML_PAYLOAD_ZIP=%USERPROFILE%\Desktop\%QML_BINARY_ASSET_NAME%"
+)
+set "KFPS_APP_ROOT=%CD%"
+set "KFPS_QML_PAYLOAD_ZIP=%QML_PAYLOAD_ZIP%"
+set "KFPS_QML_PAYLOAD_URL=%QML_BINARY_ASSET_URL%"
+set "KFPS_QML_PAYLOAD_NAME=%QML_BINARY_ASSET_NAME%"
+call :log "Installing QML native binary payload..."
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $app=$env:KFPS_APP_ROOT; $zip=$env:KFPS_QML_PAYLOAD_ZIP; if(-not $zip -or -not (Test-Path -LiteralPath $zip)){ $zip=Join-Path $env:TEMP $env:KFPS_QML_PAYLOAD_NAME; $headers=@{'User-Agent'='KFPS-Updater'}; if($env:GH_TOKEN){ $headers['Authorization']='Bearer ' + $env:GH_TOKEN }; Invoke-WebRequest -UseBasicParsing -Uri $env:KFPS_QML_PAYLOAD_URL -OutFile $zip -Headers $headers }; $stage=Join-Path $env:TEMP ('kfps-qml-payload-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force -Path $stage | Out-Null; Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force; $exe=Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'KFPS.exe' | Where-Object { $_.FullName -notmatch '\\KloudysFH6Painter\\KFPS\.exe$' } | Select-Object -First 1; if(-not $exe){ throw 'QML payload did not contain a parent KFPS.exe' }; Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $app 'KFPS.exe') -Force; Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue"
+if errorlevel 1 (
+    call :log "Failed to install QML native binary payload."
+    call :log "If the binary asset cannot be downloaded, place %QML_BINARY_ASSET_NAME% next to the KFPS folder or set KFPS_QML_BUNDLE_ZIP."
+    exit /b 1
+)
+call :log "QML native binary payload installed."
+exit /b 0
+
+:init_qml_payload_defaults
+if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.13-binary.zip"
+if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.13/KFPS-3.0.13-binary.zip"
+exit /b 0
+
 :cleanup_retired_files
 call :sync_native_root_exe
+call :cleanup_stale_release_git
 if exist "settings\_archive_legacy_2026-05-22" rmdir /s /q "settings\_archive_legacy_2026-05-22" >nul 2>nul
 if exist "settings\_default.ini" del /f /q "settings\_default.ini" >nul 2>nul
 call :cleanup_3x_retired_files
@@ -280,22 +374,41 @@ if exist "tools\" (
     for /f "delims=" %%A in ('dir /a /b "tools" 2^>nul') do set "TOOLS_HAS_CONTENT=1"
     if not defined TOOLS_HAS_CONTENT rmdir /q "tools" >nul 2>nul
 )
+call :seed_bundle_logo_json
+exit /b 0
+
+:cleanup_stale_release_git
+for %%I in ("%CD%") do set "CURRENT_FOLDER=%%~nxI"
+if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
+if not exist "..\KFPS.exe" exit /b 0
+if exist ".git\" (
+    rmdir /s /q ".git" >nul 2>nul
+    if not exist ".git\" call :log "Removed stale release Git metadata."
+)
+exit /b 0
+
+:seed_bundle_logo_json
+set "KFPS_LOGO_JSON=assets\app\KFPS Logo.json"
+if not exist "%KFPS_LOGO_JSON%" exit /b 0
+if not exist "imgs\generated\KFPS Logo\finals" mkdir "imgs\generated\KFPS Logo\finals" >nul 2>nul
+if not exist "imgs\exported" mkdir "imgs\exported" >nul 2>nul
+if not exist "imgs\editor\KFPS Logo" mkdir "imgs\editor\KFPS Logo" >nul 2>nul
+copy /y "%KFPS_LOGO_JSON%" "imgs\generated\KFPS Logo\finals\KFPS Logo.3000v2.json" >nul 2>nul
+copy /y "%KFPS_LOGO_JSON%" "imgs\exported\KFPS Logo.json" >nul 2>nul
+copy /y "%KFPS_LOGO_JSON%" "imgs\editor\KFPS Logo\KFPS Logo.json" >nul 2>nul
 exit /b 0
 
 :cleanup_3x_retired_files
 call :log "Cleaning retired 2.x UI and launcher files..."
-for %%F in (
-    "app_qt.py"
-    "launcher_qt.py"
-    "00_launcher.bat"
-    "04_start_app.bat"
-    "Kloudys Painter Launcher.exe"
-    "Kloudys Painter.exe"
-    "..\Kloudys Painter Launcher.exe"
-    "..\Kloudys Painter.exe"
-) do (
-    if exist "%%~F" del /f /q "%%~F" >nul 2>nul
-)
+if exist "app_qt.py" del /f /q "app_qt.py" >nul 2>nul
+if exist "launcher_qt.py" del /f /q "launcher_qt.py" >nul 2>nul
+if exist "00_launcher.bat" del /f /q "00_launcher.bat" >nul 2>nul
+if exist "04_start_app.bat" del /f /q "04_start_app.bat" >nul 2>nul
+if exist "Kloudys Painter Launcher.exe" del /f /q "Kloudys Painter Launcher.exe" >nul 2>nul
+if exist "Kloudys Painter.exe" del /f /q "Kloudys Painter.exe" >nul 2>nul
+if exist "..\Kloudys Painter Launcher.exe" del /f /q "..\Kloudys Painter Launcher.exe" >nul 2>nul
+if exist "..\Kloudys Painter.exe" del /f /q "..\Kloudys Painter.exe" >nul 2>nul
+if exist "KFPS.Wpf" rmdir /s /q "KFPS.Wpf" >nul 2>nul
 exit /b 0
 
 :sync_native_root_exe
