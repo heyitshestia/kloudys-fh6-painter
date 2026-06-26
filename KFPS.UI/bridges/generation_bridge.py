@@ -4,9 +4,30 @@ import subprocess
 import sys
 import threading
 import time
+import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+def discover_app_root():
+    starts = []
+    env_root = os.environ.get("KFPS_APP_ROOT")
+    if env_root:
+        starts.append(Path(env_root))
+    starts.extend([Path.cwd(), Path(__file__).resolve().parents[2]])
+    for start in starts:
+        for candidate in [start, *start.parents]:
+            nested = candidate / "KloudysFH6Painter"
+            if looks_like_app_root(nested):
+                return nested.resolve()
+            if looks_like_app_root(candidate):
+                return candidate.resolve()
+    return Path.cwd().resolve()
+
+
+def looks_like_app_root(path):
+    return path.is_dir() and (path / "VERSION").is_file() and (path / "generator_backend.py").is_file()
+
+
+ROOT = discover_app_root()
 sys.path.insert(0, str(ROOT))
 
 from generator_backend import (

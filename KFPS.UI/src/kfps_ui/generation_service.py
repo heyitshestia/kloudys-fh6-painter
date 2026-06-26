@@ -99,7 +99,7 @@ class GenerationService(QObject):
         self.log.append(f"Starting generation for: {image}")
         if self._full_log_path:
             self.log.append(f"Full generation log: {self._full_log_path}")
-        env = QProcessEnvironment.systemEnvironment(); env.insert("PYTHONUTF8", "1"); self._process.setProcessEnvironment(env)
+        env = QProcessEnvironment.systemEnvironment(); env.insert("PYTHONUTF8", "1"); env.insert("KFPS_APP_ROOT", str(self.paths.app_root)); self._process.setProcessEnvironment(env)
         self._process.setWorkingDirectory(str(self.paths.app_root)); self._process.start(self.paths.python_executable, args)
         if not self._process.waitForStarted(5000):
             self._close_full_generation_log()

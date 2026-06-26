@@ -371,9 +371,9 @@ call :log "Native launcher repair did not produce a valid QML executable."
 exit /b 1
 
 :init_qml_payload_defaults
-if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.17-binary.zip"
-if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.17/KFPS-3.0.17-binary.zip"
-if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=9A0BBCA475BDF7DC7D72FB90512837E9DB996DBBF9FB3E2359CCB83B353155E7"
+if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.19-binary.zip"
+if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.19/KFPS-3.0.19-binary.zip"
+if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=B3FF378DCC16A8F60A9F513ECA99A5A3DBC50C9244CE08D1D864F634944C24A1"
 exit /b 0
 
 :capture_file_sha256

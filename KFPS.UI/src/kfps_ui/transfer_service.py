@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import psutil
-from PySide6.QtCore import QObject, Property, QProcess, Signal, Slot
+from PySide6.QtCore import QObject, Property, QProcess, QProcessEnvironment, Signal, Slot
 
 from .app_paths import AppPaths
 from .json_service import JsonService
@@ -31,7 +31,7 @@ class TransferService(QObject):
         value=value.lower();return "fm" if value.startswith("fm") else value
     def _start(self,args,status):
         if self._running:self.log.append("A transfer job is already running.");return
-        bridge=self.paths.ui_root/"bridges"/"transfer_bridge.py";self._running=True;self._status=status;self._buffer=b"";self.changed.emit();self.log.append(status+"…");self._process.setWorkingDirectory(str(self.paths.app_root));self._process.start(self.paths.python_executable,["-u",str(bridge),*args])
+        bridge=self.paths.ui_root/"bridges"/"transfer_bridge.py";self._running=True;self._status=status;self._buffer=b"";self.changed.emit();self.log.append(status+"…");env=QProcessEnvironment.systemEnvironment();env.insert("PYTHONUTF8","1");env.insert("KFPS_APP_ROOT",str(self.paths.app_root));self._process.setProcessEnvironment(env);self._process.setWorkingDirectory(str(self.paths.app_root));self._process.start(self.paths.python_executable,["-u",str(bridge),*args])
         if not self._process.waitForStarted(5000):self._running=False;self._status="Failed to start";self.changed.emit()
     def _read(self):
         self._buffer+=bytes(self._process.readAllStandardOutput());parts=self._buffer.split(b"\n");self._buffer=parts.pop() if parts else b""

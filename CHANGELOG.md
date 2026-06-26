@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.19
+- Fixed bundled QML helper bridges resolving backend scripts from PyInstaller temp folders during generation and import/export.
+
 ## 3.0.18
 - Fixed native updater marker repair so an already-current root KFPS executable does not trigger an unnecessary binary payload download.
 
