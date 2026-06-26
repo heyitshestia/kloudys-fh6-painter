@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.23
+- Fixed updater bootstrap so GitHub raw batch files are normalized to Windows CRLF before execution.
+
 ## 3.0.22
 - Hardened updater verification so every Git-tracked program file is hash-checked and repaired after update copy.
 - Kept generated/runtime/user data preserved while verifying the native KFPS executable one folder above the app root.
