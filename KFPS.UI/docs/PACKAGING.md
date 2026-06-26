@@ -19,4 +19,4 @@ Standalone root/
     └── imgs/
 ```
 
-The in-app updater closes `KFPS.exe`, invokes the existing `03_update_from_github.bat`, preserves runtime/generated data through that existing updater, and relaunches the root executable on success.
+The in-app updater closes `KFPS.exe` and invokes the existing `03_update_from_github.bat` visibly. The batch updater preserves runtime/generated data and leaves relaunching to the user so the freshly replaced single-file executable is not started from a transient update handoff.

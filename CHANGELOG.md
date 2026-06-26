@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.17
+- Changed the in-app updater to launch the GitHub batch updater directly and close KFPS.
+- Removed the in-app updater's immediate auto-relaunch path to avoid transient PyInstaller `_MEI` Python DLL load failures after updates.
+
 ## 3.0.16
 - Restored multi-image generation queue support in the native Generate tab.
 - Restored double-click custom target layer entry with automatic checkpoint suggestions.
