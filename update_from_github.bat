@@ -2,6 +2,23 @@
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
+if not defined KFPS_UPDATER_HANDOFF (
+    set "KFPS_UPDATER_HANDOFF=1"
+    set "KFPS_UPDATER_ROOT=%CD%"
+    set "KFPS_UPDATER_TEMP=%TEMP%\kfps-updater-handoff-%RANDOM%-%RANDOM%.bat"
+    copy /y "%~f0" "!KFPS_UPDATER_TEMP!" >nul
+    if errorlevel 1 (
+        echo Failed to create updater handoff copy.
+        exit /b 1
+    )
+    call "!KFPS_UPDATER_TEMP!"
+    set "KFPS_UPDATER_EXIT=!ERRORLEVEL!"
+    del /f /q "!KFPS_UPDATER_TEMP!" >nul 2>nul
+    exit /b !KFPS_UPDATER_EXIT!
+)
+
+if defined KFPS_UPDATER_ROOT cd /d "%KFPS_UPDATER_ROOT%"
+
 set "REPO_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite.git"
 set "BRANCH=main"
 

@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.21
+- Fixed updater self-replacement by running updates from a temporary handoff copy before mirroring program files.
+
 ## 3.0.20
 - Hardened the updater to mirror program files from GitHub, preserve generated/runtime data, verify critical copied files, verify the native launcher hash, and fail loudly if retired app files remain.
 
