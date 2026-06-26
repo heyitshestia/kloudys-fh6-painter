@@ -36,6 +36,9 @@ if not defined KFPS_UPDATER_HANDOFF (
 
 if defined KFPS_UPDATER_ROOT cd /d "%KFPS_UPDATER_ROOT%"
 
+call :resolve_update_root
+if errorlevel 1 exit /b 1
+
 call :init_update_log
 call :capture_current_version OLD_VERSION
 
@@ -171,6 +174,37 @@ if exist ".git\" (
     for /f "delims=" %%V in ('git rev-parse --short^=8 HEAD 2^>nul') do set "%~1=git:%%V"
 )
 :capture_current_version_done
+exit /b 0
+
+:resolve_update_root
+set "KFPS_START_DIR=%CD%"
+call :is_kfps_app_root
+if not errorlevel 1 exit /b 0
+
+set "KFPS_CANDIDATE_ROOT=%KFPS_START_DIR%\KloudysFH6Painter"
+if exist "%KFPS_CANDIDATE_ROOT%\" (
+    cd /d "%KFPS_CANDIDATE_ROOT%" >nul 2>nul
+    call :is_kfps_app_root
+    if not errorlevel 1 exit /b 0
+    cd /d "%KFPS_START_DIR%" >nul 2>nul
+)
+
+echo Refusing to update from this folder:
+echo %KFPS_START_DIR%
+echo.
+echo This updater must be run from inside KloudysFH6Painter, or from the folder that contains KloudysFH6Painter.
+echo No files were changed.
+if not "%FORZA_PAINTER_NO_PAUSE%"=="1" pause
+exit /b 1
+
+:is_kfps_app_root
+if not exist "VERSION" exit /b 1
+if not exist "KFPS.UI\" exit /b 1
+if not exist "assets\" exit /b 1
+if not exist "settings\" exit /b 1
+if not exist "fh6_probe.py" exit /b 1
+if not exist "generator_backend.py" exit /b 1
+if not exist "KloudysGalateaGenesis.exe" exit /b 1
 exit /b 0
 
 :backup_existing_files

@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.25
+- Added an updater safety guard so the updater refuses to run outside a real KFPS app folder.
+
 ## 3.0.24
 - Fixed updater bootstrap quoting so manually downloaded GitHub raw updater batches can hand off to a CRLF-normalized updater.
 
