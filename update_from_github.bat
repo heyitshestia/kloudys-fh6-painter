@@ -339,6 +339,16 @@ if not defined QML_ROOT_REASON (
         exit /b 0
     )
     if /I "!QML_MARKER_VALUE!"=="%QML_BINARY_ASSET_NAME%" exit /b 0
+    if defined QML_BINARY_ASSET_SHA256 (
+        set "QML_ROOT_HASH="
+        call :capture_file_sha256 "!QML_ROOT_EXE!" QML_ROOT_HASH
+        if /I "!QML_ROOT_HASH!"=="%QML_BINARY_ASSET_SHA256%" (
+            call :log "Native launcher marker was stale; refreshed without downloading the binary payload."
+            if not exist "%CD%\runtime" mkdir "%CD%\runtime" >nul 2>nul
+            > "!QML_MARKER!" echo %QML_BINARY_ASSET_NAME%
+            exit /b 0
+        )
+    )
     set "QML_ROOT_REASON=updated"
 )
 if /I "!QML_ROOT_REASON!"=="missing" call :log "Native KFPS launcher is missing; installing QML executable."
@@ -363,6 +373,19 @@ exit /b 1
 :init_qml_payload_defaults
 if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.17-binary.zip"
 if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.17/KFPS-3.0.17-binary.zip"
+if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=9A0BBCA475BDF7DC7D72FB90512837E9DB996DBBF9FB3E2359CCB83B353155E7"
+exit /b 0
+
+:capture_file_sha256
+set "HASH_VALUE="
+if "%~1"=="" exit /b 1
+if "%~2"=="" exit /b 1
+if not exist "%~1" exit /b 1
+for /f "tokens=1" %%H in ('certutil -hashfile "%~1" SHA256 2^>nul ^| findstr /R /V /C:"hash" /C:"CertUtil"') do (
+    if not defined HASH_VALUE set "HASH_VALUE=%%H"
+)
+if not defined HASH_VALUE exit /b 1
+set "%~2=%HASH_VALUE%"
 exit /b 0
 
 :cleanup_retired_files

@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.18
+- Fixed native updater marker repair so an already-current root KFPS executable does not trigger an unnecessary binary payload download.
+
 ## 3.0.17
 - Changed the in-app updater to launch the GitHub batch updater directly and close KFPS.
 - Removed the in-app updater's immediate auto-relaunch path to avoid transient PyInstaller `_MEI` Python DLL load failures after updates.
