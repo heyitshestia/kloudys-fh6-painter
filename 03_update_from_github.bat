@@ -10,7 +10,7 @@ if not defined KFPS_UPDATER_REMOTE_BOOTSTRAP (
     if not defined KFPS_UPDATER_ROOT set "KFPS_UPDATER_ROOT=%CD%"
     set "KFPS_UPDATER_TEMP=%TEMP%\kfps-latest-updater-%RANDOM%-%RANDOM%.bat"
     set "KFPS_REMOTE_UPDATER_URL="
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$repo=$env:REPO_URL; $branch=$env:BRANCH; if($repo -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)(\.git)?$'){ $url='https://raw.githubusercontent.com/' + $Matches.owner + '/' + $Matches.repo + '/' + $branch + '/03_update_from_github.bat'; $content=(Invoke-WebRequest -UseBasicParsing -Uri $url -Headers @{'User-Agent'='KFPS-Updater'}).Content; $content=$content -replace \"`r?`n\", \"`r`n\"; [IO.File]::WriteAllText($env:KFPS_UPDATER_TEMP, $content, [Text.Encoding]::ASCII); exit 0 }; exit 1" >nul 2>nul
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$repo=$env:REPO_URL; $branch=$env:BRANCH; if($repo -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)(\.git)?$'){ $url='https://raw.githubusercontent.com/' + $Matches.owner + '/' + $Matches.repo + '/' + $branch + '/03_update_from_github.bat'; $content=(Invoke-WebRequest -UseBasicParsing -Uri $url -Headers @{'User-Agent'='KFPS-Updater'}).Content; $content=$content -replace '\r?\n', [Environment]::NewLine; [IO.File]::WriteAllText($env:KFPS_UPDATER_TEMP, $content, [Text.Encoding]::ASCII); exit 0 }; exit 1" >nul 2>nul
     if exist "!KFPS_UPDATER_TEMP!" (
         call "!KFPS_UPDATER_TEMP!"
         set "KFPS_UPDATER_EXIT=!ERRORLEVEL!"

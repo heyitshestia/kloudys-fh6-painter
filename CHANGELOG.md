@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.24
+- Fixed updater bootstrap quoting so manually downloaded GitHub raw updater batches can hand off to a CRLF-normalized updater.
+
 ## 3.0.23
 - Fixed updater bootstrap so GitHub raw batch files are normalized to Windows CRLF before execution.
 
