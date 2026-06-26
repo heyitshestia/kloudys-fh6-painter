@@ -15,10 +15,21 @@ class SourceImageService(QObject):
 
     def __init__(self, paths: AppPaths, desktop: DesktopService, log: LogService, parent=None):
         super().__init__(parent); self.paths = paths; self.desktop = desktop; self.log = log
-        self._path = ""; self._url = ""; self._title = "Source check"; self._message = "Choose an image to get a source check."; self._severity = "neutral"; self._metrics = "No source image selected."; self._heatmap = ""
+        self._path = ""; self._paths = []; self._url = ""; self._title = "Source check"; self._message = "Choose an image to get a source check."; self._severity = "neutral"; self._metrics = "No source image selected."; self._heatmap = ""
 
     @Property(str, notify=changed)
     def path(self): return self._path
+    @Property("QStringList", notify=changed)
+    def queuedPaths(self): return self._paths
+    @Property(int, notify=changed)
+    def count(self): return len(self._paths)
+    @Property(str, notify=changed)
+    def summary(self):
+        if not self._paths:
+            return "No source selected"
+        if len(self._paths) == 1:
+            return self._path
+        return f"{len(self._paths)} source images queued; first: {Path(self._path).name}"
     @Property(str, notify=changed)
     def url(self): return self._url
     @Property(str, notify=changed)
@@ -34,15 +45,38 @@ class SourceImageService(QObject):
 
     @Slot()
     def choose(self):
-        path = self.desktop.chooseImage()
-        if path: self.setPath(path)
+        paths = self.desktop.chooseImages()
+        if paths:
+            self.setPaths(paths)
 
     @Slot(str)
     def setPath(self, value):
         path = Path(value)
         if not path.is_file(): return
-        self._path = str(path.resolve()); self._url = file_url(path); self._heatmap = ""
-        self._analyze(path); self.log.append(f"Selected source image: {self._path}"); self.changed.emit()
+        self.setPaths([str(path)])
+
+    @Slot("QStringList")
+    def setPaths(self, values):
+        paths = []
+        for value in values or []:
+            path = Path(value)
+            if path.is_file():
+                resolved = str(path.resolve())
+                if resolved not in paths:
+                    paths.append(resolved)
+        if not paths:
+            return
+        first = Path(paths[0])
+        self._paths = paths
+        self._path = paths[0]
+        self._url = file_url(first)
+        self._heatmap = ""
+        self._analyze(first)
+        if len(paths) == 1:
+            self.log.append(f"Selected source image: {self._path}")
+        else:
+            self.log.append(f"Queued {len(paths)} source images for generation.")
+        self.changed.emit()
 
     def _analyze(self, path: Path):
         try:

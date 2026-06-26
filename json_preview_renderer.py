@@ -64,7 +64,42 @@ SHAPE_WORD_RESOURCE_CACHE: dict[int, tuple[str, int] | None] | None = None
 
 def render_json_preview(path: Path | str, max_size: int = PREVIEW_MAX) -> bytes | None:
     path = Path(path)
+    if _looks_like_typecode_preview(path):
+        return _render_typecode_preview(path, max_size) or _render_primitive_preview(path, max_size)
     return _render_primitive_preview(path, max_size) or _render_typecode_preview(path, max_size)
+
+
+def _shape_word_from_shape(shape: dict, type_code: int) -> int:
+    for key in ("type_word", "typeWord", "shape_word", "shapeWord"):
+        if key in shape:
+            try:
+                return int(shape.get(key)) & 0xFFFF
+            except (TypeError, ValueError):
+                pass
+    return int(type_code) & 0xFFFF
+
+
+def _looks_like_typecode_preview(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    shapes = payload.get("shapes") if isinstance(payload, dict) else None
+    if not isinstance(shapes, list):
+        return False
+    for shape in shapes:
+        if not isinstance(shape, dict):
+            continue
+        if shape.get("source_format") == "fh6_typecode":
+            return True
+        if any(key in shape for key in ("type_word", "typeWord", "shape_word", "shapeWord", "resource_family", "resource_index")):
+            return True
+        try:
+            if int(shape.get("type", 0)) > 1000000:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 def _checkerboard(size: tuple[int, int]):
@@ -183,7 +218,7 @@ def _resolve_vinyl_resource(type_code: int, shape: dict | None = None) -> tuple[
             return str(family), int(index)
         except (TypeError, ValueError):
             pass
-    word = int(shape.get("type_word", int(type_code) & 0xFFFF)) & 0xFFFF
+    word = _shape_word_from_shape(shape, type_code)
     return _shape_word_resource_map().get(word)
 
 
@@ -348,10 +383,13 @@ def _render_typecode_preview(path: Path, max_size: int = PREVIEW_MAX) -> bytes |
             [float(item) for item in data[:4]]
         except (TypeError, ValueError):
             continue
-        type_code = int(shape.get("type", ROTATED_ELLIPSE))
-        if type_code <= 1000000:
+        try:
+            type_code = int(shape.get("type", ROTATED_ELLIPSE))
+        except (TypeError, ValueError):
+            type_code = ROTATED_ELLIPSE
+        word = _shape_word_from_shape(shape, type_code)
+        if type_code <= 1000000 and not any(key in shape for key in ("type_word", "typeWord", "shape_word", "shapeWord", "resource_family", "resource_index")):
             continue
-        word = int(shape.get("type_word", type_code & 0xFFFF)) & 0xFFFF
         resource = _resolve_vinyl_resource(type_code, shape)
         triangles = _resource_triangles(*resource) if resource else None
         if not triangles:

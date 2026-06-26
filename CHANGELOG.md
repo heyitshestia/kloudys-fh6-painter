@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.16
+- Restored multi-image generation queue support in the native Generate tab.
+- Restored double-click custom target layer entry with automatic checkpoint suggestions.
+- Fixed JSON browser previews so generated checkpoints use the selected checkpoint preview while editor exports use the editor-specific preview path.
+
 ## 3.0.15
 - Fixed updater binary checks so normal updates do not redownload the QML executable when it is already installed.
 - Existing installs with a leftover WPF root executable still repair automatically by reusing the 3.0.14 binary asset.

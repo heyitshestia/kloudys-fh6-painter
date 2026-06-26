@@ -22,6 +22,7 @@ class GenerationService(QObject):
         self._process.readyReadStandardOutput.connect(self._read); self._process.finished.connect(self._finished)
         self._running = False; self._status = "Ready"; self._run_dir = ""; self._preview = ""; self._buffer = b""
         self._full_log_path = ""; self._full_log_handle = None
+        self._queue = []; self._queue_total = 0; self._queue_index = 0
         self._preview_timer = QTimer(self); self._preview_timer.setInterval(1000); self._preview_timer.timeout.connect(self.refreshPreview)
         self._presets = self._load_presets()
         self._selected_preset_index = 0 if self._presets else -1
@@ -48,11 +49,39 @@ class GenerationService(QObject):
     def runDirectory(self): return self._run_dir
     @Property(str, notify=changed)
     def previewUrl(self): return self._preview
+    @Property(int, notify=changed)
+    def queueRemaining(self): return len(self._queue)
+    @Property(str, notify=changed)
+    def queueStatus(self):
+        if self._queue_total <= 1:
+            return ""
+        current = min(self._queue_index + 1, self._queue_total)
+        return f"Queue {current}/{self._queue_total}"
 
     @Slot(str, int, str, str, bool, bool, bool, bool, bool, str, str, str, int)
     def start(self, image, preset, layers, save_at, luma, detail, repair, boost, manual, max_res, random_samples, mutated_samples, seed):
+        self.startQueue([image], preset, layers, save_at, luma, detail, repair, boost, manual, max_res, random_samples, mutated_samples, seed)
+
+    @Slot("QStringList", int, str, str, bool, bool, bool, bool, bool, str, str, str, int)
+    def startQueue(self, images, preset, layers, save_at, luma, detail, repair, boost, manual, max_res, random_samples, mutated_samples, seed):
         if self._running: self.log.append("Generation is already running."); return
-        if not image or not Path(image).is_file(): self.log.append("Choose a source image before generating.", "warning"); return
+        valid_images = []
+        for image in images or []:
+            if image and Path(image).is_file():
+                resolved = str(Path(image).resolve())
+                if resolved not in valid_images:
+                    valid_images.append(resolved)
+        if not valid_images: self.log.append("Choose a source image before generating.", "warning"); return
+        self._queue_total = len(valid_images); self._queue_index = 0
+        self._queue = [
+            (image, preset, layers, save_at, luma, detail, repair, boost, manual, max_res, random_samples, mutated_samples, seed)
+            for image in valid_images[1:]
+        ]
+        if self._queue_total > 1:
+            self.log.append(f"Starting queued generation: {self._queue_total} images.")
+        self._start_single(valid_images[0], preset, layers, save_at, luma, detail, repair, boost, manual, max_res, random_samples, mutated_samples, seed)
+
+    def _start_single(self, image, preset, layers, save_at, luma, detail, repair, boost, manual, max_res, random_samples, mutated_samples, seed):
         bridge = self.paths.ui_root / "bridges" / "generation_bridge.py"
         preset_index = preset if 0 <= int(preset) < len(self._presets) else self._selected_preset_index
         args = ["-u", str(bridge), "--image", image, "--preset-index", str(max(0, preset_index)), "--layers", layers or "2000", "--save-at", save_at or layers or "2000", "--seed", str(max(0, seed))]
@@ -65,7 +94,8 @@ class GenerationService(QObject):
             if random_samples.strip(): args += ["--random-samples", random_samples.strip()]
             if mutated_samples.strip(): args += ["--mutated-samples", mutated_samples.strip()]
         self._open_full_generation_log()
-        self._run_dir = ""; self._preview = file_url(image); self._buffer = b""; self._running = True; self._status = "Starting generation"; self.changed.emit()
+        prefix = f" ({self.queueStatus})" if self.queueStatus else ""
+        self._run_dir = ""; self._preview = file_url(image); self._buffer = b""; self._running = True; self._status = "Starting generation" + prefix; self.changed.emit()
         self.log.append(f"Starting generation for: {image}")
         if self._full_log_path:
             self.log.append(f"Full generation log: {self._full_log_path}")
@@ -247,8 +277,17 @@ class GenerationService(QObject):
                     self.log.append(line, update_status=False)
             self._buffer = b""
         self._close_full_generation_log()
-        self._preview_timer.stop(); self.refreshPreview(); self._running = False; self._status = "Complete" if code == 0 else f"Failed (exit {code})"; self.changed.emit()
+        self._preview_timer.stop(); self.refreshPreview()
         self.log.append("Generation finished." if code == 0 else f"Generation exited with code {code}.", "info" if code == 0 else "error")
+        if self._queue:
+            self._queue_index += 1
+            next_args = self._queue.pop(0)
+            self._status = f"Starting next queued image ({self.queueStatus})"
+            self.changed.emit()
+            self._start_single(*next_args)
+            return
+        self._queue_index = 0; self._queue_total = 0
+        self._running = False; self._status = "Complete" if code == 0 else f"Failed (exit {code})"; self.changed.emit()
 
     @Slot()
     def refreshPreview(self):
@@ -273,6 +312,7 @@ class GenerationService(QObject):
     @Slot()
     def forceStop(self):
         if not self._running: return
+        self._queue = []; self._queue_total = 0; self._queue_index = 0
         pid = int(self._process.processId())
         try:
             parent = psutil.Process(pid)

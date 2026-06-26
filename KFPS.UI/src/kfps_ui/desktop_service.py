@@ -23,6 +23,12 @@ class DesktopService(QObject):
         path, _ = QFileDialog.getOpenFileName(None, "Choose source image", str(initial if initial.exists() else self.paths.app_root), "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*)")
         return path
 
+    @Slot(result="QStringList")
+    def chooseImages(self):
+        initial = self.paths.app_root.parent / "Images"
+        paths, _ = QFileDialog.getOpenFileNames(None, "Choose source image(s)", str(initial if initial.exists() else self.paths.app_root), "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*)")
+        return paths
+
     @Slot(result=str)
     def chooseJson(self):
         path, _ = QFileDialog.getOpenFileName(None, "Choose vinyl JSON", str(self.paths.app_root), "Vinyl JSON (*.json);;All files (*)")

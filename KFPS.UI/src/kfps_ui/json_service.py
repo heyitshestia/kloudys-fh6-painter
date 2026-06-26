@@ -128,7 +128,8 @@ class JsonService(QObject):
     def selectPath(self,value):
         path=Path(value)
         if not path.is_file():return
-        self._selected_path=str(path.resolve()); self._layers=str(self._count(path)); self._folder=str(path.parent); self._preview_url=self.preview.preview_for_json(path); self.changed.emit(); self.log.append(f"Selected JSON: {self._selected_path}")
+        source_name=["generated","editor","exported"][self._source]
+        self._selected_path=str(path.resolve()); self._layers=str(self._count(path)); self._folder=str(path.parent); self._preview_url=self.preview.preview_for_json(path, source_name); self.changed.emit(); self.log.append(f"Selected JSON: {self._selected_path}")
 
     @Slot()
     def clearSelection(self): self._selected_path=""; self._preview_url=""; self._layers="—"; self._folder="—"; self.changed.emit()

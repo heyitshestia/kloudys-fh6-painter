@@ -10,6 +10,7 @@ ComboBox {
 
     property bool dense: false
     property real minimumWidth: Theme.px(96)
+    signal doubleTapped()
 
     implicitHeight: Math.max(
                         Theme.px(dense ? Metrics.denseButtonHeight : Metrics.fieldHeight),
@@ -68,6 +69,11 @@ ComboBox {
 
         Behavior on color { ColorAnimation { duration: 120 } }
         Behavior on border.color { ColorAnimation { duration: 120 } }
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.LeftButton
+        onDoubleTapped: root.doubleTapped()
     }
 
     delegate: ItemDelegate {

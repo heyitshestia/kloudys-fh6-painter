@@ -9,6 +9,59 @@ Item {
     id: root
     anchors.fill: parent
     property bool wide: Theme.logical(width) >= 820
+    property var layerOptions: ["500", "1000", "1500", "2000", "2500", "3000"]
+    property var customLayerCombo: null
+    property var customCheckpointField: null
+
+    function checkpointTextFor(layerText) {
+        var target = parseInt(layerText)
+        if (!target || target < 1)
+            target = 2000
+        var base = [500, 1000, 1250, 1500, 2000, 2500, 3000]
+        var seen = {}
+        var out = []
+        for (var i = 0; i < base.length; ++i) {
+            if (base[i] <= target) {
+                seen[base[i]] = true
+                out.push(base[i])
+            }
+        }
+        if (!seen[target])
+            out.push(target)
+        out.sort(function(a, b) { return a - b })
+        return out.join(",")
+    }
+
+    function setLayerValue(combo, checkpointField, value) {
+        var target = parseInt(value)
+        if (!target || target < 1)
+            return
+        target = Math.max(1, Math.min(3000, target))
+        var text = String(target)
+        var items = []
+        var found = false
+        for (var i = 0; i < combo.model.length; ++i) {
+            var item = String(combo.model[i])
+            if (item === text)
+                found = true
+            items.push(item)
+        }
+        if (!found)
+            items.push(text)
+        items.sort(function(a, b) { return parseInt(a) - parseInt(b) })
+        combo.model = items
+        combo.currentIndex = items.indexOf(text)
+        checkpointField.text = checkpointTextFor(text)
+    }
+
+    function openCustomLayerDialog(combo, checkpointField) {
+        customLayerCombo = combo
+        customCheckpointField = checkpointField
+        customLayerInput.text = combo.currentText || "2000"
+        customLayerDialog.open()
+        customLayerInput.forceActiveFocus()
+        customLayerInput.selectAll()
+    }
 
     Loader {
         anchors.fill: parent
@@ -54,13 +107,13 @@ Item {
                             }
                             PrimaryButton {
                                 Layout.fillWidth: true
-                                text: "Choose source image"
+                                text: "Choose source image(s)"
                                 iconName: "images"
                                 onClicked: sourceService.choose()
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: sourceService.path || "No source selected"
+                                text: sourceService.summary
                                 color: Theme.subtle
                                 font.family: Theme.monoFamily
                                 font.pixelSize: Theme.px(9.3)
@@ -106,8 +159,10 @@ Item {
                                     KfpsComboBox {
                                         id: layers
                                         Layout.fillWidth: true
-                                        model: ["500", "1000", "1500", "2000", "2500", "3000"]
+                                        model: root.layerOptions
                                         currentIndex: 3
+                                        onActivated: checkpoints.text = root.checkpointTextFor(currentText)
+                                        onDoubleTapped: root.openCustomLayerDialog(layers, checkpoints)
                                     }
                                 }
                                 ColumnLayout {
@@ -207,7 +262,7 @@ Item {
                             text: generationService.running ? "Generating…" : "Generate Final Vinyl"
                             iconName: "generate"
                             enabled: !generationService.running
-                            onClicked: generationService.start(sourceService.path, preset.currentIndex, layers.currentText, checkpoints.text, luma.checked, heat.checked, repair.checked, boost.checked, settings.manualOverrides, settings.manualOverrides ? maxRes.text : "", settings.manualOverrides ? randomSamples.text : "", settings.manualOverrides ? mutatedSamples.text : "", parseInt(seed.text) || 0)
+                            onClicked: generationService.startQueue(sourceService.queuedPaths, preset.currentIndex, layers.currentText, checkpoints.text, luma.checked, heat.checked, repair.checked, boost.checked, settings.manualOverrides, settings.manualOverrides ? maxRes.text : "", settings.manualOverrides ? randomSamples.text : "", settings.manualOverrides ? mutatedSamples.text : "", parseInt(seed.text) || 0)
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -413,7 +468,7 @@ Item {
                         spacing: Theme.px(8)
                         PrimaryButton {
                             Layout.fillWidth: true
-                            text: "Choose source image"
+                            text: "Choose source image(s)"
                             iconName: "images"
                             onClicked: sourceService.choose()
                         }
@@ -445,8 +500,10 @@ Item {
                             KfpsComboBox {
                                 id: cl
                                 Layout.fillWidth: true
-                                model: ["500", "1000", "1500", "2000", "2500", "3000"]
+                                model: root.layerOptions
                                 currentIndex: 3
+                                onActivated: cc.text = root.checkpointTextFor(currentText)
+                                onDoubleTapped: root.openCustomLayerDialog(cl, cc)
                             }
                             KfpsTextField {
                                 id: cseed
@@ -508,7 +565,7 @@ Item {
                             Layout.fillWidth: true
                             text: generationService.running ? "Generating…" : "Generate Final Vinyl"
                             enabled: !generationService.running
-                            onClicked: generationService.start(sourceService.path, cp.currentIndex, cl.currentText, cc.text, cLuma.checked, cHeat.checked, cRepair.checked, cBoost.checked, settings.manualOverrides, settings.manualOverrides ? cMax.text : "", settings.manualOverrides ? cRandom.text : "", settings.manualOverrides ? cMutated.text : "", parseInt(cseed.text) || 0)
+                            onClicked: generationService.startQueue(sourceService.queuedPaths, cp.currentIndex, cl.currentText, cc.text, cLuma.checked, cHeat.checked, cRepair.checked, cBoost.checked, settings.manualOverrides, settings.manualOverrides ? cMax.text : "", settings.manualOverrides ? cRandom.text : "", settings.manualOverrides ? cMutated.text : "", parseInt(cseed.text) || 0)
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -554,5 +611,41 @@ Item {
         text: "Force Stop immediately terminates the process tree. Use it only if Graceful Stop does not work."
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: generationService.forceStop()
+    }
+
+    Dialog {
+        id: customLayerDialog
+        modal: true
+        title: "Custom layer count"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
+        width: Theme.px(320)
+
+        ColumnLayout {
+            width: parent.width
+            spacing: Theme.px(10)
+            Text {
+                Layout.fillWidth: true
+                text: "Enter a target layer count between 1 and 3000."
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.px(11)
+                wrapMode: Text.Wrap
+            }
+            KfpsTextField {
+                id: customLayerInput
+                Layout.fillWidth: true
+                inputMethodHints: Qt.ImhDigitsOnly
+                placeholderText: "Layer count"
+                validator: IntValidator { bottom: 1; top: 3000 }
+                onAccepted: customLayerDialog.accept()
+            }
+        }
+
+        onAccepted: {
+            if (root.customLayerCombo && root.customCheckpointField)
+                root.setLayerValue(root.customLayerCombo, root.customCheckpointField, customLayerInput.text)
+        }
     }
 }
