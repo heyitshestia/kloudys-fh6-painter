@@ -63,7 +63,7 @@ if errorlevel 8 (
     call :log "File copy failed during robocopy update copy. Robocopy exit code: %ERRORLEVEL%"
     goto :fail
 )
-call :install_qml_binary_payload
+call :ensure_qml_root_binary
 if errorlevel 1 goto :fail
 call :cleanup_retired_files
 call :write_build_commit "%TMP_REPO%"
@@ -312,15 +312,62 @@ if errorlevel 1 (
 call :log "QML native binary payload installed."
 exit /b 0
 
+:ensure_qml_root_binary
+call :init_qml_payload_defaults
+for %%I in ("%CD%") do set "CURRENT_FOLDER=%%~nxI"
+if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
+set "QML_ROOT_EXE=%CD%\..\KFPS.exe"
+set "QML_MARKER=%CD%\runtime\native-root-exe-version.txt"
+set "QML_ROOT_REASON="
+if not exist "!QML_ROOT_EXE!" (
+    set "QML_ROOT_REASON=missing"
+) else (
+    set "QML_ROOT_SIZE=0"
+    for %%I in ("!QML_ROOT_EXE!") do set "QML_ROOT_SIZE=%%~zI"
+    if !QML_ROOT_SIZE! LSS 120000000 set "QML_ROOT_REASON=legacy"
+)
+if not defined QML_ROOT_REASON (
+    set "QML_MARKER_VALUE="
+    if exist "!QML_MARKER!" (
+        for /f "usebackq delims=" %%V in ("!QML_MARKER!") do (
+            if not defined QML_MARKER_VALUE set "QML_MARKER_VALUE=%%V"
+        )
+    )
+    if not defined QML_MARKER_VALUE (
+        if not exist "%CD%\runtime" mkdir "%CD%\runtime" >nul 2>nul
+        > "!QML_MARKER!" echo %QML_BINARY_ASSET_NAME%
+        exit /b 0
+    )
+    if /I "!QML_MARKER_VALUE!"=="%QML_BINARY_ASSET_NAME%" exit /b 0
+    set "QML_ROOT_REASON=updated"
+)
+if /I "!QML_ROOT_REASON!"=="missing" call :log "Native KFPS launcher is missing; installing QML executable."
+if /I "!QML_ROOT_REASON!"=="legacy" call :log "Legacy native launcher detected; replacing it with the QML executable."
+if /I "!QML_ROOT_REASON!"=="updated" call :log "Native launcher payload changed; updating QML executable."
+if exist "KFPS.exe" del /f /q "KFPS.exe" >nul 2>nul
+call :install_qml_binary_payload
+if errorlevel 1 exit /b 1
+call :sync_native_root_exe
+if exist "!QML_ROOT_EXE!" (
+    set "QML_ROOT_SIZE=0"
+    for %%I in ("!QML_ROOT_EXE!") do set "QML_ROOT_SIZE=%%~zI"
+    if !QML_ROOT_SIZE! GEQ 120000000 (
+        if not exist "%CD%\runtime" mkdir "%CD%\runtime" >nul 2>nul
+        > "!QML_MARKER!" echo %QML_BINARY_ASSET_NAME%
+        exit /b 0
+    )
+)
+call :log "Native launcher repair did not produce a valid QML executable."
+exit /b 1
+
 :init_qml_payload_defaults
 if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.14-binary.zip"
 if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.14/KFPS-3.0.14-binary.zip"
 exit /b 0
 
 :cleanup_retired_files
-call :install_qml_binary_payload
+call :ensure_qml_root_binary
 if errorlevel 1 exit /b 1
-call :sync_native_root_exe
 call :cleanup_stale_release_git
 if exist "settings\_archive_legacy_2026-05-22" rmdir /s /q "settings\_archive_legacy_2026-05-22" >nul 2>nul
 if exist "settings\_default.ini" del /f /q "settings\_default.ini" >nul 2>nul

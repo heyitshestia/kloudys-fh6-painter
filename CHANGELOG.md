@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.15
+- Fixed updater binary checks so normal updates do not redownload the QML executable when it is already installed.
+- Existing installs with a leftover WPF root executable still repair automatically by reusing the 3.0.14 binary asset.
+
 ## 3.0.14
 - Fixed Git-checkout/native test installs so updating also installs the QML root executable, not only the app files.
 - Kept WPF-to-QML release migration behavior unchanged.
