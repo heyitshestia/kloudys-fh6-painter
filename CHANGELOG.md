@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.22
+- Hardened updater verification so every Git-tracked program file is hash-checked and repaired after update copy.
+- Kept generated/runtime/user data preserved while verifying the native KFPS executable one folder above the app root.
+- Changed the native update button to fetch a fresh updater script before launching updates.
+- Fixed updater batch formatting for more reliable Windows command processing.
+
 ## 3.0.21
 - Fixed updater self-replacement by running updates from a temporary handoff copy before mirroring program files.
 

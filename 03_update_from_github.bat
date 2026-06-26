@@ -2,9 +2,26 @@
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
+if not defined REPO_URL set "REPO_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite.git"
+if not defined BRANCH set "BRANCH=main"
+
+if not defined KFPS_UPDATER_REMOTE_BOOTSTRAP (
+    set "KFPS_UPDATER_REMOTE_BOOTSTRAP=1"
+    if not defined KFPS_UPDATER_ROOT set "KFPS_UPDATER_ROOT=%CD%"
+    set "KFPS_UPDATER_TEMP=%TEMP%\kfps-latest-updater-%RANDOM%-%RANDOM%.bat"
+    set "KFPS_REMOTE_UPDATER_URL="
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$repo=$env:REPO_URL; $branch=$env:BRANCH; if($repo -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)(\.git)?$'){ $url='https://raw.githubusercontent.com/' + $Matches.owner + '/' + $Matches.repo + '/' + $branch + '/03_update_from_github.bat'; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $env:KFPS_UPDATER_TEMP -Headers @{'User-Agent'='KFPS-Updater'}; exit 0 }; exit 1" >nul 2>nul
+    if exist "!KFPS_UPDATER_TEMP!" (
+        call "!KFPS_UPDATER_TEMP!"
+        set "KFPS_UPDATER_EXIT=!ERRORLEVEL!"
+        del /f /q "!KFPS_UPDATER_TEMP!" >nul 2>nul
+        exit /b !KFPS_UPDATER_EXIT!
+    )
+)
+
 if not defined KFPS_UPDATER_HANDOFF (
     set "KFPS_UPDATER_HANDOFF=1"
-    set "KFPS_UPDATER_ROOT=%CD%"
+    if not defined KFPS_UPDATER_ROOT set "KFPS_UPDATER_ROOT=%CD%"
     set "KFPS_UPDATER_TEMP=%TEMP%\kfps-updater-handoff-%RANDOM%-%RANDOM%.bat"
     copy /y "%~f0" "!KFPS_UPDATER_TEMP!" >nul
     if errorlevel 1 (
@@ -18,9 +35,6 @@ if not defined KFPS_UPDATER_HANDOFF (
 )
 
 if defined KFPS_UPDATER_ROOT cd /d "%KFPS_UPDATER_ROOT%"
-
-set "REPO_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite.git"
-set "BRANCH=main"
 
 call :init_update_log
 call :capture_current_version OLD_VERSION
@@ -218,23 +232,18 @@ exit /b 0
 
 :verify_program_file_sync
 set "VERIFY_REPO=%~1"
-call :log "Verifying updated program files..."
-call :verify_same_file "%VERIFY_REPO%\VERSION" "%CD%\VERSION"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\fh6_probe.py" "%CD%\fh6_probe.py"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\fh6_import_typecode_json.py" "%CD%\fh6_import_typecode_json.py"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\fh6_export_typecode_json.py" "%CD%\fh6_export_typecode_json.py"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\KFPS.UI\bridges\transfer_bridge.py" "%CD%\KFPS.UI\bridges\transfer_bridge.py"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\KFPS.UI\bridges\generation_bridge.py" "%CD%\KFPS.UI\bridges\generation_bridge.py"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\KFPS.UI\src\kfps_ui\app_paths.py" "%CD%\KFPS.UI\src\kfps_ui\app_paths.py"
-if errorlevel 1 exit /b 1
-call :verify_same_file "%VERIFY_REPO%\tools\fabric-editor\start_fabric_editor.py" "%CD%\tools\fabric-editor\start_fabric_editor.py"
-if errorlevel 1 exit /b 1
+if not exist "%VERIFY_REPO%\.git\" (
+    call :log "Verification failed: repository metadata is missing for hash verification."
+    exit /b 1
+)
+call :log "Verifying updated program files against Git..."
+set "KFPS_VERIFY_REPO=%VERIFY_REPO%"
+set "KFPS_VERIFY_APP=%CD%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $repo=(Resolve-Path -LiteralPath $env:KFPS_VERIFY_REPO).Path; $app=(Resolve-Path -LiteralPath $env:KFPS_VERIFY_APP).Path; $tracked=& git -C $repo ls-files; if($LASTEXITCODE -ne 0){ throw 'git ls-files failed' }; $skip='^(runtime/|imgs/|webui-data/|python/|dist/|build/)|(^|/)__pycache__/|\.pyc$'; $checked=0; $repaired=0; $failed=@(); foreach($rel in $tracked){ if($rel -match $skip){ continue }; $src=Join-Path $repo ($rel -replace '/', [IO.Path]::DirectorySeparatorChar); $dst=Join-Path $app ($rel -replace '/', [IO.Path]::DirectorySeparatorChar); if(-not (Test-Path -LiteralPath $src -PathType Leaf)){ $failed += $rel; continue }; $needCopy=$false; if(-not (Test-Path -LiteralPath $dst -PathType Leaf)){ $needCopy=$true } else { $srcHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $src).Hash; $dstHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $dst).Hash; if($srcHash -ne $dstHash){ $needCopy=$true } }; if($needCopy){ $parent=Split-Path -Parent $dst; if($parent -and -not (Test-Path -LiteralPath $parent)){ New-Item -ItemType Directory -Force -Path $parent | Out-Null }; Copy-Item -LiteralPath $src -Destination $dst -Force; $repaired++ }; $srcHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $src).Hash; if(-not (Test-Path -LiteralPath $dst -PathType Leaf)){ $failed += $rel; continue }; $dstHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $dst).Hash; if($srcHash -ne $dstHash){ $failed += $rel } else { $checked++ } }; if($failed.Count -gt 0){ Write-Host ('Verification failed for ' + $failed.Count + ' file(s):'); $failed | Select-Object -First 25 | ForEach-Object { Write-Host ('  ' + $_) }; exit 1 }; Write-Host ('Verified ' + $checked + ' tracked program file(s); repaired ' + $repaired + ' mismatched/missing file(s).'); exit 0"
+if errorlevel 1 (
+    call :log "Program file verification failed. Git copy and local install still differ."
+    exit /b 1
+)
 call :log "Program file verification passed."
 exit /b 0
 
@@ -451,9 +460,9 @@ call :log "Native launcher repair did not produce a valid QML executable."
 exit /b 1
 
 :init_qml_payload_defaults
-if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.19-binary.zip"
-if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.19/KFPS-3.0.19-binary.zip"
-if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=B3FF378DCC16A8F60A9F513ECA99A5A3DBC50C9244CE08D1D864F634944C24A1"
+if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.22-binary.zip"
+if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.22/KFPS-3.0.22-binary.zip"
+if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=5E8113AC2826529DE6691A89FD5CE03539386A52D8E9090CD50892A9861AD18C"
 exit /b 0
 
 :capture_file_sha256
