@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.14
+- Fixed Git-checkout/native test installs so updating also installs the QML root executable, not only the app files.
+- Kept WPF-to-QML release migration behavior unchanged.
+
 ## 3.0.13
 - Migrated the shipped app shell from the native WPF prototype to the QML KFPS desktop app.
 - Hardened the updater so existing WPF installs can migrate cleanly in one update.

@@ -313,11 +313,13 @@ call :log "QML native binary payload installed."
 exit /b 0
 
 :init_qml_payload_defaults
-if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.13-binary.zip"
-if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.13/KFPS-3.0.13-binary.zip"
+if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.14-binary.zip"
+if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.14/KFPS-3.0.14-binary.zip"
 exit /b 0
 
 :cleanup_retired_files
+call :install_qml_binary_payload
+if errorlevel 1 exit /b 1
 call :sync_native_root_exe
 call :cleanup_stale_release_git
 if exist "settings\_archive_legacy_2026-05-22" rmdir /s /q "settings\_archive_legacy_2026-05-22" >nul 2>nul
