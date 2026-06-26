@@ -1,5 +1,8 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.20
+- Hardened the updater to mirror program files from GitHub, preserve generated/runtime data, verify critical copied files, verify the native launcher hash, and fail loudly if retired app files remain.
+
 ## 3.0.19
 - Fixed bundled QML helper bridges resolving backend scripts from PyInstaller temp folders during generation and import/export.
 

@@ -35,8 +35,16 @@ if exist ".git\" (
         call :log "Generated outputs are stored separately and are not intentionally removed."
         goto :fail
     )
+    git clean -fdx -e runtime/ -e imgs/ -e webui-data/ -e python/
+    if errorlevel 1 (
+        call :log "Warning: Git cleanup of untracked program files reported an error."
+    )
     call :write_build_commit "%CD%"
+    call :verify_program_file_sync "%CD%"
+    if errorlevel 1 goto :fail
     call :cleanup_retired_files
+    call :verify_retired_files_removed
+    if errorlevel 1 goto :fail
     goto :done
 )
 
@@ -58,14 +66,17 @@ if errorlevel 1 goto :fail
 call :check_update_locks
 if errorlevel 1 goto :fail_quiet
 
-robocopy "%TMP_REPO%" "%CD%" /E /R:2 /W:1 /XD runtime webui-data dist build __pycache__ >nul
-if errorlevel 8 (
-    call :log "File copy failed during robocopy update copy. Robocopy exit code: %ERRORLEVEL%"
-    goto :fail
-)
+call :sync_program_files_from_repo "%TMP_REPO%"
+if errorlevel 1 goto :fail
+call :verify_program_file_sync "%TMP_REPO%"
+if errorlevel 1 goto :fail
 call :ensure_qml_root_binary
 if errorlevel 1 goto :fail
+call :verify_native_root_binary
+if errorlevel 1 goto :fail
 call :cleanup_retired_files
+call :verify_retired_files_removed
+if errorlevel 1 goto :fail
 call :write_build_commit "%TMP_REPO%"
 
 rmdir /s /q "%TMP_PARENT%" >nul 2>nul
@@ -171,6 +182,58 @@ set "COMMIT_SHA="
 for /f "delims=" %%V in ('git -C "%~1" rev-parse HEAD 2^>nul') do set "COMMIT_SHA=%%V"
 if defined COMMIT_SHA (
     > "%CD%\BUILD_COMMIT" echo !COMMIT_SHA!
+)
+exit /b 0
+
+:sync_program_files_from_repo
+set "SYNC_REPO=%~1"
+if not exist "%SYNC_REPO%\VERSION" (
+    call :log "Update sync failed: cloned repository is missing VERSION."
+    exit /b 1
+)
+call :log "Mirroring program files from GitHub while preserving generated/runtime data..."
+robocopy "%SYNC_REPO%" "%CD%" /MIR /R:2 /W:1 /XD ".git" "runtime" "imgs" "webui-data" "dist" "build" "__pycache__" "python" /XF "*.pyc" >nul
+if errorlevel 8 (
+    call :log "File mirror failed during update copy. Robocopy exit code: %ERRORLEVEL%"
+    exit /b 1
+)
+exit /b 0
+
+:verify_program_file_sync
+set "VERIFY_REPO=%~1"
+call :log "Verifying updated program files..."
+call :verify_same_file "%VERIFY_REPO%\VERSION" "%CD%\VERSION"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\fh6_probe.py" "%CD%\fh6_probe.py"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\fh6_import_typecode_json.py" "%CD%\fh6_import_typecode_json.py"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\fh6_export_typecode_json.py" "%CD%\fh6_export_typecode_json.py"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\KFPS.UI\bridges\transfer_bridge.py" "%CD%\KFPS.UI\bridges\transfer_bridge.py"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\KFPS.UI\bridges\generation_bridge.py" "%CD%\KFPS.UI\bridges\generation_bridge.py"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\KFPS.UI\src\kfps_ui\app_paths.py" "%CD%\KFPS.UI\src\kfps_ui\app_paths.py"
+if errorlevel 1 exit /b 1
+call :verify_same_file "%VERIFY_REPO%\tools\fabric-editor\start_fabric_editor.py" "%CD%\tools\fabric-editor\start_fabric_editor.py"
+if errorlevel 1 exit /b 1
+call :log "Program file verification passed."
+exit /b 0
+
+:verify_same_file
+if not exist "%~1" (
+    call :log "Verification failed: source file is missing: %~1"
+    exit /b 1
+)
+if not exist "%~2" (
+    call :log "Verification failed: destination file is missing: %~2"
+    exit /b 1
+)
+fc /b "%~1" "%~2" >nul
+if errorlevel 1 (
+    call :log "Verification failed: updated file does not match repository copy: %~2"
+    exit /b 1
 )
 exit /b 0
 
@@ -388,8 +451,33 @@ if not defined HASH_VALUE exit /b 1
 set "%~2=%HASH_VALUE%"
 exit /b 0
 
+:verify_native_root_binary
+call :init_qml_payload_defaults
+for %%I in ("%CD%") do set "CURRENT_FOLDER=%%~nxI"
+if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
+set "QML_ROOT_EXE=%CD%\..\KFPS.exe"
+if not exist "!QML_ROOT_EXE!" (
+    call :log "Verification failed: native KFPS.exe is missing one folder above KloudysFH6Painter."
+    exit /b 1
+)
+if not defined QML_BINARY_ASSET_SHA256 exit /b 0
+set "QML_ROOT_HASH="
+call :capture_file_sha256 "!QML_ROOT_EXE!" QML_ROOT_HASH
+if errorlevel 1 (
+    call :log "Verification failed: could not hash native KFPS.exe."
+    exit /b 1
+)
+if /I not "!QML_ROOT_HASH!"=="%QML_BINARY_ASSET_SHA256%" (
+    call :log "Verification failed: native KFPS.exe hash does not match the expected payload."
+    exit /b 1
+)
+call :log "Native KFPS.exe verification passed."
+exit /b 0
+
 :cleanup_retired_files
 call :ensure_qml_root_binary
+if errorlevel 1 exit /b 1
+call :verify_native_root_binary
 if errorlevel 1 exit /b 1
 call :cleanup_stale_release_git
 if exist "settings\_archive_legacy_2026-05-22" rmdir /s /q "settings\_archive_legacy_2026-05-22" >nul 2>nul
@@ -481,6 +569,28 @@ if exist "Kloudys Painter.exe" del /f /q "Kloudys Painter.exe" >nul 2>nul
 if exist "..\Kloudys Painter Launcher.exe" del /f /q "..\Kloudys Painter Launcher.exe" >nul 2>nul
 if exist "..\Kloudys Painter.exe" del /f /q "..\Kloudys Painter.exe" >nul 2>nul
 if exist "KFPS.Wpf" rmdir /s /q "KFPS.Wpf" >nul 2>nul
+exit /b 0
+
+:verify_retired_files_removed
+set "RETIRED_FOUND="
+for %%F in (
+    "app_qt.py"
+    "launcher_qt.py"
+    "00_launcher.bat"
+    "04_start_app.bat"
+    "Kloudys Painter Launcher.exe"
+    "Kloudys Painter.exe"
+    "..\Kloudys Painter Launcher.exe"
+    "..\Kloudys Painter.exe"
+    "KFPS.Wpf"
+) do (
+    if exist "%%~F" (
+        call :log "Verification failed: retired file or folder still exists: %%~F"
+        set "RETIRED_FOUND=1"
+    )
+)
+if defined RETIRED_FOUND exit /b 1
+call :log "Retired file cleanup verified."
 exit /b 0
 
 :sync_native_root_exe
