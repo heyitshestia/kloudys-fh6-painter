@@ -1,89 +1,269 @@
 from __future__ import annotations
 
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
 from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtGui import QGuiApplication
 
 from .models import DictListModel
 
 
-TOPICS = [
-    ("start", "Start here", "The safe seven-step workflow", [
-        ("Prepare the source", "Use a clean, correctly cropped image. Transparent PNG is best for cutout designs."),
-        ("Run Source Image Check", "Open Images first. Green is a practical source, yellow deserves a quick review, and red should be fixed before a long run."),
-        ("Generate", "Choose a preset and template layer target. Leave advanced overrides off unless you know why you need them."),
-        ("Review final checkpoints", "Generation is not finished when the GPU process stops. Wait for finalization, then compare the final previews."),
-        ("Clean up in the editor", "Open a generated JSON in the Fabric editor for text, eyes, hard edges, masks, alignment, and deliberate hand work."),
-        ("Prepare the game template", "Load the correct saved and reopened template, stay in the vinyl group editor, and enter its exact layer count."),
-        ("Import, save, and reload", "Import once into a fresh template. Save and reopen the group before judging the result; the first live preview can be misleading."),
-    ]),
-    ("generate", "Generate vinyls", "What every generation control actually does", [
-        ("Preset", "Shaded Character Art is the safest general choice. Flat Colors is for logos and broad hard regions. Smooth Gradients protects soft transitions."),
-        ("Layer target", "This is both the generation budget and the game template size you intend to use. It must never exceed 3000."),
-        ("Finalize checkpoints", "Comma-separated layer counts become your final visual choices. The target layer count is always retained."),
-        ("2x Mode", "Doubles search samples. It can improve a close result, but takes longer and does not double the layer count."),
-        ("Edge Repair", "A finalization pass for holes, cutout edges, fingers, hair gaps, and spill. Keep it off unless the source needs it."),
-        ("Graceful Stop", "Requests a stop at the next safe saved point, then finalizes what exists. Force Stop is only for a stuck process."),
-    ]),
-    ("images", "Source images", "Avoid wasting a long generation on a bad input", [
-        ("Resolution", "Very small art loses detail. Extremely large art costs time without guaranteeing a better vinyl. The source check explains the practical range."),
-        ("Transparency", "A background that merely looks blank still consumes shapes. Check the alpha report and use background removal when needed."),
-        ("Compression", "Avoid heavily compressed screenshots and tiny social-media copies. Clean PNG or good-quality JPEG/WebP gives the generator clearer boundaries."),
-        ("Heatmap", "The heatmap highlights likely detail-critical edges. It is a diagnostic view, not a separate AI model or generator."),
-    ]),
-    ("json", "JSON browser", "Select the exact file that will be imported", [
-        ("Sources", "Generated Finals are completed generator outputs. Editor Exports are saved by the Fabric editor. Exported Game JSONs come from game export or manual files."),
-        ("Three-column browser", "Choose a generation/folder, then a checkpoint, then verify its preview, layer count, and full path in the inspector."),
-        ("Selection safety", "The selected row stays selected when clicked again. Click empty browser space to clear it. Never import if the selected path is not the file you expect."),
-        ("Long paths", "Paths are elided visually but retained in full. Hover for the tooltip or use Open Source Folder."),
-    ]),
-    ("transfer", "Import and export", "Moving vinyls between KFPS and supported games", [
-        ("Game choice", "FH6, FH5, and FM8 are separate profiles. FM8 export remains experimental and converts supported resources toward the shared JSON structure."),
-        ("Import prerequisites", "Open the game, enter the vinyl group editor, load a fresh saved/reopened circle template, ungroup when instructed, and enter the exact template count."),
-        ("One import per fresh template", "Importing repeatedly into a used template can leave stale shape data. Reload a clean template for another attempt."),
-        ("Export safety", "Export only your own editable group. Enter the visible layer count exactly. Grouped or nested vinyls can be harder to validate safely."),
-    ]),
-    ("editor", "Fabric editor", "Manual cleanup without touching the editor implementation", [
-        ("What it is", "The editor remains the existing local browser application. KFPS starts its local server and opens it externally."),
-        ("Projects", "Project files preserve internal editor state and overlays. They are not the same thing as import-ready JSON exports."),
-        ("When to use it", "Use it for precise text, logos, alignment, masks, source tracing, color correction, layer ordering, and cleanup that automatic generation cannot infer."),
-    ]),
-    ("reports", "Reports and privacy", "Create useful local diagnostics", [
-        ("Describe the failure", "Write what you clicked, what you expected, what actually happened, and the last successful step."),
-        ("Context is optional", "App version and theme are safe defaults. Runtime logs and local file paths remain opt-in because they may contain private names or folders."),
-        ("Nothing uploads automatically", "Preview and Save create Markdown locally. You decide whether and where to share it."),
-    ]),
-    ("updates", "Updates and runtime", "Keep the bundled application healthy", [
-        ("Bundled Python", "KFPS requires 64-bit Python 3.12. A normal release includes it; users should not need to install a separate Python."),
-        ("Dependency check", "Settings verifies the packaged backend modules. Missing modules usually mean the release was incomplete or extracted incorrectly."),
-        ("Update handoff", "KFPS closes before running the updater so Windows can replace the executable safely. Generated and runtime data are preserved by the existing updater."),
-    ]),
-    ("troubleshooting", "Troubleshooting", "Start with the last meaningful log line", [
-        ("Generation failed", "Read the line before the exit code. OpenCL or GPU messages point to driver/resource trouble; JSON errors happen later in the pipeline."),
-        ("Game group not found", "Confirm the correct game is running, you are inside the right editor screen, and the layer count is exact. Try a fresh reopened template."),
-        ("Wrong JSON", "Check the inspector path. Refresh the source and select the intended file again before importing."),
-        ("Editor did not open", "Run Settings checks, then confirm the Fabric editor folder and launcher script exist. Browser security software can also block localhost pages."),
-        ("App looks slow", "Disable glass effects or ambient motion in Settings. Runtime logs are batched so fast generator output does not redraw the interface for every line."),
-    ]),
-]
+def _default_help_path() -> Path:
+    source_ui = Path(__file__).resolve().parents[2]
+    frozen_root = Path(getattr(sys, "_MEIPASS", source_ui))
+    frozen_help = frozen_root / "KFPS.UI" / "help" / "topics.json"
+    if frozen_help.is_file():
+        return frozen_help
+    return source_ui / "help" / "topics.json"
 
 
 class HelpService(QObject):
-    changed=Signal()
-    def __init__(self,parent=None):
-        super().__init__(parent);self._topic_model=DictListModel(["key","title","summary"]);self._filtered=list(TOPICS);self._index=0;self._replace()
+    changed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._category_model = DictListModel(["key", "title", "summary", "count"])
+        self._topic_model = DictListModel(["key", "category", "title", "summary", "keywords", "match"])
+        self._query = ""
+        self._category = "all"
+        self._topics: list[dict[str, Any]] = []
+        self._categories: list[dict[str, Any]] = []
+        self._filtered: list[dict[str, Any]] = []
+        self._index = 0
+        self._load()
+        self._refresh()
 
     @Property(QObject, constant=True)
-    def topicModel(self):return self._topic_model
+    def categoryModel(self):
+        return self._category_model
 
-    def _replace(self):self._topic_model.replace([{"key":k,"title":t,"summary":s} for k,t,s,_ in self._filtered])
-    @Property(str,notify=changed)
-    def title(self):return self._filtered[self._index][1] if self._filtered else "No topics"
-    @Property(str,notify=changed)
-    def summary(self):return self._filtered[self._index][2] if self._filtered else "Try another search."
-    @Property("QVariantList",notify=changed)
-    def sections(self):return [{"heading":h,"body":b} for h,b in self._filtered[self._index][3]] if self._filtered else []
+    @Property(QObject, constant=True)
+    def topicModel(self):
+        return self._topic_model
+
+    @Property(str, notify=changed)
+    def query(self) -> str:
+        return self._query
+
+    @Property(str, notify=changed)
+    def selectedCategory(self) -> str:
+        return self._category
+
+    @Property(str, notify=changed)
+    def title(self) -> str:
+        return self._selected().get("title", "No help topic selected")
+
+    @Property(str, notify=changed)
+    def summary(self) -> str:
+        return self._selected().get("summary", "Try another category or search term.")
+
+    @Property(str, notify=changed)
+    def categoryTitle(self) -> str:
+        selected = self._selected()
+        key = selected.get("category", "")
+        return self._category_title(key)
+
+    @Property(str, notify=changed)
+    def breadcrumb(self) -> str:
+        if not self._filtered:
+            return "Help"
+        parts = ["Help", self.categoryTitle, self.title]
+        return " / ".join(part for part in parts if part)
+
+    @Property(str, notify=changed)
+    def resultSummary(self) -> str:
+        total = len(self._topics)
+        visible = len(self._filtered)
+        if self._query.strip():
+            return f"{visible} of {total} topics match \"{self._query.strip()}\""
+        if self._category != "all":
+            return f"{visible} topic(s) in {self._category_title(self._category)}"
+        return f"{total} help topics"
+
+    @Property(bool, notify=changed)
+    def hasResults(self) -> bool:
+        return bool(self._filtered)
+
+    @Property("QVariantList", notify=changed)
+    def sections(self):
+        return list(self._selected().get("sections", []))
+
+    @Property("QVariantList", notify=changed)
+    def steps(self):
+        return list(self._selected().get("steps", []))
+
+    @Property("QVariantList", notify=changed)
+    def pitfalls(self):
+        return list(self._selected().get("pitfalls", []))
+
+    @Property("QVariantList", notify=changed)
+    def relatedTopics(self):
+        selected = self._selected()
+        related_keys = selected.get("related", [])
+        by_key = {topic["key"]: topic for topic in self._topics}
+        return [
+            {
+                "key": key,
+                "title": by_key[key].get("title", key),
+                "summary": by_key[key].get("summary", ""),
+            }
+            for key in related_keys
+            if key in by_key
+        ]
+
+    @Property(str, notify=changed)
+    def supportChecklist(self) -> str:
+        topic = next((item for item in self._topics if item.get("key") == "support-checklist"), None)
+        if not topic:
+            return ""
+        lines = ["KFPS support checklist:"]
+        lines.extend(f"- {step}" for step in topic.get("steps", []))
+        return "\n".join(lines)
+
     @Slot(str)
-    def search(self,text):
-        q=text.strip().lower();self._filtered=[topic for topic in TOPICS if not q or q in " ".join([topic[0],topic[1],topic[2],*(x for section in topic[3] for x in section)]).lower()];self._index=0;self._replace();self.changed.emit()
+    def search(self, text: str):
+        self._query = text or ""
+        self._index = 0
+        self._refresh()
+        self.changed.emit()
+
+    @Slot(str)
+    def setCategory(self, key: str):
+        self._category = key or "all"
+        self._index = 0
+        self._refresh()
+        self.changed.emit()
+
     @Slot(int)
-    def select(self,index):
-        if 0<=index<len(self._filtered):self._index=index;self.changed.emit()
+    def select(self, index: int):
+        if 0 <= index < len(self._filtered):
+            self._index = index
+            self.changed.emit()
+
+    @Slot(str)
+    def selectTopic(self, key: str):
+        for index, topic in enumerate(self._filtered):
+            if topic.get("key") == key:
+                self._index = index
+                self.changed.emit()
+                return
+        for topic in self._topics:
+            if topic.get("key") == key:
+                self._category = topic.get("category", "all")
+                self._query = ""
+                self._refresh()
+                for index, filtered in enumerate(self._filtered):
+                    if filtered.get("key") == key:
+                        self._index = index
+                        break
+                self.changed.emit()
+                return
+
+    @Slot()
+    def copySupportChecklist(self):
+        clipboard = QGuiApplication.clipboard()
+        if clipboard:
+            clipboard.setText(self.supportChecklist)
+
+    @Slot(result=str)
+    def selectedTopicText(self) -> str:
+        topic = self._selected()
+        lines = [topic.get("title", ""), topic.get("summary", "")]
+        if topic.get("steps"):
+            lines.append("\nSteps:")
+            lines.extend(f"{index + 1}. {step}" for index, step in enumerate(topic["steps"]))
+        for section in topic.get("sections", []):
+            lines.append(f"\n{section.get('heading', '')}")
+            lines.append(section.get("body", ""))
+        if topic.get("pitfalls"):
+            lines.append("\nWatch out:")
+            lines.extend(f"- {item}" for item in topic["pitfalls"])
+        return "\n".join(line for line in lines if line is not None)
+
+    def _load(self):
+        path = _default_help_path()
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        self._categories = [dict(item) for item in payload.get("categories", [])]
+        self._topics = [dict(item) for item in payload.get("topics", [])]
+
+    def _refresh(self):
+        query = self._query.strip().lower()
+
+        def matches(topic: dict[str, Any]) -> bool:
+            if self._category != "all" and topic.get("category") != self._category:
+                return False
+            if not query:
+                return True
+            haystack = " ".join(
+                [
+                    topic.get("key", ""),
+                    topic.get("category", ""),
+                    topic.get("title", ""),
+                    topic.get("summary", ""),
+                    " ".join(topic.get("keywords", [])),
+                    " ".join(topic.get("steps", [])),
+                    " ".join(section.get("heading", "") + " " + section.get("body", "") for section in topic.get("sections", [])),
+                    " ".join(topic.get("pitfalls", [])),
+                ]
+            ).lower()
+            return query in haystack
+
+        self._filtered = [topic for topic in self._topics if matches(topic)]
+        if self._index >= len(self._filtered):
+            self._index = 0
+        self._replace_models(query)
+
+    def _replace_models(self, query: str):
+        counts = {item["key"]: 0 for item in self._categories}
+        for topic in self._topics:
+            key = topic.get("category")
+            if key in counts:
+                counts[key] += 1
+        category_rows = [
+            {
+                "key": "all",
+                "title": "All",
+                "summary": "Every guide, walkthrough, and troubleshooting topic.",
+                "count": len(self._topics),
+            }
+        ]
+        category_rows.extend(
+            {
+                "key": item["key"],
+                "title": item["title"],
+                "summary": item.get("summary", ""),
+                "count": counts.get(item["key"], 0),
+            }
+            for item in self._categories
+        )
+        self._category_model.replace(category_rows)
+        self._topic_model.replace(
+            [
+                {
+                    "key": topic.get("key", ""),
+                    "category": self._category_title(topic.get("category", "")),
+                    "title": topic.get("title", ""),
+                    "summary": topic.get("summary", ""),
+                    "keywords": ", ".join(topic.get("keywords", [])[:4]),
+                    "match": "Search match" if query else self._category_title(topic.get("category", "")),
+                }
+                for topic in self._filtered
+            ]
+        )
+
+    def _selected(self) -> dict[str, Any]:
+        if not self._filtered:
+            return {}
+        return self._filtered[max(0, min(self._index, len(self._filtered) - 1))]
+
+    def _category_title(self, key: str) -> str:
+        if key == "all":
+            return "All"
+        for item in self._categories:
+            if item.get("key") == key:
+                return item.get("title", key)
+        return key

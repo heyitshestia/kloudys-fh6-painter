@@ -1,0 +1,815 @@
+{
+  "version": 1,
+  "categories": [
+    {"key": "start", "title": "Start Here", "summary": "The safest path from source image to saved vinyl."},
+    {"key": "generate", "title": "Generate", "summary": "Presets, layers, checkpoints, source checks, and generation behavior."},
+    {"key": "json", "title": "JSON Browser", "summary": "How KFPS stores, previews, selects, imports, and exports JSON files."},
+    {"key": "editor", "title": "Editor", "summary": "Projects, overlays, layers, snapping, masks, pixel art, and exports."},
+    {"key": "transfer", "title": "Game Transfer", "summary": "Import/export prerequisites and practical limits for FH6, FH5, and FM8."},
+    {"key": "tools", "title": "Tools", "summary": "Image helpers, background cleanup, upscaling, and local reports."},
+    {"key": "troubleshooting", "title": "Troubleshooting", "summary": "Common failure modes and what to check first."},
+    {"key": "limits", "title": "Limits", "summary": "Known limitations, safety rules, and things that are not magic."}
+  ],
+  "topics": [
+    {
+      "key": "first-run",
+      "category": "start",
+      "title": "Five-minute first run",
+      "summary": "Generate a vinyl, choose a final JSON, prepare the FH6 template, import, then save and reload.",
+      "keywords": ["first", "beginner", "workflow", "start", "import"],
+      "steps": [
+        "Open Generate and choose a clean source image. Transparent PNGs are best for cutout art.",
+        "Let the automatic preset pick a starting point unless you already know which preset fits.",
+        "Pick a template layer count. 1500 is usually a good first serious test; 3000 is for final high-detail attempts.",
+        "Press Generate and wait until finalization is done. A checkpoint JSON is not the same as a finalized JSON.",
+        "Open JSON Import / Export and choose the finalized checkpoint you want, usually the highest useful layer count.",
+        "For FH6 importing, open your saved 3000 plain white circle template, make sure it has been saved and loaded at least once, and ungroup it before importing.",
+        "Import once, save the vinyl, then reload it before judging shape correctness or the final thumbnail."
+      ],
+      "sections": [
+        {
+          "heading": "The normal loop",
+          "body": "KFPS works best as Generate -> Inspect -> Edit -> Import. The generator gives you a strong base. The editor is where you fix text, eyes, logos, outlines, masks, tiny corners, and anything that needs human intent."
+        },
+        {
+          "heading": "FH6 import template requirement",
+          "body": "For FH6, the safest standard import target is a 3000-layer plain white circle template. Create it once, save it, reload it, and reuse it indefinitely. It must not contain hidden groups, and after opening it for an import you should ungroup it before pressing Import in KFPS."
+        },
+        {
+          "heading": "Do not judge the first live game preview too early",
+          "body": "Forza can show misleading live previews immediately after import. Save the vinyl and reopen it before deciding whether shape resources, thumbnails, or the final view are actually wrong."
+        },
+        {
+          "heading": "Good first settings",
+          "body": "Leave manual overrides off. Use automatic preset detection, keep Edge Repair off unless the source has obvious cutout holes, and use the default finalized checkpoints so you can compare 500, 1000, 1250, 1500, 2000, 2500, and 3000 where applicable."
+        }
+      ],
+      "pitfalls": [
+        "Most FH6 import failures come from using the wrong template state: grouped, not saved/reloaded, hidden groups, wrong count, or not actually inside the group editor.",
+        "Importing repeatedly into a used template can leave stale state. Use a fresh reopened template for serious tests.",
+        "A source that only looks transparent may still contain a hidden background. Check the source report before running long jobs.",
+        "If the selected JSON path is not the one you intended, stop before importing and reselect it."
+      ],
+      "related": ["fh6-template", "source-check", "final-checkpoints", "json-browser", "import-fh6"]
+    },
+    {
+      "key": "source-check",
+      "category": "generate",
+      "title": "Source image check",
+      "summary": "The green/yellow/red report tells you whether the image is practical before spending GPU time.",
+      "keywords": ["source", "image", "resolution", "background", "alpha", "transparent"],
+      "steps": [
+        "Choose the source image in Generate or Images.",
+        "Read the colored source check above/near the preview.",
+        "Fix red warnings before long generation runs.",
+        "Treat yellow as usable but worth reviewing.",
+        "Use the image tools when the file is too small, too huge, or has a fake transparent background."
+      ],
+      "sections": [
+        {
+          "heading": "Resolution",
+          "body": "Too-small images do not contain enough information for sharp vinyls. Extremely large images cost more time and memory without guaranteeing better placement. The source check is intentionally tolerant, but it will call out sizes likely to waste time or lose detail."
+        },
+        {
+          "heading": "Transparency",
+          "body": "A white, black, or checker-looking background is not the same as real alpha transparency. If the source has hidden opaque pixels, the generator may spend layers on the background."
+        },
+        {
+          "heading": "Edges and fringes",
+          "body": "Transparent fringes, antialiasing, and soft glow edges can be useful, but dirty cutouts cause wasted layers and muddy outlines. Clean the source before blaming the generator."
+        }
+      ],
+      "pitfalls": [
+        "Screenshots from social apps are often compressed and noisy.",
+        "Over-upscaled images can look large while still containing blurry detail.",
+        "A perfect source for a poster is not always a perfect source for a 3000-layer vinyl."
+      ],
+      "related": ["image-tools", "detail-heatmap", "preset-selection"]
+    },
+    {
+      "key": "preset-selection",
+      "category": "generate",
+      "title": "Presets and automatic detection",
+      "summary": "What the presets are for and when to override the automatic choice.",
+      "keywords": ["preset", "automatic", "shaded", "logo", "flat", "gradient"],
+      "steps": [
+        "Start with automatic preset detection.",
+        "Use Shaded Character Art for most anime/character sources.",
+        "Use Flat Colors for logos, decals, symbols, and clean hard regions.",
+        "Use Smooth Gradients when soft shading matters more than tiny hard details.",
+        "Only enable manual overrides when comparing controlled tests."
+      ],
+      "sections": [
+        {
+          "heading": "Automatic preset detection",
+          "body": "KFPS inspects the source and chooses a practical preset based on visible area, edges, transparency, and color behavior. It is not AI; it is a rule-based recommendation around the generator pipeline."
+        },
+        {
+          "heading": "Manual overrides",
+          "body": "Manual overrides expose low-level settings like resolution and sample counts. They are useful for testing, but they can make results slower or worse if changed without a reason."
+        },
+        {
+          "heading": "2x mode",
+          "body": "2x mode increases search effort. It can improve stubborn sources, but it is not a magic quality button and does not change the layer limit."
+        }
+      ],
+      "pitfalls": [
+        "Changing presets after selecting a source should update the visible effort fields.",
+        "If automatic detection appears stuck on an old image, reselect the source and check that the preview changes.",
+        "More samples can still make the wrong kind of shape if the source is dirty."
+      ],
+      "related": ["source-check", "final-checkpoints", "generation-log"]
+    },
+    {
+      "key": "final-checkpoints",
+      "category": "generate",
+      "title": "Layers and finalized checkpoints",
+      "summary": "How target layers, save points, and final JSON previews relate to each other.",
+      "keywords": ["layers", "checkpoint", "final", "500", "1500", "3000", "preview"],
+      "steps": [
+        "Choose the intended template layer count.",
+        "Keep finalized checkpoints broad enough to compare useful stages.",
+        "Wait for finalization previews before importing.",
+        "Use the JSON browser preview to confirm the selected layer count.",
+        "Import into a game template that matches or exceeds the selected JSON layers."
+      ],
+      "sections": [
+        {
+          "heading": "Target layers",
+          "body": "The target is the main generation budget. A 1500-layer run should make a 1500-layer final, while broader finalize-at values let you compare earlier or later useful points when the run supports them."
+        },
+        {
+          "heading": "Final JSONs vs raw checkpoints",
+          "body": "Raw checkpoints are working output. Final JSONs are the polished import targets after post-processing and preview generation."
+        },
+        {
+          "heading": "Why several previews exist",
+          "body": "Different layer counts can be better for different sources. A 2000-layer final may look cleaner than a 3000-layer final if the extra layers begin chasing noise or tiny artifacts."
+        }
+      ],
+      "pitfalls": [
+        "Do not assume the highest layer count always looks best.",
+        "If a final preview is missing, check the generation log for finalization errors.",
+        "The visible line next to the browser must update to the exact JSON you selected."
+      ],
+      "related": ["json-browser", "generation-log", "source-check"]
+    },
+    {
+      "key": "generation-log",
+      "category": "generate",
+      "title": "Reading generation logs",
+      "summary": "The last useful line before the failure usually matters more than the final exit code.",
+      "keywords": ["log", "opencl", "cl", "error", "out of resources", "generator"],
+      "steps": [
+        "Find the first error line before the Python traceback or exit code.",
+        "For OpenCL errors, check GPU driver, memory pressure, and source size.",
+        "For file access errors, check antivirus, locked preview files, and write permissions.",
+        "For missing final files, check whether finalization started and completed.",
+        "Save the local report if asking for help."
+      ],
+      "sections": [
+        {
+          "heading": "OpenCL / cl errors",
+          "body": "These usually come from the GPU runtime or driver, not the JSON importer. Common causes are driver trouble, GPU memory pressure, bad OpenCL install, or a run setting that is too heavy for the device."
+        },
+        {
+          "heading": "Access denied",
+          "body": "If a preview or report path says access denied, another process may be locking the file. Antivirus, preview panes, sync tools, or protected folders can all cause this."
+        },
+        {
+          "heading": "Silent-looking generation",
+          "body": "The native app intentionally avoids streaming every low-level line because that can slow the UI. It should still show meaningful progress and final status."
+        }
+      ],
+      "pitfalls": [
+        "The exit code is often only a wrapper. The real cause is usually printed above it.",
+        "Restarting the app will not fix a broken GPU driver.",
+        "Moving the app to a protected or synced folder can create file locks."
+      ],
+      "related": ["source-check", "support-checklist", "updates-runtime"]
+    },
+    {
+      "key": "json-browser",
+      "category": "json",
+      "title": "JSON browser",
+      "summary": "Select the exact JSON you want before importing.",
+      "keywords": ["json", "browser", "preview", "generated", "editor", "exported"],
+      "steps": [
+        "Choose the source type: Generated, Editor, or Exported.",
+        "Select the generation or folder on the left.",
+        "Select the finalized checkpoint JSON on the right.",
+        "Confirm the preview and inspector path.",
+        "Import only after the selected path and layer count are correct."
+      ],
+      "sections": [
+        {
+          "heading": "Generated",
+          "body": "Generated contains finalized outputs from KFPS runs. The browser should show the selected generation and only the relevant finalized JSON choices for it."
+        },
+        {
+          "heading": "Editor",
+          "body": "Editor contains import-ready JSONs exported from the Fabric editor. Project files are separate and should not appear in the import browser."
+        },
+        {
+          "heading": "Exported",
+          "body": "Exported contains JSONs exported from supported games or manually added files. Manual JSONs should be copied into the app structure so previews and later imports are consistent."
+        }
+      ],
+      "pitfalls": [
+        "Clicking a generation is not enough; select the actual checkpoint JSON.",
+        "Preview errors do not necessarily mean the JSON is unusable, but they are a reason to double-check.",
+        "Folder paths can be visually shortened. Trust the inspector path, not only the file label."
+      ],
+      "related": ["final-checkpoints", "import-fh6", "editor-export"]
+    },
+    {
+      "key": "fh6-template",
+      "category": "transfer",
+      "title": "FH6 3000-circle import template",
+      "summary": "The required reusable FH6 template: 3000 plain white circles, saved, reloaded, ungrouped, and free of hidden groups.",
+      "keywords": ["fh6", "import", "template", "3000", "circle", "ungroup", "saved", "loaded", "hidden groups"],
+      "steps": [
+        "In FH6, create or open a vinyl group containing 3000 plain white circle layers.",
+        "Make sure the template contains no groups, nested groups, hidden groups, locked layers, or extra shapes.",
+        "Save the template in-game.",
+        "Load the saved template again before using it for KFPS import.",
+        "Before each import, ungroup the opened template if FH6 shows any grouped state.",
+        "In KFPS, enter 3000 as the loaded template layer count unless you intentionally use a different known-good template.",
+        "Import the JSON, save the result in-game, then reload it before judging the final vinyl."
+      ],
+      "sections": [
+        {
+          "heading": "Why this exact template matters",
+          "body": "The importer writes into the currently loaded FH6 layer table. A saved and reloaded 3000 plain white circle template gives KFPS a predictable flat editable target with enough layers for any generated vinyl up to the game limit."
+        },
+        {
+          "heading": "Create it once, reuse it indefinitely",
+          "body": "You do not need to rebuild the template for every import. Once you have a clean 3000-circle template saved in FH6, you can load that same template whenever you want to import another JSON."
+        },
+        {
+          "heading": "Ungroup before importing",
+          "body": "Even if the template looks simple, FH6 can preserve grouped state. Before importing, make sure the loaded template is ungrouped. Hidden groups or nested groups make the importer locate the wrong structure or fail validation."
+        },
+        {
+          "heading": "What not to use",
+          "body": "Do not import into a random design, a community vinyl, a grouped logo, a template with fewer layers than your JSON, or a template that was just created but never saved and loaded again."
+        }
+      ],
+      "pitfalls": [
+        "A 3000-circle template that was never saved and loaded is not the recommended template state.",
+        "A template that visually looks flat can still contain a hidden group; ungroup it before import.",
+        "Using a template with less than the selected JSON layer count can leave missing layers or failed imports.",
+        "If the game crashes after repeated imports, restart FH6 and reload the clean template."
+      ],
+      "related": ["import-fh6", "troubleshooting-transfer", "json-browser", "support-checklist"]
+    },
+    {
+      "key": "import-fh6",
+      "category": "transfer",
+      "title": "Importing into FH6",
+      "summary": "Use the saved/reloaded ungrouped 3000-circle template, exact layer count, and save/reload before judging.",
+      "keywords": ["import", "fh6", "template", "circle", "all shape", "seed", "3000", "ungroup"],
+      "steps": [
+        "Open FH6 and enter the vinyl group editor.",
+        "Load the saved 3000 plain white circle template.",
+        "Confirm it has no hidden groups and ungroup it before importing.",
+        "Enter 3000 as the visible template layer count.",
+        "Select the JSON in KFPS and press Import JSON.",
+        "Wait for success, save the vinyl in-game, then reload it."
+      ],
+      "sections": [
+        {
+          "heading": "Required FH6 template",
+          "body": "For normal FH6 importing, use a 3000 plain white circle template that has been saved and loaded in FH6. It can be saved once and reused indefinitely. It cannot have hidden groups, and it should be ungrouped after opening and before importing."
+        },
+        {
+          "heading": "Template count",
+          "body": "KFPS locates the loaded group by validating memory structures against the count you provide. Wrong counts make slow scans and bad candidates more likely."
+        },
+        {
+          "heading": "Circle template vs all-shape seed",
+          "body": "A normal circle template can import many files. An all-shape seed can help with live preview/resource availability testing, but it is still experimental and should not be required for normal generation."
+        },
+        {
+          "heading": "After import",
+          "body": "The first live view can use stale or incomplete resources. Save and reopen the vinyl before reporting wrong thumbnails or swapped-looking shapes."
+        }
+      ],
+      "pitfalls": [
+        "If you skip the saved/reloaded 3000-circle template step, import can fail, locate the wrong group, or appear to work while writing into a bad target.",
+        "If your template is grouped or has hidden groups, ungroup it and save/reload before retrying.",
+        "Do not import twice into the same stale template if the first attempt looked wrong.",
+        "Grouped, nested, or locked vinyls are a different problem from importing into a clean template.",
+        "If the game crashes on second import, restart FH6 and use a clean template."
+      ],
+      "related": ["fh6-template", "json-browser", "export-games", "troubleshooting-transfer"]
+    },
+    {
+      "key": "export-games",
+      "category": "transfer",
+      "title": "Exporting from games",
+      "summary": "FH6, FH5, and FM8 use separate game profiles and validation paths.",
+      "keywords": ["export", "fh6", "fh5", "fm8", "motorsport", "locked", "grouped"],
+      "steps": [
+        "Select the correct target game profile.",
+        "Open the vinyl group editor in the game.",
+        "Ungroup fully when possible; flat editable groups are easiest to validate.",
+        "Enter the exact visible layer count.",
+        "Export and verify the preview before editing or reimporting."
+      ],
+      "sections": [
+        {
+          "heading": "FH6 and FH5",
+          "body": "These are the primary supported paths. Export quality depends on locating a flat editable group and reading all layer pointers consistently."
+        },
+        {
+          "heading": "FM8",
+          "body": "FM8 export is supported as a separate profile and converts its shape resource mapping toward the shared KFPS/FH6 JSON structure. It should not affect FH6 or FH5 paths."
+        },
+        {
+          "heading": "Locked or grouped vinyls",
+          "body": "KFPS is intentionally conservative. Exporting other creators' locked/community work is not the goal. Heavily grouped or nested structures can fail validation even when the visible layer count looks simple."
+        }
+      ],
+      "pitfalls": [
+        "Ungrouping a vinyl in-game may not fully reset stale structure until it is saved and reloaded.",
+        "A partial export is worse than a clear failure for serious work.",
+        "If export is suddenly slow after a game update, the locator profile may need recalibration."
+      ],
+      "related": ["troubleshooting-transfer", "support-checklist", "json-browser"]
+    },
+    {
+      "key": "editor-overview",
+      "category": "editor",
+      "title": "Editor overview",
+      "summary": "Use the local Fabric editor for deliberate hand work and cleanup.",
+      "keywords": ["editor", "fabric", "project", "manual", "hand"],
+      "steps": [
+        "Open the editor from the Editor tab.",
+        "Load an existing project or import a JSON through the editor browser.",
+        "Use the source overlay for tracing and alignment.",
+        "Save project files for editable work-in-progress.",
+        "Export FH6 JSON when the result is ready to import through KFPS."
+      ],
+      "sections": [
+        {
+          "heading": "Projects vs exports",
+          "body": "Project files keep editor-only state such as overlays, internal groups, and UI metadata. Exported JSONs are game/import files. Keep both concepts separate."
+        },
+        {
+          "heading": "What the editor is best at",
+          "body": "The editor is best for text, logos, masks, source tracing, exact alignment, fixing edges, cleaning generated clutter, replacing shapes, and adding deliberate final details."
+        },
+        {
+          "heading": "Do not fight the generator",
+          "body": "For complex art, let the generator do broad coverage, then use the editor for visible high-value corrections. Fully hand-editing thousands of tiny layers is rarely efficient."
+        }
+      ],
+      "pitfalls": [
+        "Saving a project does not automatically create an import-ready JSON.",
+        "If imported JSONs look off, compare the editor preview, app preview, and save/reload result separately.",
+        "Browser zoom or GPU acceleration can affect editor responsiveness on some systems."
+      ],
+      "related": ["editor-layers", "editor-snapping", "editor-export", "pixel-art"]
+    },
+    {
+      "key": "editor-layers",
+      "category": "editor",
+      "title": "Layers, groups, and selection",
+      "summary": "Layer order controls depth. Internal groups help organize without changing export grouping.",
+      "keywords": ["layers", "groups", "selection", "depth", "lock"],
+      "steps": [
+        "Click shapes on the canvas or select them in the layer list.",
+        "Use Shift in the layer list for ranges and Ctrl for individual multi-select.",
+        "Drag selected layers or groups between rows to change depth.",
+        "Use internal groups to collapse, hide, lock, or organize work without changing the exported game grouping.",
+        "Use selection lock when cleaning dense areas so a nearby shape does not steal focus."
+      ],
+      "sections": [
+        {
+          "heading": "Depth",
+          "body": "Higher/lower layer order changes what appears on top in the canvas and in-game. Moving a group should move all of its layers as a contiguous block."
+        },
+        {
+          "heading": "Selection lock",
+          "body": "Selection lock is for cleanup work where many same-color shapes overlap. It keeps the current selection stable until you intentionally release it."
+        },
+        {
+          "heading": "Duplicate precision",
+          "body": "Duplicating a selection should preserve transform precision. If duplicates drift, report the source/project and the exact action sequence."
+        }
+      ],
+      "pitfalls": [
+        "Locking a layer for organization is not the same as locking the current selection.",
+        "Dragging groups should insert between groups, not swap identities.",
+        "Undo should not randomly expand collapsed groups."
+      ],
+      "related": ["editor-overview", "editor-snapping", "support-checklist"]
+    },
+    {
+      "key": "editor-snapping",
+      "category": "editor",
+      "title": "Snapping, guides, and overlays",
+      "summary": "Use guides and source overlays for controlled shape placement.",
+      "keywords": ["snap", "guide", "grid", "overlay", "source", "align"],
+      "steps": [
+        "Enable the grid or create guide lines when you need repeatable alignment.",
+        "Hold the configured snap key while dragging or transforming a shape.",
+        "Use the source tool when you want to move the source overlay instead of shapes.",
+        "Set source scale manually when repeatable overlay size matters.",
+        "Turn off overlays/guides when they make dense cleanup harder."
+      ],
+      "sections": [
+        {
+          "heading": "Shape snapping",
+          "body": "Snapping should use the active side or edge you are manipulating, not a random opposite side. This matters for flush rectangles, pixel art, and line cleanup."
+        },
+        {
+          "heading": "Source overlay",
+          "body": "The overlay is a visual aid, not exported vinyl data. Source position, scale, and coordinates are project state when saved as a project."
+        },
+        {
+          "heading": "Guides",
+          "body": "Guides should be drawable, undoable, removable, and useful as snap targets. Right-click panning should not leave guide mode."
+        }
+      ],
+      "pitfalls": [
+        "If clicking becomes offset after dragging the canvas, zoom slightly only as a temporary workaround and report it.",
+        "Too many visible guides can make selection feel noisy.",
+        "Grid rendering can affect performance on very large projects if implemented too densely."
+      ],
+      "related": ["pixel-art", "editor-layers", "editor-overview"]
+    },
+    {
+      "key": "editor-export",
+      "category": "editor",
+      "title": "Editor exports",
+      "summary": "Exported editor JSONs are saved inside the app and selected through the JSON browser.",
+      "keywords": ["editor", "export", "json", "project", "save"],
+      "steps": [
+        "Use Save Project for editable work-in-progress.",
+        "Use Export FH6 JSON for an import-ready file.",
+        "Give the export a clear name when prompted.",
+        "Return to JSON Import / Export and choose the Editor source.",
+        "Select the exported JSON and import it like any other KFPS JSON."
+      ],
+      "sections": [
+        {
+          "heading": "Where editor exports go",
+          "body": "Editor exports belong in the app's editor JSON folder so the JSON browser can preview and import them. Project files belong in the editor project folder and should not clutter the import browser."
+        },
+        {
+          "heading": "Notification",
+          "body": "After export, the editor should make it clear that the JSON was saved inside the app and is ready to import."
+        },
+        {
+          "heading": "Shape compatibility",
+          "body": "Editor exports must preserve shape identity, transforms, masks, alpha, and layer order. If the editor preview is correct but the game is not after save/reload, keep the original JSON and exported JSON for comparison."
+        }
+      ],
+      "pitfalls": [
+        "Do not use project files as import JSONs.",
+        "Repeated clicks should not create duplicate exports unless the name intentionally changes.",
+        "Shape names are labels; the actual exported shape mapping is what the importer uses."
+      ],
+      "related": ["json-browser", "import-fh6", "support-checklist"]
+    },
+    {
+      "key": "pixel-art",
+      "category": "editor",
+      "title": "Pixel art tool",
+      "summary": "Convert grid-aligned pixel art into efficient square runs.",
+      "keywords": ["pixel", "pixel art", "grid", "square", "runs"],
+      "steps": [
+        "Load a source image that is already pixel art or has hard pixel steps.",
+        "Use the pixel art tool rather than tracing every pixel by hand.",
+        "Let it detect pixel height and grid alignment.",
+        "Review shape count and visual accuracy.",
+        "Export through the editor when the result matches the source."
+      ],
+      "sections": [
+        {
+          "heading": "What it tries to do",
+          "body": "The tool should reproduce the source on the canvas grid and merge same-color vertical or horizontal runs into fewer square shapes where possible."
+        },
+        {
+          "heading": "What it should not do",
+          "body": "It should not feather colors, approximate transparent pixels, or create arbitrary thin bands just to fill a target count."
+        },
+        {
+          "heading": "Best sources",
+          "body": "Old sprite-style art with clean hard pixels works best. Soft antialiased art is better handled by normal generation or manual editing."
+        }
+      ],
+      "pitfalls": [
+        "If the source is slightly misaligned, the tool should still obey the canvas grid.",
+        "Transparent pixels should stay empty.",
+        "Any color approximation should be treated as a bug for this tool."
+      ],
+      "related": ["editor-snapping", "editor-export", "source-check"]
+    },
+    {
+      "key": "image-tools",
+      "category": "tools",
+      "title": "Image tools",
+      "summary": "Use external helpers before generating when the source is the real problem.",
+      "keywords": ["tools", "background", "upscale", "compress", "image"],
+      "steps": [
+        "Open Tools when the source check says the image needs preparation.",
+        "Use background removal for fake transparent backgrounds.",
+        "Use upscaling only when the image is genuinely too small.",
+        "Use compression carefully if files are huge but already visually clean.",
+        "Re-run source check after changing the image."
+      ],
+      "sections": [
+        {
+          "heading": "Background removal",
+          "body": "Use this when the subject is surrounded by opaque white/black or messy background pixels that would waste shapes."
+        },
+        {
+          "heading": "Upscaling",
+          "body": "Upscaling can help small sources by giving the generator cleaner boundaries, but it cannot invent perfect detail from nothing."
+        },
+        {
+          "heading": "Compression",
+          "body": "Compress only after preserving the shape-relevant edges and transparency. Bad compression can create noise that costs layers."
+        }
+      ],
+      "pitfalls": [
+        "Do not upscale a bad source ten times and expect it to become good.",
+        "Do not remove background from art where the background is part of the intended vinyl.",
+        "Always check the alpha channel after background cleanup."
+      ],
+      "related": ["source-check", "preset-selection", "generation-log"]
+    },
+    {
+      "key": "reports",
+      "category": "tools",
+      "title": "Local bug reports",
+      "summary": "Reports are generated locally so you control what gets shared.",
+      "keywords": ["report", "bug", "privacy", "support", "suggestion"],
+      "steps": [
+        "Open Reports.",
+        "Choose Bug or Suggestion.",
+        "Write a short title and the exact steps that caused the issue.",
+        "Preview the report locally.",
+        "Share only what you are comfortable sharing."
+      ],
+      "sections": [
+        {
+          "heading": "Privacy",
+          "body": "KFPS does not automatically upload screenshots, source images, generated JSONs, memory dumps, or external files. Local paths can include private usernames, so review reports before posting."
+        },
+        {
+          "heading": "Useful reports",
+          "body": "The best report includes app version, what button you clicked, what file type was involved, what you expected, what happened, and the last visible log lines."
+        },
+        {
+          "heading": "Screenshots",
+          "body": "Screenshots are useful for UI bugs and visual mismatches, but they are never attached automatically."
+        }
+      ],
+      "pitfalls": [
+        "A report that only says 'it broke' usually cannot be fixed quickly.",
+        "For shape mismatch issues, keep both the input JSON and exported/reloaded JSON.",
+        "For update issues, keep the update log path shown by the updater."
+      ],
+      "related": ["support-checklist", "updates-runtime", "generation-log"]
+    },
+    {
+      "key": "updates-runtime",
+      "category": "tools",
+      "title": "Updates and runtime checks",
+      "summary": "Use the bundled updater/runtime checks before reinstalling manually.",
+      "keywords": ["update", "python", "dependencies", "runtime", "dll", "pywin32"],
+      "steps": [
+        "Open Update to compare local and latest version.",
+        "Use the update button or the GitHub update batch file if the app updater fails.",
+        "Open Settings to verify Python and backend dependencies.",
+        "Confirm the folder came from a bundled release, not GitHub's green Code download.",
+        "Do not move individual runtime files between random folders unless instructed.",
+        "If a bundled release fails to load Python, use the batch updater or a fresh bundle."
+      ],
+      "sections": [
+        {
+          "heading": "Release download vs GitHub source download",
+          "body": "Most users need the bundled release from the Releases page. GitHub's green Code button downloads source files only; it does not include the full packaged runtime layout and is not the normal install path."
+        },
+        {
+          "heading": "Bundled Python",
+          "body": "Normal bundled releases include the Python runtime and Python dependencies inside the KFPS folder. Most users should not need to install Python manually."
+        },
+        {
+          "heading": "Updater behavior",
+          "body": "The app updater should close KFPS and hand off to the batch updater so Windows can replace files that are currently locked."
+        },
+        {
+          "heading": "Version check",
+          "body": "The app checks the current version against GitHub. A red update indicator means a newer main version exists."
+        }
+      ],
+      "pitfalls": [
+        "If KFPS.exe is inside the wrong folder, beside the wrong root, or separated from KloudysFH6Painter, bridge scripts can be launched from the wrong place.",
+        "If the release was downloaded as source code, Python, dependencies, generator binaries, and bridge files may be missing.",
+        "Updating from inside a running executable requires a handoff; the exe cannot safely overwrite itself.",
+        "If pywin32 or scripts are missing, files may not have been replaced correctly.",
+        "Do not extract a release over a heavily modified personal prototype and expect a clean test."
+      ],
+      "related": ["install-folder-structure", "support-checklist", "troubleshooting-transfer", "generation-log"]
+    },
+    {
+      "key": "install-folder-structure",
+      "category": "troubleshooting",
+      "title": "Install folder and missing runtime files",
+      "summary": "How the normal release is supposed to look, and what breaks when users download source instead.",
+      "keywords": ["install", "folder", "release", "main", "source", "python missing", "python312.dll", "dependencies", "pywin32"],
+      "steps": [
+        "Use the packaged release download, not the GitHub green Code button.",
+        "Extract the whole release folder before running KFPS.",
+        "Keep KFPS.exe next to the KloudysFH6Painter folder in the release layout.",
+        "Do not move KFPS.exe, the python folder, or bridge scripts out of the package.",
+        "If updating fails, run the GitHub update batch file from inside the app folder.",
+        "If Python or dependencies are still missing, download a fresh bundled release."
+      ],
+      "sections": [
+        {
+          "heading": "Expected release layout",
+          "body": "A normal bundled release has KFPS.exe beside the KloudysFH6Painter folder. Inside KloudysFH6Painter are the app scripts, KFPS.UI, generator executable, tools, runtime folders, imgs folders, and bundled python folder when the release includes runtime dependencies."
+        },
+        {
+          "heading": "Downloaded main instead of release",
+          "body": "If someone downloads the repository source from GitHub instead of the release bundle, they may get code without the packaged executable/runtime pieces. That can cause missing Python, missing pywin32, missing bridge scripts, missing generator files, or app launches that only partially work."
+        },
+        {
+          "heading": "Python missing or python312.dll errors",
+          "body": "These usually mean the executable is running without the bundled Python files it was built or packaged with, the bundle was extracted incorrectly, or an updater did not replace all files. A fresh bundled release is safer than manually copying random DLLs."
+        },
+        {
+          "heading": "Bridge scripts opening from temp",
+          "body": "If logs mention AppData/Local/Temp/_MEI paths for scripts that should live in KloudysFH6Painter, the app may be using bundled executable internals without the expected external files. Check folder layout and updater completeness."
+        }
+      ],
+      "pitfalls": [
+        "Do not run directly from inside a zip archive.",
+        "Do not drag only KFPS.exe to the desktop and leave the root folder behind.",
+        "Do not mix files from different prototype, release, and source folders.",
+        "Cloud sync folders, antivirus, and protected folders can lock files during update or generation."
+      ],
+      "related": ["updates-runtime", "generation-log", "support-checklist"]
+    },
+    {
+      "key": "troubleshooting-transfer",
+      "category": "troubleshooting",
+      "title": "Import/export troubleshooting",
+      "summary": "What to check when locating, importing, or exporting fails.",
+      "keywords": ["locate", "rtti", "group", "export failed", "import failed", "template"],
+      "steps": [
+        "Confirm the selected game profile matches the running game.",
+        "Confirm you are inside the vinyl group editor, not a menu preview.",
+        "For FH6 import, confirm the saved/reloaded 3000 plain white circle template is open.",
+        "For FH6 import, ungroup the template before importing and make sure there are no hidden groups.",
+        "Enter the visible layer count exactly.",
+        "Save and reopen the vinyl/template before retrying.",
+        "Try a known-good flat template before testing grouped or nested designs.",
+        "Keep the run folder report if asking for help."
+      ],
+      "sections": [
+        {
+          "heading": "Fast locator vs fallback scanner",
+          "body": "The fast locator uses calibrated structure patterns. If a game update shifts the pattern, KFPS may fall back to slower scanning or fail to narrow candidates safely."
+        },
+        {
+          "heading": "FH6 template mistakes",
+          "body": "For importing, the most common mistake is not using the reusable saved/reloaded 3000 plain white circle template, or opening it but leaving it grouped. Hidden groups, wrong counts, and templates that were never saved/reloaded make locating less reliable."
+        },
+        {
+          "heading": "Grouped and nested vinyls",
+          "body": "Grouped or nested structures are harder to validate because the visible layer count may not map cleanly to a single flat layer table. Ungrouping, saving, and reopening can help, but not every stale structure is fixed immediately."
+        },
+        {
+          "heading": "Wrong first preview",
+          "body": "If import succeeds but the first live game preview looks like wrong shapes, save and reload before declaring it broken. If the saved/reloaded result is wrong, preserve the JSON and export comparison."
+        }
+      ],
+      "pitfalls": [
+        "A clean FH6 import template is not the same thing as a random 3000-layer vinyl.",
+        "Layer counts like 1 or very small numbers create many false candidates and can be slow.",
+        "Partial exports should not be trusted for real work.",
+        "Do not share memory addresses or locator internals in public logs."
+      ],
+      "related": ["fh6-template", "import-fh6", "export-games", "support-checklist"]
+    },
+    {
+      "key": "wrong-shapes",
+      "category": "troubleshooting",
+      "title": "Wrong or swapped shapes",
+      "summary": "Separate preview problems from actual import/export mapping problems.",
+      "keywords": ["wrong shapes", "swapped", "circle", "hexagon", "preview", "mapping"],
+      "steps": [
+        "Check the app preview.",
+        "Check the editor preview.",
+        "Import into the game, save, and reload.",
+        "Export the reloaded result if it still looks wrong.",
+        "Compare original JSON, editor export, and game export."
+      ],
+      "sections": [
+        {
+          "heading": "Three different views",
+          "body": "The app preview, editor preview, and game's live preview do not always fail for the same reason. A live preview can be wrong while the saved/reloaded vinyl is fine."
+        },
+        {
+          "heading": "Shape identity",
+          "body": "Shape names are only labels. The actual import/export needs the correct game resource mapping. If circle becomes hexagon after save/reload, that is a mapping problem, not a text label problem."
+        },
+        {
+          "heading": "What to keep",
+          "body": "Keep the incoming JSON, the editor project if used, the editor-exported JSON, and the game-exported comparison. Without those, the exact conversion point is hard to prove."
+        }
+      ],
+      "pitfalls": [
+        "Do not fix shape names and assume shape mapping was fixed.",
+        "Do not rely only on the first live in-game thumbnail.",
+        "Old project files can preserve old shape data if they were saved before a mapping fix."
+      ],
+      "related": ["editor-export", "json-browser", "support-checklist"]
+    },
+    {
+      "key": "support-checklist",
+      "category": "troubleshooting",
+      "title": "What to send for support",
+      "summary": "A concise checklist that makes bugs reproducible.",
+      "keywords": ["support", "discord", "bug", "send", "help"],
+      "steps": [
+        "App version.",
+        "Whether this came from the bundled Releases download or a GitHub source/main download.",
+        "Whether KFPS.exe is still beside the KloudysFH6Painter folder.",
+        "Which tab/button was used.",
+        "Selected game profile if import/export was involved.",
+        "For FH6 import: confirm the saved/reloaded 3000 plain white circle template was open and ungrouped.",
+        "Source image dimensions and source check color if generation was involved.",
+        "Exact JSON filename and layer count if JSON was involved.",
+        "Last 20-40 meaningful log lines.",
+        "Screenshots only if they show the problem clearly.",
+        "Input/output JSONs for shape mismatch issues."
+      ],
+      "sections": [
+        {
+          "heading": "For generation bugs",
+          "body": "Send source dimensions, preset, target layers, whether 2x/Edge Repair/Heatmap were enabled, and the first error line before the traceback."
+        },
+        {
+          "heading": "For editor bugs",
+          "body": "Send the project file if possible, the exact steps, browser used by the editor, and whether the issue appears after reload."
+        },
+        {
+          "heading": "For import/export bugs",
+          "body": "Send game profile, visible layer count, grouped/ungrouped state if known, whether save/reopen was done, and the run folder report. For FH6 imports, explicitly say whether the reusable 3000-circle template was saved, reloaded, and ungrouped before import."
+        },
+        {
+          "heading": "For install/update bugs",
+          "body": "Send the folder layout, whether the download was a bundled release or source/main zip, the update log if present, and the exact missing file message such as python312.dll, pywin32, or a missing bridge script."
+        }
+      ],
+      "pitfalls": [
+        "Avoid posting private file paths if they include personal names.",
+        "Do not post someone else's locked/community vinyl data.",
+        "If a bug disappears after restart, say that too; it points toward stale state."
+      ],
+      "related": ["reports", "generation-log", "troubleshooting-transfer", "wrong-shapes"]
+    },
+    {
+      "key": "limitations",
+      "category": "limits",
+      "title": "Current limitations",
+      "summary": "Things KFPS cannot guarantee yet.",
+      "keywords": ["limitations", "wip", "known", "limits", "not ai"],
+      "steps": [
+        "Expect generation to need human review.",
+        "Expect some sources to need manual editor cleanup.",
+        "Treat FM8 export as newer than FH6 export.",
+        "Treat grouped/nested export as less reliable than flat editable export.",
+        "Save and reload before reporting visual import mismatches."
+      ],
+      "sections": [
+        {
+          "heading": "Generation is optimization, not understanding",
+          "body": "The generator searches for shape placements that reduce visual error. It does not understand characters, logos, eyes, or text the way a person does."
+        },
+        {
+          "heading": "Game memory work is fragile",
+          "body": "Import/export depends on the game build, editor state, layer count, and memory layout. KFPS favors refusing uncertain exports over silently producing bad data."
+        },
+        {
+          "heading": "Editor preview vs game reality",
+          "body": "The editor uses SVG/canvas conversion and KFPS shape mappings. The final authority is the saved and reloaded game vinyl."
+        }
+      ],
+      "pitfalls": [
+        "Do not promise perfect one-click results to new users.",
+        "Do not use KFPS to copy or redistribute another creator's work.",
+        "Do not assume future game updates will preserve memory layouts."
+      ],
+      "related": ["first-run", "wrong-shapes", "export-games"]
+    }
+  ]
+}

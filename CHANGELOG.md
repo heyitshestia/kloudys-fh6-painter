@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.26
+- Reworked the native Help tab into a searchable guide with categories, step-by-step workflows, warnings, related topics, and a support checklist.
+- Added a dedicated FH6 3000 plain white circle template guide for importing.
+- Expanded troubleshooting for release-vs-source downloads, expected folder layout, bundled Python, dependencies, and update/runtime issues.
+- Increased Help tab text size and panel contrast for better readability.
+
 ## 3.0.25
 - Added an updater safety guard so the updater refuses to run outside a real KFPS app folder.
 

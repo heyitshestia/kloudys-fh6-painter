@@ -10,6 +10,7 @@ datas = [
     (str(ui / "qml"), "KFPS.UI/qml"),
     (str(ui / "assets"), "KFPS.UI/assets"),
     (str(ui / "bridges"), "KFPS.UI/bridges"),
+    (str(ui / "help"), "KFPS.UI/help"),
 ]
 hiddenimports = (
     collect_submodules("PySide6.QtQml")

@@ -7,7 +7,10 @@ import "../components"
 Item {
     id: root
     anchors.fill: parent
-    property bool wide: Theme.logical(width) >= 850
+    property bool wide: Theme.logical(width) >= 1020
+    property bool medium: Theme.logical(width) >= 760
+
+    Component.onCompleted: helpService.setCategory("all")
 
     Loader {
         anchors.fill: parent
@@ -15,62 +18,267 @@ Item {
     }
 
     Component {
-        id: topicListComponent
+        id: searchAndCategories
         ColumnLayout {
-            spacing: Theme.px(8)
+            spacing: Theme.px(10)
+
             SectionHeading {
                 Layout.fillWidth: true
-                title: "Help topics"
-                subtitle: "Plain-language guidance for the complete KFPS workflow."
+                title: "Help Center"
+                subtitle: helpService.resultSummary
             }
+
             KfpsTextField {
                 id: searchField
                 Layout.fillWidth: true
-                placeholderText: "Search help…"
+                placeholderText: "Search workflows, errors, tools..."
                 onTextChanged: helpService.search(text)
             }
-            ListView {
-                id: topicsList
+
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                model: helpService.topicModel
-                clip: true
-                spacing: Theme.px(5)
-                delegate: GhostButton {
-                    width: topicsList.width
-                    height: Theme.px(46)
-                    minimumWidth: 0
-                    text: title
-                    accentText: index === topicsList.currentIndex
-                    onClicked: {
-                        topicsList.currentIndex = index;
-                        helpService.select(index);
-                    }
+                spacing: Theme.px(7)
+                PrimaryButton {
+                    Layout.fillWidth: true
+                    dense: true
+                    iconName: "check"
+                    text: "First run"
+                    onClicked: helpService.selectTopic("first-run")
+                }
+                PrimaryButton {
+                    Layout.fillWidth: true
+                    dense: true
+                    iconName: "transfer"
+                    text: "FH6 template"
+                    onClicked: helpService.selectTopic("fh6-template")
                 }
             }
+
             GhostButton {
                 Layout.fillWidth: true
-                text: "Open Nexus Mods page"
-                iconName: "external"
-                onClicked: desktop.openUrl("https://www.nexusmods.com/forzahorizon6/mods/214")
+                dense: true
+                iconName: "changelog"
+                text: "Copy support checklist"
+                onClicked: helpService.copySupportChecklist()
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.px(7)
+                GhostButton {
+                    Layout.fillWidth: true
+                    dense: true
+                    iconName: "help"
+                    text: "Open support guide"
+                    onClicked: helpService.selectTopic("support-checklist")
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: "Categories"
+            }
+
+            ListView {
+                id: categoryList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: helpService.categoryModel
+                clip: true
+                spacing: Theme.px(6)
+                currentIndex: 0
+
+                delegate: Button {
+                    id: categoryButton
+                    required property int index
+                    required property string key
+                    required property string title
+                    required property string summary
+                    required property int count
+
+                    width: categoryList.width
+                    height: Theme.px(54)
+                    hoverEnabled: true
+                    focusPolicy: Qt.StrongFocus
+                    onClicked: {
+                        categoryList.currentIndex = index;
+                        helpService.setCategory(key);
+                    }
+
+                    background: Rectangle {
+                        radius: Theme.px(12)
+                        color: categoryButton.index === categoryList.currentIndex ? "#e6ff4d9a" : (categoryButton.hovered ? "#d7251435" : "#bc120a20")
+                        border.width: Math.max(1, Theme.px(categoryButton.index === categoryList.currentIndex ? 2 : 1))
+                        border.color: categoryButton.index === categoryList.currentIndex ? Theme.primaryBright : (categoryButton.hovered ? Theme.primary : Theme.borderSoft)
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                    }
+
+                    contentItem: RowLayout {
+                        spacing: Theme.px(9)
+                        Text {
+                            Layout.fillWidth: true
+                            text: categoryButton.title
+                            color: categoryButton.index === categoryList.currentIndex ? "white" : Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.px(13)
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: Theme.px(34)
+                            Layout.preferredHeight: Theme.px(24)
+                            radius: height / 2
+                            color: categoryButton.index === categoryList.currentIndex ? "#34ffffff" : "#22ffffff"
+                            border.width: Math.max(1, Theme.px(1))
+                            border.color: "#55ffffff"
+                            Text {
+                                anchors.centerIn: parent
+                                text: categoryButton.count
+                                color: categoryButton.index === categoryList.currentIndex ? "white" : Theme.muted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.px(11.5)
+                                font.weight: Font.DemiBold
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     Component {
-        id: articleComponent
+        id: topicBrowser
         ColumnLayout {
             spacing: Theme.px(10)
+
             SectionHeading {
                 Layout.fillWidth: true
-                title: helpService.title
-                subtitle: helpService.summary
+                title: "Topics"
+                subtitle: "Pick a guide, then follow the right pane."
             }
+
+            ListView {
+                id: topicList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: helpService.topicModel
+                clip: true
+                spacing: Theme.px(7)
+                currentIndex: 0
+
+                delegate: Button {
+                    id: topicButton
+                    required property int index
+                    required property string title
+                    required property string summary
+                    required property string category
+                    required property string match
+
+                    width: topicList.width
+                    height: Theme.px(86)
+                    hoverEnabled: true
+                    focusPolicy: Qt.StrongFocus
+                    onClicked: {
+                        topicList.currentIndex = index;
+                        helpService.select(index);
+                    }
+
+                    background: Rectangle {
+                        radius: Theme.px(13)
+                        color: topicButton.index === topicList.currentIndex ? "#d7351a42" : (topicButton.hovered ? "#c72a1435" : "#a1120920")
+                        border.width: Math.max(1, Theme.px(topicButton.index === topicList.currentIndex ? 2 : 1))
+                        border.color: topicButton.index === topicList.currentIndex ? Theme.primaryBright : (topicButton.hovered ? Theme.primary : Theme.borderSoft)
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                    }
+
+                    contentItem: Column {
+                        spacing: Theme.px(3)
+                        anchors.margins: Theme.px(10)
+                        Text {
+                            width: parent.width
+                            text: topicButton.title
+                            color: topicButton.index === topicList.currentIndex ? Theme.primaryBright : Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.px(13.4)
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            text: topicButton.summary
+                            color: Theme.muted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.px(11.6)
+                            lineHeight: 1.12
+                            maximumLineCount: 2
+                            wrapMode: Text.Wrap
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            text: topicButton.match
+                            color: Theme.subtle
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.px(10.4)
+                            font.capitalization: Font.AllUppercase
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+
+            EmptyState {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.px(140)
+                visible: !helpService.hasResults
+                title: "No help topic found"
+                message: "Try fewer words or clear the selected category."
+            }
+        }
+    }
+
+    Component {
+        id: articleView
+        ColumnLayout {
+            spacing: Theme.px(12)
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.px(10)
+
+                SectionHeading {
+                    Layout.fillWidth: true
+                    title: helpService.title
+                    subtitle: helpService.breadcrumb
+                }
+
+                GhostButton {
+                    dense: true
+                    iconName: "changelog"
+                    text: "Copy support checklist"
+                    visible: Theme.logical(root.width) >= 930
+                    onClicked: helpService.copySupportChecklist()
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: helpService.summary
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.px(13.6)
+                wrapMode: Text.Wrap
+                lineHeight: 1.28
+            }
+
             Rectangle {
                 Layout.fillWidth: true
                 height: Math.max(1, Theme.px(1))
                 color: Theme.borderSoft
             }
+
             ScrollView {
                 id: articleScroll
                 Layout.fillWidth: true
@@ -80,19 +288,88 @@ Item {
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                 Column {
-                    id: sectionsColumn
+                    id: articleColumn
                     width: articleScroll.availableWidth
                     spacing: Theme.px(12)
-                    property var sectionData: helpService.sections
+
+                    GlassPanel {
+                        width: articleColumn.width
+                        height: stepsColumn.implicitHeight + Theme.px(28)
+                        strong: true
+                        glow: true
+                        visible: helpService.steps.length > 0
+
+                        Column {
+                            id: stepsColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.px(14)
+                            spacing: Theme.px(8)
+
+                            RowLayout {
+                                width: parent.width
+                                spacing: Theme.px(8)
+                                Icon {
+                                    name: "check"
+                                    iconSize: Theme.px(18)
+                                    colorize: true
+                                    tint: Theme.primaryBright
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Step-by-step"
+                                    color: Theme.primaryBright
+                                    font.family: Theme.displayFamily
+                                    font.pixelSize: Theme.px(16.5)
+                                    font.weight: Font.DemiBold
+                                }
+                            }
+
+                            Repeater {
+                                model: helpService.steps
+                                delegate: RowLayout {
+                                    required property int index
+                                    required property string modelData
+                                    width: stepsColumn.width
+                                    spacing: Theme.px(10)
+                                    Rectangle {
+                                        Layout.preferredWidth: Theme.px(29)
+                                        Layout.preferredHeight: Theme.px(29)
+                                        radius: height / 2
+                                        color: "#35ff6fac"
+                                        border.width: Math.max(1, Theme.px(1))
+                                        border.color: Theme.primaryBright
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: index + 1
+                                            color: "white"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.px(12)
+                                            font.weight: Font.Bold
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData
+                                        color: Theme.text
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.px(13.2)
+                                        wrapMode: Text.Wrap
+                                        lineHeight: 1.28
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     Repeater {
-                        model: sectionsColumn.sectionData.length
+                        model: helpService.sections
                         delegate: GlassPanel {
-                            required property int index
-                            width: sectionsColumn.width
+                            required property var modelData
+                            width: articleColumn.width
                             height: sectionContent.implicitHeight + Theme.px(28)
-                            soft: true
-                            property var section: sectionsColumn.sectionData[index]
+                            strong: true
 
                             Column {
                                 id: sectionContent
@@ -103,21 +380,109 @@ Item {
                                 spacing: Theme.px(7)
                                 Text {
                                     width: parent.width
-                                    text: section ? section.heading : ""
+                                    text: modelData.heading
                                     color: Theme.primaryBright
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.px(14)
+                                    font.family: Theme.displayFamily
+                                    font.pixelSize: Theme.px(15.4)
                                     font.weight: Font.DemiBold
                                     wrapMode: Text.Wrap
                                 }
                                 Text {
                                     width: parent.width
-                                    text: section ? section.body : ""
-                                    color: Theme.muted
+                                    text: modelData.body
+                                    color: Theme.text
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.px(11.5)
+                                    font.pixelSize: Theme.px(13)
                                     wrapMode: Text.Wrap
                                     lineHeight: 1.38
+                                }
+                            }
+                        }
+                    }
+
+                    GlassPanel {
+                        width: articleColumn.width
+                        height: pitfallsColumn.implicitHeight + Theme.px(28)
+                        strong: true
+                        visible: helpService.pitfalls.length > 0
+
+                        Column {
+                            id: pitfallsColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.px(14)
+                            spacing: Theme.px(8)
+                            Text {
+                                width: parent.width
+                                text: "Watch out"
+                                color: Theme.warning
+                                font.family: Theme.displayFamily
+                                font.pixelSize: Theme.px(15.4)
+                                font.weight: Font.DemiBold
+                            }
+                            Repeater {
+                                model: helpService.pitfalls
+                                delegate: RowLayout {
+                                    required property string modelData
+                                    width: pitfallsColumn.width
+                                    spacing: Theme.px(8)
+                                    Text {
+                                        Layout.preferredWidth: Theme.px(16)
+                                        text: "!"
+                                        color: Theme.warning
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.px(13)
+                                        font.weight: Font.Bold
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData
+                                        color: Theme.text
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.px(12.8)
+                                        wrapMode: Text.Wrap
+                                        lineHeight: 1.28
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GlassPanel {
+                        width: articleColumn.width
+                        height: relatedColumn.implicitHeight + Theme.px(28)
+                        strong: true
+                        visible: helpService.relatedTopics.length > 0
+
+                        Column {
+                            id: relatedColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.px(14)
+                            spacing: Theme.px(8)
+                            Text {
+                                width: parent.width
+                                text: "Related"
+                                color: Theme.primaryBright
+                                font.family: Theme.displayFamily
+                                font.pixelSize: Theme.px(15.4)
+                                font.weight: Font.DemiBold
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: Theme.px(7)
+                                Repeater {
+                                    model: helpService.relatedTopics
+                                    delegate: GhostButton {
+                                        required property var modelData
+                                        dense: true
+                                        text: modelData.title
+                                        showArrow: true
+                                        onClicked: helpService.selectTopic(modelData.key)
+                                    }
                                 }
                             }
                         }
@@ -130,25 +495,28 @@ Item {
     Component {
         id: wideComponent
         GridLayout {
-            columns: 2
+            columns: 3
             columnSpacing: Theme.px(10)
+
             HoverCard {
-                Layout.preferredWidth: Theme.px(300)
+                Layout.preferredWidth: Theme.px(292)
                 Layout.fillHeight: true
-                padding: Theme.px(16)
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: topicListComponent
-                }
+                padding: Theme.px(15)
+                Loader { anchors.fill: parent; sourceComponent: searchAndCategories }
             }
+
+            HoverCard {
+                Layout.preferredWidth: Theme.px(365)
+                Layout.fillHeight: true
+                padding: Theme.px(15)
+                Loader { anchors.fill: parent; sourceComponent: topicBrowser }
+            }
+
             HoverCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 padding: Theme.px(18)
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: articleComponent
-                }
+                Loader { anchors.fill: parent; sourceComponent: articleView }
             }
         }
     }
@@ -160,27 +528,30 @@ Item {
             clip: true
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
             ColumnLayout {
                 width: compactScroll.availableWidth
                 spacing: Theme.px(10)
+
                 HoverCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(315)
-                    padding: Theme.px(16)
-                    Loader {
-                        anchors.fill: parent
-                        sourceComponent: topicListComponent
-                    }
+                    Layout.preferredHeight: root.medium ? Theme.px(315) : Theme.px(380)
+                    padding: Theme.px(15)
+                    Loader { anchors.fill: parent; sourceComponent: searchAndCategories }
                 }
+
                 HoverCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(Theme.px(520), articleLoader.item ? articleLoader.item.implicitHeight : 0)
+                    Layout.preferredHeight: Theme.px(380)
+                    padding: Theme.px(15)
+                    Loader { anchors.fill: parent; sourceComponent: topicBrowser }
+                }
+
+                HoverCard {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(720)
                     padding: Theme.px(16)
-                    Loader {
-                        id: articleLoader
-                        anchors.fill: parent
-                        sourceComponent: articleComponent
-                    }
+                    Loader { anchors.fill: parent; sourceComponent: articleView }
                 }
             }
         }
