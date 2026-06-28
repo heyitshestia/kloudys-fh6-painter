@@ -13,9 +13,9 @@
 1. 下载最新版 release zip。
 2. 解压整个文件夹，不要直接在 zip 里运行。
 3. 打开 `KFPS.exe`。
-4. 如果程序提示运行环境异常，在 Settings 里检查内置 Python/runtime；完整 native 版本不需要手动安装 Python。
-5. 如果显示有更新，可以在 Settings 里使用 `Update from GitHub`。
-6. 在 `Generate Final Vinyl` 里选择一张图片。
+4. 如果程序提示运行环境异常，在 Settings 里检查内置 runtime；完整 bundled 版本不需要手动安装 Python。
+5. 如果显示有更新，可以在 `Update` 标签页更新。
+6. 在 `Generate` 标签页选择一张图片。
 7. 选择适合图片类型的预设：
    - `Shaded Character Art`：动漫、人物、头发、眼睛、皮肤、混合线稿。
    - `Flat Colors`：贴纸、吉祥物、硬边、平涂区域。
@@ -24,7 +24,7 @@
 9. 普通用户默认不需要打开 Pro settings。Max resolution、Random samples、Mutated samples 会根据图片和预设自动计算。
 10. 等到日志显示 `FINALIZE CHECKPOINTS COMPLETE`。
 11. 在 FH6 里打开 Vinyl Group Editor，准备足够层数的模板，并确保模板已经 ungroup。
-12. 在 `Import Final JSON` 里选择 finalized checkpoint，输入 FH6 模板的准确层数，然后导入。
+12. 在 `JSON` 标签页选择 finalized checkpoint，输入 FH6 模板的准确层数，然后导入。
 
 ## 关键规则
 
@@ -47,11 +47,11 @@
 
 `Image Tools` 标签页提供常用网页工具链接：背景移除、浏览器本地 2x/4x 放大、Squoosh 缩放/压缩。
 
-`Editor` 标签页会打开捆绑的 Forza Vinyl Studio 离线 JSON 编辑器。它用于手工创建/编辑 FH6 JSON，不会写入 FH6 内存。
+`Editor` 标签页会管理项目并打开捆绑的本地 Fabric JSON 编辑器。它用于手工创建/编辑 FH6 JSON，不会写入 FH6 内存。
 
 ## 更新
 
-推荐用启动器里的 `Update` 按钮。也可以在 app 文件夹里运行：
+推荐用原生 app 的 `Update` 标签页。也可以在 app 文件夹里运行：
 
 ```text
 03_update_from_github.bat
@@ -73,7 +73,6 @@
 | --- | --- | --- |
 | AE / A-Dawg#0001 | https://github.com/forza-painter/forza-painter | Original Forza Painter project and MIT-licensed import workflow. |
 | BVZRays / bvz rays | https://github.com/bvzrays/forza-painter-fh6 | FH6-focused upstream work. |
-| willn05 / Forza Vinyl Studio | https://github.com/willn05/forza-vinyl-studio | Original WPF vinyl editor project bundled here as a modified offline FH6 JSON editor. |
 | zjl88858 / forza-painter-geometrize-gpu | https://github.com/zjl88858/forza-painter-geometrize-gpu | GPU/OpenCL generator lineage. |
 | Sam Twidale | https://samcodes.co.uk/ | `geometrize-lib` author. |
 | Michael Fogleman | https://github.com/fogleman/primitive | `primitive` author. |

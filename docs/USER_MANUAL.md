@@ -1,5 +1,7 @@
 # KFPS User Manual
 
+> **3.x note:** KFPS now opens through the native `KFPS.exe` app. Some deeper setup sections still mention the older launcher flow for legacy troubleshooting, but the current start-here workflow is the native Dashboard -> Generate -> JSON -> Editor layout shown in the screenshots below.
+
 This is the full manual. It is intentionally detailed so a first-time user can follow it without guessing.
 
 Use this with:
