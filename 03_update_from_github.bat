@@ -222,7 +222,7 @@ exit /b 0
 set "LOCK_REPORT=%TEMP%\kloudys-update-locks-%RANDOM%.txt"
 if exist "!LOCK_REPORT!" del /f /q "!LOCK_REPORT!" >nul 2>nul
 set "KFPS_LOCK_REPORT=!LOCK_REPORT!"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '.').Path; $lockReport=$env:KFPS_LOCK_REPORT; $names=@('KloudysGalateaGenesis.exe','KloudysGeneratorV7.exe','KloudysGeneratorV6.exe','KloudysGeneratorV6-Go.exe','KloudysGeneratorV5.exe','KloudysGeneratorV5DetailLock.exe','KloudysGeneratorV4.exe','KloudysGeneratorV2.exe','KloudysGeneratorV2Fast.exe','KloudysGeneratorV2Speed.exe','ForzaVinylStudio.exe'); $match={ ($names -contains $_.Name) -or (($_.Name -match '^python') -and ($_.CommandLine -like ('*' + $root + '*')) -and ($_.CommandLine -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py')) }; $locks=Get-CimInstance Win32_Process | Where-Object $match; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath $lockReport -Encoding ASCII; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 800; $remaining=Get-CimInstance Win32_Process | Where-Object $match; if($remaining){ 'Still running after termination attempt:' | Add-Content -LiteralPath $lockReport -Encoding ASCII; $remaining | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Add-Content -LiteralPath $lockReport -Encoding ASCII; exit 2 } }; exit 0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $root=(Resolve-Path '.').Path; $parent=(Resolve-Path '..').Path; $lockReport=$env:KFPS_LOCK_REPORT; function InTree($path,$base){ if(-not $path){ return $false }; try{ $full=[IO.Path]::GetFullPath($path); return $full.StartsWith($base,[StringComparison]::OrdinalIgnoreCase) } catch { return $false } }; $names=@('KFPS.exe','Kloudys Painter Launcher.exe','Kloudys Painter.exe','KloudysGalateaGenesis.exe','KloudysGeneratorV7.exe','KloudysGeneratorV6.exe','KloudysGeneratorV6-Go.exe','KloudysGeneratorV5.exe','KloudysGeneratorV5DetailLock.exe','KloudysGeneratorV4.exe','KloudysGeneratorV2.exe','KloudysGeneratorV2Fast.exe','KloudysGeneratorV2Speed.exe','ForzaVinylStudio.exe'); $procs=Get-CimInstance Win32_Process; $locks=$procs | Where-Object { $cmd=$_.CommandLine; $path=$_.ExecutablePath; ((($names -contains $_.Name) -and ((InTree $path $root) -or (InTree $path $parent) -or ($cmd -like ('*' + $root + '*')) -or ($cmd -like ('*' + $parent + '*')))) -or (($_.Name -match '^pythonw?\.exe$') -and ($cmd -like ('*' + $root + '*')) -and ($cmd -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py|KFPS\.UI'))) }; if($locks){ $locks | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Set-Content -LiteralPath $lockReport -Encoding ASCII; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 1500; $remaining=Get-CimInstance Win32_Process | Where-Object { $cmd=$_.CommandLine; $path=$_.ExecutablePath; ((($names -contains $_.Name) -and ((InTree $path $root) -or (InTree $path $parent) -or ($cmd -like ('*' + $root + '*')) -or ($cmd -like ('*' + $parent + '*')))) -or (($_.Name -match '^pythonw?\.exe$') -and ($cmd -like ('*' + $root + '*')) -and ($cmd -match 'app_qt.py|start_fabric_editor.py|forza_generator_v2.py|benchmark_generator_settings.py|KFPS\.UI'))) }; if($remaining){ 'Still running after termination attempt:' | Add-Content -LiteralPath $lockReport -Encoding ASCII; $remaining | ForEach-Object { ('PID ' + $_.ProcessId + ' - ' + $_.Name) } | Add-Content -LiteralPath $lockReport -Encoding ASCII; exit 2 } }; exit 0"
 if errorlevel 1 (
     call :log ""
     call :log "Update tried to stop KFPS processes, but Windows reports that one is still running."
@@ -408,7 +408,7 @@ exit /b 0
 :install_qml_binary_payload
 call :init_qml_payload_defaults
 if exist "KFPS.exe" (
-    call :log "QML native binary payload is already present in the app root."
+    call :log "Native launcher payload is present in the app root."
     exit /b 0
 )
 set "QML_PAYLOAD_ZIP="
@@ -425,14 +425,14 @@ set "KFPS_APP_ROOT=%CD%"
 set "KFPS_QML_PAYLOAD_ZIP=%QML_PAYLOAD_ZIP%"
 set "KFPS_QML_PAYLOAD_URL=%QML_BINARY_ASSET_URL%"
 set "KFPS_QML_PAYLOAD_NAME=%QML_BINARY_ASSET_NAME%"
-call :log "Installing QML native binary payload..."
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $app=$env:KFPS_APP_ROOT; $zip=$env:KFPS_QML_PAYLOAD_ZIP; if(-not $zip -or -not (Test-Path -LiteralPath $zip)){ $zip=Join-Path $env:TEMP $env:KFPS_QML_PAYLOAD_NAME; $headers=@{'User-Agent'='KFPS-Updater'}; if($env:GH_TOKEN){ $headers['Authorization']='Bearer ' + $env:GH_TOKEN }; Invoke-WebRequest -UseBasicParsing -Uri $env:KFPS_QML_PAYLOAD_URL -OutFile $zip -Headers $headers }; $stage=Join-Path $env:TEMP ('kfps-qml-payload-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force -Path $stage | Out-Null; Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force; $exe=Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'KFPS.exe' | Where-Object { $_.FullName -notmatch '\\KloudysFH6Painter\\KFPS\.exe$' } | Select-Object -First 1; if(-not $exe){ throw 'QML payload did not contain a parent KFPS.exe' }; Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $app 'KFPS.exe') -Force; Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue"
+call :log "Installing native launcher payload..."
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $app=$env:KFPS_APP_ROOT; $zip=$env:KFPS_QML_PAYLOAD_ZIP; $url=$env:KFPS_QML_PAYLOAD_URL; if((-not $zip -or -not (Test-Path -LiteralPath $zip)) -and [string]::IsNullOrWhiteSpace($url)){ throw 'Native launcher payload is missing from the synced app files.' }; if(-not $zip -or -not (Test-Path -LiteralPath $zip)){ $zip=Join-Path $env:TEMP $env:KFPS_QML_PAYLOAD_NAME; $headers=@{'User-Agent'='KFPS-Updater'}; if($env:GH_TOKEN){ $headers['Authorization']='Bearer ' + $env:GH_TOKEN }; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip -Headers $headers }; $stage=Join-Path $env:TEMP ('kfps-qml-payload-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force -Path $stage | Out-Null; Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force; $exe=Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'KFPS.exe' | Where-Object { $_.FullName -notmatch '\\KloudysFH6Painter\\KFPS\.exe$' } | Select-Object -First 1; if(-not $exe){ throw 'QML payload did not contain a parent KFPS.exe' }; Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $app 'KFPS.exe') -Force; Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue"
 if errorlevel 1 (
     call :log "Failed to install QML native binary payload."
     call :log "If the binary asset cannot be downloaded, place %QML_BINARY_ASSET_NAME% next to the KFPS folder or set KFPS_QML_BUNDLE_ZIP."
     exit /b 1
 )
-call :log "QML native binary payload installed."
+call :log "Native launcher payload installed."
 exit /b 0
 
 :ensure_qml_root_binary
@@ -445,9 +445,13 @@ set "QML_ROOT_REASON="
 if not exist "!QML_ROOT_EXE!" (
     set "QML_ROOT_REASON=missing"
 ) else (
-    set "QML_ROOT_SIZE=0"
-    for %%I in ("!QML_ROOT_EXE!") do set "QML_ROOT_SIZE=%%~zI"
-    if !QML_ROOT_SIZE! LSS 120000000 set "QML_ROOT_REASON=legacy"
+    set "QML_ROOT_HASH="
+    call :capture_file_sha256 "!QML_ROOT_EXE!" QML_ROOT_HASH
+    if errorlevel 1 (
+        set "QML_ROOT_REASON=updated"
+    ) else if defined QML_BINARY_ASSET_SHA256 (
+        if /I not "!QML_ROOT_HASH!"=="%QML_BINARY_ASSET_SHA256%" set "QML_ROOT_REASON=updated"
+    )
 )
 if not defined QML_ROOT_REASON (
     set "QML_MARKER_VALUE="
@@ -462,41 +466,30 @@ if not defined QML_ROOT_REASON (
         exit /b 0
     )
     if /I "!QML_MARKER_VALUE!"=="%QML_BINARY_ASSET_NAME%" exit /b 0
-    if defined QML_BINARY_ASSET_SHA256 (
-        set "QML_ROOT_HASH="
-        call :capture_file_sha256 "!QML_ROOT_EXE!" QML_ROOT_HASH
+    set "QML_ROOT_REASON=updated"
+)
+if /I "!QML_ROOT_REASON!"=="missing" call :log "Native KFPS launcher is missing; installing QML executable."
+if /I "!QML_ROOT_REASON!"=="updated" call :log "Native launcher hash differs; replacing KFPS.exe."
+call :install_qml_binary_payload
+if errorlevel 1 exit /b 1
+call :sync_native_root_exe
+if exist "!QML_ROOT_EXE!" (
+    set "QML_ROOT_HASH="
+    call :capture_file_sha256 "!QML_ROOT_EXE!" QML_ROOT_HASH
+    if not errorlevel 1 (
         if /I "!QML_ROOT_HASH!"=="%QML_BINARY_ASSET_SHA256%" (
-            call :log "Native launcher marker was stale; refreshed without downloading the binary payload."
             if not exist "%CD%\runtime" mkdir "%CD%\runtime" >nul 2>nul
             > "!QML_MARKER!" echo %QML_BINARY_ASSET_NAME%
             exit /b 0
         )
     )
-    set "QML_ROOT_REASON=updated"
 )
-if /I "!QML_ROOT_REASON!"=="missing" call :log "Native KFPS launcher is missing; installing QML executable."
-if /I "!QML_ROOT_REASON!"=="legacy" call :log "Legacy native launcher detected; replacing it with the QML executable."
-if /I "!QML_ROOT_REASON!"=="updated" call :log "Native launcher payload changed; updating QML executable."
-if exist "KFPS.exe" del /f /q "KFPS.exe" >nul 2>nul
-call :install_qml_binary_payload
-if errorlevel 1 exit /b 1
-call :sync_native_root_exe
-if exist "!QML_ROOT_EXE!" (
-    set "QML_ROOT_SIZE=0"
-    for %%I in ("!QML_ROOT_EXE!") do set "QML_ROOT_SIZE=%%~zI"
-    if !QML_ROOT_SIZE! GEQ 120000000 (
-        if not exist "%CD%\runtime" mkdir "%CD%\runtime" >nul 2>nul
-        > "!QML_MARKER!" echo %QML_BINARY_ASSET_NAME%
-        exit /b 0
-    )
-)
-call :log "Native launcher repair did not produce a valid QML executable."
+call :log "Native launcher repair did not produce the expected QML launcher hash."
 exit /b 1
 
 :init_qml_payload_defaults
-if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-3.0.26-binary.zip"
-if not defined QML_BINARY_ASSET_URL set "QML_BINARY_ASSET_URL=https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/download/v3.0.26/KFPS-3.0.26-binary.zip"
-if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=94AB428DBD52931EC7904E2D9920D82606824E62A686A2A65A4DC3C428450F50"
+if not defined QML_BINARY_ASSET_NAME set "QML_BINARY_ASSET_NAME=KFPS-loose-launcher-v1"
+if not defined QML_BINARY_ASSET_SHA256 set "QML_BINARY_ASSET_SHA256=C8427290547083752604215FEDB64CBF4D59481E9033DF1E201033070CB3FD43"
 exit /b 0
 
 :capture_file_sha256
@@ -657,13 +650,15 @@ exit /b 0
 if not exist "KFPS.exe" exit /b 0
 for %%I in ("%CD%") do set "CURRENT_FOLDER=%%~nxI"
 if /I not "%CURRENT_FOLDER%"=="KloudysFH6Painter" exit /b 0
-copy /y "KFPS.exe" "..\KFPS.exe" >nul 2>nul
+set "KFPS_NATIVE_SOURCE=%CD%\KFPS.exe"
+set "KFPS_NATIVE_TARGET=%CD%\..\KFPS.exe"
+set "KFPS_NATIVE_LOG=%UPDATE_LOG%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $src=$env:KFPS_NATIVE_SOURCE; $target=$env:KFPS_NATIVE_TARGET; $log=$env:KFPS_NATIVE_LOG; $root=(Resolve-Path '.').Path; $parent=(Resolve-Path '..').Path; function InTree($path,$base){ if(-not $path){ return $false }; try{ $full=[IO.Path]::GetFullPath($path); return $full.StartsWith($base,[StringComparison]::OrdinalIgnoreCase) } catch { return $false } }; function WriteLog($message){ if($log){ Add-Content -LiteralPath $log -Value ('[' + (Get-Date -Format 'dd.MM.yyyy HH:mm:ss,ff') + '] ' + $message) -Encoding ASCII } }; $names=@('KFPS.exe','Kloudys Painter Launcher.exe','Kloudys Painter.exe'); $locks=Get-CimInstance Win32_Process | Where-Object { $cmd=$_.CommandLine; $path=$_.ExecutablePath; ($names -contains $_.Name) -and ((InTree $path $root) -or (InTree $path $parent) -or ($cmd -like ('*' + $root + '*')) -or ($cmd -like ('*' + $parent + '*'))) }; if($locks){ WriteLog 'Stopped native launcher process(es) before replacing KFPS.exe.'; $locks | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 1200 }; $copied=$false; $last=$null; for($i=0; $i -lt 60; $i++){ try{ Copy-Item -LiteralPath $src -Destination $target -Force; $copied=$true; break } catch { $last=$_.Exception.Message; Start-Sleep -Milliseconds 500 } }; if(-not $copied){ WriteLog ('Native launcher replacement failed after retries: ' + $last); exit 2 }; exit 0"
 if errorlevel 1 (
     call :schedule_native_handoff
-) else (
-    del /f /q "KFPS.exe" >nul 2>nul
-    call :log "Native KFPS launcher installed one folder above KloudysFH6Painter."
+    exit /b 1
 )
+call :log "Native KFPS launcher installed one folder above KloudysFH6Painter."
 exit /b 0
 
 :schedule_native_handoff

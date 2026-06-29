@@ -30,6 +30,7 @@ BUILD_COMMIT
 *candidates.json
 guided-memory-*.jsonl
 KFPS.exe
+!KFPS.exe
 KFPS-*-binary.zip
 KFPS-*-bundled.zip
 KFPS.UI/Previews/

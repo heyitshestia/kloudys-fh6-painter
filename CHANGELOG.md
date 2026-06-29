@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.0.27
+- Changed the shipped KFPS executable into a small launcher for the loose QML app files.
+- Hardened updater replacement with SHA256 verification so old and new `KFPS.exe` files cannot be confused.
+- Kept the native launcher repair payload inside the app folder for future updater self-repair.
+- Removed the in-app bundle check panel from Settings.
+- Removed the obsolete PyInstaller single-file packaging path.
+
 ## 3.0.26
 - Reworked the native Help tab into a searchable guide with categories, step-by-step workflows, warnings, related topics, and a support checklist.
 - Added a dedicated FH6 3000 plain white circle template guide for importing.

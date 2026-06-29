@@ -1,6 +1,6 @@
 # KFPS Native QML Interface
 
-This directory is the complete PySide6/Qt Quick replacement for the former WPF shell. It changes presentation and orchestration only: the KFPS generator, finalizer, game-memory importer/exporter, JSON renderer, updater, and Fabric editor remain the existing backend implementations.
+This directory contains the PySide6/Qt Quick desktop interface. It changes presentation and orchestration only: the KFPS generator, finalizer, game-memory importer/exporter, JSON renderer, updater, and Fabric editor remain the existing backend implementations.
 
 ## Source launch
 
@@ -20,10 +20,10 @@ The first geometry refinement pass standardizes centered button content, field a
 ## Build KFPS.exe
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File KFPS.UI\packaging\build.ps1
+powershell -ExecutionPolicy Bypass -File tools\native_launcher\build_launcher.ps1
 ```
 
-Output is placed in `dist\KFPS.exe`. Copy that executable beside the `KloudysFH6Painter` folder in the normal standalone package. No .NET runtime is required.
+The shipped executable is intentionally small. It only finds the bundled Python runtime and launches `KFPS.UI\app.py` from loose source files. Copy the output `KFPS.exe` beside the `KloudysFH6Painter` folder, and keep the same launcher payload inside `KloudysFH6Painter\KFPS.exe` so the updater can repair the parent launcher.
 
 ## Structure
 
@@ -32,7 +32,6 @@ Output is placed in `dist\KFPS.exe`. Copy that executable beside the `KloudysFH6
 - `src/kfps_ui/` — small Python services exposed to QML
 - `bridges/` — thin subprocess adapters to the unchanged backend
 - `tests/` — non-destructive service tests
-- `packaging/` — reproducible Windows executable build
 - `tools/` — screenshot and visual-QA helpers
 - `docs/` — architecture, behavior, build, and validation notes
 

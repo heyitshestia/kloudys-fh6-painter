@@ -22,91 +22,21 @@ Item {
             SectionHeading {
                 Layout.fillWidth: true
                 title: "Checks and preferences"
-                subtitle: "The packaged app includes its own Python runtime and backend dependencies. Settings verifies that bundle and controls the native QML interface."
+                subtitle: "Adjust the native QML interface and app preferences."
             }
 
-            GridLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
-                columns: Theme.logical(root.width) > 900 ? 2 : 1
-                columnSpacing: Theme.px(12)
-                rowSpacing: Theme.px(12)
+                spacing: Theme.px(12)
 
                 HoverCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(360)
+                    Layout.preferredHeight: Theme.px(380)
                     padding: Theme.px(18)
 
                     ColumnLayout {
                         anchors.fill: parent
-                        spacing: Theme.px(10)
-
-                        Text {
-                            text: "Bundle checks"
-                            color: Theme.primaryBright
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.px(16)
-                            font.weight: Font.DemiBold
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "A complete release should not require a separate Python installation."
-                            color: Theme.muted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.px(11)
-                            wrapMode: Text.Wrap
-                        }
-
-                        StatusRow {
-                            Layout.fillWidth: true
-                            label: "Python 3.12"
-                            value: runtimeService.pythonText
-                            state: runtimeService.ready ? "ok" : "warn"
-                        }
-
-                        StatusRow {
-                            Layout.fillWidth: true
-                            label: "Dependencies"
-                            value: runtimeService.dependenciesText
-                            state: runtimeService.ready ? "ok" : "warn"
-                        }
-
-                        StatusRow {
-                            Layout.fillWidth: true
-                            label: "Runtime"
-                            value: runtimeService.runtimeText
-                            state: runtimeService.ready ? "ok" : "warn"
-                        }
-
-                        Item {
-                            Layout.fillHeight: true
-                        }
-
-                        PrimaryButton {
-                            Layout.fillWidth: true
-                            text: runtimeService.checking ? "Checking…" : "Run bundle checks"
-                            iconName: "check"
-                            enabled: !runtimeService.checking
-                            onClicked: runtimeService.check()
-                        }
-
-                        GhostButton {
-                            Layout.fillWidth: true
-                            text: "Open runtime folder"
-                            iconName: "folder"
-                            onClicked: desktop.openRuntime()
-                        }
-                    }
-                }
-
-                HoverCard {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(360)
-                    padding: Theme.px(18)
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: Theme.px(10)
+                        spacing: Theme.px(12)
 
                         Text {
                             text: "Interface"
