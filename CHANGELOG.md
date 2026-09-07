@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.63
+- Added a Join the server button beside the announcement bar on every page, opening the KFPS Support server in your default browser.
+- Added a one-time community welcome popup pointing to the new button, with an invitation to get help, report issues, and share your work.
+- Included a separate Vinyl Contest reminder with the createinsane submission tag, 30 September deadline, and prizes; the reminder expires after the deadline.
+
 ## 3.1.62
 - Replaced the external upscaler link with a native 2x/4x upscaler for photos, anime, and text, including previews, transparent-image support, cancellation, and save/use-as-source controls.
 - Added verified first-use engine downloads, bounded processing, and per-run diagnostics without requiring Node.js or CUDA.

@@ -174,7 +174,7 @@ ApplicationWindow {
                     color: Theme.classicMode ? Theme.surface : "transparent"
                     z: -1
                 }
-                property real controlsTopMargin: announcementTicker.visible
+                property real controlsTopMargin: announcementTicker.visible || joinServerButton.visible
                                                  ? Theme.px(window.shortWindow ? 42 : 54)
                                                  : Theme.px(window.shortWindow ? 10 : 16)
                 readonly property bool pageHeaderAlignmentAvailable: Boolean(pageLoader.item && pageLoader.item.headerAlignmentAvailable)
@@ -273,14 +273,30 @@ ApplicationWindow {
                     }
                 }
 
+                GhostButton {
+                    id: joinServerButton
+                    objectName: "JoinSupportServer"
+                    text: "Join the server"
+                    iconName: "community"
+                    dense: true
+                    height: announcementTicker.height
+                    textPixelSize: Theme.px(window.compactHeader ? 9.4 : 10.2)
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.px(window.shortWindow ? 7 : 9)
+                    x: workspace.headerBannerX + Theme.px(5)
+                    z: 24
+                    toolTipText: "Join the KFPS Support Discord server."
+                    onClicked: reportService.openDiscord()
+                }
+
                 AnnouncementTicker {
                     id: announcementTicker
                     compact: window.compactHeader
                     visible: settings.liveStatusVisible
                     anchors.top: parent.top
                     anchors.topMargin: Theme.px(window.shortWindow ? 7 : 9)
-                    x: workspace.headerBannerX + Theme.px(5)
-                    width: Math.max(Theme.px(1), workspace.headerBannerWidth - Theme.px(10))
+                    x: joinServerButton.x + joinServerButton.width + Theme.px(8)
+                    width: Math.max(Theme.px(1), workspace.headerBannerWidth - joinServerButton.width - Theme.px(18))
                     z: 24
                 }
 
@@ -422,10 +438,25 @@ ApplicationWindow {
         onUpscalerRequested: appController.navigate("upscaler")
     }
 
+    CommunityWelcomeOverlay {
+        id: communityWelcome
+        targetItem: joinServerButton
+        onJoinRequested: reportService.openDiscord()
+    }
+
     Timer {
         interval: 700
         running: window.visible && !screenshotMode && !settings.supportUpscalerNoticeAcknowledged
         repeat: false
         onTriggered: featureWelcome.open()
+    }
+
+    Timer {
+        interval: 700
+        running: window.visible && !screenshotMode
+                 && settings.supportUpscalerNoticeAcknowledged && !featureWelcome.visible
+                 && !settings.communityJoinNoticeAcknowledged && !communityWelcome.visible
+        repeat: false
+        onTriggered: communityWelcome.open()
     }
 }

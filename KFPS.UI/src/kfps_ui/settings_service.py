@@ -30,6 +30,7 @@ class SettingsService(QObject):
         "windowGeometry": {},
         "backupFolder": "",
         "supportUpscalerNoticeAcknowledged": False,
+        "communityJoinNoticeAcknowledged": False,
     }
     KNOWN_THEMES = set(KNOWN_THEME_NAMES)
 
@@ -122,7 +123,18 @@ class SettingsService(QObject):
 
     @Slot()
     def acknowledgeSupportUpscalerNotice(self):
-        self._data["supportUpscalerNoticeAcknowledged"] = True
+        self._acknowledge_notice("supportUpscalerNoticeAcknowledged")
+
+    @Property(bool, notify=changed)
+    def communityJoinNoticeAcknowledged(self):
+        return self._get("communityJoinNoticeAcknowledged") is True
+
+    @Slot()
+    def acknowledgeCommunityJoinNotice(self):
+        self._acknowledge_notice("communityJoinNoticeAcknowledged")
+
+    def _acknowledge_notice(self, key):
+        self._data[key] = True
         try:
             self.save()
         except OSError:
@@ -150,6 +162,8 @@ class SettingsService(QObject):
     @Slot()
     def reset(self):
         notice_acknowledged = self.supportUpscalerNoticeAcknowledged
+        community_notice_acknowledged = self.communityJoinNoticeAcknowledged
         self._data = dict(self.DEFAULTS)
         self._data["supportUpscalerNoticeAcknowledged"] = notice_acknowledged
+        self._data["communityJoinNoticeAcknowledged"] = community_notice_acknowledged
         self.save(); self.changed.emit()
