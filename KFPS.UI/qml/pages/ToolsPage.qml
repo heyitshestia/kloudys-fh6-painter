@@ -58,11 +58,11 @@ Item {
                     Layout.preferredHeight: Theme.px(250)
                     number: ""
                     title: "Upscale small sources"
-                    description: "Use this for tiny logos or low-resolution references before running detailed presets. Do not upscale already large images."
-                    toolTipText: "Open the external image upscaler in your web browser. KFPS does not upload the image itself."
+                    description: "Photo, anime and text presets with local 2x and 4x upscaling."
+                    toolTipText: "Open the native upscaler. Images stay on this computer."
                     iconName: "upscale"
                     buttonText: "Open Upscaler"
-                    onAction: desktop.openUrl("https://hcodx.com/tools/image-upscaler")
+                    onAction: appController.navigate("upscaler")
                 }
 
                 WorkflowCard {
@@ -97,7 +97,7 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "KFPS only opens these websites in your browser. Check each site's privacy policy and terms before uploading personal, paid, unreleased, or client artwork."
+                        text: "The native upscaler keeps images on your computer. Background removal and compression open external websites; check their privacy policies before uploading artwork."
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.px(12)

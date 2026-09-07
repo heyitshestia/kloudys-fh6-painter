@@ -415,4 +415,17 @@ ApplicationWindow {
         window: window
         z: 1000
     }
+
+    FeatureWelcomeOverlay {
+        id: featureWelcome
+        targetItem: sidebar.reportTarget
+        onUpscalerRequested: appController.navigate("upscaler")
+    }
+
+    Timer {
+        interval: 700
+        running: window.visible && !screenshotMode && !settings.supportUpscalerNoticeAcknowledged
+        repeat: false
+        onTriggered: featureWelcome.open()
+    }
 }

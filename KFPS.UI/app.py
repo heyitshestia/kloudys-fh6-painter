@@ -56,6 +56,7 @@ from kfps_ui.theme_catalog import (
 )
 from kfps_ui.transfer_service import TransferService
 from kfps_ui.update_service import UpdateService
+from kfps_ui.upscale_service import UpscaleService
 from kfps_ui.version_service import VersionService
 from kfps_ui.window_geometry import ScreenRect, calculate_window_placement
 
@@ -378,6 +379,7 @@ def main():
     announcements = AnnouncementService(demo=args.demo)
     runtime = RuntimeService(demo=args.demo)
     source = SourceImageService(paths, desktop, logs)
+    upscaler = UpscaleService(paths, desktop, source, logs)
     jsons = JsonService(paths, preview, desktop, logs, demo=args.demo)
     community = CommunityService(
         paths, desktop, logs, jsons=jsons, app_version=version.localVersion, demo=args.demo,
@@ -411,6 +413,7 @@ def main():
         "transfer": transfer, "generator": generation, "editor": editor,
         "liveries": full_livery, "offline": cgroup_library, "outputs": jsons,
         "community": community, "updater": updates, "runtime": runtime,
+        "upscaler": upscaler,
     })
     changelog = ChangelogService(paths.app_root / "CHANGELOG.md", auto_refresh=not args.demo)
 
@@ -426,6 +429,7 @@ def main():
         "desktop": desktop,
         "backupService": backup,
         "sourceService": source,
+        "upscaleService": upscaler,
         "jsonService": jsons,
         "communityService": community,
         "cgroupLibraryService": cgroup_library,
@@ -538,6 +542,7 @@ def main():
         app, window, controller, community, settings, jsons, args,
     )
     shutdown_order = [
+        upscaler,
         reports,
         editor,
         transfer,

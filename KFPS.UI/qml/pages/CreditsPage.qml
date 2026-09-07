@@ -62,6 +62,18 @@ Item {
             detail: "Original primitive-based image approximation library credited by upstream license notices."
         },
         {
+            name: "Xintao Wang / Real-ESRGAN",
+            link: "https://github.com/xinntao/Real-ESRGAN",
+            role: "Native photo upscaling",
+            detail: "Real-ESRGAN x4plus model and NCNN Vulkan runtime. BSD-3-Clause model project and MIT runtime; notices are included under tools/upscaler."
+        },
+        {
+            name: "nihui / nagadomi / waifu2x",
+            link: "https://github.com/nihui/waifu2x-ncnn-vulkan",
+            role: "Native anime and text upscaling",
+            detail: "waifu2x CUNet models and NCNN Vulkan runtime. MIT notices are included under tools/upscaler."
+        },
+        {
             name: "Sanguk Ko / ree9622",
             link: "https://github.com/ree9622",
             role: "Localization contributor",

@@ -84,7 +84,7 @@ class StartupSplash(QWidget):
             self.art.setPixmap(
                 artwork.scaled(
                     245,
-                    245,
+                    self.art.height(),
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )

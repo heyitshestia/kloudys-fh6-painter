@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.62
+- Replaced the external upscaler link with a native 2x/4x upscaler for photos, anime, and text, including previews, transparent-image support, cancellation, and save/use-as-source controls.
+- Added verified first-use engine downloads, bounded processing, and per-run diagnostics without requiring Node.js or CUDA.
+- Added a one-time welcome notice pointing to Report a problem and introducing the new upscaler; dismissal persists across restarts.
+- Updated Mini Kloudy's splash artwork while preserving the circular layout and animated rings.
+
 ## 3.1.61
 - Added Report a problem beneath Credits, with automatically prepared diagnostic context and review in the system default browser.
 - Added Discord sign-in and support reporting with public issue posts, optional private technical details, and a permanent support-server invitation.

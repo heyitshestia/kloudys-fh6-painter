@@ -10,6 +10,7 @@ Item {
     property bool compact: false
     property real railWidth: Theme.px(compact ? Metrics.compactSidebar : Metrics.wideSidebar)
     property bool denseNavigation: Theme.logical(height) < 760
+    readonly property Item reportTarget: reportIssueButton
     readonly property var navItems: {
         var items = [
             { page: "create", label: "Create", icon: "generate" },
@@ -40,7 +41,7 @@ Item {
             return "liveries"
         if (page === "editor")
             return "editor"
-        if (page === "tools" || page === "images")
+        if (page === "tools" || page === "images" || page === "upscaler")
             return "tools"
         if (page === "support")
             return "support"
@@ -406,6 +407,7 @@ Item {
                 }
 
                 SupportReportButton {
+                    id: reportIssueButton
                     width: parent.width
                     compact: root.compact
                 }

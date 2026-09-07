@@ -12,6 +12,7 @@ Item {
         community: communityLoader,
         editor: editorLoader,
         tools: toolsLoader,
+        upscaler: upscalerLoader,
         support: supportLoader,
         help: helpLoader,
         update: updateLoader,
@@ -84,6 +85,16 @@ Item {
         asynchronous: true
         source: "../pages/EditorPage.qml"
         onLoaded: root.pageLoaded("editor", item)
+    }
+
+    Loader {
+        id: upscalerLoader
+        anchors.fill: parent
+        visible: root.currentPage === "upscaler"
+        active: root.retainAfterFirstLoad(upscalerLoader, visible)
+        asynchronous: true
+        source: "../pages/UpscalerPage.qml"
+        onLoaded: root.pageLoaded("upscaler", item)
     }
 
     Loader {

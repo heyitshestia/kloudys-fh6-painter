@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -28,6 +29,7 @@ class SettingsService(QObject):
         "consoleCollapsed": False,
         "windowGeometry": {},
         "backupFolder": "",
+        "supportUpscalerNoticeAcknowledged": False,
     }
     KNOWN_THEMES = set(KNOWN_THEME_NAMES)
 
@@ -114,6 +116,20 @@ class SettingsService(QObject):
     @backupFolder.setter
     def backupFolder(self, value): self._set("backupFolder", str(value or ""))
 
+    @Property(bool, notify=changed)
+    def supportUpscalerNoticeAcknowledged(self):
+        return self._get("supportUpscalerNoticeAcknowledged") is True
+
+    @Slot()
+    def acknowledgeSupportUpscalerNotice(self):
+        self._data["supportUpscalerNoticeAcknowledged"] = True
+        try:
+            self.save()
+        except OSError:
+            # Remain dismissed for this session even on a read-only installation.
+            logging.getLogger(__name__).warning("Could not persist the KFPS welcome notice dismissal", exc_info=True)
+        self.changed.emit()
+
     def window_geometry(self) -> dict:
         payload = self._data.get("windowGeometry")
         return dict(payload) if isinstance(payload, dict) else {}
@@ -133,5 +149,7 @@ class SettingsService(QObject):
 
     @Slot()
     def reset(self):
+        notice_acknowledged = self.supportUpscalerNoticeAcknowledged
         self._data = dict(self.DEFAULTS)
+        self._data["supportUpscalerNoticeAcknowledged"] = notice_acknowledged
         self.save(); self.changed.emit()

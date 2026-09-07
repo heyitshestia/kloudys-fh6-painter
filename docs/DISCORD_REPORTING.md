@@ -153,3 +153,65 @@ stable form address should work independently of installed KFPS versions.
 
 Before future changes, preserve the identity-only OAuth scope, non-public technical
 delivery, existing local Markdown report API and separation from other Workers.
+
+## One-time startup notice (2026-09-07)
+
+After the DIRTY checks below and visual approval, Hestia authorized promotion
+to CLEAN/main with the native upscaler in the 3.1.62 bundled release. The
+no-publication statements below describe the earlier implementation checkpoint.
+
+The shell shows a welcome notice after its first visible startup following this
+change. It displays Hestia's support-channel message, highlights the existing
+Report a problem button below Credits with a curved arrow, and announces the
+native 2x/4x upscaler. Got it dismisses the notice; Try the upscaler dismisses it
+and opens that page. Escape also dismisses. Outside/spotlight clicks cannot submit
+a report, launch a browser, or dismiss the notice accidentally.
+
+`supportUpscalerNoticeAcknowledged` is stored in the existing
+`runtime/qml-shell-settings.json`. Old settings without the key show the notice.
+Dismissal survives restarts, ordinary updates and preference resets. Deleting
+the settings file or using a fresh installation naturally shows it again.
+If settings cannot be written, the notice still closes for the current session
+and the persistence error is logged. No server/account state is involved.
+
+Implementation: `shell/FeatureWelcomeOverlay.qml`, the target exposed by
+`Sidebar.qml`, the startup timer in `Main.qml`, and `SettingsService` persistence.
+The arrow follows live button geometry. Geometry checks run only while open and
+do not repaint a stationary arrow; the artwork is unloaded on close. The message
+uses a solid theme-colored surface, a spotlight cutout and theme-aware corners.
+Screenshot-only app runs suppress the automatic notice.
+
+Validation entry points:
+
+```text
+python -m unittest discover -s KFPS.UI/tests -p test_feature_welcome.py -v
+python KFPS.UI/tools/test_feature_welcome_workflow.py
+```
+
+The workflow uses isolated settings, actual QML clicks, eight themes, two window
+sizes, each dismissal path and fresh application processes for restart checks.
+It runs offscreen, disables unsupported software-renderer glass effects, and
+never sends reports or opens a real browser. Artifacts and subprocess logs belong
+under ignored `runtime/welcome-testing/`.
+
+Final evidence: `runtime/welcome-testing/workflow-20260907-065339/`.
+All 16 theme/size cases passed, including text clipping and arrow target checks;
+Got it, Try the upscaler and Escape each passed a separate process restart check.
+Five focused persistence tests and all 658 application regression tests passed.
+Full-suite log: `runtime/welcome-testing/full-regression.log` (52.000 seconds).
+The existing suite shutdown ResourceWarning remains; this notice work does not
+claim to resolve unrelated QObject lifetime warnings. No promotion, version bump,
+release build, browser launch or server change was performed for this notice.
+
+Lookback:
+
+1. Scope stayed limited to the requested support/upscaler announcement in DIRTY.
+2. Reused the existing settings, modal controls, theme helpers and report button.
+3. Initial missing glass-layer screenshots were a software-test-renderer issue;
+   Windows 94 text clipping was a layout issue and was corrected separately.
+4. Added painted-text/viewport checks alongside screenshots and real restart tests.
+5. One notice flag and one reusable shell component are sufficient; no new service.
+6. No alternate WIP implementations or new announcement backend were introduced.
+7. Passing geometry assertions alone did not prove that every word was visible.
+8. A static screenshot/arrow would be simpler but would drift as the sidebar resizes.
+9. Stop feature work after the final checks; leave promotion and publishing to Hestia.
