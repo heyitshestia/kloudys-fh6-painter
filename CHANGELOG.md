@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.66
+- Fixed FM8 community vinyls importing or exporting as different shapes by correcting the shared shape-identity mapping used by live transfers and offline Library processing.
+- Library rescans regenerate affected exported JSONs from their original saved sources without changing the game saves. Previously exported standalone JSONs are not rewritten automatically; re-export them from the intended in-game design.
+- Added regression coverage for all 1,400 library shapes, with and without resource metadata, while preserving non-community identities, artwork fields and existing ownership checks.
+
 ## 3.1.65
 - Added a one-time introduction to the local Background Remover, with a direct Open Background Remover button, privacy information, and a first-use AI download note.
 - The new notice waits behind earlier welcome notices, remembers dismissal across restarts and settings resets, and does not automatically download models or process images.

@@ -26,6 +26,7 @@ from tools.cgroup.fm8_ownership import (  # noqa: E402
     parse_fm8_header,
 )
 from tools.cgroup.forza_source_decoder import decode_forza_source  # noqa: E402
+from tools.cgroup.shape_identity import normalize_game_shape_word  # noqa: E402
 
 
 def fm8_header(
@@ -99,6 +100,45 @@ def write_group(
 
 
 class FM8OfflineTransferTests(unittest.TestCase):
+    def test_rescan_corrects_existing_community_json_without_source_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            app_root = Path(temp)
+            groups = app_root / "LayerGroups"
+            folder = write_group(groups, "community-fixture")
+            (folder / "data").write_bytes(build_flat_payload([
+                CGroupLayer(2103, 0, 0, 1, 1, 0, 0, (255, 255, 255, 255)),
+            ]))
+            before = {path.name: path.read_bytes() for path in folder.iterdir()}
+            paths = AppPaths(app_root, UI, UI / "qml", UI / "assets",
+                             app_root / "runtime", Path(sys.executable))
+            service = CGroupLibraryService(paths, None, None, None)
+            self.addCleanup(service.close)
+
+            def legacy_mapping(word, game):
+                result = normalize_game_shape_word(word, game)
+                if result and word == 2103:
+                    result.update(canonical_word=2101, canonical_type=0x100000 + 2101,
+                                  resource_index=1)
+                return result
+
+            with patch.object(service, "_default_save_roots", return_value=[groups]), patch.object(
+                service, "_discover_save_artifacts", return_value=[folder / "data"]
+            ), patch.object(service, "_save_cached_roots"), patch.object(service, "_write_preview") as preview:
+                with patch("tools.cgroup.forza_source_decoder.normalize_game_shape_word", side_effect=legacy_mapping):
+                    initial = service._scan_work("fm8")
+                output = Path(initial["outputs"][0])
+                self.assertEqual(2101, json.loads(output.read_text())["shapes"][0]["type_word"])
+
+                refreshed = service._scan_work("fm8")
+
+            self.assertEqual(initial["outputs"], refreshed["outputs"])
+            corrected = json.loads(output.read_text())["shapes"][0]
+            self.assertEqual(2103, corrected["type_word"])
+            self.assertEqual(2103, corrected["source_raw_type_word"])
+            self.assertEqual(3, corrected["resource_index"])
+            self.assertEqual(2, preview.call_count)
+            self.assertEqual(before, {path.name: path.read_bytes() for path in folder.iterdir()})
+
     def test_legacy_import_shape_records_decode_only_for_fm8(self):
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "data"
