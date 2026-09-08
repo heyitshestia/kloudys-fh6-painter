@@ -143,6 +143,7 @@ def _normalized_distribution(name: str) -> str:
 def _python_runtime_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment["PYTHONNOUSERSITE"] = "1"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment.pop("PYTHONHOME", None)
     environment.pop("PYTHONPATH", None)
     return environment
@@ -165,7 +166,7 @@ def locked_python_distributions(requirements_lock: Path) -> dict[str, str]:
 def installed_python_distributions(source: Path) -> dict[str, str]:
     python = source.resolve() / "python.exe"
     result = subprocess.run(
-        [str(python), "-m", "pip", "--isolated", "list", "--format=json"],
+        [str(python), "-B", "-m", "pip", "--isolated", "list", "--format=json"],
         check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
         env=_python_runtime_environment(),
     )
@@ -293,7 +294,7 @@ print("KFPS bundled Python API probe passed.")
     environment = _python_runtime_environment()
     environment["QT_QPA_PLATFORM"] = "offscreen"
     result = subprocess.run(
-        [str(python), "-c", probe], capture_output=True, text=True,
+        [str(python), "-B", "-c", probe], capture_output=True, text=True,
         encoding="utf-8", errors="replace", env=environment,
     )
     if result.returncode != 0:
@@ -307,7 +308,7 @@ def validate_python_runtime(source: Path, requirements_lock: Path) -> None:
     if not python.is_file():
         raise RuntimeError(f"Bundled runtime is missing python.exe: {source}")
     subprocess.run(
-        [str(python), "-m", "pip", "--isolated", "check"], check=True,
+        [str(python), "-B", "-m", "pip", "--isolated", "check"], check=True,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         env=_python_runtime_environment(),
     )
@@ -337,12 +338,12 @@ def synchronize_python_runtime(source: Path, requirements_lock: Path) -> None:
     environment = _python_runtime_environment()
     if extras:
         subprocess.run(
-            [str(python), "-m", "pip", "--isolated", "uninstall", "-y", *extras],
+            [str(python), "-B", "-m", "pip", "--isolated", "uninstall", "-y", *extras],
             check=True, env=environment,
         )
     subprocess.run([
-        str(python), "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
-        "--no-warn-script-location", "--upgrade", "--force-reinstall", "--no-deps",
+        str(python), "-B", "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
+        "--no-warn-script-location", "--upgrade", "--force-reinstall", "--no-deps", "--no-compile",
         "-r", str(requirements_lock.resolve()),
     ], check=True, env=environment)
     validate_python_runtime(source, requirements_lock)
@@ -455,6 +456,8 @@ def build_one(
             copy_python_runtime(sanitized_runtime, app_root / "python")
             validate_python_runtime(app_root / "python", app_root / "requirements.lock.txt")
 
+        # Validation must not reintroduce caches or private state after copying.
+        enforce_release_policy(app_root)
         write_manifest(release_root, version=version, commit=commit, kind=kind, timestamp=timestamp)
         verify_manifest(release_root)
         target = output_dir / asset_name

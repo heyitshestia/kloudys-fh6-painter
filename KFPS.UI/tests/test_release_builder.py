@@ -22,6 +22,7 @@ from build_release_bundles import (
     resolve_commit,
     synchronize_python_runtime,
     validate_python_distribution_records,
+    validate_python_runtime_apis,
 )
 
 
@@ -150,6 +151,31 @@ class ReleaseBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "missing example/__init__.py"):
                 validate_python_distribution_records(runtime)
 
+    def test_final_gate_rejects_state_created_by_validation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, commit = self.make_repo(root)
+            runtime = root / "python"
+            runtime.mkdir()
+            (runtime / "python.exe").write_bytes(b"python")
+            for relative in ("__pycache__/generated.pyc", "personal.kfpskey", "relay-state.dat"):
+                with self.subTest(relative=relative):
+                    def inject_state(target, requirements):
+                        path = target / relative
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(b"must not ship")
+                    with patch("build_release_bundles.synchronize_python_runtime"), patch("build_release_bundles.validate_python_runtime", side_effect=inject_state):
+                        with self.assertRaisesRegex(RuntimeError, "forbidden runtime/personal"):
+                            build_one(repo, root / "output", commit=commit, version="9.8.7",
+                                      timestamp=commit_timestamp(repo, commit), kind="recommended", python_source=runtime)
+
+    def test_api_probe_cannot_write_bytecode_even_with_isolated_python(self):
+        with tempfile.TemporaryDirectory() as temporary, patch("build_release_bundles.subprocess.run") as run_process:
+            run_process.return_value.returncode = 0
+            validate_python_runtime_apis(Path(temporary))
+            self.assertEqual(run_process.call_args.args[0][1], "-B")
+            self.assertEqual(run_process.call_args.kwargs["env"]["PYTHONDONTWRITEBYTECODE"], "1")
+
     def test_distribution_record_validation_checks_recorded_hash(self):
         with tempfile.TemporaryDirectory() as temporary:
             runtime = Path(temporary)
@@ -195,6 +221,9 @@ class ReleaseBuilderTests(unittest.TestCase):
             self.assertIn("--isolated", install_command)
             self.assertIn("--force-reinstall", install_command)
             self.assertIn("--no-deps", install_command)
+            self.assertIn("--no-compile", install_command)
+            self.assertEqual(install_command[1], "-B")
+            self.assertEqual(uninstall_command[1], "-B")
             validate.assert_called_once_with(runtime.resolve(), requirements)
 
 

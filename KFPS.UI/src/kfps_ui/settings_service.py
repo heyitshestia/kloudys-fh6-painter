@@ -31,6 +31,7 @@ class SettingsService(QObject):
         "backupFolder": "",
         "supportUpscalerNoticeAcknowledged": False,
         "communityJoinNoticeAcknowledged": False,
+        "backgroundRemoverNoticeAcknowledged": False,
     }
     KNOWN_THEMES = set(KNOWN_THEME_NAMES)
 
@@ -133,6 +134,14 @@ class SettingsService(QObject):
     def acknowledgeCommunityJoinNotice(self):
         self._acknowledge_notice("communityJoinNoticeAcknowledged")
 
+    @Property(bool, notify=changed)
+    def backgroundRemoverNoticeAcknowledged(self):
+        return self._get("backgroundRemoverNoticeAcknowledged") is True
+
+    @Slot()
+    def acknowledgeBackgroundRemoverNotice(self):
+        self._acknowledge_notice("backgroundRemoverNoticeAcknowledged")
+
     def _acknowledge_notice(self, key):
         self._data[key] = True
         try:
@@ -163,7 +172,9 @@ class SettingsService(QObject):
     def reset(self):
         notice_acknowledged = self.supportUpscalerNoticeAcknowledged
         community_notice_acknowledged = self.communityJoinNoticeAcknowledged
+        background_notice_acknowledged = self.backgroundRemoverNoticeAcknowledged
         self._data = dict(self.DEFAULTS)
         self._data["supportUpscalerNoticeAcknowledged"] = notice_acknowledged
         self._data["communityJoinNoticeAcknowledged"] = community_notice_acknowledged
+        self._data["backgroundRemoverNoticeAcknowledged"] = background_notice_acknowledged
         self.save(); self.changed.emit()

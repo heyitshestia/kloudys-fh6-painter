@@ -1,5 +1,10 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.65
+- Added a one-time introduction to the local Background Remover, with a direct Open Background Remover button, privacy information, and a first-use AI download note.
+- The new notice waits behind earlier welcome notices, remembers dismissal across restarts and settings resets, and does not automatically download models or process images.
+- Tightened release packaging so dependency validation cannot reintroduce Python cache files, with a final check for forbidden runtime and personal state before creating the bundle.
+
 ## 3.1.64
 - Replaced the external background-removal link with a built-in local tool featuring Anime (soft edges), Illustration (refined), and Logo / flat colour modes. Images stay on your computer.
 - Added zoom, comparison and mask views, erase/restore brushes, a connected-colour eraser, undo/redo, and correction sessions that can be resumed after restarting KFPS.

@@ -444,6 +444,11 @@ ApplicationWindow {
         onJoinRequested: reportService.openDiscord()
     }
 
+    BackgroundRemoverWelcomeOverlay {
+        id: backgroundRemoverWelcome
+        onOpenRequested: appController.navigate("background-remover")
+    }
+
     Timer {
         interval: 700
         running: window.visible && !screenshotMode && !settings.supportUpscalerNoticeAcknowledged
@@ -458,5 +463,15 @@ ApplicationWindow {
                  && !settings.communityJoinNoticeAcknowledged && !communityWelcome.visible
         repeat: false
         onTriggered: communityWelcome.open()
+    }
+
+    Timer {
+        interval: 700
+        running: window.visible && !screenshotMode
+                 && settings.supportUpscalerNoticeAcknowledged && !featureWelcome.visible
+                 && settings.communityJoinNoticeAcknowledged && !communityWelcome.visible
+                 && !settings.backgroundRemoverNoticeAcknowledged && !backgroundRemoverWelcome.visible
+        repeat: false
+        onTriggered: backgroundRemoverWelcome.open()
     }
 }
