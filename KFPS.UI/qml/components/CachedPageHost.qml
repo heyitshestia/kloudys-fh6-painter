@@ -13,6 +13,7 @@ Item {
         editor: editorLoader,
         tools: toolsLoader,
         upscaler: upscalerLoader,
+        "background-remover": backgroundRemoverLoader,
         support: supportLoader,
         help: helpLoader,
         update: updateLoader,
@@ -105,6 +106,16 @@ Item {
         asynchronous: true
         source: "../pages/ToolsPage.qml"
         onLoaded: root.pageLoaded("tools", item)
+    }
+
+    Loader {
+        id: backgroundRemoverLoader
+        anchors.fill: parent
+        visible: root.currentPage === "background-remover"
+        active: root.retainAfterFirstLoad(backgroundRemoverLoader, visible)
+        asynchronous: true
+        source: "../pages/BackgroundRemoverPage.qml"
+        onLoaded: root.pageLoaded("background-remover", item)
     }
 
     Loader {

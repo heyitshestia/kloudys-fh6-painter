@@ -145,7 +145,8 @@ def build_support_report(root: Path, context: dict, *, since: float, collect=col
             logs.append({"source": name, "text": redact("\n".join(lines), 4500)})
     logs.append({"source": "app", "text": redact("\n".join(str(context.get("log") or "").splitlines()[-65:]), 6500)})
     current_name = {"create": "generator", "generate": "generator", "outputs": "transfer",
-                    "liveries": "liveries", "community": "community", "editor": "editor", "update": "updater"}.get(page)
+                    "liveries": "liveries", "community": "community", "editor": "editor", "update": "updater",
+                    "background-remover": "background_remover"}.get(page)
     current = next((entry["text"] for entry in logs if entry["source"] == current_name), "")
     errors = [line for line in current.splitlines() if _ERROR.search(line)]
     last_error = errors[-1] if errors else states.get(current_name, {}).get("lastError", "")

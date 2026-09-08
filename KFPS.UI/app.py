@@ -57,6 +57,7 @@ from kfps_ui.theme_catalog import (
 from kfps_ui.transfer_service import TransferService
 from kfps_ui.update_service import UpdateService
 from kfps_ui.upscale_service import UpscaleService
+from kfps_ui.background_remove_service import BackgroundRemoveService
 from kfps_ui.version_service import VersionService
 from kfps_ui.window_geometry import ScreenRect, calculate_window_placement
 
@@ -380,6 +381,7 @@ def main():
     runtime = RuntimeService(demo=args.demo)
     source = SourceImageService(paths, desktop, logs)
     upscaler = UpscaleService(paths, desktop, source, logs)
+    background_remover = BackgroundRemoveService(paths, desktop, source, logs)
     jsons = JsonService(paths, preview, desktop, logs, demo=args.demo)
     community = CommunityService(
         paths, desktop, logs, jsons=jsons, app_version=version.localVersion, demo=args.demo,
@@ -414,6 +416,7 @@ def main():
         "liveries": full_livery, "offline": cgroup_library, "outputs": jsons,
         "community": community, "updater": updates, "runtime": runtime,
         "upscaler": upscaler,
+        "background_remover": background_remover,
     })
     changelog = ChangelogService(paths.app_root / "CHANGELOG.md", auto_refresh=not args.demo)
 
@@ -430,6 +433,7 @@ def main():
         "backupService": backup,
         "sourceService": source,
         "upscaleService": upscaler,
+        "backgroundRemoveService": background_remover,
         "jsonService": jsons,
         "communityService": community,
         "cgroupLibraryService": cgroup_library,
@@ -543,6 +547,7 @@ def main():
     )
     shutdown_order = [
         upscaler,
+        background_remover,
         reports,
         editor,
         transfer,

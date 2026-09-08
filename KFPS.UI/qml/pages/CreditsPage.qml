@@ -62,6 +62,18 @@ Item {
             detail: "Original primitive-based image approximation library credited by upstream license notices."
         },
         {
+            name: "SkyTNT / Anime Segmentation",
+            link: "https://github.com/SkyTNT/anime-segmentation",
+            role: "Local anime background removal",
+            detail: "ISNet Anime model (Apache-2.0), with ONNX Runtime CPU (MIT). Model selection informed by ForzaSqueegee. Notices are included under tools/background_remover."
+        },
+        {
+            name: "Lucide contributors",
+            link: "https://lucide.dev",
+            role: "Background-removal tool icons",
+            detail: "Lucide ISC / Feather MIT notices and the pinned upstream revision are included with the icon assets."
+        },
+        {
             name: "Xintao Wang / Real-ESRGAN",
             link: "https://github.com/xinntao/Real-ESRGAN",
             role: "Native photo upscaling",

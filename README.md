@@ -378,15 +378,18 @@ The Tools tab gives quick access to common prep tools:
 
 | Tool | Use |
 | --- | --- |
-| `Background Remover` | Opens PhotoRoom's online background remover. |
-| `2x / 4x Browser Upscaler` | Opens a local-in-browser upscaler for small sources. |
+| `Background Remover` | Local anime/illustration and flat-colour logo cutouts, undoable corrections, and transparent PNG output. |
+| `2x / 4x Image Upscaler` | Local photo, anime, and text/logo upscaling. |
 | `Browser Downscaler / Compressor` | Opens Squoosh for resizing, format conversion, and compression. |
 
 <p align="center">
   <img src="docs/screenshots/07-image-tools.png" alt="Tools tab" width="820">
 </p>
 
-The app links to these tools. It does not upload images through KFPS itself.
+AI background removal and upscaling run locally after their first-use engine
+download; flat-colour logo removal needs no extra download. Images are not
+uploaded. Squoosh opens in your browser. See
+[the background-remover notes](docs/BACKGROUND_REMOVER.md) for workflow and limits.
 
 ## Image Checks
 

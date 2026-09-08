@@ -1,10 +1,45 @@
 from __future__ import annotations
 
 from pathlib import Path
+import random
 
 from PySide6.QtCore import QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QHideEvent, QPaintEvent, QPainter, QPen, QPixmap, QShowEvent
+from PySide6.QtGui import QColor, QHideEvent, QImageReader, QPaintEvent, QPainter, QPen, QPixmap, QShowEvent
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+
+SPLASH_ARTWORK = (
+    "mini-kloudy.png",
+    "mini-kloudy-splash/coffee.png",
+    "mini-kloudy-splash/spilled-coffee.png",
+    "mini-kloudy-splash/error-box.png",
+    "mini-kloudy-splash/ramen.png",
+    "mini-kloudy-splash/cables.png",
+    "mini-kloudy-splash/shark-plush.png",
+    "mini-kloudy-splash/deadlines.png",
+    "mini-kloudy-splash/exhausted.png",
+    "mini-kloudy-splash/blanket-cat.png",
+)
+
+
+def _load_artwork(asset_root: Path) -> tuple[Path | None, QPixmap]:
+    choices = list(SPLASH_ARTWORK)
+    random.shuffle(choices)
+    for relative in choices:
+        path = Path(asset_root) / relative
+        try:
+            if not path.is_file() or path.stat().st_size > 16 * 1024 * 1024:
+                continue
+            reader = QImageReader(str(path))
+            size = reader.size()
+            if not size.isValid() or size.width() * size.height() > 16_000_000:
+                continue
+            image = reader.read()
+            if not image.isNull():
+                return path, QPixmap.fromImage(image)
+        except OSError:
+            continue
+    return None, QPixmap()
 
 
 class StartupSplash(QWidget):
@@ -76,7 +111,8 @@ class StartupSplash(QWidget):
         self.art.setObjectName("MiniKloudyArt")
         self.art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.art.setFixedHeight(220)
-        artwork = QPixmap(str(Path(asset_root) / "mini-kloudy.png"))
+        # Choose once per launch; animation updates never load or change artwork.
+        self.artwork_path, artwork = _load_artwork(asset_root)
         if artwork.isNull():
             self.art.setText("K")
             self.art.setStyleSheet("color: #f79dc9; font-size: 112px; font-weight: 900;")

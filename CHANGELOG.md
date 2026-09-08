@@ -1,5 +1,13 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.64
+- Replaced the external background-removal link with a built-in local tool featuring Anime (soft edges), Illustration (refined), and Logo / flat colour modes. Images stay on your computer.
+- Added zoom, comparison and mask views, erase/restore brushes, a connected-colour eraser, undo/redo, and correction sessions that can be resumed after restarting KFPS.
+- Added transparent PNG saving and Use as source controls while preserving original files and existing transparency by default.
+- Added near-empty-result warnings, detailed error reports, cancellation, verified engine repair, and bounded processing with process-tree memory protection. AI modes download their required files on first use; logo mode needs no additional download.
+- Added nine Mini Kloudy splash images alongside the existing artwork. Each launch randomly selects one of the ten images, keeping the animated rings and safely skipping missing or damaged artwork.
+- Complex backgrounds may still need touch-ups. Refined illustration mode is optional because it can remove delicate details.
+
 ## 3.1.63
 - Added a Join the server button beside the announcement bar on every page, opening the KFPS Support server in your default browser.
 - Added a one-time community welcome popup pointing to the new button, with an invitation to get help, report issues, and share your work.

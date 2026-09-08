@@ -45,11 +45,11 @@ Item {
                     Layout.preferredHeight: Theme.px(250)
                     number: ""
                     title: "Remove background"
-                    description: "Use this when an image still has a solid or messy background. Cleaner transparency usually means fewer wasted shapes."
-                    toolTipText: "Open PhotoRoom's background remover in your web browser. KFPS does not upload the image itself."
+                    description: "Anime, illustration and flat-colour logo cutouts. Transparent PNG output."
+                    toolTipText: "Open the local background remover. Images stay on this computer."
                     iconName: "cutout"
-                    buttonText: "Open PhotoRoom"
-                    onAction: desktop.openUrl("https://www.photoroom.com/tools/background-remover")
+                    buttonText: "Open Background Remover"
+                    onAction: appController.navigate("background-remover")
                 }
 
                 WorkflowCard {
@@ -97,7 +97,7 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "The native upscaler keeps images on your computer. Background removal and compression open external websites; check their privacy policies before uploading artwork."
+                        text: "Background removal and upscaling keep images on your computer. Resize or compress opens Squoosh in your browser."
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.px(12)

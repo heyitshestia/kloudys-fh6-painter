@@ -41,7 +41,7 @@ Item {
             return "liveries"
         if (page === "editor")
             return "editor"
-        if (page === "tools" || page === "images" || page === "upscaler")
+        if (page === "tools" || page === "images" || page === "upscaler" || page === "background-remover")
             return "tools"
         if (page === "support")
             return "support"

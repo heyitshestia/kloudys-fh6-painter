@@ -831,17 +831,33 @@ Open:
 Tools
 ```
 
-This tab is a simple launcher for useful browser tools that can improve source art before generation.
+This tab contains local image-preparation tools plus the Squoosh browser shortcut.
 
-Available links:
+Available tools:
 
 | Tool | Use |
 | --- | --- |
-| `Background Remover` | Opens PhotoRoom's online background remover for transparent cutout PNGs. |
-| `2x / 4x Browser Upscaler` | Opens a browser-local upscaler for small images that need more source resolution before generation. |
+| `Background Remover` | Local anime/illustration and flat-colour logo cutouts, comparison, undoable corrections, and transparent PNG output. |
+| `2x / 4x Image Upscaler` | Native photo, anime, and text/logo upscaling. |
 | `Browser Downscaler / Compressor` | Opens Squoosh for clean resizing, format conversion, and compression. |
 
-The app does not upload files through this tab. It only opens the selected web tool in your browser.
+For background removal, open an image or choose Current source, select Anime,
+Illustration (refined), or Logo / flat colour, then Remove background. First AI
+use downloads about 187 MiB of model/runtime files; later runs work offline with
+the complete cache. Logo mode needs no additional download. Compare the result,
+correct remaining areas with the brush or area eraser, then choose Use as source
+or Save PNG. Undo/redo is available and Resume last restores the saved correction
+session after restarting. Originals are never overwritten.
+
+Existing transparency is preserved by default. Advanced settings offer explicit
+transparency refinement, optional small-island cleanup, and CPU thread controls.
+The AI model is intended for anime characters; refined mode can help with gaps
+but may remove fine detail. Use colour removal for flat-background lettering.
+Complicated backgrounds still need inspection. Run report opens job diagnostics.
+
+Background removal and upscaling keep images on your computer. Only Squoosh opens
+as an external browser tool. See [Background Remover](BACKGROUND_REMOVER.md) and
+[Upscaler](UPSCALER.md) for engine details and limits.
 
 ## Source Check
 
