@@ -449,6 +449,10 @@ ApplicationWindow {
         onOpenRequested: appController.navigate("background-remover")
     }
 
+    DcinsideKoreanWelcomeOverlay {
+        id: dcinsideKoreanWelcome
+    }
+
     Timer {
         interval: 700
         running: window.visible && !screenshotMode && !settings.supportUpscalerNoticeAcknowledged
@@ -466,6 +470,7 @@ ApplicationWindow {
     }
 
     Timer {
+        id: backgroundRemoverNoticeTimer
         interval: 700
         running: window.visible && !screenshotMode
                  && settings.supportUpscalerNoticeAcknowledged && !featureWelcome.visible
@@ -473,5 +478,16 @@ ApplicationWindow {
                  && !settings.backgroundRemoverNoticeAcknowledged && !backgroundRemoverWelcome.visible
         repeat: false
         onTriggered: backgroundRemoverWelcome.open()
+    }
+
+    Timer {
+        interval: 700
+        running: window.visible && !screenshotMode && settings.koreanDisplayLanguage
+                 && settings.supportUpscalerNoticeAcknowledged && !featureWelcome.visible
+                 && settings.communityJoinNoticeAcknowledged && !communityWelcome.visible
+                 && settings.backgroundRemoverNoticeAcknowledged && !backgroundRemoverWelcome.visible
+                 && !settings.dcinsideKoreanNoticeAcknowledged && !dcinsideKoreanWelcome.visible
+        repeat: false
+        onTriggered: dcinsideKoreanWelcome.open()
     }
 }

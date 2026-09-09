@@ -54,7 +54,7 @@ class BackgroundRemoverWelcomeTests(unittest.TestCase):
     def test_notice_is_queued_and_only_navigates_on_explicit_action(self):
         main = (UI / "qml/Main.qml").read_text()
         self.assertIn('onOpenRequested: appController.navigate("background-remover")', main)
-        timer = main.rsplit("Timer {", 1)[1]
+        timer = main.split("id: backgroundRemoverNoticeTimer", 1)[1].split("Timer {", 1)[0]
         for condition in ("window.visible && !screenshotMode",
                           "settings.supportUpscalerNoticeAcknowledged && !featureWelcome.visible",
                           "settings.communityJoinNoticeAcknowledged && !communityWelcome.visible",

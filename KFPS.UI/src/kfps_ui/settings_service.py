@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
+from .display_language import is_korean_display_language
 from .theme_catalog import (
     DEFAULT_THEME,
     KNOWN_THEME_NAMES,
@@ -32,6 +33,7 @@ class SettingsService(QObject):
         "supportUpscalerNoticeAcknowledged": False,
         "communityJoinNoticeAcknowledged": False,
         "backgroundRemoverNoticeAcknowledged": False,
+        "dcinsideKoreanNotice202609Acknowledged": False,
     }
     KNOWN_THEMES = set(KNOWN_THEME_NAMES)
 
@@ -39,6 +41,7 @@ class SettingsService(QObject):
         super().__init__(parent)
         self._path = Path(path)
         self._data = dict(self.DEFAULTS)
+        self._korean_display_language = is_korean_display_language()
         self.load()
 
     def load(self):
@@ -142,6 +145,18 @@ class SettingsService(QObject):
     def acknowledgeBackgroundRemoverNotice(self):
         self._acknowledge_notice("backgroundRemoverNoticeAcknowledged")
 
+    @Property(bool, constant=True)
+    def koreanDisplayLanguage(self):
+        return self._korean_display_language
+
+    @Property(bool, notify=changed)
+    def dcinsideKoreanNoticeAcknowledged(self):
+        return self._get("dcinsideKoreanNotice202609Acknowledged") is True
+
+    @Slot()
+    def acknowledgeDcinsideKoreanNotice(self):
+        self._acknowledge_notice("dcinsideKoreanNotice202609Acknowledged")
+
     def _acknowledge_notice(self, key):
         self._data[key] = True
         try:
@@ -173,8 +188,10 @@ class SettingsService(QObject):
         notice_acknowledged = self.supportUpscalerNoticeAcknowledged
         community_notice_acknowledged = self.communityJoinNoticeAcknowledged
         background_notice_acknowledged = self.backgroundRemoverNoticeAcknowledged
+        dcinside_notice_acknowledged = self.dcinsideKoreanNoticeAcknowledged
         self._data = dict(self.DEFAULTS)
         self._data["supportUpscalerNoticeAcknowledged"] = notice_acknowledged
         self._data["communityJoinNoticeAcknowledged"] = community_notice_acknowledged
         self._data["backgroundRemoverNoticeAcknowledged"] = background_notice_acknowledged
+        self._data["dcinsideKoreanNotice202609Acknowledged"] = dcinside_notice_acknowledged
         self.save(); self.changed.emit()

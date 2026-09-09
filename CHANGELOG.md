@@ -1,5 +1,9 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.67
+- Added a one-time Korean-language message for DCInside users, shown only when the Windows display language is Korean. Regional formats, keyboard layouts and location do not trigger it.
+- Clarified how to gather feedback and use Report a Problem, including public issue descriptions and optional private technical details. The notice remembers dismissal and waits behind existing welcome messages.
+
 ## 3.1.66
 - Fixed FM8 community vinyls importing or exporting as different shapes by correcting the shared shape-identity mapping used by live transfers and offline Library processing.
 - Library rescans regenerate affected exported JSONs from their original saved sources without changing the game saves. Previously exported standalone JSONs are not rewritten automatically; re-export them from the intended in-game design.
