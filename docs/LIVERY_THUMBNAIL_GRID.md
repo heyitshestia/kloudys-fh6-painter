@@ -54,5 +54,6 @@ sizes, and virtualized scrolling with 1,500 model rows. Scan/package workers and
 their contracts. This is not a new end-to-end game import/export qualification.
 
 Evidence dated 2026-09-09 is stored in the external KFPS Documentation workspace,
-under Livery Thumbnail Grid 2026-09-09. Version 3.1.71 is a source-only repository
-update; no release bundle or signed updater is published as part of this change.
+under Livery Thumbnail Grid 2026-09-09. Version 3.1.71 is delivered through the
+signed stable updater after the quality gates pass. No new full release bundle
+is included; signed update-data publication is separate from manual bundles.
