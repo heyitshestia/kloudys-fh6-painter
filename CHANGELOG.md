@@ -1,5 +1,14 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.71
+- Added a searchable livery grid displaying original FH6 save thumbnails, with search by livery name, car model and car ID.
+- **3D preview is now optional.** Browse, select and export liveries without opening the 3D viewer.
+- **Preview omissions do not remove artwork from the transfer.** FH6 full-livery packages preserve the original game-saved artwork instead of rebuilding it from the renderer. Details missing from the preview remain preserved for supported same-car exports and imports.
+- Fixed Export Selected automatically opening the 3D viewer. Export now refreshes Saved packages while preserving your selection and current view.
+- Added missing or damaged thumbnail placeholders and thumbnail refresh when rescanning or reopening the catalog.
+- Added on-demand thumbnail loading for large collections and improved compact-window layouts.
+- Existing ownership, completeness and exact-car checks still apply. Unsupported or incomplete transfers remain blocked rather than silently exporting partial artwork.
+
 ## 3.1.70
 - Hardened updater 1.0.4 against locked Windows files: check existing destinations before installation and briefly retry transient locks. Persistent locks stop the update with a close-and-retry message.
 - Fixed rollback unnecessarily replacing unchanged files, reporting completion after failed restoration, and discarding recovery information on the next run. Incomplete rollback remains retryable; retained backups from older failed rollbacks are rechecked.

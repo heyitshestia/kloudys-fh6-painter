@@ -1335,7 +1335,7 @@ class FullLiveryPackageTests(unittest.TestCase):
             finally:
                 service.close()
 
-    def test_completed_export_refreshes_saved_packages_and_opens_the_new_package(self):
+    def test_completed_export_refreshes_saved_packages_without_opening_a_preview(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             paths = AppPaths(
@@ -1350,13 +1350,54 @@ class FullLiveryPackageTests(unittest.TestCase):
                 service = FullLiveryService(paths, LogService(), supporter=None, demo=True)
             package = service._package_root / "Finished - FH6 3304.kfpslivery"
             try:
+                package.write_bytes(b"export worker fixture")
+                service._active = True
+                service._selected_source = str(root / "source" / "C_livery")
+                selected_source = service.selectedSource
                 service._running = True
-                with patch.object(service, "_refresh_packages_then_open") as refresh_then_open:
+                with (
+                    patch.object(service._tasks, "start", return_value=True) as start,
+                    patch.object(service, "selectPackage") as select_package,
+                    patch.object(service, "_prepare_local_mesh") as prepare_mesh,
+                ):
                     service._apply_result({"ok": True, "kind": "export", "payload": {"path": str(package)}})
 
-                refresh_then_open.assert_called_once_with(str(package))
+                    start.assert_called_once()
+                    self.assertEqual("refresh-packages", start.call_args.args[0])
+                    metadata = start.call_args.kwargs.get("metadata") or {}
+                    self.assertFalse(metadata.get("open_package"))
+                    row = {"path": str(package), "title": "Finished"}
+                    service._apply_result({
+                        "ok": True, "kind": "refresh-packages", **metadata,
+                        "payload": {"rows": [row]},
+                    })
+
+                    select_package.assert_not_called()
+                    prepare_mesh.assert_not_called()
+                    start.assert_called_once()
+
+                self.assertEqual(str(package), service.packageModel.row(0)["path"])
+                self.assertEqual(selected_source, service.selectedSource)
+                self.assertEqual("", service.selectedPackage)
+                self.assertEqual("", service.viewerUrl)
+                self.assertFalse(service.running)
+            finally:
+                service.close()
+
+    def test_completed_export_does_not_open_a_preview_after_leaving_the_page(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = AppPaths(root, UI, UI / "qml", UI / "assets", root / "runtime", Path(sys.executable))
+            with patch("kfps_ui.full_livery_service.discover_fh6_game_folder", return_value=None):
+                service = FullLiveryService(paths, LogService(), supporter=None, demo=True)
+            package = service._package_root / "Finished.kfpslivery"
+            try:
+                with patch.object(service._tasks, "start") as start:
+                    service._apply_result({"ok": True, "kind": "export", "payload": {"path": str(package)}})
+                start.assert_not_called()
                 self.assertEqual("Full-livery package created", service.status)
                 self.assertIn(package.name, service.summary)
+                self.assertEqual("", service.viewerUrl)
             finally:
                 service.close()
 
@@ -2217,7 +2258,8 @@ class FullLiveryPackageTests(unittest.TestCase):
     def test_livery_page_qualifies_package_and_source_paths(self):
         source = (UI / "qml" / "pages" / "LiveryPage.qml").read_text(encoding="utf-8")
         self.assertIn("selectPackage(packageDelegate.path)", source)
-        self.assertIn("selectSource(sourceDelegate.path)", source)
+        self.assertIn("fullLiveryService.browseSource(path)", source)
+        self.assertIn("fullLiveryService.previewSelectedSource()", source)
         self.assertIn("Game meshes stay local", source)
         self.assertNotIn("portable inspection mesh", source)
 
@@ -2284,7 +2326,8 @@ class FullLiveryPackageTests(unittest.TestCase):
         self.assertIn("if (controls.autoRotate) requestRender()", source)
         self.assertNotIn("function animate()", source)
         self.assertNotIn("requestAnimationFrame(animate)", source)
-        self.assertIn('active: root.pageActive && root.viewerSessionUrl.length > 0', page)
+        self.assertIn('active: root.pageActive && !root.showGallery && root.viewerSessionUrl.length > 0', page)
+        self.assertIn('fullLiveryService.showSourceGrid()', page)
         self.assertIn('sourceComponent: Component', page)
         self.assertNotIn(': "about:blank"', page)
 

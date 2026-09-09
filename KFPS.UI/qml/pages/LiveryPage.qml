@@ -16,10 +16,28 @@ Item {
     readonly property bool compactHeight: Theme.logical(height) < 760
     property bool pageActive: true
     property bool wipNoticeAcknowledged: false
+    property bool showGallery: true
     // WebEngine treats a repeated URL assignment as navigation. This string
     // changes only for a new session, unlike the service's shared status signal.
     readonly property string viewerSessionUrl: fullLiveryService.viewerUrl
     signal wipNoticeAccepted()
+
+    function openSelectedLivery() {
+        if (fullLiveryService.selectedSource.length === 0 || fullLiveryService.gameFolder.length === 0)
+            return
+        showGallery = false
+        fullLiveryService.previewSelectedSource()
+    }
+
+    function returnToGallery() {
+        fullLiveryService.showSourceGrid()
+        showGallery = true
+    }
+
+    onViewerSessionUrlChanged: {
+        if (viewerSessionUrl.length > 0)
+            showGallery = false
+    }
 
     function dismissWipNotice() {
         wipNoticeAcknowledged = true
@@ -27,6 +45,7 @@ Item {
     }
 
     Component.onCompleted: {
+        fullLiveryService.setSourceSearch("")
         if (pageActive)
             fullLiveryService.activate()
     }
@@ -34,8 +53,10 @@ Item {
     onPageActiveChanged: {
         if (pageActive)
             fullLiveryService.activate()
-        else
+        else {
+            root.returnToGallery()
             fullLiveryService.deactivate()
+        }
     }
 
     ColumnLayout {
@@ -62,12 +83,18 @@ Item {
 
                 SectionHeading {
                     Layout.fillWidth: true
-                    title: "Full Livery Workshop"
-                    subtitle: fullLiveryService.summary
+                    title: root.showGallery ? "Liveries" : "Full Livery Workshop"
+                    subtitle: root.showGallery ? fullLiveryService.status : fullLiveryService.summary
+                    HoverHandler { id: liveryStatusHover }
+                    KfpsToolTip {
+                        visible: liveryStatusHover.hovered
+                        text: fullLiveryService.summary
+                    }
                 }
 
                 KfpsComboBox {
                     dense: true
+                    visible: !root.showGallery
                     Layout.preferredWidth: Theme.px(130)
                     model: ["Standard", "High"]
                     currentIndex: fullLiveryService.viewerQuality - 1
@@ -139,7 +166,7 @@ Item {
         GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            columns: root.wide ? 3 : 2
+            columns: root.wide && !root.showGallery ? 3 : 2
             columnSpacing: Theme.px(10)
             rowSpacing: Theme.px(10)
 
@@ -166,69 +193,60 @@ Item {
                             font.weight: Font.DemiBold
                         }
                         Text {
-                            text: localLiveries.count
+                            text: liveryGrid.count
                             color: Theme.subtle
                             font.family: Theme.monoFamily
                             font.pixelSize: Theme.px(10)
                         }
                     }
 
-                    FastListView {
-                        id: localLiveries
+                    Text {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: Theme.px(180)
-                        model: fullLiveryService.sourceModel
-                        spacing: Theme.px(3)
-                        clip: true
+                        text: fullLiveryService.selectedSource.length > 0 ? fullLiveryService.selectedTitle : "No livery selected"
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.px(12)
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                    }
 
-                        delegate: Item {
-                            id: sourceDelegate
-                            required property string title
-                            required property string path
-                            required property int carId
-                            required property string modelCode
-                            required property int placementCount
-                            required property bool exportable
-                            required property string privacyDetail
-                            width: localLiveries.width
-                            height: sourceRow.implicitHeight
+                    Text {
+                        Layout.fillWidth: true
+                        visible: fullLiveryService.selectedSource.length > 0
+                        text: fullLiveryService.selectedVehicle + "\n" + fullLiveryService.selectedCounts
+                        textFormat: Text.PlainText
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.px(10.5)
+                        wrapMode: Text.Wrap
+                    }
 
-                            Rectangle {
-                                anchors.fill: parent
-                                visible: sourceDelegate.path === fullLiveryService.selectedSource
-                                radius: Theme.framedRadius(Theme.px(5))
-                                color: Theme.rowSelectedSurface
-                                border.width: Math.max(1, Theme.px(1))
-                                border.color: Theme.primary
-                            }
+                    PrimaryButton {
+                        objectName: "openSelectedLiveryPreviewButton"
+                        Layout.fillWidth: true
+                        dense: true
+                        text: "Open 3D Preview"
+                        iconName: "monitor"
+                        enabled: fullLiveryService.featureEnabled && !fullLiveryService.running
+                                 && fullLiveryService.selectedSource.length > 0
+                                 && fullLiveryService.gameFolder.length > 0
+                        toolTipText: fullLiveryService.gameFolder.length > 0
+                                     ? "Render the selected livery on its exact car."
+                                     : "Link the FH6 game folder to enable 3D previews."
+                        onClicked: root.openSelectedLivery()
+                    }
 
-                            QuickActionRow {
-                                id: sourceRow
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                dense: true
-                                iconName: "transfer"
-                                title: sourceDelegate.title
-                                subtitle: sourceDelegate.modelCode + " · " + sourceDelegate.placementCount + " placements · "
-                                          + (sourceDelegate.exportable ? "ready to export" : "preview only")
-                                enabled: fullLiveryService.featureEnabled
-                                toolTipText: sourceDelegate.exportable
-                                             ? "Select this owned full-car livery for preview or export."
-                                             : sourceDelegate.privacyDetail
-                                onClicked: fullLiveryService.selectSource(sourceDelegate.path)
-                            }
-                        }
-
-                        ScrollBar.vertical: KfpsScrollBar { policy: ScrollBar.AsNeeded }
-
-                        EmptyState {
-                            anchors.centerIn: parent
-                            visible: localLiveries.count === 0
-                            iconName: "monitor"
-                            title: fullLiveryService.running ? "Scanning saves" : "No liveries scanned"
-                            message: "Scan the FH6 GameSave folder to list full-car livery records."
-                        }
+                    GhostButton {
+                        objectName: "returnToLiveryGridButton"
+                        Layout.fillWidth: true
+                        dense: true
+                        visible: !root.showGallery
+                        text: "Back to Liveries"
+                        iconName: "chevron-left"
+                        toolTipText: "Close the 3D preview and return to the livery grid without changing your selection."
+                        onClicked: root.returnToGallery()
                     }
 
                     PrimaryButton {
@@ -341,7 +359,10 @@ Item {
                                 toolTipText: packageDelegate.portableMesh
                                              ? "Open this development package in the interactive car inspector."
                                              : "Open this verified package using the matching car assets from your local FH6 installation."
-                                onClicked: fullLiveryService.selectPackage(packageDelegate.path)
+                                onClicked: {
+                                    root.showGallery = false
+                                    fullLiveryService.selectPackage(packageDelegate.path)
+                                }
                             }
                         }
 
@@ -366,11 +387,55 @@ Item {
                 strong: true
                 clip: true
 
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.px(12)
+                    visible: root.showGallery
+                    spacing: Theme.px(10)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        KfpsTextField {
+                            id: liverySearch
+                            objectName: "liveryGridSearch"
+                            Layout.fillWidth: true
+                            placeholderText: "Search liveries, car models or IDs"
+                            toolTipText: "Filter local liveries by name, car model or car ID."
+                            onTextChanged: searchDebounce.restart()
+                            Timer {
+                                id: searchDebounce
+                                interval: 150
+                                onTriggered: fullLiveryService.setSourceSearch(liverySearch.text)
+                            }
+                        }
+                        Text {
+                            text: liveryGrid.count + " liveries"
+                            color: Theme.muted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.px(11)
+                        }
+                    }
+                    LiveryThumbnailGrid {
+                        id: liveryGrid
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        model: fullLiveryService.sourceGridModel
+                        selectedPath: fullLiveryService.selectedSource
+                        enabled: fullLiveryService.featureEnabled && !fullLiveryService.running
+                        loading: fullLiveryService.running
+                        filtered: liverySearch.text.trim().length > 0
+                        onLiverySelected: function(path) { fullLiveryService.browseSource(path) }
+                        onLiveryOpened: function(path) {
+                            fullLiveryService.browseSource(path)
+                            root.openSelectedLivery()
+                        }
+                    }
+                }
+
                 Loader {
                     id: inspectorLoader
                     anchors.fill: parent
                     anchors.margins: Math.max(1, Theme.px(1))
-                    active: root.pageActive && root.viewerSessionUrl.length > 0
+                    active: root.pageActive && !root.showGallery && root.viewerSessionUrl.length > 0
                     sourceComponent: Component {
                         WebEngineView {
                             id: carView
@@ -418,14 +483,14 @@ Item {
                     anchors.fill: parent
                     color: "#090b0e"
                     opacity: fullLiveryService.viewerReady ? 0 : 1
-                    visible: opacity > 0
+                    visible: !root.showGallery && opacity > 0
                     Behavior on opacity { NumberAnimation { duration: Theme.reducedMotion ? 0 : 160 } }
                 }
 
                 EmptyState {
                     anchors.centerIn: parent
                     width: Math.min(parent.width - Theme.px(40), Theme.px(460))
-                    visible: !fullLiveryService.viewerReady
+                    visible: !root.showGallery && !fullLiveryService.viewerReady
                     iconName: "monitor"
                     title: fullLiveryService.running || fullLiveryService.selectedPackage.length > 0
                            ? fullLiveryService.status
@@ -437,6 +502,7 @@ Item {
             }
 
             GlassPanel {
+                visible: !root.showGallery
                 Layout.fillHeight: true
                 Layout.fillWidth: !root.wide
                 Layout.preferredWidth: root.wide ? Theme.px(310) : -1

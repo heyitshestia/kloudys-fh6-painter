@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import psutil
-from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, Property, QSortFilterProxyModel, QTimer, Qt, Signal, Slot
 from PySide6.QtWidgets import QFileDialog
 
 from tools.livery import (
@@ -26,6 +26,7 @@ from .experimental.full_livery.feature_gate import FullLiveryFeatureGate
 from .experimental.full_livery.paths import FullLiveryPaths
 from .experimental.full_livery.protocol import write_json_atomic
 from .experimental.full_livery.resource_policy import LiveryMemoryBudget
+from .experimental.full_livery.thumbnails import source_grid_row
 from .experimental.full_livery.supervisor import (
     FullLiveryInspectorSupervisor,
     FullLiveryTaskSupervisor,
@@ -44,6 +45,7 @@ class FullLiveryService(QObject):
     SOURCE_ROLES = (
         "title", "path", "carId", "modelCode", "placementCount",
         "modified", "detail", "hasHeader", "exportable", "privacyDetail",
+        "thumbnailUrl", "searchText",
     )
     PACKAGE_ROLES = (
         "title", "path", "carId", "modelCode", "placementCount", "portableMesh",
@@ -93,6 +95,12 @@ class FullLiveryService(QObject):
         self._viewer_quality = 2 if self._settings.get("viewer_quality", 2) == 2 else 1
         self._current_manifest: dict[str, Any] = {}
         self._sources = DictListModel(self.SOURCE_ROLES, self)
+        self._source_grid = QSortFilterProxyModel(self)
+        self._source_grid.setSourceModel(self._sources)
+        self._source_grid.setFilterRole(next(
+            role for role, name in self._sources.roleNames().items() if bytes(name) == b"searchText"
+        ))
+        self._source_grid.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self._packages = DictListModel(self.PACKAGE_ROLES, self)
         self._decisions = DictListModel(self.DECISION_ROLES, self)
         self._selection_serial = 0
@@ -144,6 +152,14 @@ class FullLiveryService(QObject):
     @Property(QObject, constant=True)
     def sourceModel(self):
         return self._sources
+
+    @Property(QObject, constant=True)
+    def sourceGridModel(self):
+        return self._source_grid
+
+    @Slot(str)
+    def setSourceSearch(self, text: str) -> None:
+        self._source_grid.setFilterFixedString(str(text).strip())
 
     @Property(QObject, constant=True)
     def packageModel(self):
@@ -226,10 +242,15 @@ class FullLiveryService(QObject):
 
     @Property(str, notify=changed)
     def selectedTitle(self):
-        return str((self._current_manifest.get("livery") or {}).get("title") or "No package open")
+        return str((self._current_manifest.get("livery") or {}).get("title")
+                   or (self._source_privacy.get(self._selected_source) or {}).get("title")
+                   or "Select a livery")
 
     @Property(str, notify=changed)
     def selectedVehicle(self):
+        if not self._current_manifest:
+            source = self._source_privacy.get(self._selected_source) or {}
+            return f"{source.get('modelCode') or 'Unresolved car'} | car ID {source.get('carId') or '?'}"
         vehicle = self._current_manifest.get("vehicle") or {}
         livery = self._current_manifest.get("livery") or {}
         code = vehicle.get("model_code") or "Unresolved model"
@@ -237,6 +258,9 @@ class FullLiveryService(QObject):
 
     @Property(str, notify=changed)
     def selectedCounts(self):
+        if not self._current_manifest:
+            count = int((self._source_privacy.get(self._selected_source) or {}).get("placementCount") or 0)
+            return f"{count:,} placements"
         livery = self._current_manifest.get("livery") or {}
         logical = int(livery.get("logical_placement_count") or 0)
         decoded = int(livery.get("decoded_layer_count") or 0)
@@ -291,7 +315,7 @@ class FullLiveryService(QObject):
         )
         for row in package_rows:
             row.pop("mtimeNs", None)
-        self._sources.replace(source_rows)
+        self._sources.replace(source_grid_row(row) for row in source_rows)
         self._packages.replace(package_rows)
         self._source_privacy = {
             str(row.get("path") or ""): {
@@ -299,6 +323,8 @@ class FullLiveryService(QObject):
                 "privacyDetail": str(row.get("privacyDetail") or ""),
                 "carId": int(row.get("carId") or 0),
                 "title": str(row.get("title") or ""),
+                "modelCode": str(row.get("modelCode") or ""),
+                "placementCount": int(row.get("placementCount") or 0),
             }
             for row in source_rows
             if row.get("path")
@@ -616,6 +642,41 @@ class FullLiveryService(QObject):
             self._status = "Livery worker busy"
             self._summary = "Finish or cancel the current full-livery task before scanning saves."
             self.changed.emit()
+
+    @Slot()
+    def showSourceGrid(self) -> None:
+        if self._closed:
+            return
+        self._selection_serial += 1
+        self._cancel_mesh_preparation()
+        self._cancel_source_preview()
+        if self._tasks.current_operation == "open-package":
+            self._tasks.cancel("returned to livery grid")
+        self._reset_inspector_session()
+        self._active_source_preview = ""
+        self._running = self._tasks.running
+        self._status = "Livery browser"
+        self._summary = "Local FH6 liveries"
+        self.changed.emit()
+
+    @Slot(str)
+    def browseSource(self, path: str) -> None:
+        if self._closed or not self._gate.can_preview or path not in self._source_privacy:
+            return
+        self.showSourceGrid()
+        if not Path(path).is_file():
+            self._selected_source = ""
+            self._status = "Livery unavailable"
+            self._summary = "This livery is no longer available. Scan saves to refresh the grid."
+        else:
+            self._selected_source = path
+            self._summary = self.selectedSourcePrivacyMessage or self.selectedTitle
+        self.changed.emit()
+
+    @Slot()
+    def previewSelectedSource(self) -> None:
+        if self._selected_source:
+            self.selectSource(self._selected_source)
 
     @Slot(str)
     def selectSource(self, path: str):
@@ -1038,12 +1099,16 @@ class FullLiveryService(QObject):
                     "privacyDetail": str(row.get("privacyDetail") or ""),
                     "carId": int(row.get("carId") or 0),
                     "title": str(row.get("title") or ""),
+                    "modelCode": str(row.get("modelCode") or ""),
+                    "placementCount": int(row.get("placementCount") or 0),
                 }
                 for row in rows
                 if row.get("path")
             }
             self._source_fingerprints = fingerprints
-            self._sources.replace(rows)
+            self._sources.replace(source_grid_row(row) for row in rows)
+            if self._selected_source and self._selected_source not in self._source_privacy:
+                self._selected_source = ""
             self._status = "FH6 livery scan complete"
             if stale_index:
                 self._status = "Showing last complete livery index"
@@ -1108,7 +1173,8 @@ class FullLiveryService(QObject):
                 f"Saved {Path(path).name} in Saved packages after a complete reopen and hash verification."
             )
             self.log.append(f"Created portable full-livery package: {path}")
-            self._refresh_packages_then_open(path)
+            self.changed.emit()
+            self.refreshPackages()
             return
         elif kind == "install":
             self._status = "FH6 livery installed"
