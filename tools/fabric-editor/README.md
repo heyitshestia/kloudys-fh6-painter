@@ -146,6 +146,9 @@ merges adjacent same-color cells where possible.
 
 Reference images are tracing helpers. They can be moved, scaled, faded, sampled,
 and saved with an editable project, but never become exported vinyl layers.
+References are limited to 16 megapixels and 20 MiB of stored source data; projects
+must fit the existing 25 MiB save limit. Oversized replacements leave the current
+reference in place. Resize the source image when it exceeds these limits.
 
 ## History And Recovery
 
@@ -162,9 +165,35 @@ Selection outlines and mask previews are temporary canvas helpers, not vinyl
 layers. They are removed with their owners and when switching projects; old orphan
 selection outlines are also cleaned up when selection is synchronized.
 
-The recovery copy updates after edits and reference changes. On the next start,
-the editor offers to restore it when appropriate. Saving a project clears the
-temporary recovery copy.
+Recovery is queued after committed edits and reference changes: after 500 ms of
+inactivity, or at most two seconds of continuous changes before starting a write.
+Pending work is also flushed when the editor loses focus or goes into the
+background. A blocked browser, full disk or interrupted process can still delay
+or prevent persistence; recovery is not a substitute for saving important work.
+Undo, Redo and history jumps update recovery to the restored state. Holding an
+arrow key checkpoints the nudge at bounded intervals instead of waiting forever
+for key release; pending nudges are immediately shown as unsaved.
+
+Writes are serialized and coalesced to the newest revision. Temporary app-folder
+failures retry after two seconds, backing off to at most 30 seconds. Status reports
+whether recovery reached the app folder, browser storage only, or neither.
+An identical committed write can be retried safely if its acknowledgement was
+lost. Recovery reads fall back to the browser copy after a five-second server
+timeout; writes time out after ten seconds and retry as described above.
+A stalled app-folder write does not delay the newer browser recovery copy.
+On reopening, the newer available recovery is selected. Legacy recovery files
+remain readable, and revisioned clear markers prevent delayed writes from
+resurrecting discarded work, including after a server restart.
+
+Save acknowledges only the revision it actually stored. Edits made while Save
+is running remain unsaved and retain recovery. Recovery is cleared only when
+the current document still matches the saved revision.
+
+Native triangle commands are shared read-only across matching shapes; Fabric
+continues to own each shape's transforms, selection and rendering caches. Removed
+objects release their instance resources without destroying shared source images.
+If the GPU preview loses its context, editing falls back to Fabric while GPU
+resources are recreated after restoration.
 
 ## Export Check
 

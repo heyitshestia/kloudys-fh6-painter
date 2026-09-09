@@ -61,6 +61,51 @@ def post_json(base_url: str, path: str, payload: dict, token=True):
 
 
 class FabricEditorServerTests(unittest.TestCase):
+    def test_recovery_revisions_survive_clear_restart_and_reordered_requests(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "autosave.json"
+            with patch.object(fabric_server, "EDITOR_AUTOSAVE_MARKER", marker):
+                with RunningEditorServer() as server:
+                    def store(revision, **changes):
+                        return post_json(server, fabric_server.EDITOR_AUTOSAVE_API,
+                                         {"shapes": [{"x": revision}], "recovery_revision": revision, **changes})[1]
+
+                    self.assertTrue(store(20)["applied"])
+                    self.assertTrue(store(20)["duplicate"])
+                    self.assertFalse(store(20, shapes=[{"x": 999}])["applied"])
+                    self.assertFalse(store(10)["applied"])
+                    self.assertFalse(store(19, action="clear")["applied"])
+                    self.assertEqual(20, json.loads(marker.read_text())["recovery_revision"])
+                    self.assertTrue(store(21, action="clear")["cleared"])
+                    self.assertTrue(store(21, action="clear")["duplicate"])
+                    self.assertFalse(store(20)["applied"])
+                with RunningEditorServer() as server:
+                    self.assertFalse(store(20)["applied"])
+                    with urllib.request.urlopen(f"{server}{fabric_server.EDITOR_AUTOSAVE_API}") as response:
+                        self.assertFalse(json.load(response)["exists"])
+                    self.assertTrue(store(22)["applied"])
+                    self.assertEqual(22, json.loads(marker.read_text())["recovery_revision"])
+
+    def test_recovery_legacy_payload_and_clear_remain_compatible(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "autosave.json"
+            with patch.object(fabric_server, "EDITOR_AUTOSAVE_MARKER", marker), RunningEditorServer() as server:
+                payload = {"shapes": [{"type": 1}], "saved_at": "2026-09-09T00:00:00Z"}
+                self.assertTrue(post_json(server, fabric_server.EDITOR_AUTOSAVE_API, payload)[1]["applied"])
+                self.assertEqual(payload, json.loads(marker.read_text()))
+                self.assertTrue(post_json(server, fabric_server.EDITOR_AUTOSAVE_API, {"action": "clear"})[1]["cleared"])
+                self.assertFalse(marker.exists())
+
+    def test_recovery_failed_write_does_not_advance_revision(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "autosave.json"
+            with patch.object(fabric_server, "EDITOR_AUTOSAVE_MARKER", marker), RunningEditorServer() as server:
+                payload = {"shapes": [], "recovery_revision": 10}
+                with patch.object(fabric_server, "_write_json_atomic", side_effect=OSError("disk unavailable")):
+                    with self.assertRaises(urllib.error.HTTPError):
+                        post_json(server, fabric_server.EDITOR_AUTOSAVE_API, payload)
+                self.assertTrue(post_json(server, fabric_server.EDITOR_AUTOSAVE_API, payload)[1]["applied"])
+
     def test_atomic_json_write_replaces_complete_file(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "nested" / "project.json"

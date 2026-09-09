@@ -115,7 +115,10 @@ assert.doesNotMatch(script, /\.toSVG\(/);
 assert.doesNotMatch(script, /loadSVGFrom(?:String|URL)/);
 const postBlocks = [...script.matchAll(/fetch\([^;]+?method:\s*"POST"[^;]+?\);?/gs)]
   .map((match) => match[0]);
-assert.ok(postBlocks.length >= 8, "all editor mutation requests should be visible");
+assert.deepEqual([...new Set(postBlocks.map(block => block.match(/^fetch\((\w+)/)[1]))].sort(), [
+  "EDITOR_AUTOSAVE_API", "EDITOR_EXPORT_API", "EDITOR_PREFS_API", "EDITOR_THEMES_API",
+  "PROJECT_OPEN_FOLDER_API", "PROJECT_SAVE_API", "STARTUP_HELP_CONFIRMED_API",
+].sort(), "all editor mutation endpoints should be checked (recovery write/clear share one queue)");
 postBlocks.forEach((block) => {
   assert.match(
     block,

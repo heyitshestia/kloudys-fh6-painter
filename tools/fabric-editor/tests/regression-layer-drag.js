@@ -16,15 +16,24 @@ async (page) => {
     viewport.scrollTop = 0;
     renderVirtualLayerWindow(true);
     window.__layerDragBefore = vinylObjects().map((object) => object.kloudy.editor_id);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
 
   const rows = page.locator("#layers > li");
   const source = await rows.nth(0).boundingBox();
+  const viewport = await page.locator("#layersViewport").boundingBox();
   const target = await rows.nth(3).boundingBox();
-  if (!source || !target) throw new Error("Virtual layer rows were not available for drag testing.");
+  if (!source || !target || !viewport) throw new Error("Virtual layer rows were not available for drag testing.");
+  const x = viewport.x + viewport.width / 2;
+  const y = Math.min(target.y + target.height / 2 + 4, viewport.y + viewport.height - 10);
   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
   await page.mouse.down();
-  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2 + 4, { steps: 8 });
+  await page.mouse.move(x, y, { steps: 12 });
+  if (target.y + target.height / 2 + 4 > viewport.y + viewport.height) {
+    await page.mouse.wheel(0, 180);
+    await page.waitForTimeout(150);
+    await page.mouse.move(x + 2, y - 2, { steps: 3 });
+  }
   await page.mouse.up();
 
   return page.evaluate(() => {

@@ -44,6 +44,10 @@ const EDITOR_MUTATION_HEADERS = Object.freeze({
 const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
+const AUTOSAVE_CLEAR_KEY = `${AUTOSAVE_KEY}:clearedRevision`;
+const EDITOR_PROJECT_MAX_BYTES = 25 * 1024 * 1024;
+const AUTOSAVE_IDLE_MS = 500;
+const AUTOSAVE_MAX_WAIT_MS = 2000;
 const TEXT_VINYL_FONT_KEY = "kloudyFabricTextVinylFont";
 const TEXT_VINYL_CUSTOM_FONT_KEY = "kloudyFabricTextVinylCustomFont";
 const EDITOR_CLIPBOARD_KEY = "kloudyFabricLayerClipboard";
@@ -263,6 +267,7 @@ let lastPan = null;
 let loadedName = "untitled";
 let currentProjectName = null;
 let savedHistoryState = null;
+let documentGeneration = 0;
 let documentDirty = false;
 let overlayRevision = 0;
 let savedOverlayRevision = 0;
@@ -274,6 +279,7 @@ let protectedHistoryIndex = -1;
 let lastHistoryReason = "";
 let lastHistoryAt = 0;
 let nudgeHistoryTimer = null;
+let nudgeHistoryStarted = null;
 let nudgeHistoryPending = false;
 let showFavoritesOnly = false;
 let favorites = loadFavoriteShapes();
@@ -343,7 +349,14 @@ let pendingHudTarget = null;
 let pendingHudText = null;
 let layerStatsCache = null;
 let autosaveWriteTimer = null;
+let autosavePendingSince = null;
+let autosaveRetryTimer = null;
+let autosaveRetryDelay = 2000;
 let pendingAutosavePayload = null;
+let autosaveRevision = 0;
+let queuedAutosaveOperation = null;
+let autosaveWritePromise = null;
+let autosaveStatus = { state: "idle", revision: 0 };
 let recoveryAutosavePayload = null;
 let canvasResizeObserver = null;
 let lastCanvasSize = { width: 0, height: 0 };
@@ -1122,14 +1135,46 @@ function cloneFabricPathData(pathData) {
     : pathData;
 }
 
+function isNativeTrianglePath(pathData) {
+  return Array.isArray(pathData) && pathData.length > 0 && pathData.length % 4 === 0
+    && pathData.every((part, index) => part[0] === "MLLZ"[index % 4]
+      && (index % 4 === 3 || (Number.isFinite(part[1]) && Number.isFinite(part[2]))));
+}
+
+function renderNativeTriangleFill(ctx) {
+  if (this.hasStroke()) return fabric.Path.prototype._renderPathCommands.call(this, ctx);
+  const ox = -this.pathOffset.x;
+  const oy = -this.pathOffset.y;
+  ctx.beginPath();
+  // Fill closes triangles implicitly; explicit closes dominate large native mesh redraws.
+  for (const part of this.path) {
+    if (part[0] === "M") ctx.moveTo(part[1] + ox, part[2] + oy);
+    else if (part[0] === "L") ctx.lineTo(part[1] + ox, part[2] + oy);
+  }
+}
+
 function makeCachedFabricPath(pathText, options = {}, cacheKey = null) {
   if (cacheKey && typeof pathText === "string" && fabric?.util?.parsePath) {
     let pathData = fabricPathDataCache.get(cacheKey);
     if (!pathData) {
       pathData = fabric.util.parsePath(pathText);
+      pathData.kloudyTriangleFill = isNativeTrianglePath(pathData);
+      if (pathData.kloudyTriangleFill) {
+        pathData.forEach(Object.freeze);
+        Object.freeze(pathData);
+      }
       fabricPathDataCache.set(cacheKey, pathData);
     }
-    return new fabric.Path(cloneFabricPathData(pathData), options);
+    if (pathData.kloudyTriangleFill) {
+      // Native commands are immutable. Fabric owns each object's bounds and transforms.
+      const object = new fabric.Path("M 0 0", options);
+      object.path = pathData;
+      fabric.Polyline.prototype._setPositionDimensions.call(object, options);
+      object._renderPathCommands = renderNativeTriangleFill;
+      return object;
+    }
+    const object = new fabric.Path(cloneFabricPathData(pathData), options);
+    return object;
   }
   return new fabric.Path(pathText, options);
 }
@@ -2707,6 +2752,26 @@ function initHybridRenderer() {
     hybridDisabledReason = "missing canvas";
     return null;
   }
+  if (!element.__kloudyContextListeners) {
+    element.__kloudyContextListeners = true;
+    element.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      endHybridRenderNow();
+      if (hybridRenderFrame) cancelAnimationFrame(hybridRenderFrame);
+      hybridRenderFrame = null;
+      releaseHybridOverlay();
+      hybridMeshCache.clear();
+      hybridRenderer = null;
+      hybridDisabledReason = "WebGL context lost";
+      element.hidden = true;
+      canvas?.requestRenderAll?.();
+    });
+    element.addEventListener("webglcontextrestored", () => {
+      hybridDisabledReason = "";
+      initHybridRenderer();
+      canvas?.requestRenderAll?.();
+    });
+  }
   const gl = element.getContext("webgl", {
     alpha: true,
     antialias: true,
@@ -2769,7 +2834,7 @@ function initHybridRenderer() {
 
 function resizeHybridRenderer() {
   const renderer = initHybridRenderer();
-  if (!renderer || !canvas) return false;
+  if (!renderer || !canvas || renderer.gl.isContextLost()) return false;
   const width = Math.max(1, Number(canvas.width) || 1);
   const height = Math.max(1, Number(canvas.height) || 1);
   if (renderer.element.width !== width || renderer.element.height !== height) {
@@ -3116,12 +3181,21 @@ function drawHybridShapePass(renderer, objects, viewMatrix, maskPass) {
   resetHybridInstancedDivisors(renderer);
 }
 
+function releaseHybridOverlay() {
+  const renderer = hybridRenderer;
+  if (!renderer?.overlay) return;
+  if (renderer.overlay.texture) renderer.gl.deleteTexture(renderer.overlay.texture);
+  renderer.overlay.texture = null;
+  renderer.overlay.source = null;
+}
+
 function drawHybridOverlay(renderer, viewMatrix) {
   if (!overlayImage || overlayImage.visible === false || (overlayImage.opacity ?? 1) <= 0) return false;
   const source = overlayImage.getElement?.() || overlayImage._element;
   if (!source) return false;
   const gl = renderer.gl;
   const overlay = renderer.overlay;
+  if (!overlay.texture) overlay.texture = gl.createTexture();
   gl.useProgram(overlay.program);
   gl.bindBuffer(gl.ARRAY_BUFFER, overlay.buffer);
   gl.enableVertexAttribArray(overlay.attributes.position);
@@ -4231,7 +4305,7 @@ async function restoreEditorState(snapshot) {
       },
     );
     currentObjects.forEach((object) => {
-      if (!reused.has(object)) canvas.remove(object);
+      if (!reused.has(object)) discardFabricObject(object);
     });
     targetObjects.forEach((object) => {
       if (object.canvas !== canvas) canvas.add(object);
@@ -4251,12 +4325,14 @@ async function restoreEditorState(snapshot) {
     await prewarmHybridMeshesForObjects(targetObjects);
     canvas.requestRenderAll();
     updateSelectionPanel();
+    writeAutosavePayload(autosavePayloadFromState({ ...state, shapes: targetShapes }));
   } finally {
     historyLocked = false;
   }
 }
 
 function resetHistory() {
+  documentGeneration += 1;
   if (nudgeHistoryTimer) clearTimeout(nudgeHistoryTimer);
   nudgeHistoryTimer = null;
   nudgeHistoryPending = false;
@@ -4284,60 +4360,157 @@ function autosavePayloadFromState(state) {
   return payload;
 }
 
+function nextAutosaveRevision() {
+  autosaveRevision = Math.max(autosaveRevision + 1, Date.now() * 1000);
+  return autosaveRevision;
+}
+
+function recoveryRevision(payload) {
+  const revision = Number(payload?.recovery_revision);
+  if (Number.isSafeInteger(revision) && revision > 0) return revision;
+  return Math.max(0, Date.parse(payload?.saved_at || "") || 0) * 1000;
+}
+
+function reportAutosaveResult(operation, browserOk, serverOk, error) {
+  if (operation.recovery_revision !== autosaveRevision) return;
+  const ok = browserOk || serverOk;
+  autosaveStatus = { state: ok ? "saved" : "failed", revision: autosaveRevision, browserOk, serverOk, error };
+  const message = serverOk ? "Recovery saved in KFPS" : browserOk ? "Recovery saved in this browser only" : "Recovery failed; save the project";
+  const status = $("status");
+  const recoveryMessage = /Recovery pending|Recovery saved in KFPS|Recovery saved in this browser only|Recovery failed; save the project/;
+  if (status && recoveryMessage.test(status.textContent)) {
+    setStatus(status.textContent.replace(recoveryMessage, message));
+  }
+  if (!ok) showCornerNotice("Recovery unavailable", error || "Save the project to protect your changes.");
+}
+
+function drainAutosaveQueue() {
+  if (autosaveWritePromise) return autosaveWritePromise;
+  autosaveWritePromise = (async () => {
+    while (queuedAutosaveOperation) {
+      const operation = queuedAutosaveOperation;
+      queuedAutosaveOperation = null;
+      if (operation.recovery_revision !== autosaveRevision) continue;
+      const clearing = operation.action === "clear";
+      let serialized;
+      let browserOk = clearing;
+      let serverOk = false;
+      let retryable = true;
+      let error = "";
+      try {
+        serialized = JSON.stringify(operation);
+        if (new Blob([serialized]).size > EDITOR_PROJECT_MAX_BYTES) {
+          retryable = false;
+          throw new Error("Recovery exceeds the 25 MiB project limit. Use a smaller reference image.");
+        }
+        if (!clearing) {
+          try {
+            localStorage.setItem(AUTOSAVE_KEY, serialized);
+            browserOk = true;
+          } catch (err) {
+            console.warn("Browser autosave skipped.", err);
+          }
+        }
+        const response = await fetch(EDITOR_AUTOSAVE_API, {
+          method: "POST",
+          headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
+          body: serialized,
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!response.ok) throw new Error(`KFPS recovery storage returned HTTP ${response.status}.`);
+        const result = await response.json();
+        if (result.ok !== true || result.applied === false) {
+          retryable = false;
+          throw new Error("A newer recovery revision is already stored.");
+        }
+        serverOk = true;
+      } catch (err) {
+        error = err.message || String(err);
+        console.warn("App-folder autosave skipped.", err);
+      }
+      if (!clearing) reportAutosaveResult(operation, browserOk, serverOk, error);
+      if (serverOk) autosaveRetryDelay = 2000;
+      else if (retryable && operation.recovery_revision === autosaveRevision) {
+        clearTimeout(autosaveRetryTimer);
+        autosaveRetryTimer = setTimeout(() => {
+          autosaveRetryTimer = null;
+          if (operation.recovery_revision !== autosaveRevision) return;
+          queuedAutosaveOperation = operation;
+          drainAutosaveQueue();
+        }, autosaveRetryDelay);
+        autosaveRetryDelay = Math.min(30000, autosaveRetryDelay * 2);
+      }
+    }
+  })().finally(() => {
+    autosaveWritePromise = null;
+    if (queuedAutosaveOperation) return drainAutosaveQueue();
+  });
+  return autosaveWritePromise;
+}
+
+function flushPendingAutosave() {
+  if (autosaveWriteTimer) clearTimeout(autosaveWriteTimer);
+  autosaveWriteTimer = null;
+  autosavePendingSince = null;
+  if (pendingAutosavePayload) {
+    if (autosaveWritePromise && flushPendingAutosaveToBrowser()) {
+      reportAutosaveResult(pendingAutosavePayload, true, false, "");
+    }
+    queuedAutosaveOperation = pendingAutosavePayload;
+    pendingAutosavePayload = null;
+  }
+  return drainAutosaveQueue();
+}
+
 function writeAutosavePayload(payload) {
   if (!payload || !Array.isArray(payload.shapes)) return false;
-  pendingAutosavePayload = payload;
+  const revision = nextAutosaveRevision();
+  pendingAutosavePayload = { ...payload, recovery_revision: revision };
+  autosaveStatus = { state: "pending", revision };
+  clearTimeout(autosaveRetryTimer);
+  autosaveRetryTimer = null;
+  autosaveRetryDelay = 2000;
+  if (autosavePendingSince === null) autosavePendingSince = performance.now();
   if (autosaveWriteTimer) clearTimeout(autosaveWriteTimer);
-  autosaveWriteTimer = setTimeout(() => {
-    const nextPayload = pendingAutosavePayload;
-    pendingAutosavePayload = null;
-    autosaveWriteTimer = null;
-    if (!nextPayload) return;
-    let serialized;
-    try {
-      serialized = JSON.stringify(nextPayload);
-      localStorage.setItem(AUTOSAVE_KEY, serialized);
-    } catch (err) {
-      console.warn("Browser autosave skipped.", err);
-    }
-    fetch(EDITOR_AUTOSAVE_API, {
-      method: "POST",
-      headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
-      body: serialized || JSON.stringify(nextPayload),
-    }).catch((err) => {
-      console.warn("App-folder autosave skipped.", err);
-    });
-  }, 900);
+  const remaining = Math.max(0, AUTOSAVE_MAX_WAIT_MS - (performance.now() - autosavePendingSince));
+  autosaveWriteTimer = setTimeout(flushPendingAutosave, Math.min(AUTOSAVE_IDLE_MS, remaining));
   return true;
 }
 
 function flushPendingAutosaveToBrowser() {
-  if (!pendingAutosavePayload) return;
+  const payload = pendingAutosavePayload || queuedAutosaveOperation;
+  if (!payload || payload.action === "clear" || payload.recovery_revision !== autosaveRevision) return false;
   try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(pendingAutosavePayload));
+    const serialized = JSON.stringify(payload);
+    if (new Blob([serialized]).size > EDITOR_PROJECT_MAX_BYTES) return false;
+    localStorage.setItem(AUTOSAVE_KEY, serialized);
+    return true;
   } catch (err) {
     console.warn("Final browser autosave skipped.", err);
+    return false;
   }
 }
 
 function clearAutosave() {
+  const revision = nextAutosaveRevision();
   pendingAutosavePayload = null;
+  autosavePendingSince = null;
+  clearTimeout(autosaveRetryTimer);
+  autosaveRetryTimer = null;
+  autosaveRetryDelay = 2000;
   if (autosaveWriteTimer) {
     clearTimeout(autosaveWriteTimer);
     autosaveWriteTimer = null;
   }
   try {
     localStorage.removeItem(AUTOSAVE_KEY);
+    localStorage.setItem(AUTOSAVE_CLEAR_KEY, String(revision));
   } catch (_err) {
     // Ignore storage cleanup failures.
   }
-  fetch(EDITOR_AUTOSAVE_API, {
-    method: "POST",
-    headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "clear", shapes: [] }),
-  }).catch(() => {
-    // Direct-file/browser fallback.
-  });
+  autosaveStatus = { state: "cleared", revision };
+  queuedAutosaveOperation = { action: "clear", shapes: [], recovery_revision: revision };
+  return drainAutosaveQueue();
 }
 
 function pushHistory(reason = "change") {
@@ -4370,12 +4543,13 @@ function pushHistory(reason = "change") {
   updateDocumentState();
   renderHistoryList();
   refreshExportValidation();
-  setStatus(`Changed: ${humanizeHistoryReason(reason)}.${autosaveOk ? " Recovery copy updated." : " Recovery copy could not be stored."}`);
+  setStatus(`Changed: ${humanizeHistoryReason(reason)}.${autosaveOk ? " Recovery pending." : " Recovery could not be queued."}`);
 }
 
 function flushPendingNudgeHistory() {
   if (nudgeHistoryTimer) clearTimeout(nudgeHistoryTimer);
   nudgeHistoryTimer = null;
+  nudgeHistoryStarted = null;
   if (!nudgeHistoryPending) return false;
   nudgeHistoryPending = false;
   pushHistory("nudge");
@@ -4383,9 +4557,12 @@ function flushPendingNudgeHistory() {
 }
 
 function scheduleNudgeHistory() {
+  if (!nudgeHistoryPending) nudgeHistoryStarted = performance.now();
   nudgeHistoryPending = true;
   if (nudgeHistoryTimer) clearTimeout(nudgeHistoryTimer);
-  nudgeHistoryTimer = setTimeout(flushPendingNudgeHistory, 180);
+  const remaining = Math.max(0, AUTOSAVE_MAX_WAIT_MS - AUTOSAVE_IDLE_MS - (performance.now() - nudgeHistoryStarted));
+  nudgeHistoryTimer = setTimeout(flushPendingNudgeHistory, Math.min(180, remaining));
+  updateDocumentState();
 }
 
 function ensureHistoryBaseline() {
@@ -4439,6 +4616,7 @@ function updateDocumentState() {
     || !savedHistoryState
     || current !== savedHistoryState
     || overlayRevision !== savedOverlayRevision
+    || nudgeHistoryPending
   );
   const title = cleanProjectBaseName(currentProjectName || loadedName || "untitled", "untitled");
   setText("projectNameLabel", currentProjectName ? `${title}.fabric-project.json` : `${title} - not saved as a project`);
@@ -4465,7 +4643,7 @@ function markOverlayChanged(reason = "reference image changed") {
   const state = currentHistoryState() || snapshotEditorState();
   writeAutosavePayload(autosavePayloadFromState(state));
   updateDocumentState();
-  setStatus(`${humanizeHistoryReason(reason)}. Recovery copy updated; reference images never export.`);
+  setStatus(`${humanizeHistoryReason(reason)}. Recovery pending; reference images never export.`);
 }
 
 function historyTimeLabel(value) {
@@ -7072,6 +7250,7 @@ async function loadPayload(payload) {
   if (normalized.length > MAX_VINYL_LAYERS) {
     throw new Error(`This design has ${normalized.length} editable layers. The editor supports up to ${MAX_VINYL_LAYERS} layers per vinyl.`);
   }
+  documentGeneration += 1;
   setBusy(`Building ${normalized.length} editable layer(s)...`);
   await nextFrame();
   let completed = 0;
@@ -7130,6 +7309,20 @@ function removeVinylObjectHelpers(object) {
   });
 }
 
+function discardFabricObject(object) {
+  if (!object) return;
+  canvas.remove(object);
+  // These backing stores belong to this instance; source/resource images may be shared.
+  for (const key of ["_cacheCanvas", "_filteredEl"]) {
+    const element = object[key];
+    if (element instanceof HTMLCanvasElement && element !== object._originalElement) {
+      element.width = 1;
+      element.height = 1;
+    }
+  }
+  object.dispose?.();
+}
+
 function clearVinylObjects(options = {}) {
   cancelEditorTransform();
   endHybridRenderNow();
@@ -7144,7 +7337,7 @@ function clearVinylObjects(options = {}) {
   maskPreviewCutouts.clear();
   canvas.getObjects().filter((object) => object.kloudySelectionOutlineHelper
     || object.kloudyMaskOutline || object.kloudyMaskCutout).forEach((helper) => canvas.remove(helper));
-  vinylObjects().forEach((obj) => canvas.remove(obj));
+  vinylObjects().slice().forEach(discardFabricObject);
   invalidateLayerStats();
   if (!options.preserveCollapsed) collapsedLayerGroups.clear();
   lastLayerListKey = null;
@@ -8354,6 +8547,9 @@ function makeMaskHelperBaseForObject(obj) {
     objectCaching: false,
     excludeFromExport: true,
   });
+  if (obj?._renderPathCommands === renderNativeTriangleFill && base.type === "path") {
+    base._renderPathCommands = renderNativeTriangleFill;
+  }
   return base;
 }
 
@@ -8574,10 +8770,14 @@ async function saveEditorJsonToAppFolder(name, payload) {
 }
 
 async function saveProjectToAppFolder(name, payload, overwrite = false) {
+  const body = JSON.stringify({ name, payload, overwrite: Boolean(overwrite) });
+  if (new Blob([body]).size > EDITOR_PROJECT_MAX_BYTES) {
+    throw new Error("Project exceeds the 25 MiB save limit. Use a smaller reference image and save again.");
+  }
   const response = await fetch(PROJECT_SAVE_API, {
     method: "POST",
     headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
-    body: JSON.stringify({ name, payload, overwrite: Boolean(overwrite) }),
+    body,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -8678,7 +8878,9 @@ async function saveProject(options = {}) {
     }
     projectName = cleanProjectBaseName(requestedName, defaultName);
   }
+  flushPendingNudgeHistory();
   const payload = editableProjectPayload(projectName);
+  const savedRevision = { generation: documentGeneration, history: currentHistoryState(), overlay: overlayRevision };
   projectSaveInProgress = true;
   const saveButton = $("saveProject");
   const saveAsButton = $("saveProjectAs");
@@ -8691,10 +8893,19 @@ async function saveProject(options = {}) {
       && cleanProjectBaseName(currentProjectName) === cleanProjectBaseName(projectName),
     );
     const result = await saveProjectToAppFolder(projectName, payload, overwrite);
-    markCurrentHistorySaved(result.title || projectName);
-    clearAutosave();
-    setStatus(`Saved project internally: ${result.title || projectName}`);
-    showCornerNotice("Project saved inside KFPS", "Use Load Project to reopen it from the internal project browser.");
+    if (documentGeneration === savedRevision.generation) {
+      flushPendingNudgeHistory();
+      currentProjectName = cleanProjectBaseName(result.title || projectName, "project");
+      loadedName = currentProjectName;
+      savedHistoryState = savedRevision.history;
+      savedOverlayRevision = savedRevision.overlay;
+      updateDocumentState();
+      renderHistoryList();
+      if (!documentDirty) clearAutosave();
+      else writeAutosavePayload(autosavePayloadFromState(currentHistoryState() || snapshotEditorState()));
+      setStatus(`Saved project internally: ${currentProjectName}${documentDirty ? ". Newer changes are still unsaved. Recovery pending." : ""}`);
+    }
+    showCornerNotice("Project saved inside KFPS", `Saved ${result.title || projectName}.`);
   } catch (err) {
     const title = err?.code === "project_exists"
       ? "That project name is already used"
@@ -9036,7 +9247,7 @@ async function replaceObjectsWithResource(objects, family, index) {
     },
   );
   const replacementByObject = new Map(replacements.map((item) => [item.oldObject, item.replacement]));
-  sourceObjects.forEach((object) => canvas.remove(object));
+  sourceObjects.forEach(discardFabricObject);
   replacements.forEach(({ replacement }) => {
     canvas.add(replacement);
     if (isFontFamily(family)) rememberFontShapeTransform(replacement);
@@ -9442,7 +9653,7 @@ function pixelArtCanvasLayout(gridW, gridH, fitMode) {
 
 function clearPreviousPixelArtLayers() {
   const previous = vinylObjects().filter((obj) => obj.kloudy?.pixel_art_generated);
-  previous.forEach((obj) => canvas.remove(obj));
+  previous.forEach(discardFabricObject);
   return previous.length;
 }
 
@@ -10783,6 +10994,8 @@ function textVinylForzaGlyphResource(char, fontNumber) {
   if (upperIndex >= 0) return { family: `Upper_Letters_${safeFont}`, index: upperIndex + 1 };
   const lowerIndex = lower.indexOf(char);
   if (lowerIndex >= 0) return { family: `Lower_Letters_${safeFont}`, index: lowerIndex + 1 };
+  const digitIndex = "1234567890".indexOf(char);
+  if (digitIndex >= 0) return { family: `Upper_Letters_${safeFont}`, index: digitIndex + 27 };
   if (symbolMap[char]) return { family: `Lower_Letters_${safeFont}`, index: symbolMap[char] };
   return null;
 }
@@ -10902,7 +11115,7 @@ function buildTextVinylCurveShapes(runs, layout, color, groupId, groupName) {
 
 function clearPreviousTextVinylLayers() {
   const previous = vinylObjects().filter((obj) => obj.kloudy?.source_format === TEXT_VINYL_SOURCE_FLAG);
-  previous.forEach((obj) => canvas.remove(obj));
+  previous.forEach(discardFabricObject);
   return previous.length;
 }
 
@@ -11191,7 +11404,7 @@ function deleteSelected() {
     return;
   }
   cancelEditorTransform();
-  objects.forEach((obj) => canvas.remove(obj));
+  objects.forEach(discardFabricObject);
   syncMaskPreviewOutlines();
   canvas.discardActiveObject();
   canvas.requestRenderAll();
@@ -11778,6 +11991,8 @@ function rebuildOverlaySampler(img) {
     height,
     data: ctx.getImageData(0, 0, width, height).data,
   };
+  sampleCanvas.width = 1;
+  sampleCanvas.height = 1;
 }
 
 function sourceOverlayProjectState() {
@@ -11827,7 +12042,8 @@ function sourceOverlayProjectState() {
 }
 
 function clearSourceOverlayState() {
-  if (overlayImage && canvas?.getObjects().includes(overlayImage)) canvas.remove(overlayImage);
+  releaseHybridOverlay();
+  if (overlayImage) discardFabricObject(overlayImage);
   overlayImage = null;
   overlaySampler = null;
   overlaySourceState = null;
@@ -12207,8 +12423,21 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      if (overlayImage) canvas.remove(overlayImage);
-      rebuildOverlaySampler(img);
+      try {
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        if (width * height > 4096 * 4096) throw new Error("Reference exceeds 16 megapixels. Resize it before loading.");
+        if (new Blob([String(layeredOverlayState?.sourceText || url)]).size > 20 * 1024 * 1024) {
+          throw new Error("Reference exceeds the 20 MiB storage budget. Use a smaller image.");
+        }
+        rebuildOverlaySampler(img);
+      } catch (error) {
+        setStatus(`Reference load failed: ${error.message}`);
+        reject(error);
+        return;
+      }
+      releaseHybridOverlay();
+      if (overlayImage) discardFabricObject(overlayImage);
       overlaySourceState = {
         kind: layeredOverlayState ? "layered_svg" : "image",
         fileName,
@@ -12316,12 +12545,7 @@ function removeOverlay() {
     setStatus("No reference image is loaded to remove.");
     return;
   }
-  canvas.remove(overlayImage);
-  overlayImage = null;
-  overlaySampler = null;
-  overlaySourceState = null;
-  clearLayeredOverlayState();
-  updateSourceInteractivity();
+  clearSourceOverlayState();
   canvas.requestRenderAll();
   updateHud();
   markOverlayChanged("reference image removed");
@@ -12398,22 +12622,29 @@ function autosaveSummary(payload) {
 }
 
 async function readAutosavePayload() {
+  const candidates = [];
+  let clearedRevision = 0;
   try {
-    const response = await fetch(EDITOR_AUTOSAVE_API, { cache: "no-store" });
+    clearedRevision = Number(localStorage.getItem(AUTOSAVE_CLEAR_KEY)) || 0;
+    const browserPayload = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null");
+    if (browserPayload && Array.isArray(browserPayload.shapes)) candidates.push(browserPayload);
+  } catch (_err) {
+    // The app-folder copy remains available when browser storage fails.
+  }
+  try {
+    const response = await fetch(EDITOR_AUTOSAVE_API, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (response.ok) {
       const data = await response.json();
-      if (data.exists && data.payload && Array.isArray(data.payload.shapes)) return data.payload;
+      if (data.exists && data.payload && Array.isArray(data.payload.shapes)) candidates.push(data.payload);
+      if (data.payload?.action === "clear") clearedRevision = Math.max(clearedRevision, recoveryRevision(data.payload));
     }
   } catch (_err) {
     // Direct-file/browser fallback.
   }
-  try {
-    const payload = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null");
-    if (payload && Array.isArray(payload.shapes)) return payload;
-  } catch (_err) {
-    // Ignore broken browser autosave.
-  }
-  return null;
+  autosaveRevision = Math.max(autosaveRevision, clearedRevision, ...candidates.map(recoveryRevision));
+  return candidates
+    .filter((payload) => clearedRevision <= 0 || recoveryRevision(payload) > clearedRevision)
+    .sort((left, right) => recoveryRevision(right) - recoveryRevision(left))[0] || null;
 }
 
 async function recoverAutosavePayload(payload) {
@@ -13183,6 +13414,8 @@ function bindUi() {
   document.addEventListener("pointerdown", flushPendingNudgeHistory, true);
   window.addEventListener("blur", () => {
     flushPendingNudgeHistory();
+    flushPendingAutosaveToBrowser();
+    flushPendingAutosave();
     if (vBoxSelectActive) setVBoxSelectActive(false);
   });
 }
@@ -13195,6 +13428,14 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "hidden") return;
+  flushPendingNudgeHistory();
+  flushPendingAutosaveToBrowser();
+  flushPendingAutosave();
+});
+window.addEventListener("pagehide", flushPendingAutosaveToBrowser);
 
 document.addEventListener("DOMContentLoaded", async () => {
   initCanvas();

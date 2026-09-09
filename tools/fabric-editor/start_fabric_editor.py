@@ -811,7 +811,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return
             shapes = payload.get("shapes") if isinstance(payload, dict) else None
             self._send_json({
-                "exists": isinstance(shapes, list),
+                "exists": isinstance(shapes, list) and payload.get("action") != "clear",
                 "payload": payload if isinstance(shapes, list) else None,
                 "marker": str(EDITOR_AUTOSAVE_MARKER),
             })
@@ -954,19 +954,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if length <= 0 or length > 25 * 1024 * 1024:
                     raise ValueError("invalid autosave size")
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
-                if data.get("action") == "clear":
-                    if EDITOR_AUTOSAVE_MARKER.exists():
-                        EDITOR_AUTOSAVE_MARKER.unlink()
-                    self._send_json({"ok": True, "cleared": True, "marker": str(EDITOR_AUTOSAVE_MARKER)})
-                    return
-                shapes = data.get("shapes")
-                if not isinstance(shapes, list):
-                    raise ValueError("autosave payload must contain a shapes list")
-                _write_json_atomic(EDITOR_AUTOSAVE_MARKER, data)
+                result = self.server.store_autosave(data)
             except Exception as err:
                 self._send_json({"error": str(err)}, status=400)
                 return
-            self._send_json({"ok": True, "marker": str(EDITOR_AUTOSAVE_MARKER)})
+            self._send_json({"ok": True, "marker": str(EDITOR_AUTOSAVE_MARKER), **result})
             return
         if parsed.path == EDITOR_EXPORT_API:
             try:
@@ -1057,7 +1049,48 @@ class EditorServer(socketserver.ThreadingTCPServer):
 
     def __init__(self, *args, **kwargs):
         self.editor_session_token = secrets.token_urlsafe(32)
+        self.autosave_lock = threading.Lock()
+        self.autosave_revision = None
         super().__init__(*args, **kwargs)
+
+    def store_autosave(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise ValueError("autosave payload must be an object")
+        clearing = payload.get("action") == "clear"
+        if not clearing and not isinstance(payload.get("shapes"), list):
+            raise ValueError("autosave payload must contain a shapes list")
+        revision = payload.get("recovery_revision", 0)
+        if isinstance(revision, bool) or not isinstance(revision, int) or not 0 <= revision <= 2**53 - 1:
+            raise ValueError("invalid recovery revision")
+        with self.autosave_lock:
+            if self.autosave_revision is None:
+                self.autosave_revision = 0
+                try:
+                    saved = json.loads(EDITOR_AUTOSAVE_MARKER.read_text(encoding="utf-8"))
+                    stored_revision = saved.get("recovery_revision", 0)
+                    if type(stored_revision) is int and 0 < stored_revision <= 2**53 - 1:
+                        self.autosave_revision = stored_revision
+                except (OSError, ValueError, AttributeError):
+                    pass
+            # Reject delayed operations, including those received after a restart.
+            if revision and revision <= self.autosave_revision:
+                if revision == self.autosave_revision:
+                    expected = {"action": "clear", "shapes": [], "recovery_revision": revision} if clearing else payload
+                    try:
+                        stored = json.loads(EDITOR_AUTOSAVE_MARKER.read_text(encoding="utf-8"))
+                        if stored == expected:
+                            return {"applied": True, "cleared": clearing, "duplicate": True, "recovery_revision": revision}
+                    except (OSError, ValueError):
+                        pass
+                return {"applied": False, "recovery_revision": self.autosave_revision}
+            if clearing and not revision:
+                EDITOR_AUTOSAVE_MARKER.unlink(missing_ok=True)
+            elif clearing:
+                _write_json_atomic(EDITOR_AUTOSAVE_MARKER, {"action": "clear", "shapes": [], "recovery_revision": revision})
+            else:
+                _write_json_atomic(EDITOR_AUTOSAVE_MARKER, payload)
+            self.autosave_revision = max(self.autosave_revision, revision)
+            return {"applied": True, "cleared": clearing, "recovery_revision": self.autosave_revision}
 
 
 def _write_server_marker(port: int, session_token: str) -> None:

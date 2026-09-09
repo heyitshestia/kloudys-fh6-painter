@@ -1,5 +1,14 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.68
+- Improved dense native-shape editor rendering and reduced duplicated geometry memory while preserving Fabric, shape identities and export data.
+- Released discarded image and GPU resources more reliably and added recovery from GPU-preview context loss.
+- Made recovery more frequent, with a 500 ms idle delay and a two-second continuous-edit scheduling deadline, including held nudges, Undo, Redo and history navigation.
+- Fixed Save completing against an older revision incorrectly marking newer edits as saved or clearing their recovery. Added ordered recovery writes, retries, restart protection and clearer storage status.
+- Kept newer browser recovery available while app-folder storage is slow, and added timeouts and legacy recovery compatibility checks.
+- Added reference-image size limits and project-size preflight checks; oversized reference replacements preserve the existing image.
+- Fixed native-font digit generation across all 11 fonts. Heavy 3,000-layer projects can still pause, especially on slower CPUs; further performance work remains.
+
 ## 3.1.67
 - Added a one-time Korean-language message for DCInside users, shown only when the Windows display language is Korean. Regional formats, keyboard layouts and location do not trigger it.
 - Clarified how to gather feedback and use Report a Problem, including public issue descriptions and optional private technical details. The notice remembers dismissal and waits behind existing welcome messages.
