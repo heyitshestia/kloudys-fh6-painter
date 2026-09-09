@@ -132,6 +132,13 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: npm ci
 
+      - name: Audit the complete Worker toolchain
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --audit-level=moderate
+
+      - name: Verify native image dependencies and both image runtime paths
+        run: node tools/community_worker/tools/check_image_toolchain.mjs ${{ matrix.directory }}
+
       - name: Typecheck
         working-directory: ${{ matrix.directory }}
         run: npm run typecheck
@@ -196,6 +203,9 @@ jobs:
             Write-Host "npm audit failed on attempt $attempt; retrying after a transient-service delay."
             Start-Sleep -Seconds (15 * $attempt)
           }
+
+      - name: Verify Windows native image dependencies and runtime paths
+        run: node tools/community_worker/tools/check_image_toolchain.mjs tools/community_worker
 
       - name: Run fresh-state Community validation
         env:

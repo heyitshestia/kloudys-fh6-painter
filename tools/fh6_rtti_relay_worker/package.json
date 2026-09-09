@@ -12,12 +12,18 @@
     "migrate:local": "wrangler d1 migrations apply kfps-fh6-rtti --local",
     "migrate:remote": "wrangler d1 migrations apply kfps-fh6-rtti --remote"
   },
+  "overrides": {
+    "miniflare": {
+      "sharp": "0.35.4",
+      "undici": "7.29.0"
+    }
+  },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.4",
     "@cloudflare/workers-types": "^5.20260713.1",
     "@types/node": "^26.1.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "wrangler": "^4.110.0"
   }
 }
