@@ -1,5 +1,11 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.70
+- Hardened updater 1.0.4 against locked Windows files: check existing destinations before installation and briefly retry transient locks. Persistent locks stop the update with a close-and-retry message.
+- Fixed rollback unnecessarily replacing unchanged files, reporting completion after failed restoration, and discarding recovery information on the next run. Incomplete rollback remains retryable; retained backups from older failed rollbacks are rechecked.
+- Added native Windows lock, interruption and rollback regression tests, plus an installed-location signed handoff test with locked-file failure and retry coverage.
+- Includes the independent editor, persistent favorites, Enter-to-save fixes, project-sharing acknowledgment and matte Blackout / Whiteout themes from 3.1.69.
+
 ## 3.1.69
 - Added an independent KFPS Editor window and launcher beside KFPS.exe. Start it directly or from KFPS, and keep editing after closing the main app without changing the existing Fabric editor or project/export formats.
 - Moved editor preferences, including favorite shapes, into persistent app-folder storage so they survive editor restarts and local port changes. Favorites stored only in an old external browser profile are not automatically migrated.

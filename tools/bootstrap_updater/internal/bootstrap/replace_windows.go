@@ -3,10 +3,12 @@
 package bootstrap
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -16,6 +18,36 @@ const (
 )
 
 var moveFileEx = syscall.NewLazyDLL("kernel32.dll").NewProc("MoveFileExW")
+
+func retryWindowsFileLock(action func() error) error {
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		err := action()
+		if err == nil || (!errors.Is(err, syscall.Errno(5)) && !errors.Is(err, syscall.Errno(32)) && !errors.Is(err, syscall.Errno(33))) || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func checkReplaceableFile(path string) error {
+	path, err := extendedWindowsPath(path)
+	if err != nil {
+		return err
+	}
+	pointer, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	return retryWindowsFileLock(func() error {
+		const deleteAccess = 0x00010000
+		handle, err := syscall.CreateFile(pointer, deleteAccess, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+		if err != nil {
+			return err
+		}
+		return syscall.CloseHandle(handle)
+	})
+}
 
 func replaceFile(source, destination string) error {
 	var err error
@@ -35,15 +67,17 @@ func replaceFile(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	result, _, callErr := moveFileEx.Call(
-		uintptr(unsafe.Pointer(sourcePointer)),
-		uintptr(unsafe.Pointer(destinationPointer)),
-		uintptr(moveFileReplaceExisting|moveFileWriteThrough),
-	)
-	if result == 0 {
-		return fmt.Errorf("MoveFileExW failed: %w", callErr)
-	}
-	return nil
+	return retryWindowsFileLock(func() error {
+		result, _, callErr := moveFileEx.Call(
+			uintptr(unsafe.Pointer(sourcePointer)),
+			uintptr(unsafe.Pointer(destinationPointer)),
+			uintptr(moveFileReplaceExisting|moveFileWriteThrough),
+		)
+		if result == 0 {
+			return fmt.Errorf("MoveFileExW failed: %w", callErr)
+		}
+		return nil
+	})
 }
 
 func extendedWindowsPath(value string) (string, error) {

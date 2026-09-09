@@ -9,3 +9,7 @@ import (
 func replaceFile(source, destination string) error {
 	return os.Rename(source, destination)
 }
+
+func checkReplaceableFile(path string) error {
+	return nil
+}

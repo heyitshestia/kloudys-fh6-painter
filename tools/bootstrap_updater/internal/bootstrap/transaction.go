@@ -111,6 +111,9 @@ func (transaction *Transaction) Prepare() error {
 		}
 		info, err := os.Stat(operation.Destination)
 		if err == nil && info.Mode().IsRegular() {
+			if err := checkReplaceableFile(operation.Destination); err != nil {
+				return fmt.Errorf("cannot update %s; close KFPS and other updater windows, then retry: %w", operation.Destination, err)
+			}
 			operation.Existed = true
 			backupBytes += info.Size()
 			backupFiles++
@@ -258,13 +261,38 @@ func (transaction *Transaction) MarkStateUpdated() error {
 
 func (transaction *Transaction) Rollback() error {
 	transaction.logger.Printf("Rolling back %d planned file operation(s).", len(transaction.journal.Operations))
+	// Keep recovery retryable, including journals incorrectly marked complete by
+	// older updaters. Do not discard backups until every restoration succeeds.
+	transaction.journal.Status = "applying"
+	if err := transaction.writeJournal(); err != nil {
+		return fmt.Errorf("preserve rollback journal: %w", err)
+	}
 	var failures []string
 	for index := len(transaction.journal.Operations) - 1; index >= 0; index-- {
 		operation := &transaction.journal.Operations[index]
 		if !operation.Started {
 			continue
 		}
+		if err := ensureSafeContainedPath(transaction.installRoot, operation.Destination); err != nil {
+			failures = append(failures, err.Error())
+			continue
+		}
+		if operation.Temporary != "" {
+			if err := ensureSafeContainedPath(transaction.installRoot, operation.Temporary); err != nil {
+				failures = append(failures, err.Error())
+				continue
+			}
+		}
 		if operation.Existed {
+			unchanged, err := transaction.matchesBackup(*operation)
+			if err != nil {
+				failures = append(failures, err.Error())
+				continue
+			}
+			if unchanged {
+				_ = os.Remove(operation.Temporary)
+				continue
+			}
 			_ = os.Remove(operation.Temporary)
 			if err := atomicInstallWithTemporary(operation.Backup, operation.Destination, operation.Temporary); err != nil {
 				failures = append(failures, err.Error())
@@ -279,17 +307,40 @@ func (transaction *Transaction) Rollback() error {
 			failures = append(failures, err.Error())
 		}
 	}
-	transaction.journal.Status = "rolled-back"
-	_ = transaction.writeJournal()
 	if len(failures) > 0 {
 		return fmt.Errorf("rollback failed: %s", strings.Join(failures, "; "))
 	}
-	_ = os.Remove(transaction.journalPath)
+	transaction.journal.Status = "rolled-back"
+	if err := transaction.writeJournal(); err != nil {
+		return fmt.Errorf("record completed rollback: %w", err)
+	}
+	if err := os.Remove(transaction.journalPath); err != nil {
+		return fmt.Errorf("remove completed rollback journal: %w", err)
+	}
 	if err := removeSafeTree(transaction.stateDir, transaction.backupDir); err != nil {
 		transaction.logger.Printf("Rollback succeeded, but its temporary backup could not be removed: %v", err)
 	}
 	transaction.cleanupOperationTemporaries()
 	return nil
+}
+
+func (transaction *Transaction) matchesBackup(operation journalOperation) (bool, error) {
+	if err := ensureSafeContainedPath(transaction.stateDir, operation.Backup); err != nil {
+		return false, err
+	}
+	info, err := os.Stat(operation.Backup)
+	if err != nil {
+		return false, fmt.Errorf("read rollback backup %s: %w", operation.Backup, err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("rollback backup is not a regular file: %s", operation.Backup)
+	}
+	hash, err := sha256File(operation.Backup)
+	if err != nil {
+		return false, err
+	}
+	needsRepair, err := fileNeedsRepair(operation.Destination, FileRecord{Size: info.Size(), SHA256: hash})
+	return !needsRepair, err
 }
 
 func (transaction *Transaction) restorePreviousState() error {
@@ -336,7 +387,21 @@ func RecoverInterruptedTransaction(stateDir string, layout Layout, logger *Logge
 	if err := validateInterruptedJournal(journal, stateDir, layout); err != nil {
 		return false, err
 	}
-	if journal.Status == "committed" || journal.Status == "rolled-back" {
+	backupDir := filepath.Join(stateDir, "backups", journal.RunID)
+	completedRollback := false
+	if journal.Status == "rolled-back" {
+		if err := ensureSafeContainedPath(stateDir, backupDir); err != nil {
+			return false, err
+		}
+		_, err := os.Stat(backupDir)
+		if err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		// Before 1.0.4 a failed rollback could be marked complete. Retained
+		// backups must be checked instead of trusting that legacy status.
+		completedRollback = os.IsNotExist(err)
+	}
+	if journal.Status == "committed" || completedRollback {
 		transaction := &Transaction{stateDir: stateDir, installRoot: layout.InstallRoot, journal: journal, logger: logger}
 		transaction.cleanupOperationTemporaries()
 		if err := os.Remove(path); err != nil {

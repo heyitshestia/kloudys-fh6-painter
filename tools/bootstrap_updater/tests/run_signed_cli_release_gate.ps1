@@ -10,7 +10,7 @@ $BuildRoot = Join-Path $ToolRoot "build"
 $GateRoot = Join-Path ([IO.Path]::GetTempPath()) "KFPS-Updater-Gates"
 $RunRoot = Join-Path $GateRoot ("signed-cli-" + [guid]::NewGuid().ToString("N"))
 $Publisher = Join-Path $BuildRoot "KFPS-Update-Publisher.exe"
-$TestUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.3.exe"
+$TestUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.4.exe"
 $OldUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.2.exe"
 $PrivateKey = Join-Path $RunRoot "test.private"
 $PublicKey = Join-Path $RunRoot "test.public"
@@ -18,6 +18,7 @@ $Payload = Join-Path $RunRoot "payload"
 $Source = Join-Path $RunRoot "source"
 $Python = Join-Path $RunRoot "python"
 $Target = Join-Path $RunRoot "target"
+$InstalledOldUpdater = Join-Path $Target "KFPS-Updater.exe"
 $State = Join-Path $RunRoot "state"
 $ReportPath = Join-Path $RunRoot "release-gate-report.json"
 
@@ -73,16 +74,15 @@ function Assert-Text {
 $environmentBefore = $env:KFPS_UPDATER_TEST_MODE
 $pauseBefore = $env:KFPS_UPDATER_NO_PAUSE
 try {
-    if (-not (Test-Path -LiteralPath $Publisher -PathType Leaf)) {
-        throw "Build the updater first; publisher is missing: $Publisher"
-    }
     Push-Location $ToolRoot
     try {
+        [IO.Directory]::CreateDirectory($BuildRoot) | Out-Null
+        Invoke-Checked { & go build -trimpath -buildvcs=false -o $Publisher ./cmd/kfps-update-tool } "Current publisher build failed"
         Invoke-Checked { & $Publisher keygen --private $PrivateKey --public $PublicKey } "Ephemeral key generation failed"
         $public = [IO.File]::ReadAllText($PublicKey).Trim()
         $baseFlags = "-s -w -buildid="
         Invoke-Checked {
-            & go build -trimpath -buildvcs=false -ldflags "$baseFlags -X main.version=1.0.3 -X main.trustedPublicKey=$public -X main.testFeatures=enabled" -o $TestUpdater ./cmd/kfps-updater
+            & go build -trimpath -buildvcs=false -ldflags "$baseFlags -X main.version=1.0.4 -X main.trustedPublicKey=$public -X main.testFeatures=enabled" -o $TestUpdater ./cmd/kfps-updater
         } "Current test updater build failed"
         if ($PreviousToolRoot) { Push-Location -LiteralPath $PreviousToolRoot }
         try {
@@ -122,7 +122,7 @@ try {
     Write-Utf8NoBom (Join-Path $Python "python.exe") "new-python"
     Write-Utf8NoBom (Join-Path $Python "Lib\site.py") "new-site"
     Invoke-Checked {
-        & $Publisher build --app-root $Source --python-root $Python --updater $TestUpdater --private $PrivateKey --public $PublicKey --output $Payload --base-url "https://updates.example.invalid/stable" --version 2.0.0 --commit $commit --bootstrap-version 1.0.3 --sequence 1 --published-utc "2026-09-01T12:00:00Z" --retired-file "retired.txt"
+        & $Publisher build --app-root $Source --python-root $Python --updater $TestUpdater --private $PrivateKey --public $PublicKey --output $Payload --base-url "https://updates.example.invalid/stable" --version 2.0.0 --commit $commit --bootstrap-version 1.0.4 --sequence 1 --published-utc "2026-09-01T12:00:00Z" --retired-file "retired.txt"
     } "Signed payload publication failed"
 
     $manifestPath = Join-Path $Payload "kfps-update-2.0.0.json"
@@ -145,6 +145,7 @@ try {
     Invoke-Checked { & $Publisher sign --private $PrivateKey --input $channelPath --output ($channelPath + ".sig") --overwrite } "Channel re-signing failed"
 
     Write-Utf8NoBom (Join-Path $Target "KFPS.exe") "old-launcher"
+    Copy-Item -LiteralPath $OldUpdater -Destination $InstalledOldUpdater
     Write-Utf8NoBom (Join-Path $Target "KloudysFH6Painter\VERSION") "1.0.0`n"
     Write-Utf8NoBom (Join-Path $Target "KloudysFH6Painter\KFPS.UI\program.txt") "old-program"
     Write-Utf8NoBom (Join-Path $Target "KloudysFH6Painter\03_update_from_github.bat") "bootstrap compatibility shim"
@@ -166,7 +167,7 @@ try {
         throw "Dry run advanced signed sequence state"
     }
 
-    $handoffCheckCode = Invoke-TestUpdater -Executable $OldUpdater -CheckOnly
+    $handoffCheckCode = Invoke-TestUpdater -Executable $InstalledOldUpdater -CheckOnly
     if ($handoffCheckCode -ne 3) {
         throw "Verified check handoff did not propagate child repair-required exit 3; got $handoffCheckCode"
     }
@@ -175,7 +176,24 @@ try {
         throw "Verified check handoff advanced signed sequence state"
     }
 
-    $handoffCode = Invoke-TestUpdater -Executable $OldUpdater
+    $beforeLockTest = @(Get-ChildItem -LiteralPath $Target -Recurse -File | Get-FileHash -Algorithm SHA256 | Select-Object Path, Hash)
+    $heldUpdater = [IO.File]::Open($InstalledOldUpdater, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $lockedCode = Invoke-TestUpdater -Executable $TestUpdater
+        if ($lockedCode -ne 1) { throw "Locked installed updater was not rejected: $lockedCode" }
+        foreach ($original in $beforeLockTest) {
+            if ((Get-FileHash -LiteralPath $original.Path -Algorithm SHA256).Hash -ne $original.Hash) {
+                throw "Locked updater preflight changed $($original.Path)"
+            }
+        }
+        foreach ($unexpected in @("state.json", "current-transaction.json")) {
+            if (Test-Path -LiteralPath (Join-Path $State $unexpected)) { throw "Lock preflight left $unexpected" }
+        }
+    } finally {
+        $heldUpdater.Dispose()
+    }
+
+    $handoffCode = Invoke-TestUpdater -Executable $InstalledOldUpdater
     if ($handoffCode -ne 4) {
         throw "Self-update handoff did not report verified child pending with exit 4; got $handoffCode"
     }
@@ -242,6 +260,9 @@ try {
         no_op_exit = $noOpCode
         repair_exit = $repairCode
         editor_launchers_installed_and_repaired = $true
+        old_updater_launched_from_installation = $true
+        locked_installed_updater_rejected_without_mutation = $true
+        locked_updater_exit = $lockedCode
         previous_source = $PreviousToolRoot
         rollback_rejection_exit = $rollbackCode
         reports = $reports.Count
@@ -252,6 +273,7 @@ try {
     }
     Write-Utf8NoBom $ReportPath (($result | ConvertTo-Json -Depth 10) + "`n")
     $result | Format-List
+    $global:LASTEXITCODE = 0
 }
 finally {
     $env:KFPS_UPDATER_TEST_MODE = $environmentBefore

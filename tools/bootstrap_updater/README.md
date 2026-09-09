@@ -14,6 +14,14 @@ The complete architecture, compatibility rules, diagnostics contract, and public
 
 ## Installation behavior
 
+Version 1.0.4 checks existing destinations for Windows replacement locks before
+installation and retries transient lock errors for up to three seconds. A lock
+that appears later can still fail installation, so rollback checks backup hashes
+and leaves unchanged files alone. Restoration failures retain their journal and
+backups for a later retry. Legacy rolled-back journals with retained backups are
+reverified because older updaters could incorrectly mark a failed rollback complete.
+No permissions are widened and no unrelated processes are terminated.
+
 Version 1.0.3 manages exactly three outer executables: `KFPS.exe`,
 `KFPS Editor.exe`, and `KFPS-Updater.exe`. The editor launcher is included beside
 KFPS in full bundles and signed updates. A manifest managing the outer editor
