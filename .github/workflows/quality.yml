@@ -76,8 +76,10 @@ jobs:
           node --check tools/fabric-editor/editor-core.js
           node --check tools/fabric-editor/editor-fabric-adapter.js
           node --check tools/fabric-editor/editor.js
+          node --check tools/fabric-editor/editor-preferences.js
           node tools/fabric-editor/tests/editor-core.node.js
           node tools/fabric-editor/tests/editor-shell.node.js
+          node tools/fabric-editor/tests/editor-preferences.node.js
 
       - name: Launch the real Outputs page offscreen
         env:

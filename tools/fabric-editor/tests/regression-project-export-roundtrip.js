@@ -94,6 +94,8 @@ async (page) => {
       projectFormat: savedProject.format,
       projectLayers: loadedProjectShapes.length,
       stableEditorIds: loadedProjectShapes.every((shape, index) => shape.editor_id === shapes[index].editor_id),
+      customNames: loadedProjectShapes.every((shape, index) => shape.shape_name === shapes[index].shape_name)
+        && exported.shapes.every((shape, index) => shape.shape_name === shapes[index].shape_name),
       hiddenLayers: loadedProjectShapes.filter((shape) => shape.editor_hidden).length,
       lockedLayers: loadedProjectShapes.filter((shape) => shape.editor_locked).length,
       groupedLayers: loadedProjectShapes.filter((shape) => shape.editor_group_id === "compat-group").length,
@@ -109,7 +111,7 @@ async (page) => {
     if (result.projectFormat !== "kloudy_fabric_editor_project_v1" || result.projectLayers !== 128) {
       throw new Error("Project file format or layer count changed during serialization.");
     }
-    if (!result.stableEditorIds || result.hiddenLayers !== 1 || result.lockedLayers !== 1 || result.groupedLayers !== 12) {
+    if (!result.stableEditorIds || !result.customNames || result.hiddenLayers !== 1 || result.lockedLayers !== 1 || result.groupedLayers !== 12) {
       throw new Error("Project-only layer metadata did not survive file reload.");
     }
     if (result.collapsedGroups.length !== 1 || result.collapsedGroups[0] !== "compat-group") {

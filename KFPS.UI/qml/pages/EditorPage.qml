@@ -365,7 +365,7 @@ Item {
                             minimumWidth: Theme.px(170)
                             text: editorService.launching ? "Opening..." : "Open Project"
                             iconName: "editor"
-                            toolTipText: "Open the selected editable project in the local browser editor."
+                            toolTipText: "Open the selected editable project in the editor window."
                             enabled: editorService.selectedPath.length > 0 && !editorService.launching
                             onClicked: editorService.launchSelected()
                         }

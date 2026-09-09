@@ -1,15 +1,17 @@
 param(
-    [switch]$KeepArtifacts
+    [switch]$KeepArtifacts,
+    [string]$PreviousToolRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 $ToolRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $RepoRoot = (Resolve-Path (Join-Path $ToolRoot "..\..")).Path
 $BuildRoot = Join-Path $ToolRoot "build"
-$RunRoot = Join-Path $BuildRoot ("signed-cli-" + [guid]::NewGuid().ToString("N"))
+$GateRoot = Join-Path ([IO.Path]::GetTempPath()) "KFPS-Updater-Gates"
+$RunRoot = Join-Path $GateRoot ("signed-cli-" + [guid]::NewGuid().ToString("N"))
 $Publisher = Join-Path $BuildRoot "KFPS-Update-Publisher.exe"
-$TestUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.2.exe"
-$OldUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.1.exe"
+$TestUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.3.exe"
+$OldUpdater = Join-Path $RunRoot "KFPS-Updater-1.0.2.exe"
 $PrivateKey = Join-Path $RunRoot "test.private"
 $PublicKey = Join-Path $RunRoot "test.public"
 $Payload = Join-Path $RunRoot "payload"
@@ -80,11 +82,16 @@ try {
         $public = [IO.File]::ReadAllText($PublicKey).Trim()
         $baseFlags = "-s -w -buildid="
         Invoke-Checked {
-            & go build -trimpath -buildvcs=false -ldflags "$baseFlags -X main.version=1.0.2 -X main.trustedPublicKey=$public -X main.testFeatures=enabled" -o $TestUpdater ./cmd/kfps-updater
+            & go build -trimpath -buildvcs=false -ldflags "$baseFlags -X main.version=1.0.3 -X main.trustedPublicKey=$public -X main.testFeatures=enabled" -o $TestUpdater ./cmd/kfps-updater
         } "Current test updater build failed"
-        Invoke-Checked {
-            & go build -trimpath -buildvcs=false -ldflags "$baseFlags -X main.version=1.0.1 -X main.trustedPublicKey=$public -X main.testFeatures=enabled" -o $OldUpdater ./cmd/kfps-updater
-        } "Old test updater build failed"
+        if ($PreviousToolRoot) { Push-Location -LiteralPath $PreviousToolRoot }
+        try {
+            Invoke-Checked {
+                & go build -trimpath -buildvcs=false -ldflags "$baseFlags -X main.version=1.0.2 -X main.trustedPublicKey=$public -X main.testFeatures=enabled" -o $OldUpdater ./cmd/kfps-updater
+            } "Old test updater build failed"
+        } finally {
+            if ($PreviousToolRoot) { Pop-Location }
+        }
     }
     finally {
         Pop-Location
@@ -92,6 +99,7 @@ try {
 
     Write-Utf8NoBom (Join-Path $Source "VERSION") "2.0.0`n"
     Write-Utf8NoBom (Join-Path $Source "KFPS.exe") "new-launcher"
+    Write-Utf8NoBom (Join-Path $Source "KFPS Editor.exe") "new-editor-launcher"
     Copy-Item -LiteralPath $TestUpdater -Destination (Join-Path $Source "KFPS-Updater.exe")
     Write-Utf8NoBom (Join-Path $Source "KFPS.UI\program.txt") "new-program"
     Push-Location $Source
@@ -114,7 +122,7 @@ try {
     Write-Utf8NoBom (Join-Path $Python "python.exe") "new-python"
     Write-Utf8NoBom (Join-Path $Python "Lib\site.py") "new-site"
     Invoke-Checked {
-        & $Publisher build --app-root $Source --python-root $Python --updater $TestUpdater --private $PrivateKey --public $PublicKey --output $Payload --base-url "https://updates.example.invalid/stable" --version 2.0.0 --commit $commit --bootstrap-version 1.0.2 --sequence 1 --published-utc "2026-09-01T12:00:00Z" --retired-file "retired.txt"
+        & $Publisher build --app-root $Source --python-root $Python --updater $TestUpdater --private $PrivateKey --public $PublicKey --output $Payload --base-url "https://updates.example.invalid/stable" --version 2.0.0 --commit $commit --bootstrap-version 1.0.3 --sequence 1 --published-utc "2026-09-01T12:00:00Z" --retired-file "retired.txt"
     } "Signed payload publication failed"
 
     $manifestPath = Join-Path $Payload "kfps-update-2.0.0.json"
@@ -182,6 +190,8 @@ try {
     }
     Assert-Text (Join-Path $Target "KloudysFH6Painter\VERSION") "2.0.0`n"
     Assert-Text (Join-Path $Target "KloudysFH6Painter\KFPS.UI\program.txt") "new-program"
+    Assert-Text (Join-Path $Target "KFPS Editor.exe") "new-editor-launcher"
+    Assert-Text (Join-Path $Target "KloudysFH6Painter\KFPS Editor.exe") "new-editor-launcher"
     Assert-Text (Join-Path $Target "KloudysFH6Painter\runtime\user.json") "preserve-runtime"
     Assert-Text (Join-Path $Target "KloudysFH6Painter\user.kfpskey") "preserve-key"
     Assert-Text (Join-Path $Target "KloudysFH6Painter\python\Lib\__pycache__\generated.pyc") "preserve-cache"
@@ -201,11 +211,13 @@ try {
         throw "Healthy signed no-op failed with exit $noOpCode"
     }
     Write-Utf8NoBom (Join-Path $Target "KloudysFH6Painter\KFPS.UI\program.txt") "corrupt-program"
+    Remove-Item -LiteralPath (Join-Path $Target "KFPS Editor.exe")
     $repairCode = Invoke-TestUpdater -Executable $TestUpdater
     if ($repairCode -ne 0) {
         throw "Same-version signed repair failed with exit $repairCode"
     }
     Assert-Text (Join-Path $Target "KloudysFH6Painter\KFPS.UI\program.txt") "new-program"
+    Assert-Text (Join-Path $Target "KFPS Editor.exe") "new-editor-launcher"
 
     $statePath = Join-Path $State "state.json"
     $persistent = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
@@ -229,6 +241,8 @@ try {
         handoff_pending_exit = $handoffCode
         no_op_exit = $noOpCode
         repair_exit = $repairCode
+        editor_launchers_installed_and_repaired = $true
+        previous_source = $PreviousToolRoot
         rollback_rejection_exit = $rollbackCode
         reports = $reports.Count
         completed = @($reports | Where-Object status -eq "completed").Count
@@ -244,7 +258,7 @@ finally {
     $env:KFPS_UPDATER_NO_PAUSE = $pauseBefore
     if (-not $KeepArtifacts -and (Test-Path -LiteralPath $RunRoot)) {
         $resolvedRun = [IO.Path]::GetFullPath($RunRoot)
-        $resolvedBuild = [IO.Path]::GetFullPath($BuildRoot) + [IO.Path]::DirectorySeparatorChar
+        $resolvedBuild = [IO.Path]::GetFullPath($GateRoot) + [IO.Path]::DirectorySeparatorChar
         if (-not $resolvedRun.StartsWith($resolvedBuild, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Refusing to clean an unsafe release-gate path: $resolvedRun"
         }

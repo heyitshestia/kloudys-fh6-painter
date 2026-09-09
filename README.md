@@ -139,6 +139,8 @@ The release should contain:
 
 ```text
 KFPS.exe
+KFPS Editor.exe
+KFPS-Updater.exe
 Images/
 KloudysFH6Painter/
 ```
@@ -286,8 +288,10 @@ Open it from the native app's `Editor` tab:
   <img src="docs/screenshots/06-editor.png" alt="Editor tab" width="820">
 </p>
 
-The detailed workspace opens in the default browser and stays local to the KFPS
-folder:
+The detailed workspace opens in its own desktop window and stays local to the
+KFPS folder. `KFPS Editor.exe` beside `KFPS.exe` opens that same editor without
+starting KFPS. Closing KFPS does not close the editor. Close the editor before
+updating the installation.
 
 <p align="center">
   <img src="docs/screenshots/06-editor.png" alt="KFPS Editor tab and project workspace" width="820">
@@ -295,7 +299,7 @@ folder:
 
 ### Editor Workflow
 
-1. Open `Editor` in KFPS.
+1. Open `Editor` in KFPS, or start `KFPS Editor.exe` directly.
 2. Choose `New Canvas`, `Import JSON`, or a saved project.
 3. Save an editable project early; the title clearly shows saved or unsaved state.
 4. Add a reference image when tracing, or build directly with Shapes, Text, and Pixel tools.

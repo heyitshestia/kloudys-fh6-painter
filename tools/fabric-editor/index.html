@@ -732,6 +732,25 @@
     </div>
   </dialog>
 
+  <dialog id="projectSharingDialog" class="startupHelpDialog projectSharingDialog" aria-labelledby="projectSharingTitle" aria-describedby="projectSharingMessage">
+    <div class="helpHeader startupHelpHeader">
+      <h2 id="projectSharingTitle">Sharing Projects And Groups</h2>
+    </div>
+    <div class="helpBody startupHelpBody">
+      <div id="projectSharingMessage">
+        <p>To share a design <b>with its editor groups preserved</b>, share the editable <b>project file</b> (<code>.fabric-project.json</code>) created with <b>Save</b> or <b>Save As</b>.</p>
+        <p><b>Export JSON</b> creates a flat, game-ready vinyl file. <b>It cannot preserve editor groups.</b></p>
+        <p><b>Do not add group structures to exported JSONs.</b> Grouped exports are incompatible with KFPS's entire importing mechanism, which requires flat vinyl layers.</p>
+        <p>Share the <b>project</b> for editing together. Use <b>Export JSON</b> for importing into a game through KFPS.</p>
+      </div>
+      <div class="startupConfirmBox">
+        <label><input id="projectSharingAcknowledge" type="checkbox"> I acknowledge.</label>
+        <button id="projectSharingContinue" type="button" disabled title="Save this acknowledgment and continue into the editor.">Continue</button>
+        <p id="projectSharingError" role="alert" hidden></p>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="autosaveRecoveryDialog" class="startupHelpDialog">
     <div class="helpHeader startupHelpHeader">
       <h2>Recover Unsaved Editor Work?</h2>
@@ -838,7 +857,6 @@
     <div class="helpHeader">
       <div>
         <h2>Adjust Editor Theme</h2>
-        <p>Edit the current color scheme and save it as a new custom theme file inside runtime/fabric-editor/themes.</p>
       </div>
       <button id="closeThemeAdjust" type="button" title="Close theme adjustment without saving another theme.">Close</button>
     </div>
@@ -846,10 +864,14 @@
       <label class="themeNameRow">Theme name
         <input id="themeAdjustName" type="text" value="Custom Theme">
       </label>
+      <div class="themeBaseRow">
+        <label class="themeNameRow">Starting theme<select id="themeAdjustBase"></select></label>
+        <button id="resetThemeAdjust" type="button" title="Restore the colors of the selected starting theme.">Reset colors</button>
+      </div>
       <div id="themeAdjustFields" class="themeAdjustFields"></div>
       <div class="jsonBrowserActions">
-        <p id="themeAdjustStatus">Hex colors get a color picker. RGBA fields stay editable as text for advanced tuning.</p>
-        <button id="saveThemeAdjust" class="primary" type="button" title="Save these colors as a new local editor theme.">Save As New Theme</button>
+        <p id="themeAdjustStatus" role="status" aria-live="polite"></p>
+        <button id="saveThemeAdjust" class="primary" type="button" title="Save these colors as a new local editor theme.">Save theme</button>
       </div>
     </div>
   </dialog>
@@ -891,7 +913,7 @@
           <input id="textPromptInput" type="text" maxlength="96" autocomplete="off">
         </label>
         <div class="dialogActions">
-          <button id="textPromptCancel" value="cancel" type="submit" title="Cancel without applying this name.">Cancel</button>
+          <button id="textPromptCancel" value="cancel" type="button" title="Cancel without applying this name.">Cancel</button>
           <button id="textPromptConfirm" value="confirm" class="primary" type="submit" title="Accept this name and continue.">Continue</button>
         </div>
       </div>
@@ -922,6 +944,7 @@
   </dialog>
 
   <script src="editor-core.js?engine=editor-2.1"></script>
-  <script src="editor.js?engine=editor-2.3"></script>
+  <script src="editor-preferences.js"></script>
+  <script>KfpsEditorPreferences.loadEditor("editor.js?engine=editor-2.4");</script>
 </body>
 </html>

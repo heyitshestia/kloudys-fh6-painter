@@ -9,6 +9,11 @@ using System.Windows.Forms;
 internal static class KfpsLauncher
 {
     private const int PythonProbeTimeoutMs = 15000;
+#if KFPS_EDITOR
+    private const string EntryPoint = "editor.py";
+#else
+    private const string EntryPoint = "app.py";
+#endif
     private const string PythonProbe =
         "import struct,sys;" +
         "assert sys.version_info[:2] == (3, 12), sys.version;" +
@@ -36,7 +41,7 @@ internal static class KfpsLauncher
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string appRoot = ResolveAppRoot(baseDir);
-            string app = Path.Combine(appRoot, "KFPS.UI", "app.py");
+            string app = Path.Combine(appRoot, "KFPS.UI", EntryPoint);
 
             if (!File.Exists(app))
             {

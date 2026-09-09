@@ -234,13 +234,52 @@ func TestChangeOrderingLeavesOuterLaunchersLast(t *testing.T) {
 		{Destination: filepath.Join(app, "KFPS.exe")},
 		{Destination: filepath.Join(app, "VERSION")},
 		{Destination: filepath.Join(install, "KFPS.exe")},
+		{Destination: filepath.Join(install, "KFPS Editor.exe")},
+		{Destination: filepath.Join(app, "KFPS Editor.exe")},
 	}
 	sortChanges(changes, install)
-	want := []string{filepath.Join(app, "VERSION"), filepath.Join(app, "KFPS.exe"), filepath.Join(install, "KFPS.exe"), filepath.Join(install, "KFPS-Updater.exe")}
+	want := []string{filepath.Join(app, "VERSION"), filepath.Join(app, "KFPS Editor.exe"), filepath.Join(app, "KFPS.exe"), filepath.Join(install, "KFPS Editor.exe"), filepath.Join(install, "KFPS.exe"), filepath.Join(install, "KFPS-Updater.exe")}
 	for index := range want {
 		if changes[index].Destination != want[index] {
 			t.Fatalf("unexpected change order at %d: %s", index, changes[index].Destination)
 		}
+	}
+}
+
+func TestInterruptedEditorLauncherCreationAndReplacementRollBack(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		install := t.TempDir()
+		app := filepath.Join(install, "KloudysFH6Painter")
+		state := filepath.Join(t.TempDir(), "state")
+		destination := filepath.Join(install, "KFPS Editor.exe")
+		staged := filepath.Join(t.TempDir(), "KFPS Editor.exe")
+		writeTestFile(t, filepath.Join(app, "runtime", "project.json"), "user-project")
+		writeTestFile(t, staged, "new-editor")
+		if existing {
+			writeTestFile(t, destination, "old-editor")
+		}
+		layout := Layout{InstallRoot: install, AppRoot: app}
+		logger := testLogger(t, state, "editor-interruption")
+		transaction, err := NewTransaction(state, "editor-interruption", layout, []Change{{Kind: ReplaceFile, Destination: destination, Staged: staged}}, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := transaction.Prepare(); err != nil {
+			t.Fatal(err)
+		}
+		if err := transaction.Apply(); err != nil {
+			t.Fatal(err)
+		}
+		assertFileContent(t, destination, "new-editor")
+		if recovered, err := RecoverInterruptedTransaction(state, layout, logger); err != nil || !recovered {
+			t.Fatalf("editor launcher rollback failed: %v", err)
+		}
+		if existing {
+			assertFileContent(t, destination, "old-editor")
+		} else if fileExists(destination) {
+			t.Fatal("rollback retained the newly created outer editor")
+		}
+		assertFileContent(t, filepath.Join(app, "runtime", "project.json"), "user-project")
 	}
 }
 

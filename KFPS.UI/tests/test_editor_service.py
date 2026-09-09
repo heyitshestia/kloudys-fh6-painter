@@ -234,60 +234,8 @@ class EditorProjectManagerTests(unittest.TestCase):
             self.assertEqual([first, second], preview.requests)
 
 
-class EditorServerReuseTests(unittest.TestCase):
-    def _write_marker(self, paths: AppPaths, root: Path, port: int = 48123):
-        marker = paths.runtime_root / "fabric-editor" / "server.json"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(
-            json.dumps(
-                {
-                    "service": "kfps-fabric-editor",
-                    "pid": 1234,
-                    "port": port,
-                    "root": str(root),
-                    "session_token": "test_editor_session_token_1234567890",
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    def test_active_server_requires_matching_root_and_health_response(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            paths = make_paths(root)
-            self._write_marker(paths, root)
-            service = EditorService(
-                paths,
-                DummyPreview(),
-                DummyDesktop(),
-                DummyLog(),
-            )
-            self.addCleanup(service.close)
-            health = FakeResponse({"ok": True, "root": str(root)})
-
-            with patch(
-                "kfps_ui.editor_service.urllib.request.urlopen",
-                return_value=health,
-            ) as request:
-                url = service._active_server_url()
-
-            self.assertEqual(
-                "http://127.0.0.1:48123/tools/fabric-editor/index.html#session=test_editor_session_token_1234567890",
-                url,
-            )
-            request.assert_called_once_with(
-                "http://127.0.0.1:48123/api/fabric-editor/health",
-                timeout=0.65,
-            )
-
-            self._write_marker(paths, root / "another-install")
-            with patch(
-                "kfps_ui.editor_service.urllib.request.urlopen"
-            ) as foreign_request:
-                self.assertEqual("", service._active_server_url())
-            foreign_request.assert_not_called()
-
-    def test_launch_worker_reuses_server_and_encodes_project_id(self):
+class EditorWindowLaunchTests(unittest.TestCase):
+    def test_launch_worker_preserves_project_and_reports_window_status(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             paths = make_paths(root)
@@ -303,39 +251,36 @@ class EditorServerReuseTests(unittest.TestCase):
                 lambda ok, url, message: completed.append((ok, url, message))
             )
 
-            with (
-                patch.object(
-                    service,
-                    "_active_server_url",
-                    return_value=(
-                        "http://127.0.0.1:48123/"
-                        "tools/fabric-editor/index.html"
-                        "#session=test_editor_session_token_1234567890"
-                    ),
-                ),
-                patch("kfps_ui.editor_service.subprocess.Popen") as popen,
-                patch(
-                    "kfps_ui.editor_service.QDesktopServices.openUrl",
-                    return_value=True,
-                ),
-            ):
+            with patch("kfps_ui.editor_service.launch_editor", return_value="Existing window activated") as launch:
                 service._launch_worker(
-                    root / "tools" / "fabric-editor" / "start_fabric_editor.py",
+                    root / "KFPS.UI" / "editor.py",
                     "Folder/My Project.fabric-project.json",
                     "",
                 )
 
-            popen.assert_not_called()
+            launch.assert_called_once_with(paths, "Folder/My Project.fabric-project.json", "activate", service._cancel_event)
             self.assertEqual(1, len(completed))
             self.assertTrue(completed[0][0])
-            self.assertEqual(
-                completed[0][1],
-                "http://127.0.0.1:48123/tools/fabric-editor/index.html"
-                "?project=Folder%2FMy%20Project.fabric-project.json"
-                "#session=test_editor_session_token_1234567890",
-            )
-            self.assertEqual("Editor opened in your browser.", service.status)
+            self.assertEqual("", completed[0][1])
+            self.assertEqual("Editor opened in its own window.", service.status)
             self.assertTrue(service.running)
+
+    def test_all_launch_actions_and_close_keep_editor_ownership_separate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = make_paths(Path(temporary))
+            service = EditorService(paths, DummyPreview(), DummyDesktop(), DummyLog())
+            self.addCleanup(service.close)
+            service._selected = "chosen-project"
+            with patch.object(service, "_launch") as launch:
+                service.launch()
+                service.launchJsonBrowser()
+                service.launchSelected()
+                self.assertEqual([("", "new"), ("", "json"), ("chosen-project", "")], [call.args for call in launch.call_args_list])
+            with patch("kfps_ui.editor_service.launch_editor") as launch:
+                service.close()
+                service._launch_worker(Path("editor.py"), "", "new")
+                launch.assert_not_called()
+            self.assertTrue(service._cancel_event.is_set())
 
 
 if __name__ == "__main__":

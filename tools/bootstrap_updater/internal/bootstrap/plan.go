@@ -103,8 +103,8 @@ func validateComponentPath(component Component, relative string) error {
 		return err
 	}
 	if component.Target == "install-root" {
-		if !strings.EqualFold(clean, "KFPS.exe") && !strings.EqualFold(clean, "KFPS-Updater.exe") {
-			return fmt.Errorf("install-root component %q may only manage KFPS.exe and KFPS-Updater.exe", component.Name)
+		if !strings.EqualFold(clean, "KFPS.exe") && !strings.EqualFold(clean, "KFPS Editor.exe") && !strings.EqualFold(clean, "KFPS-Updater.exe") {
+			return fmt.Errorf("install-root component %q may only manage KFPS.exe, KFPS Editor.exe and KFPS-Updater.exe", component.Name)
 		}
 		return nil
 	}
@@ -194,15 +194,16 @@ func generatedPythonCachePath(path string) bool {
 
 func sortChanges(changes []Change, installRoot string) {
 	outerLauncher := pathKey(filepath.Join(installRoot, "KFPS.exe"))
+	outerEditor := pathKey(filepath.Join(installRoot, "KFPS Editor.exe"))
 	outerUpdater := pathKey(filepath.Join(installRoot, "KFPS-Updater.exe"))
 	priority := func(change Change) int {
 		switch pathKey(change.Destination) {
-		case outerLauncher:
+		case outerLauncher, outerEditor:
 			return 2
 		case outerUpdater:
 			return 3
 		default:
-			if strings.EqualFold(filepath.Base(change.Destination), "KFPS.exe") {
+			if strings.EqualFold(filepath.Base(change.Destination), "KFPS.exe") || strings.EqualFold(filepath.Base(change.Destination), "KFPS Editor.exe") {
 				return 1
 			}
 			return 0

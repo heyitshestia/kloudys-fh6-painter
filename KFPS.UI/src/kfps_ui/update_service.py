@@ -8,6 +8,7 @@ from PySide6.QtCore import QCoreApplication, QObject, Slot
 
 from .app_paths import AppPaths
 from .log_service import LogService
+from .editor_launch import editor_is_open
 
 
 class UpdateService(QObject):
@@ -18,6 +19,9 @@ class UpdateService(QObject):
 
     @Slot()
     def startUpdate(self):
+        if editor_is_open(self.paths):
+            self.log.append("Close the KFPS Editor window before updating. Save your work there first; KFPS will stay open.", "warning")
+            return
         packaged = self.paths.app_root.name.lower() == "kloudysfh6painter"
         native_updaters = (
             self.paths.app_root.parent / "KFPS-Updater.exe",

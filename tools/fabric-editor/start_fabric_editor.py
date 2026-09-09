@@ -70,6 +70,33 @@ VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 PREVIEW_MAX = 420
 VINYL_RESOURCE_CACHE: dict[tuple[str, int], list[list[tuple[float, float]]]] = {}
+EDITOR_SETTING_KEYS = {
+    "kloudyFabricTheme", "kloudyFabricFavorites", "kloudyFabricFavoriteColors",
+    "kloudyFabricLastColor", "kloudyFabricShortcuts", "kloudyFabricDockState",
+    "kloudyFabricOverlayLayerMode", "kloudyFabricReuseLastFontSize",
+    "kloudyFabricLastFontShapeTransform", "kloudyFabricTextVinylFont",
+    "kloudyFabricTextVinylCustomFont", "kloudyFabricProjectSharingAcknowledged",
+}
+
+
+def _read_preferences() -> dict:
+    try:
+        payload = json.loads(EDITOR_PREFS_MARKER.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    if not isinstance(payload, dict):
+        raise ValueError("The saved editor preferences are not an object.")
+    return payload
+
+
+def _validated_settings(value: object) -> dict:
+    if not isinstance(value, dict) or set(value) - EDITOR_SETTING_KEYS:
+        raise ValueError("invalid editor settings")
+    if any(item is not None and (not isinstance(item, str) or len(item.encode("utf-8")) > 32768) for item in value.values()):
+        raise ValueError("invalid editor setting value")
+    if len(json.dumps(value).encode("utf-8")) > 128 * 1024:
+        raise ValueError("editor settings are too large")
+    return value
 
 
 def _write_json_atomic(path: Path, payload: object) -> None:
@@ -151,7 +178,7 @@ def _clean_filename_base(name: str, fallback: str = "vinyl") -> str:
 def _theme_id_from_name(name: str) -> str:
     base = _clean_filename_base(name, "custom-theme").lower()
     base = re.sub(r"[^a-z0-9._-]+", "-", base).strip(".-_")
-    if base in {"pastel", "dark"}:
+    if base in {"pastel", "dark", "blackout", "whiteout"}:
         base = f"{base}-custom"
     return base or "custom-theme"
 
@@ -160,6 +187,8 @@ def _theme_entries() -> list[dict]:
     entries = [
         {"id": "pastel", "name": "Signature Pink", "builtin": True, "values": {}},
         {"id": "dark", "name": "Dark", "builtin": True, "values": {}},
+        {"id": "blackout", "name": "Blackout", "builtin": True, "values": {}},
+        {"id": "whiteout", "name": "Whiteout", "builtin": True, "values": {}},
     ]
     if not EDITOR_THEME_ROOT.exists():
         return entries
@@ -167,7 +196,7 @@ def _theme_entries() -> list[dict]:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             theme_id = str(payload.get("id") or path.stem)
-            if not theme_id or theme_id in {"pastel", "dark"}:
+            if not theme_id or theme_id in {"pastel", "dark", "blackout", "whiteout"}:
                 continue
             values = payload.get("values")
             if not isinstance(values, dict):
@@ -176,6 +205,7 @@ def _theme_entries() -> list[dict]:
                 "id": theme_id,
                 "name": str(payload.get("name") or theme_id),
                 "builtin": False,
+                "base": payload.get("base") if payload.get("base") in {"pastel", "dark", "blackout", "whiteout"} else "pastel",
                 "values": {str(key): str(value) for key, value in values.items()},
             })
         except Exception:
@@ -184,7 +214,7 @@ def _theme_entries() -> list[dict]:
 
 
 def _theme_exists(theme_id: str) -> bool:
-    if theme_id in {"pastel", "dark"}:
+    if theme_id in {"pastel", "dark", "blackout", "whiteout"}:
         return True
     if not theme_id or "\x00" in theme_id:
         return False
@@ -782,15 +812,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             })
             return
         if parsed.path == EDITOR_PREFS_API:
-            payload = {}
-            if EDITOR_PREFS_MARKER.exists():
-                try:
-                    payload = json.loads(EDITOR_PREFS_MARKER.read_text(encoding="utf-8"))
-                except Exception:
-                    payload = {}
+            try:
+                payload = _read_preferences()
+                settings = _validated_settings(payload.get("settings", {}))
+            except (OSError, ValueError) as err:
+                self._send_json({"error": f"Could not read editor preferences: {err}"}, status=500)
+                return
             theme = str(payload.get("theme") or "")
             self._send_json({
                 "theme": theme if _theme_exists(theme) else None,
+                "settings": settings,
                 "marker": str(EDITOR_PREFS_MARKER),
             })
             return
@@ -907,15 +938,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == EDITOR_PREFS_API:
             try:
                 length = int(self.headers.get("Content-Length") or "0")
-                data = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
-                theme = str(data.get("theme") or "")
-                if not _theme_exists(theme):
-                    raise ValueError("invalid editor theme")
-                _write_json_atomic(EDITOR_PREFS_MARKER, {"theme": theme})
+                if not 0 < length <= 128 * 1024:
+                    raise ValueError("invalid editor preferences size")
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                result = self.server.store_preferences(data)
             except Exception as err:
                 self._send_json({"error": str(err)}, status=400)
                 return
-            self._send_json({"ok": True, "theme": theme, "marker": str(EDITOR_PREFS_MARKER)})
+            self._send_json({"ok": True, **result, "marker": str(EDITOR_PREFS_MARKER)})
             return
         if parsed.path == EDITOR_THEMES_API:
             try:
@@ -934,11 +964,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "format": "kfps_fabric_editor_theme_v1",
                     "id": theme_id,
                     "name": name,
+                    "base": data.get("base") if data.get("base") in {"pastel", "dark", "blackout", "whiteout"} else "pastel",
                     "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     "values": {str(key): str(value) for key, value in values.items()},
                 }
                 _write_json_atomic(target, payload)
-                _write_json_atomic(EDITOR_PREFS_MARKER, {"theme": theme_id})
+                self.server.store_preferences({"theme": theme_id})
             except Exception as err:
                 self._send_json({"error": str(err)}, status=400)
                 return
@@ -1050,8 +1081,35 @@ class EditorServer(socketserver.ThreadingTCPServer):
     def __init__(self, *args, **kwargs):
         self.editor_session_token = secrets.token_urlsafe(32)
         self.autosave_lock = threading.Lock()
+        self.preferences_lock = threading.Lock()
         self.autosave_revision = None
         super().__init__(*args, **kwargs)
+
+    def store_preferences(self, data: object) -> dict:
+        if not isinstance(data, dict) or not data or set(data) - {"theme", "settings"}:
+            raise ValueError("invalid editor preferences")
+        if "theme" in data and (not isinstance(data["theme"], str) or not _theme_exists(data["theme"])):
+            raise ValueError("invalid editor theme")
+        patch = _validated_settings(data.get("settings", {}))
+        theme = data.get("theme", patch.get("kloudyFabricTheme"))
+        if theme is not None and not _theme_exists(theme):
+            raise ValueError("invalid editor theme")
+        with self.preferences_lock:
+            payload = _read_preferences()
+            previous = payload.get("settings", {})
+            settings = {key: value for key, value in previous.items() if key in EDITOR_SETTING_KEYS} if isinstance(previous, dict) else {}
+            for key, value in patch.items():
+                if value is None:
+                    settings.pop(key, None)
+                else:
+                    settings[key] = value
+            _validated_settings(settings)
+            payload["settings"] = settings
+            if theme is not None:
+                payload["theme"] = theme
+                settings["kloudyFabricTheme"] = theme
+            _write_json_atomic(EDITOR_PREFS_MARKER, payload)
+            return payload
 
     def store_autosave(self, payload: dict) -> dict:
         if not isinstance(payload, dict):

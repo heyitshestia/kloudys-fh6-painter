@@ -2,16 +2,11 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
-from urllib.parse import quote
 
-from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot
 
 from .app_paths import AppPaths
 from .desktop_service import DesktopService
@@ -19,6 +14,7 @@ from .log_service import LogService
 from .lifecycle import discard_queued_events
 from .models import DictListModel
 from .preview_service import PreviewService
+from .editor_launch import launch_editor
 
 
 class EditorService(QObject):
@@ -44,7 +40,6 @@ class EditorService(QObject):
         self._cancel_event = threading.Event()
         self._threads: set[threading.Thread] = set()
         self._threads_lock = threading.Lock()
-        self._server_process: subprocess.Popen | None = None
         self._project_model = DictListModel(
             ["name", "path", "modifiedLabel", "shapeLabel", "shapeCount"]
         )
@@ -233,7 +228,7 @@ class EditorService(QObject):
 
     @Slot()
     def launch(self):
-        self._launch("", "")
+        self._launch("", "new")
 
     @Slot()
     def launchJsonBrowser(self):
@@ -355,7 +350,7 @@ class EditorService(QObject):
             self._status = "The editor is already starting."
             self.changed.emit()
             return
-        launcher = self.paths.app_root / "tools" / "fabric-editor" / "start_fabric_editor.py"
+        launcher = self.paths.app_root / "KFPS.UI" / "editor.py"
         if not launcher.is_file():
             self._last_error = f"Editor launcher not found: {launcher}"
             self._status = "The editor could not be started."
@@ -381,7 +376,7 @@ class EditorService(QObject):
 
         self._launching = True
         self._last_error = ""
-        self._status = "Connecting to the local editor..."
+        self._status = "Opening the editor window..."
         self.changed.emit()
         self._start_thread(
             target=self._launch_worker,
@@ -407,87 +402,12 @@ class EditorService(QObject):
         try:
             if self._cancel_event.is_set():
                 return
-            base_url = self._active_server_url()
-            started = False
-            if not base_url:
-                started = True
-                log_path = self.paths.runtime_root / "fabric-editor" / "server.log"
-                log_path.parent.mkdir(parents=True, exist_ok=True)
-                with log_path.open("a", encoding="utf-8") as stream:
-                    flags = (
-                        subprocess.CREATE_NO_WINDOW
-                        if hasattr(subprocess, "CREATE_NO_WINDOW")
-                        else 0
-                    )
-                    self._server_process = subprocess.Popen(
-                        [
-                            self.paths.python_executable,
-                            str(launcher),
-                            "--no-browser",
-                        ],
-                        cwd=self.paths.app_root,
-                        creationflags=flags,
-                        stdout=stream,
-                        stderr=stream,
-                    )
-                deadline = time.monotonic() + 10.0
-                while time.monotonic() < deadline and not self._cancel_event.is_set():
-                    time.sleep(0.12)
-                    base_url = self._active_server_url()
-                    if base_url:
-                        break
-                if not base_url:
-                    if self._cancel_event.is_set():
-                        return
-                    raise RuntimeError(
-                        f"The local editor service did not respond. See {log_path}"
-                    )
-
-            query = ""
-            if project_id:
-                query = f"?project={quote(project_id, safe='')}"
-            elif mode == "json":
-                query = "?browse=json"
-            document_url, separator, fragment = base_url.partition("#")
-            launch_url = f"{document_url}{query}"
-            if separator:
-                launch_url += f"#{fragment}"
-            message = (
-                "Editor service started."
-                if started
-                else "Connected to the existing editor service."
-            )
+            message = launch_editor(self.paths, project_id, mode or "activate", self._cancel_event)
             if not self._closed:
-                self.launchCompleted.emit(True, launch_url, message)
+                self.launchCompleted.emit(True, "", message)
         except Exception as exc:
             if not self._closed:
                 self.launchCompleted.emit(False, "", str(exc))
-
-    def _active_server_url(self) -> str:
-        marker = self.paths.runtime_root / "fabric-editor" / "server.json"
-        try:
-            payload = json.loads(marker.read_text(encoding="utf-8"))
-            if str(payload.get("service") or "") != "kfps-fabric-editor":
-                return ""
-            if Path(str(payload.get("root") or "")).resolve() != self.paths.app_root.resolve():
-                return ""
-            port = int(payload.get("port") or 0)
-            if not 0 < port < 65536:
-                return ""
-            session_token = str(payload.get("session_token") or "")
-            if not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", session_token):
-                return ""
-            health_url = f"http://127.0.0.1:{port}/api/fabric-editor/health"
-            with urllib.request.urlopen(health_url, timeout=0.65) as response:
-                health = json.loads(response.read().decode("utf-8"))
-            if not health.get("ok") or Path(str(health.get("root") or "")).resolve() != self.paths.app_root.resolve():
-                return ""
-            return (
-                f"http://127.0.0.1:{port}/tools/fabric-editor/index.html"
-                f"#session={quote(session_token, safe='')}"
-            )
-        except (OSError, ValueError, TypeError, urllib.error.URLError, json.JSONDecodeError):
-            return ""
 
     @Slot(bool, str, str)
     def _finish_launch(self, ok: bool, url: str, message: str):
@@ -496,16 +416,9 @@ class EditorService(QObject):
         self._launching = False
         self._running = ok
         if ok:
-            opened = QDesktopServices.openUrl(QUrl(url))
-            if opened:
-                self._status = "Editor opened in your browser."
-                self._last_error = ""
-                self.log.append(message)
-            else:
-                self._running = False
-                self._status = "The editor is running, but Windows could not open the browser."
-                self._last_error = f"Open this address manually: {url}"
-                self.log.append(self._last_error, "error")
+            self._status = "Editor opened in its own window."
+            self._last_error = ""
+            self.log.append(message)
         else:
             self._status = "The editor could not be started."
             self._last_error = message
@@ -519,18 +432,8 @@ class EditorService(QObject):
         self._closed = True
         self._cancel_event.set()
         self._change_timer.stop()
-        process = self._server_process
-        self._server_process = None
-        if process is not None and process.poll() is None:
-            try:
-                process.terminate()
-                process.wait(timeout=1.5)
-            except Exception:
-                try:
-                    process.kill()
-                    process.wait(timeout=1.5)
-                except Exception:
-                    pass
+        # The editor owns its process and storage service; closing KFPS only
+        # disconnects this project-list client.
         with self._threads_lock:
             threads = list(self._threads)
         for thread in threads:

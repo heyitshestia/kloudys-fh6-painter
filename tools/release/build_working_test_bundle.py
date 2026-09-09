@@ -209,6 +209,9 @@ def main() -> int:
         shutil.copytree(source_root, app_root)
         (app_root / "BUILD_COMMIT").write_text(commit + "\n", encoding="ascii")
         shutil.copy2(app_root / "KFPS.exe", release_root / "KFPS.exe")
+        editor_launcher = app_root / "KFPS Editor.exe"
+        if editor_launcher.is_file():
+            shutil.copy2(editor_launcher, release_root / editor_launcher.name)
         (release_root / "Images").mkdir()
 
         if args.python_source:

@@ -16,6 +16,11 @@ idMatches.forEach((id) => idCounts.set(id, (idCounts.get(id) || 0) + 1));
 const duplicates = [...idCounts].filter(([, count]) => count > 1);
 assert.deepEqual(duplicates, [], "HTML ids must be unique");
 
+const namePrompt = html.match(/<dialog id="textPromptDialog"[\s\S]*?<\/dialog>/)[0];
+assert.match(namePrompt, /id="textPromptCancel"[^>]*type="button"/, "Cancel must not be the implicit Enter submitter");
+assert.equal((namePrompt.match(/type="submit"/g) || []).length, 1, "The name prompt must have exactly one submit action");
+assert.match(namePrompt, /id="textPromptConfirm"[^>]*type="submit"/, "Continue must be the default submit action");
+
 const unexplainedButtons = [...html.matchAll(/<button\b([^>]*)>/g)]
   .map((match) => match[1])
   .filter((attributes) => (

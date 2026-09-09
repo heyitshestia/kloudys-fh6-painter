@@ -1,11 +1,12 @@
 param(
-    [string]$Output = ""
+    [string]$Output = "",
+    [switch]$Editor
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 if (-not $Output) {
-    $Output = Join-Path $Root "KFPS.exe"
+    $Output = Join-Path $Root $(if ($Editor) { "KFPS Editor.exe" } else { "KFPS.exe" })
 }
 
 $Compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
@@ -31,6 +32,9 @@ if (Test-Path -LiteralPath $Icon) {
     $Args += "/win32icon:$Icon"
 }
 $Args += $Source
+if ($Editor) {
+    $Args += "/define:KFPS_EDITOR"
+}
 
 & $Compiler @Args
 if ($LASTEXITCODE -ne 0) {

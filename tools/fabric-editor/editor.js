@@ -1,6 +1,8 @@
 /* global fabric, KfpsFabricAdapter */
 "use strict";
 
+const editorSettings = window.KfpsEditorPreferences || localStorage;
+
 const FH6_BOUNDS = { left: -1000, top: -1000, width: 2000, height: 2000 };
 const LEGACY_RECTANGLE_TYPES = new Set([1, 2]);
 const LEGACY_ELLIPSE_TYPES = new Set([8, 16]);
@@ -11,6 +13,10 @@ const VINYL_RESOURCE_BASES = [
 ];
 const STARTUP_HELP_CONFIRMED_KEY = "kloudyFabricStartupHelpConfirmed";
 const STARTUP_HELP_CONFIRMED_API = "/api/fabric-editor/startup-help-confirmed";
+const PROJECT_SHARING_ACK_KEY = "kloudyFabricProjectSharingAcknowledged";
+const PROJECT_SHARING_NOTICE_VERSION = "1";
+let startupProjectWasLoaded = false;
+let projectSharingConfirmationPending = false;
 const EDITOR_PREFS_API = "/api/fabric-editor/preferences";
 const EDITOR_THEMES_API = "/api/fabric-editor/themes";
 const EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave";
@@ -111,7 +117,11 @@ const DEFAULT_SHORTCUTS = {
 const BUILTIN_EDITOR_THEMES = [
   { id: "pastel", name: "Signature Pink", builtin: true, values: {} },
   { id: "dark", name: "Dark", builtin: true, values: {} },
+  { id: "blackout", name: "Blackout", builtin: true, values: {} },
+  { id: "whiteout", name: "Whiteout", builtin: true, values: {} },
 ];
+
+const THEME_MAIN_FIELDS = ["--shell", "--panel", "--text", "--accent", "--fabric-canvas-bg", "--line"];
 
 const THEME_FIELDS = [
   ["--bg", "App background"],
@@ -290,6 +300,7 @@ let favoriteColors = loadFavoriteColors();
 let selectedFavoriteColorSlot = 0;
 let editorThemes = new Map(BUILTIN_EDITOR_THEMES.map((theme) => [theme.id, theme]));
 let themeAdjustRestoreTheme = null;
+let themeAdjustSaving = false;
 let shapeEyedropperActive = false;
 let activeToolMode = "select";
 let overlaySampler = null;
@@ -306,7 +317,7 @@ let guideRenderQueued = false;
 let lastSnapMessageAt = 0;
 let snapOverlayObjects = [];
 let transformAnchorSnapshot = null;
-let reuseLastFontSize = localStorage.getItem("kloudyFabricReuseLastFontSize") === "true";
+let reuseLastFontSize = editorSettings.getItem("kloudyFabricReuseLastFontSize") === "true";
 let lastFontShapeTransform = loadLastFontShapeTransform();
 let selectedShapeOutlineObjects = new Set();
 let selectedShapeOutlineHelpers = new Map();
@@ -320,7 +331,7 @@ let pendingDialogColor = null;
 let dialogColorFrame = null;
 let vBoxSelectActive = false;
 let shortcuts = loadShortcuts();
-let overlayLayerMode = normalizeOverlayLayerMode(localStorage.getItem(OVERLAY_LAYER_MODE_KEY));
+let overlayLayerMode = normalizeOverlayLayerMode(editorSettings.getItem(OVERLAY_LAYER_MODE_KEY));
 let maskPreviewOutlines = new Map();
 let maskPreviewCutouts = new Map();
 let layerListRows = new Map();
@@ -385,7 +396,7 @@ let editorTourState = null;
 const TEXT_VINYL_SOURCE_FLAG = "kfps_text_vinyl";
 
 try {
-  const savedColor = JSON.parse(localStorage.getItem("kloudyFabricLastColor") || "null");
+  const savedColor = JSON.parse(editorSettings.getItem("kloudyFabricLastColor") || "null");
   if (Array.isArray(savedColor) && savedColor.length >= 3) rememberedColor = savedColor;
 } catch (_err) {
   rememberedColor = [255, 255, 255, 255];
@@ -460,7 +471,7 @@ function eventToShortcutCombo(event) {
 
 function loadShortcuts() {
   try {
-    const saved = JSON.parse(localStorage.getItem(SHORTCUTS_KEY) || "{}");
+    const saved = JSON.parse(editorSettings.getItem(SHORTCUTS_KEY) || "{}");
     const merged = { ...DEFAULT_SHORTCUTS };
     Object.keys(DEFAULT_SHORTCUTS).forEach((action) => {
       const combo = normalizeShortcutCombo(saved[action]);
@@ -473,7 +484,7 @@ function loadShortcuts() {
 }
 
 function saveShortcuts() {
-  localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(shortcuts));
+  editorSettings.setItem(SHORTCUTS_KEY, JSON.stringify(shortcuts));
 }
 
 function shortcutFor(action) {
@@ -669,6 +680,10 @@ function populateEditorThemeSelect(selectedTheme = null) {
 }
 
 function saveEditorThemePreference(theme) {
+  if (window.KfpsEditorPreferences) {
+    editorSettings.setItem("kloudyFabricTheme", normalizeTheme(theme));
+    return;
+  }
   fetch(EDITOR_PREFS_API, {
     method: "POST",
     headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
@@ -681,6 +696,7 @@ function saveEditorThemePreference(theme) {
 function applyEditorTheme(theme, options = {}) {
   const safeTheme = normalizeTheme(theme);
   const entry = themeById(safeTheme);
+  document.documentElement.dataset.editorThemeBase = entry.builtin ? safeTheme : (entry.base || "pastel");
   if (entry.builtin) {
     clearCustomThemeProperties();
     document.documentElement.dataset.editorTheme = safeTheme;
@@ -688,7 +704,7 @@ function applyEditorTheme(theme, options = {}) {
     document.documentElement.dataset.editorTheme = "custom";
     applyCustomThemeValues(entry.values || {});
   }
-  localStorage.setItem("kloudyFabricTheme", safeTheme);
+  if (!options.preview) editorSettings.setItem("kloudyFabricTheme", safeTheme);
   if (options.persist !== false) saveEditorThemePreference(safeTheme);
   populateEditorThemeSelect(safeTheme);
   if (canvas) {
@@ -703,7 +719,7 @@ function applyEditorTheme(theme, options = {}) {
 async function loadEditorThemes() {
   editorThemes = new Map(BUILTIN_EDITOR_THEMES.map((theme) => [theme.id, theme]));
   try {
-    const response = await fetch(EDITOR_THEMES_API, { cache: "no-store" });
+    const response = await fetch(EDITOR_THEMES_API, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (response.ok) {
       const data = await response.json();
       (Array.isArray(data.themes) ? data.themes : []).forEach((theme) => {
@@ -712,6 +728,7 @@ async function loadEditorThemes() {
           id: String(theme.id),
           name: String(theme.name || theme.id),
           builtin: Boolean(theme.builtin),
+          base: BUILTIN_EDITOR_THEMES.some(entry => entry.id === theme.base) ? theme.base : "pastel",
           values: theme.values && typeof theme.values === "object" ? theme.values : {},
         });
       });
@@ -719,7 +736,7 @@ async function loadEditorThemes() {
   } catch (_err) {
     // Direct-file/browser fallback keeps built-in themes only.
   }
-  populateEditorThemeSelect(localStorage.getItem("kloudyFabricTheme") || "pastel");
+  populateEditorThemeSelect(editorSettings.getItem("kloudyFabricTheme") || "pastel");
 }
 
 async function loadEditorThemePreference() {
@@ -742,11 +759,11 @@ function themeFieldInputRow(key, label, value) {
   const safeValue = String(value || "");
   const isHex = /^#[0-9a-f]{6}$/i.test(safeValue);
   return `
-    <label class="themeAdjustRow">
-      <span>${escapeHtml(label)}</span>
-      <input class="themeValueInput" data-theme-var="${escapeHtml(key)}" value="${escapeHtml(safeValue)}" spellcheck="false">
-      ${isHex ? `<input class="themeColorInput" type="color" value="${escapeHtml(safeValue)}" data-theme-color-for="${escapeHtml(key)}">` : ""}
-    </label>
+    <div class="themeAdjustRow">
+      <label for="theme-${escapeHtml(key.slice(2))}">${escapeHtml(label)}</label>
+      ${isHex ? `<input class="themeColorInput" type="color" aria-label="${escapeHtml(label)} color" value="${escapeHtml(safeValue)}" data-theme-color-for="${escapeHtml(key)}">` : '<span></span>'}
+      <input id="theme-${escapeHtml(key.slice(2))}" class="themeValueInput" data-theme-var="${escapeHtml(key)}" value="${escapeHtml(safeValue)}" spellcheck="false" aria-label="${escapeHtml(label)} value">
+    </div>
   `;
 }
 
@@ -758,27 +775,25 @@ function themeColorInput(fields, key) {
   return [...(fields?.querySelectorAll(".themeColorInput") || [])].find((input) => input.dataset.themeColorFor === key) || null;
 }
 
-function openThemeAdjustDialog() {
-  const dialog = $("themeAdjustDialog");
-  if (!dialog) return;
-  themeAdjustRestoreTheme = normalizeTheme($("editorThemeSelect")?.value || localStorage.getItem("kloudyFabricTheme") || "pastel");
-  const current = themeById(themeAdjustRestoreTheme);
-  const values = themeFieldCurrentValues();
-  const nameInput = $("themeAdjustName");
-  if (nameInput) nameInput.value = current.builtin ? `${current.name} Custom` : current.name;
+function renderThemeAdjustFields(values) {
   const fields = $("themeAdjustFields");
   if (fields) {
-    fields.innerHTML = THEME_FIELDS
-      .map(([key, label]) => themeFieldInputRow(key, label, values[key]))
-      .join("");
+    const basicLabels = { "--shell": "Window", "--panel": "Panels", "--text": "Text", "--accent": "Accent", "--fabric-canvas-bg": "Canvas", "--line": "Borders" };
+    const rows = keys => THEME_FIELDS.filter(([key]) => keys.includes(key))
+      .map(([key, label]) => themeFieldInputRow(key, basicLabels[key] || label, values[key])).join("");
+    fields.innerHTML = `<div class="themeColorGrid">${rows(THEME_MAIN_FIELDS)}</div>
+      <details class="themeAdvanced"><summary>More colors</summary><div class="themeColorGrid">${rows(THEME_FIELDS.map(([key]) => key).filter(key => !THEME_MAIN_FIELDS.includes(key)))}</div></details>`;
     fields.querySelectorAll(".themeValueInput").forEach((input) => {
       input.addEventListener("input", () => {
         const key = input.dataset.themeVar;
-        if (key) document.documentElement.style.setProperty(key, input.value);
+        const valid = CSS.supports("color", input.value);
+        input.setAttribute("aria-invalid", String(!valid));
+        if (key && valid) document.documentElement.style.setProperty(key, input.value);
         const color = themeColorInput(fields, key);
         if (color && /^#[0-9a-f]{6}$/i.test(input.value)) color.value = input.value;
         syncDerivedThemeRgb(themeFieldCurrentValues());
         applyEditorThemePreviewRefresh();
+        updateThemeContrastStatus();
       });
     });
     fields.querySelectorAll(".themeColorInput").forEach((input) => {
@@ -792,6 +807,50 @@ function openThemeAdjustDialog() {
       });
     });
   }
+  updateThemeContrastStatus();
+}
+
+function updateThemeContrastStatus() {
+  const invalid = Boolean($("themeAdjustFields")?.querySelector('[aria-invalid="true"]'));
+  const values = themeFieldCurrentValues();
+  const luminance = hex => {
+    const rgb = hexToRgbString(hex);
+    if (!rgb) return null;
+    const linear = rgb.split(",").map(value => Number(value) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  };
+  const ratios = ["--text", "--muted"].flatMap(text => ["--shell", "--panel", "--panel2", "--panel3", "--dialog-bg", "--dialog-header"].map(surface => {
+    const a = luminance(values[text]), b = luminance(values[surface]);
+    return a === null || b === null ? null : (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }));
+  const minimum = ratios.every(value => value !== null) ? Math.min(...ratios) : null;
+  const status = $("themeAdjustStatus");
+  if (status) {
+    status.textContent = invalid ? "Invalid color value" : minimum === null ? "Text contrast: unavailable for these colors" : `${minimum < 4.5 ? "Low text contrast" : "Text contrast"}: ${minimum.toFixed(1)}:1`;
+    status.dataset.warning = String(invalid || (minimum !== null && minimum < 4.5));
+  }
+  if ($("saveThemeAdjust")) $("saveThemeAdjust").disabled = themeAdjustSaving || invalid;
+}
+
+function previewThemeAdjustBase() {
+  applyEditorTheme($("themeAdjustBase").value, { persist: false, preview: true });
+  renderThemeAdjustFields(themeFieldCurrentValues());
+}
+
+function openThemeAdjustDialog() {
+  const dialog = $("themeAdjustDialog");
+  if (!dialog || themeAdjustSaving) return;
+  themeAdjustRestoreTheme = normalizeTheme($("editorThemeSelect")?.value || editorSettings.getItem("kloudyFabricTheme") || "pastel");
+  const current = themeById(themeAdjustRestoreTheme);
+  $("themeAdjustName").value = current.builtin ? `${current.name} Custom` : current.name;
+  $("themeAdjustBase").replaceChildren(...[...editorThemes.values()].map(theme => {
+    const option = document.createElement("option");
+    option.value = theme.id;
+    option.textContent = theme.name;
+    return option;
+  }));
+  $("themeAdjustBase").value = themeAdjustRestoreTheme;
+  renderThemeAdjustFields(themeFieldCurrentValues());
   try {
     if (!dialog.open) dialog.showModal();
   } catch (_err) {
@@ -809,18 +868,21 @@ function applyEditorThemePreviewRefresh() {
 }
 
 async function saveAdjustedTheme() {
+  if (themeAdjustSaving || $("themeAdjustFields")?.querySelector('[aria-invalid="true"]')) return;
   const name = cleanProjectBaseName($("themeAdjustName")?.value || "Custom Theme", "Custom Theme");
   const values = {};
   document.querySelectorAll(".themeValueInput[data-theme-var]").forEach((input) => {
     values[input.dataset.themeVar] = input.value;
   });
-  const saveButton = $("saveThemeAdjust");
-  if (saveButton) saveButton.disabled = true;
+  themeAdjustSaving = true;
+  const controls = $("themeAdjustDialog").querySelectorAll("input, select, button");
+  controls.forEach(control => { control.disabled = true; });
   try {
     const response = await fetch(EDITOR_THEMES_API, {
       method: "POST",
       headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, values }),
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ name, values, base: document.documentElement.dataset.editorThemeBase || "pastel" }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -834,11 +896,14 @@ async function saveAdjustedTheme() {
     showError("Theme save failed", err);
     setStatus(`Theme save failed: ${err.message || err}`);
   } finally {
-    if (saveButton) saveButton.disabled = false;
+    themeAdjustSaving = false;
+    controls.forEach(control => { control.disabled = false; });
+    updateThemeContrastStatus();
   }
 }
 
 function closeThemeAdjustDialog({ restore = true } = {}) {
+  if (themeAdjustSaving) return;
   if (restore && themeAdjustRestoreTheme) applyEditorTheme(themeAdjustRestoreTheme, { persist: false });
   themeAdjustRestoreTheme = null;
   $("themeAdjustDialog")?.close();
@@ -1977,7 +2042,7 @@ function hexToRgb(hex, alpha) {
 
 function loadFavoriteColors() {
   try {
-    const saved = JSON.parse(localStorage.getItem("kloudyFabricFavoriteColors") || "[]");
+    const saved = JSON.parse(editorSettings.getItem("kloudyFabricFavoriteColors") || "[]");
     if (!Array.isArray(saved)) return [];
     return saved.map((color) => color ? normalizeColor(color) : null).slice(0, FAVORITE_COLOR_SLOTS);
   } catch (_err) {
@@ -1987,7 +2052,7 @@ function loadFavoriteColors() {
 
 function loadFavoriteShapes() {
   try {
-    const saved = JSON.parse(localStorage.getItem("kloudyFabricFavorites") || "[]");
+    const saved = JSON.parse(editorSettings.getItem("kloudyFabricFavorites") || "[]");
     return new Set(Array.isArray(saved) ? saved.map(String) : []);
   } catch (_err) {
     return new Set();
@@ -1996,7 +2061,7 @@ function loadFavoriteShapes() {
 
 function loadLastFontShapeTransform() {
   try {
-    const saved = JSON.parse(localStorage.getItem("kloudyFabricLastFontShapeTransform") || "null");
+    const saved = JSON.parse(editorSettings.getItem("kloudyFabricLastFontShapeTransform") || "null");
     if (!saved || typeof saved !== "object") return null;
     return {
       scaleX: Number(saved.scaleX) || 1,
@@ -2021,11 +2086,11 @@ function rememberFontShapeTransform(object) {
     angle: Number(object.angle) || 0,
     skewX: Number(object.skewX) || 0,
   };
-  localStorage.setItem("kloudyFabricLastFontShapeTransform", JSON.stringify(lastFontShapeTransform));
+  editorSettings.setItem("kloudyFabricLastFontShapeTransform", JSON.stringify(lastFontShapeTransform));
 }
 
 function saveFavoriteColors() {
-  localStorage.setItem("kloudyFabricFavoriteColors", JSON.stringify(favoriteColors));
+  editorSettings.setItem("kloudyFabricFavoriteColors", JSON.stringify(favoriteColors));
 }
 
 function activateDockPanel(panelId) {
@@ -2055,7 +2120,7 @@ function activateDockPanel(panelId) {
 
 function readDockState() {
   try {
-    const value = JSON.parse(localStorage.getItem(EDITOR_DOCK_KEY) || "{}");
+    const value = JSON.parse(editorSettings.getItem(EDITOR_DOCK_KEY) || "{}");
     return value && typeof value === "object" ? value : {};
   } catch (_err) {
     return {};
@@ -2064,7 +2129,7 @@ function readDockState() {
 
 function writeDockState(patch = {}) {
   const current = readDockState();
-  localStorage.setItem(EDITOR_DOCK_KEY, JSON.stringify({ ...current, ...patch }));
+  editorSettings.setItem(EDITOR_DOCK_KEY, JSON.stringify({ ...current, ...patch }));
 }
 
 function setDockVisible(visible, options = {}) {
@@ -3518,7 +3583,7 @@ async function makeFabricObject(shape, name = null) {
   observeEditorObjectId(editorId);
   object.kloudy = {
     editor_id: editorId,
-    name: name || (resolved ? shapeDisplayName(resolved.family, resolved.index) : (shape.shape_name || typeLabel(typeCode))),
+    name: name || (typeof shape.shape_name === "string" && shape.shape_name) || (resolved ? shapeDisplayName(resolved.family, resolved.index) : typeLabel(typeCode)),
     type: typeCode,
     type_word: Number.isFinite(resolvedShapeWord) ? resolvedShapeWord : (typeCode & 0xffff),
     resource_family: resolved?.family || null,
@@ -3625,7 +3690,7 @@ async function loadShapeNames() {
 
 function rememberColor(color) {
   rememberedColor = normalizeColor(color);
-  localStorage.setItem("kloudyFabricLastColor", JSON.stringify(rememberedColor));
+  editorSettings.setItem("kloudyFabricLastColor", JSON.stringify(rememberedColor));
   refreshColorUi();
 }
 
@@ -5421,7 +5486,7 @@ function bringGuidesToBack() {
 
 function setOverlayLayerMode(mode) {
   overlayLayerMode = normalizeOverlayLayerMode(mode);
-  localStorage.setItem(OVERLAY_LAYER_MODE_KEY, overlayLayerMode);
+  editorSettings.setItem(OVERLAY_LAYER_MODE_KEY, overlayLayerMode);
   if ($("overlayLayerMode")) $("overlayLayerMode").value = overlayLayerMode;
   layerEditorHelpers();
   canvas?.requestRenderAll();
@@ -8762,6 +8827,7 @@ async function saveEditorJsonToAppFolder(name, payload) {
   const response = await fetch(EDITOR_EXPORT_API, {
     method: "POST",
     headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(30000),
     body: JSON.stringify({ name, payload }),
   });
   const data = await response.json().catch(() => ({}));
@@ -8777,6 +8843,7 @@ async function saveProjectToAppFolder(name, payload, overwrite = false) {
   const response = await fetch(PROJECT_SAVE_API, {
     method: "POST",
     headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(30000),
     body,
   });
   const data = await response.json().catch(() => ({}));
@@ -9767,8 +9834,8 @@ function loadTextVinylFontPreference() {
   const select = $("textVinylFontSelect");
   const custom = $("textVinylCustomFont");
   if (!select || !custom) return;
-  const saved = localStorage.getItem(TEXT_VINYL_FONT_KEY);
-  const savedCustom = localStorage.getItem(TEXT_VINYL_CUSTOM_FONT_KEY);
+  const saved = editorSettings.getItem(TEXT_VINYL_FONT_KEY);
+  const savedCustom = editorSettings.getItem(TEXT_VINYL_CUSTOM_FONT_KEY);
   if (savedCustom) custom.value = savedCustom;
   if (saved && [...select.options].some((option) => option.value === saved)) {
     select.value = saved;
@@ -9780,8 +9847,8 @@ function saveTextVinylFontPreference() {
   const select = $("textVinylFontSelect");
   const custom = $("textVinylCustomFont");
   if (!select || !custom) return;
-  localStorage.setItem(TEXT_VINYL_FONT_KEY, select.value);
-  localStorage.setItem(TEXT_VINYL_CUSTOM_FONT_KEY, custom.value || "");
+  editorSettings.setItem(TEXT_VINYL_FONT_KEY, select.value);
+  editorSettings.setItem(TEXT_VINYL_CUSTOM_FONT_KEY, custom.value || "");
 }
 
 function renderTextVinylMask(text, options) {
@@ -11310,7 +11377,7 @@ function toggleFavorite(family, index) {
   const key = `${family}:${index}`;
   if (favorites.has(key)) favorites.delete(key);
   else favorites.add(key);
-  localStorage.setItem("kloudyFabricFavorites", JSON.stringify([...favorites]));
+  editorSettings.setItem("kloudyFabricFavorites", JSON.stringify([...favorites]));
   renderShapeGrid();
 }
 
@@ -12593,6 +12660,59 @@ async function writeStartupHelpConfirmed() {
   return null;
 }
 
+function maybeShowProjectSharingNotice() {
+  if (editorSettings.getItem(PROJECT_SHARING_ACK_KEY) === PROJECT_SHARING_NOTICE_VERSION) return false;
+  const dialog = $("projectSharingDialog");
+  if (!dialog) return false;
+  $("projectSharingAcknowledge").checked = false;
+  $("projectSharingContinue").disabled = true;
+  $("projectSharingError").hidden = true;
+  if (!dialog.open) dialog.showModal();
+  return true;
+}
+
+async function continueEditorStartup() {
+  if (maybeShowProjectSharingNotice()) return;
+  if (!startupProjectWasLoaded) await maybeShowAutosaveRecovery();
+  if (startupBrowseMode() === "json") openJsonBrowser();
+}
+
+async function confirmProjectSharingNotice() {
+  const checkbox = $("projectSharingAcknowledge");
+  if (!checkbox?.checked || projectSharingConfirmationPending) return;
+  const button = $("projectSharingContinue");
+  const error = $("projectSharingError");
+  const previous = editorSettings.getItem(PROJECT_SHARING_ACK_KEY);
+  let saved = false;
+  projectSharingConfirmationPending = true;
+  button.disabled = checkbox.disabled = true;
+  error.hidden = true;
+  try {
+    editorSettings.setItem(PROJECT_SHARING_ACK_KEY, PROJECT_SHARING_NOTICE_VERSION);
+    if (window.KfpsEditorPreferences && !await KfpsEditorPreferences.flush()) {
+      throw new Error("Your acknowledgment could not be saved. Please try Continue again.");
+    }
+    if (location.protocol === "file:" && localStorage.getItem(PROJECT_SHARING_ACK_KEY) !== PROJECT_SHARING_NOTICE_VERSION) {
+      throw new Error("Browser storage is unavailable. Your acknowledgment could not be saved.");
+    }
+    saved = true;
+  } catch (err) {
+    // A failed save must not become a browser-only acknowledgment on restart.
+    if (previous === null) editorSettings.removeItem(PROJECT_SHARING_ACK_KEY);
+    else editorSettings.setItem(PROJECT_SHARING_ACK_KEY, previous);
+    error.textContent = err.message || String(err);
+    error.hidden = false;
+  } finally {
+    projectSharingConfirmationPending = false;
+    checkbox.disabled = false;
+    button.disabled = !checkbox.checked;
+  }
+  if (saved) {
+    $("projectSharingDialog").close();
+    await continueEditorStartup();
+  }
+}
+
 async function maybeShowStartupHelp() {
   const dialog = $("startupHelpDialog");
   if (!dialog || await readStartupHelpConfirmed()) return false;
@@ -12955,13 +13075,15 @@ function bindUi() {
   restoreDockState();
   bindDockSplitter();
   loadEditorClipboard();
-  const initialTheme = localStorage.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme;
+  const initialTheme = editorSettings.getItem("kloudyFabricTheme") || document.documentElement.dataset.editorTheme;
   loadEditorThemes().then(() => loadEditorThemePreference()).then((serverTheme) => {
     if (!serverTheme) applyEditorTheme(initialTheme, { persist: false });
     if (!serverTheme) saveEditorThemePreference(normalizeTheme(initialTheme));
   });
   $("editorThemeSelect")?.addEventListener("change", (event) => applyEditorTheme(event.target.value));
   $("adjustTheme")?.addEventListener("click", openThemeAdjustDialog);
+  $("themeAdjustBase")?.addEventListener("change", previewThemeAdjustBase);
+  $("resetThemeAdjust")?.addEventListener("click", previewThemeAdjustBase);
   $("startEditorTour")?.addEventListener("click", startEditorTour);
   $("editorTourSkip")?.addEventListener("click", () => stopEditorTour(false));
   $("editorTourBack")?.addEventListener("click", () => nextTourStep(-1));
@@ -12974,6 +13096,11 @@ function bindUi() {
     closeThemeAdjustDialog();
   });
   $("saveThemeAdjust")?.addEventListener("click", saveAdjustedTheme);
+  $("themeAdjustName")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    if (!event.repeat) $("saveThemeAdjust")?.click();
+  });
   $("newCanvas")?.addEventListener("click", startBlankCanvas);
   $("openJsonBrowser")?.addEventListener("click", openJsonBrowser);
   $("closeJsonBrowser")?.addEventListener("click", () => $("jsonBrowserDialog")?.close());
@@ -13041,18 +13168,22 @@ function bindUi() {
   });
   $("textPromptDialog")?.querySelector("form")?.addEventListener("submit", (event) => {
     event.preventDefault();
-    const confirmed = event.submitter?.value === "confirm";
-    const value = confirmed ? $("textPromptInput")?.value ?? "" : null;
+    // Continue is the only submit action, including implicit Enter submission.
+    finishTextPrompt($("textPromptInput")?.value ?? "");
     $("textPromptDialog")?.close();
-    finishTextPrompt(value);
+  });
+  $("textPromptCancel")?.addEventListener("click", () => {
+    finishTextPrompt(null);
+    $("textPromptDialog")?.close();
   });
   $("textPromptDialog")?.addEventListener("cancel", (event) => {
     event.preventDefault();
-    $("textPromptDialog")?.close();
     finishTextPrompt(null);
+    $("textPromptDialog")?.close();
   });
   $("textPromptDialog")?.addEventListener("close", () => {
-    if (textPromptResolver) finishTextPrompt(null);
+    // A queued close event must not cancel a replacement prompt already open.
+    if (!$("textPromptDialog").open && textPromptResolver) finishTextPrompt(null);
   });
   $("shortcutsBtn")?.addEventListener("click", () => $("shortcutsDialog")?.showModal());
   $("openShortcutsFromHelp")?.addEventListener("click", () => {
@@ -13060,6 +13191,11 @@ function bindUi() {
     $("shortcutsDialog")?.showModal();
   });
   $("closeShortcuts")?.addEventListener("click", () => $("shortcutsDialog")?.close());
+  $("projectSharingDialog")?.addEventListener("cancel", event => event.preventDefault());
+  $("projectSharingAcknowledge")?.addEventListener("change", () => {
+    $("projectSharingContinue").disabled = !$("projectSharingAcknowledge").checked;
+  });
+  $("projectSharingContinue")?.addEventListener("click", confirmProjectSharingNotice);
   $("startupHelpConfirm")?.addEventListener("click", async () => {
     if ($("startupHelpDontShow")?.checked) {
       const marker = await writeStartupHelpConfirmed();
@@ -13067,8 +13203,6 @@ function bindUi() {
       setStatus(marker
         ? "Startup help confirmed for this app folder. The full Help menu is available from the Help button in the top toolbar."
         : "Startup help confirmed for this browser. The full Help menu is available from the Help button in the top toolbar.");
-      maybeShowAutosaveRecovery();
-      if (startupBrowseMode() === "json") openJsonBrowser();
       return;
     }
     setStatus("Tick \"I have read and understood this\" before opening the editor.");
@@ -13247,7 +13381,7 @@ function bindUi() {
     $("reuseLastFontSize").checked = reuseLastFontSize;
     $("reuseLastFontSize").addEventListener("change", (event) => {
       reuseLastFontSize = Boolean(event.target.checked);
-      localStorage.setItem("kloudyFabricReuseLastFontSize", String(reuseLastFontSize));
+      editorSettings.setItem("kloudyFabricReuseLastFontSize", String(reuseLastFontSize));
       setStatus(reuseLastFontSize ? "New font shapes reuse the last edited font size." : "New font shapes use viewport placement size.");
     });
   }
@@ -13277,6 +13411,7 @@ function bindUi() {
     }
     if (event.target && event.target.classList?.contains("shortcutCapture")) return;
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+    if (document.querySelector("dialog[open]")) return;
     const toolAction = ["selectTool", "shapeLibrary", "textTool", "pixelArt", "dropper", "guides", "overlay", "sourceTool"].find((action) => shortcutMatches(event, action));
     if (toolAction) {
       event.preventDefault();
@@ -13437,7 +13572,72 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", flushPendingAutosaveToBrowser);
 
-document.addEventListener("DOMContentLoaded", async () => {
+async function executeDesktopOperation(operation, payload = {}) {
+  if (operation === "state") {
+    flushPendingNudgeHistory();
+    return { dirty: documentDirty, saving: projectSaveInProgress || exportSaveInProgress };
+  }
+  if (operation === "close") {
+    flushPendingNudgeHistory();
+    if (payload.action === "save") {
+      await saveProject();
+      if (documentDirty || projectSaveInProgress) return { ok: false, cancelled: true };
+    }
+    const revision = { generation: documentGeneration, history: currentHistoryState(), overlay: overlayRevision };
+    flushPendingAutosaveToBrowser();
+    await flushPendingAutosave();
+    const settingsSaved = window.KfpsEditorPreferences ? await KfpsEditorPreferences.flush() : true;
+    if (revision.generation !== documentGeneration || revision.history !== currentHistoryState() || revision.overlay !== overlayRevision) {
+      return { ok: false, error: "The document changed while preparing to close. Save the new changes first." };
+    }
+    if (!settingsSaved) return { ok: false, error: "The latest editor settings have not reached the app folder." };
+    if (documentDirty && autosaveStatus.serverOk !== true) return { ok: false, error: "The latest recovery has not reached the app folder. Save the project before closing." };
+    return { ok: true };
+  }
+  if (operation !== "open") throw new Error("Unsupported editor window operation.");
+  // An external launch must not replace work underneath a recovery, file, or
+  // confirmation dialog already being handled in this window.
+  let openDialog;
+  while ((openDialog = document.querySelector("dialog[open]"))) {
+    await new Promise(resolve => openDialog.addEventListener("close", resolve, { once: true }));
+  }
+  if (payload.project) {
+    if (!await confirmWorkspaceReplacement(payload.project)) return { cancelled: true };
+    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(payload.project)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadProjectPayload(data.payload, data.name || "project");
+    clearBusy(`Loaded project: ${data.name || payload.project}`);
+  } else if (payload.mode === "new") {
+    await startBlankCanvas();
+  } else if (payload.mode === "json") {
+    await openJsonBrowser();
+  } else if (payload.mode === "tutorial") {
+    const dialog = $("startupHelpDialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (payload.mode !== "tutorial") await maybeShowStartupHelp();
+  return { ok: true };
+}
+
+window.KfpsDesktop = {
+  ready: false,
+  async execute(requestId, operation, payload) {
+    let result;
+    try { result = { ok: true, value: await executeDesktopOperation(operation, payload) }; }
+    catch (err) {
+      result = { ok: false, error: err.message || String(err) };
+      showError("Editor operation failed", err);
+    }
+    window.KfpsDesktopBridge?.completed(requestId, JSON.stringify(result));
+  },
+};
+
+window.addEventListener("kfps-preferences-status", (event) => {
+  if (event.detail?.error) setStatus(event.detail.error);
+});
+
+async function startEditor() {
   initCanvas();
   buildShapeLibrary();
   bindUi();
@@ -13448,8 +13648,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateShapePlacementLabel();
   updateDocumentState();
   renderHistoryList();
-  const loadedStartupProject = await loadStartupProjectFromQuery();
+  startupProjectWasLoaded = await loadStartupProjectFromQuery();
   const startupHelpShown = await maybeShowStartupHelp();
-  if (!loadedStartupProject && !startupHelpShown) maybeShowAutosaveRecovery();
-  if (!startupHelpShown && startupBrowseMode() === "json") openJsonBrowser();
-});
+  if (startupHelpShown) {
+    $("startupHelpDialog").addEventListener("close", continueEditorStartup, { once: true });
+  } else {
+    await continueEditorStartup();
+  }
+  await nextFrame();
+  window.KfpsDesktop.ready = true;
+  if (window.KfpsEditorPreferences?.error) setStatus(KfpsEditorPreferences.error);
+}
+
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startEditor, { once: true });
+else startEditor();

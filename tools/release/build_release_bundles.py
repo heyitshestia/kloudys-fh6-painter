@@ -441,6 +441,9 @@ def build_one(
         shutil.copytree(exported, app_root)
         (app_root / "BUILD_COMMIT").write_text(commit + "\n", encoding="ascii")
         shutil.copy2(app_root / "KFPS.exe", release_root / "KFPS.exe")
+        editor_launcher = app_root / "KFPS Editor.exe"
+        if editor_launcher.is_file():
+            shutil.copy2(editor_launcher, release_root / editor_launcher.name)
         updater = app_root / "KFPS-Updater.exe"
         if not updater.is_file():
             raise RuntimeError("Release source is missing KFPS-Updater.exe.")

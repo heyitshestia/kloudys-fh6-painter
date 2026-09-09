@@ -108,6 +108,16 @@ try {
     if ($channel.schema -ne 'kfps.update-channel.v1' -or $channel.channel -ne 'stable' -or [uint64]$channel.sequence -lt 1) {
         throw "Committed stable channel contract is invalid."
     }
+    $buildInfoText = & $updater --build-info
+    if ($LASTEXITCODE -ne 0) { throw "Committed updater build identity is unavailable." }
+    $buildInfo = $buildInfoText | ConvertFrom-Json
+    $bootstrapVersion = [string]$buildInfo.version
+    if ($buildInfo.schema -ne 'kfps.bootstrap-build.v1' -or $bootstrapVersion -notmatch '^\d+\.\d+(?:\.\d+){0,2}$') {
+        throw "Committed updater build identity is invalid."
+    }
+    if ([version]$bootstrapVersion -lt [version]([string]$channel.updater.version)) {
+        throw "Committed updater would downgrade the published bootstrap version."
+    }
 
     $previousManifestPath = Join-Path $downloadRoot "previous-manifest.json"
     $previousSignaturePath = "$previousManifestPath.sig"
@@ -150,7 +160,7 @@ try {
     $tag = "kfps-update-data-v$version-s$sequence"
     $baseUrl = "https://github.com/$Repository/releases/download/$tag"
     Invoke-Checked {
-        & $publisher build --app-root $repoRoot --python-root $pythonRoot --updater $updater --private $PrivateKeyPath --public $publicKey --output $payloadRoot --base-url $baseUrl --version $version --commit $Commit --bootstrap-version ([string]$channel.updater.version) --sequence $sequence
+        & $publisher build --app-root $repoRoot --python-root $pythonRoot --updater $updater --private $PrivateKeyPath --public $publicKey --output $payloadRoot --base-url $baseUrl --version $version --commit $Commit --bootstrap-version $bootstrapVersion --sequence $sequence
     } "Signed update payload build failed"
 
     $manifestPath = Join-Path $payloadRoot "kfps-update-$version.json"
@@ -177,7 +187,7 @@ try {
             "kfps-$version-application.zip",
             "kfps-$version-python-runtime.zip",
             "kfps-$version-native-launchers.zip",
-            "KFPS-Updater-$($channel.updater.version).exe",
+            "KFPS-Updater-$bootstrapVersion.exe",
             "kfps-update-$version.json",
             "kfps-update-$version.json.sig",
             "SHA256SUMS.txt"

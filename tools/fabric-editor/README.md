@@ -1,27 +1,31 @@
 # KFPS Vinyl Editor
 
-The KFPS Vinyl Editor is the bundled local browser workspace for creating,
+The KFPS Vinyl Editor is the bundled independent desktop workspace for creating,
 tracing, repairing, and organizing FH-compatible vinyl JSON. It uses native
 Forza shape resources and enforces the 3,000-layer game budget.
 
 The editor runs entirely on the local machine. The small local server exists so
-the browser can load bundled shape assets and save projects back into the KFPS
+the embedded browser engine can load bundled shape assets and save projects back into the KFPS
 folder. It does not upload artwork. The server exposes only editor assets and
 rejects mutation requests that did not originate from the editor page.
 
 ## Open The Editor
 
-Use the `Editor` page in KFPS:
+Open `KFPS Editor.exe` beside `KFPS.exe`, or use the `Editor` page in KFPS:
 
 - `New Canvas` opens a blank editor.
 - `Import JSON` opens the editor's JSON browser.
 - Select a saved project and choose `Open Project` to continue it.
-- `Tutorial` resets the first-run guide and opens the editor.
+- `Tutorial` resets the first-run guide for the next editor launch action.
 - `Folder` opens the internal project folder.
 
-KFPS reuses one editor server while the app is running instead of starting a
-new server for every click. Launch errors and the server log are available from
-the native Editor page and Settings.
+Both routes reuse one editor window per installation. The editor owns its local
+server and remains open when KFPS closes. KFPS still lists and previews the same
+projects and receives project/export change notifications. Fabric, the editor
+tools, and project/game JSON formats have not been replaced.
+
+Close the editor before updating KFPS. The editor holds the installation's
+updater lock so an update cannot replace files underneath unsaved work.
 
 ## Save, Recovery, And Export
 
@@ -38,10 +42,49 @@ Projects preserve editor-only organization such as guides, internal groups,
 hidden and locked state, and the reference image. Exported JSON contains only
 the flat vinyl layers needed by KFPS import workflows.
 
-The project title shows `Saved` or `Unsaved`. Closing a tab with unsaved edits
-triggers the browser's normal leave-page warning. Opening another document from
-inside the editor also asks before replacing unsaved work. Recovery is a safety
-net, not a replacement for `Save`.
+In naming prompts, Enter (including numpad Enter) confirms the entered name:
+first Save, Save As, unnamed JSON export, layer rename, and group rename.
+Cancel and Escape discard the prompt. Enter in the theme-name field saves the
+new theme; Enter in the multiline text builder still inserts a newline.
+
+The project title shows `Saved` or `Unsaved`. Closing the desktop window offers
+Save, Discard, or Cancel for unsaved edits. It flushes pending recovery and settings
+before closing; write failures keep the window open unless you explicitly choose
+to close anyway. Discard leaves the last recovery copy available. Opening another
+document, including from KFPS, also asks before replacing unsaved work. Recovery
+is a safety net, not a replacement for `Save`.
+
+## Favorites And Settings
+
+Favorite shapes, favorite colors, theme, shortcuts, dock layout, and text-tool
+preferences are stored in `runtime/fabric-editor/preferences.json`. They are
+loaded before the editor initializes and survive closing/reopening the editor,
+KFPS restarts, and a change of local server port. Rapid changes are coalesced and
+pending writes are completed on normal window close. Failed writes are retried
+and reported; unreadable settings are not silently replaced with defaults.
+
+Existing projects, recovery, exports, and custom themes stay in their established
+folders. Settings that existed only in a previous external browser's storage are
+not automatically accessible to the new desktop profile. They are migrated only
+when available in the current browser origin; no browser profile is scanned.
+
+The original `start_fabric_editor.py` browser path remains available for diagnosis.
+Do not edit the same project in browser and desktop sessions simultaneously.
+
+See `docs/EDITOR_DESKTOP.md` for development, validation, and release requirements.
+
+## Themes
+
+Signature Pink and Dark remain available alongside neutral, matte Blackout and
+Whiteout. Adjust shows six main color controls, a starting-theme selector and
+Reset colors. More colors contains the remaining detailed controls. Text contrast
+status warns about low-contrast edits; invalid color values cannot be saved.
+Cancel restores the original theme. Saved custom themes retain their base styling
+and colors across restarts. Long theme names do not resize the header controls.
+
+Project reloads retain custom layer names. Open dialogs protect the canvas from
+keyboard shortcuts. A stalled explicit save times out after 30 seconds, retaining
+unsaved work and restoring the save controls for retry.
 
 ## Workspace Layout
 
@@ -252,6 +295,14 @@ The hard limit for import, duplication, text, pixel-art conversion, and export i
 3,000 editable vinyl layers.
 
 ## Troubleshooting
+
+The one-time **Sharing Projects And Groups** notice follows the introduction.
+It requires **I acknowledge** before continuing and cannot be dismissed with
+Escape. Share `.fabric-project.json` files to preserve editable groups; exported
+game JSONs must contain flat vinyl layers. The acknowledgment is saved with the
+app-folder editor preferences and survives editor restarts. A failed settings
+write leaves the notice open for retry. Resetting the tutorial does not reset
+this separate acknowledgment.
 
 - If the editor does not open, read the status on the KFPS Editor page.
 - Check `runtime/fabric-editor/server.log` for server startup errors.

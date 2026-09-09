@@ -45,6 +45,15 @@ function Get-KfpsProcesses {
 }
 
 $locks = @(Get-KfpsProcesses)
+$editorEntry = Join-Path $rootPath "KFPS.UI\editor.py"
+$editors = @($locks | Where-Object {
+    Test-KfpsCommandReferencesPath -CommandLine ([string]$_.CommandLine) -Expected $editorEntry
+})
+if ($editors.Count -gt 0) {
+    "Close KFPS Editor and save your work before updating. No processes were stopped." |
+        Set-Content -LiteralPath $ReportPath -Encoding ASCII
+    exit 2
+}
 if ($locks.Count -eq 0) {
     exit 0
 }

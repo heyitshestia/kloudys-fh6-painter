@@ -173,6 +173,11 @@ func ValidatePublishedContract(channel Channel, manifest UpdateManifest) error {
 			return fmt.Errorf("component %s: %w", component.Name, err)
 		}
 		claim := func(path, action string) error {
+			if component.Target == "install-root" && strings.EqualFold(path, "KFPS Editor.exe") {
+				if comparison, err := compareVersions(channel.MinimumBootstrap, "1.0.3"); err != nil || comparison < 0 {
+					return fmt.Errorf("the desktop editor launcher requires minimum bootstrap 1.0.3")
+				}
+			}
 			key := component.Target + ":" + pathKey(path)
 			if previous, exists := destinations[key]; exists {
 				return fmt.Errorf("published destination collision at %s between %s and %s", path, previous, action)

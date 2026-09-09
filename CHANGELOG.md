@@ -1,5 +1,14 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.69
+- Added an independent KFPS Editor window and launcher beside KFPS.exe. Start it directly or from KFPS, and keep editing after closing the main app without changing the existing Fabric editor or project/export formats.
+- Moved editor preferences, including favorite shapes, into persistent app-folder storage so they survive editor restarts and local port changes. Favorites stored only in an old external browser profile are not automatically migrated.
+- Added matte Blackout and Whiteout themes with contrasting text and controls. Theme adjustment now starts with six primary colors, a starting-theme selector, Reset colors and a contrast indicator; all previous color options remain under More colors.
+- Fixed Enter confirming naming dialogs without saving, custom layer names being lost on project reload, and canvas shortcuts modifying artwork behind open dialogs. Added bounded save requests and retry checks.
+- Added a one-time acknowledgment explaining that projects preserve editor groups, while exported import JSONs must remain flat. Project sharing, recovery, native close choices and settings persistence have additional regression coverage.
+- Updated the signed bootstrap updater to 1.0.3 to install and repair the independent editor launcher. Updates wait until the editor is closed to protect open work.
+- The desktop host is not a Fabric rewrite or a guarantee of higher frame rates. Very dense projects can still pause during expensive operations.
+
 ## 3.1.68
 - Improved dense native-shape editor rendering and reduced duplicated geometry memory while preserving Fabric, shape identities and export data.
 - Released discarded image and GPU resources more reliably and added recovery from GPU-preview context loss.

@@ -14,6 +14,13 @@ The complete architecture, compatibility rules, diagnostics contract, and public
 
 ## Installation behavior
 
+Version 1.0.3 manages exactly three outer executables: `KFPS.exe`,
+`KFPS Editor.exe`, and `KFPS-Updater.exe`. The editor launcher is included beside
+KFPS in full bundles and signed updates. A manifest managing the outer editor
+requires minimum bootstrap 1.0.3; older updaters first perform a verified handoff.
+Publication reads the committed updater's build identity instead of assuming
+the previously published bootstrap version is still current.
+
 The updater recognizes either the outer release folder or `KloudysFH6Painter` itself. It stages and verifies downloads before writing. Changed files are backed up, every operation is journaled, and a failed or interrupted transaction is rolled back before another update starts.
 
 For the 3.1.28 and 3.1.52 transition, their untouched BAT updater first delivers the inner bootstrap and bootstrap-aware UI from Git. The next Update action runs the EXE, repairs the full package, and installs matching inner and outer updater copies. Pinned 3.1.54 recovery keeps only a tiny BAT shim for its older UI; the first signed update removes both BAT names. The immutable BAT and launcher hashes are recorded in `legacy_bridge_contract.json`.
