@@ -1,5 +1,12 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.73
+- Reduced editor interaction stalls by removing redundant hidden-canvas drawing, repeated mask-stack copies and unchanged mask-coordinate updates. Dense projects still have CPU-bound operations; this is not a guarantee of stutter-free editing.
+- Reduced unnecessary layer-list rebuilding, nudge-history serialization and thumbnail work. Rapidly changing JSON browser sources now keeps the newest request authoritative.
+- Removed the 16-megapixel reference-image cap. Original-resolution color sampling and project data are preserved, with GPU preview sizing adapted to the device. The existing 20 MiB stored-reference and 25 MiB project safeguards remain.
+- Changed the editor's top-left heading to K-FPS for Korean localization only. The English heading remains KFPS Vinyl Editor.
+- Added large-reference save/recovery, preview caching and interaction regressions, alongside native editor, shape, history, localization and sustained-session verification.
+
 ## 3.1.72
 - Added English and Korean editor localization, selected from a compact dropdown at the lower left. The first selection follows Windows display language; saved choices apply when the editor is reopened without discarding the current workspace.
 - Added a one-time arrow notice explaining the language switch. It requires acknowledgment, remembers confirmation across restarts, and remains retryable if settings cannot be saved.

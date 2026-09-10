@@ -875,13 +875,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_png(self, body: bytes, status: int = 200) -> None:
+    def _send_png(self, body: bytes, status: int = 200, etag: str | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "image/png")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "private, no-cache" if etag else "no-store")
+        if etag:
+            self.send_header("ETag", etag)
         self.end_headers()
         self.wfile.write(body)
+
+    def _preview_etag(self, path: Path, preview_path: Path | None = None) -> str:
+        stat = path.stat()
+        preview = preview_path.stat() if preview_path else stat
+        return f'"{self.server.preview_cache_epoch}-{stat.st_mtime_ns:x}-{stat.st_size:x}-{preview.st_mtime_ns:x}-{preview.st_size:x}"'
+
+    def _preview_not_modified(self, etag: str) -> bool:
+        if self.headers.get("If-None-Match") != etag:
+            return False
+        self.send_response(304)
+        self.send_header("Cache-Control", "private, no-cache")
+        self.send_header("ETag", etag)
+        self.end_headers()
+        return True
 
     def _mutation_authorized(self) -> bool:
         expected = str(getattr(self.server, "editor_session_token", ""))
@@ -1016,6 +1032,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 asset_id = (parse_qs(parsed.query).get("id") or [""])[0]
                 path = _asset_path(asset_id)
                 stat = path.stat()
+                etag = self._preview_etag(path)
+                if self._preview_not_modified(etag):
+                    return
                 key = (asset_id, stat.st_mtime_ns, stat.st_size)
                 with self.server.asset_preview_lock:
                     body = self.server.asset_previews.get(key)
@@ -1031,13 +1050,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (OSError, ValueError, TypeError, OverflowError) as err:
                 self._send_json({"error": str(err)}, status=400)
                 return
-            self._send_png(body)
+            self._send_png(body, etag=etag)
             return
         if parsed.path == JSON_PREVIEW_API:
             query = parse_qs(parsed.query)
             try:
                 path = _resolve_browser_id((query.get("id") or [""])[0])
                 preview_path = _existing_generated_preview(path)
+                etag = self._preview_etag(path, preview_path)
+                if self._preview_not_modified(etag):
+                    return
                 body = _read_stable_file_bytes(preview_path) if preview_path else None
                 if not body:
                     body = _render_json_preview(path)
@@ -1046,7 +1068,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as err:
                 self._send_json({"error": str(err)}, status=400)
                 return
-            self._send_png(body)
+            self._send_png(body, etag=etag)
             return
         if not _is_allowed_static_path(parsed.path):
             self._send_json({"error": "not found"}, status=404)
@@ -1227,6 +1249,7 @@ class EditorServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
     def __init__(self, *args, **kwargs):
+        self.preview_cache_epoch = secrets.token_hex(8)
         self.editor_session_token = secrets.token_urlsafe(32)
         self.autosave_lock = threading.Lock()
         self.preferences_lock = threading.Lock()

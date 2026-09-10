@@ -235,9 +235,12 @@ merges adjacent same-color cells where possible.
 
 Reference images are tracing helpers. They can be moved, scaled, faded, sampled,
 and saved with an editable project, but never become exported vinyl layers.
-References are limited to 16 megapixels and 20 MiB of stored source data; projects
-must fit the existing 25 MiB save limit. Oversized replacements leave the current
-reference in place. Resize the source image when it exceeds these limits.
+References have no editor-imposed megapixel cap. Original pixels are retained
+for color sampling and project storage; only the GPU display texture is resized
+when it exceeds the device's texture dimension limit. Large images need more RAM
+and loading time, and remain subject to the browser's image/canvas capabilities.
+The 20 MiB stored-source budget and 25 MiB project save limit still apply.
+References rejected by these storage checks leave the current reference in place.
 
 ## History And Recovery
 
@@ -363,6 +366,37 @@ this separate acknowledgment.
 - If export is blocked, open `Export Check`; it lists the exact layers involved.
 - If the browser closed unexpectedly, reopen the editor and restore the offered
   recovery copy.
+
+## Interaction Performance Boundaries
+
+The Fabric adapter suppresses only the hidden on-screen scene pass while the
+hybrid GPU preview is active. Fabric's render lifecycle, selection/hit testing,
+separate export contexts, and CPU fallback remain active. GPU requests share one
+animation-frame queue. Ending an interaction still restores the authoritative
+Fabric scene; large scenes can remain CPU-bound on slower machines.
+
+Mask helpers reuse one stack snapshot and update coordinates only when their
+transform, interaction state, or viewport changes. Geometry-only commits refresh
+visible layer rows without rebuilding the entire layer index; a queued structural
+refresh always takes precedence. Nudge history tracks all changed leaves and
+retains the conservative full-capture fallback for structural/unknown changes.
+Recovery cadence, full export validation, and project/export formats are unchanged.
+
+JSON-browser requests are latest-wins and time-bounded. Selecting an existing
+browser row retains thumbnail elements. Local preview responses use private HTTP
+revalidation keyed by source/preview file metadata and server lifetime; unchanged
+images avoid rendering again even after the bounded server image cache evicts
+them. Cold directory scans and first-time previews still do real filesystem and
+rendering work; aborting a browser request does not cancel that server-side work.
+
+`tests/benchmark-performance-pipeline.js` measures real native-page interactions
+at 1,400/3,000 layers, dense masks, large selections and synthetic CPU throttling.
+`regression-performance-pipeline.js` and `regression-browser-pipeline.js` cover
+the correctness boundaries above. `soak-performance-pipeline.js` keeps one
+3,000-layer document open for 21 minutes with repeated edits, undo/redo, reference
+replacement, recovery readback and saved-project verification. Use an isolated
+profile and disposable artwork. Do not interpret throttling as measured hardware
+performance or a short benchmark as proof that all stalls/leaks are eliminated.
 
 ## Developer Checks
 

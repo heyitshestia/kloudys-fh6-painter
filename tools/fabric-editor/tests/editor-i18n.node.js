@@ -18,6 +18,7 @@ function fixture(system = "ko-KR", saved = null, query = "", desktopSystem = nul
 }
 let t = fixture();
 assert.equal(t.language, "ko");
+assert.equal(t.t("KFPS Vinyl Editor"), "K-FPS");
 assert.equal(t.t("Save"), "저장");
 assert.equal(t.familyLabel("Primitives"), "기본 도형");
 assert.equal(t.shapeLabel("Square"), "정사각형");
@@ -40,6 +41,7 @@ assert.equal(fixture("en-US", "bad").language, "en");
 assert.equal(fixture("en-US", null, "", "ko_KR").language, "ko");
 assert.equal(fixture("en-US", "en", "", "ko_KR").language, "en");
 t = fixture("en-US");
+assert.equal(t.t("KFPS Vinyl Editor"), "KFPS Vinyl Editor");
 assert.equal(t.t("Renamed layer to {0}.", "Save {1}"), "Renamed layer to Save {1}.");
 assert.equal(t.familyLabel("Upper_Letters_1"), "Upper Letters 1");
 assert.equal(t.shapeLabel("Square"), "Square");

@@ -78,6 +78,18 @@
     return transform;
   }
 
+  function installSceneRenderGate(canvas, shouldSkip) {
+    const renderObjects = canvas._renderObjects;
+    if (typeof renderObjects !== "function") return false;
+    // Keep Fabric's render lifecycle and hit-testing intact. Only the hidden
+    // on-screen scene is redundant; exports and other contexts still render.
+    canvas._renderObjects = function (context, objects) {
+      if (context === this.contextContainer && shouldSkip()) return;
+      return renderObjects.call(this, context, objects);
+    };
+    return true;
+  }
+
   // KFPS never imports or serializes SVG through Fabric. Keep that boundary
   // explicit while the supported Fabric migration remains performance-gated.
   function unsupportedSvgOperation() {
@@ -121,6 +133,7 @@
   }
 
   global.KfpsFabricAdapter = Object.freeze({
+    installSceneRenderGate,
     visiblePixelAt,
     bringObjectToFront,
     cancelObjectTransform,

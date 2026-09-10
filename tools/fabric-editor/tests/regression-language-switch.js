@@ -14,6 +14,7 @@ async (page) => {
     await page.reload(); await ready();
     await page.locator("#languageNoticeDialog").waitFor({state: "visible"});
     check(await page.evaluate(() => KfpsI18n.language) === language, "Persisted language not applied");
+    check(await page.locator("h1").innerText() === (language === "ko" ? "K-FPS" : "KFPS Vinyl Editor"), "Localized editor heading is incorrect");
     check(await page.locator("#languageNoticeContinue").isDisabled(), "Acknowledgment must be required");
     await page.keyboard.press("Escape");
     check(await page.locator("#languageNoticeDialog").isVisible(), "Escape dismissed the notice permanently");

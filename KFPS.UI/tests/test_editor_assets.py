@@ -109,6 +109,75 @@ class EditorAssetTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError):
                     get(server, "?id=" + entry["id"])
 
+    def test_preview_revalidation_avoids_rerender_after_lru_eviction(self):
+        with RunningEditorServer() as server:
+            entry = save(server)
+            url = str(server) + entry["preview_url"]
+            with patch.object(fabric_server, "render_editor_asset_preview", return_value=b"preview") as render:
+                with urllib.request.urlopen(url) as response:
+                    etag = response.headers["ETag"]
+                    self.assertEqual("private, no-cache", response.headers["Cache-Control"])
+                    self.assertEqual(b"preview", response.read())
+                server.httpd.asset_previews.clear()
+                request = urllib.request.Request(url, headers={"If-None-Match": etag})
+                with self.assertRaises(urllib.error.HTTPError) as unchanged:
+                    urllib.request.urlopen(request)
+                self.assertEqual(304, unchanged.exception.code)
+                self.assertEqual(1, render.call_count)
+                post_json(server, API, {"action": "rename", "id": entry["id"], "revision": 1, "name": "Changed asset"})
+                with urllib.request.urlopen(request) as changed:
+                    self.assertNotEqual(etag, changed.headers["ETag"])
+                    changed.read()
+                self.assertEqual(2, render.call_count)
+
+    def test_preview_tag_changes_when_source_or_server_changes(self):
+        self.root.mkdir()
+        source = self.root / "source.json"
+        preview = self.root / "source.png"
+        source.write_text("{}", encoding="utf-8")
+        preview.write_bytes(b"preview")
+        with RunningEditorServer() as server:
+            handler = object.__new__(fabric_server.Handler)
+            handler.server = server.httpd
+            first = handler._preview_etag(source, preview)
+            source.write_text('{"shapes":[]}', encoding="utf-8")
+            second = handler._preview_etag(source, preview)
+            self.assertNotEqual(first, second)
+            preview.write_bytes(b"new preview")
+            third = handler._preview_etag(source, preview)
+            self.assertNotEqual(second, third)
+        with RunningEditorServer() as server:
+            handler.server = server.httpd
+            self.assertNotEqual(third, handler._preview_etag(source, preview))
+
+    def test_json_preview_revalidation_checks_file_before_cached_response(self):
+        self.root.mkdir()
+        source = self.root / "source.json"
+        source.write_text(json.dumps({"shapes": [SHAPE]}), encoding="utf-8")
+        with patch.object(fabric_server, "ROOT", self.root), \
+                patch.object(fabric_server, "EXPORTED_JSON_ROOT", self.root), \
+                patch.object(fabric_server, "_render_json_preview", return_value=b"preview") as render, \
+                RunningEditorServer() as server:
+            url = str(server) + fabric_server.JSON_PREVIEW_API + "?id=source.json"
+            with urllib.request.urlopen(url) as response:
+                etag = response.headers["ETag"]
+                self.assertEqual(b"preview", response.read())
+            request = urllib.request.Request(url, headers={"If-None-Match": etag})
+            with self.assertRaises(urllib.error.HTTPError) as unchanged:
+                urllib.request.urlopen(request)
+            self.assertEqual(304, unchanged.exception.code)
+            self.assertEqual(1, render.call_count)
+            source.write_text(json.dumps({"shapes": [SHAPE, SHAPE]}), encoding="utf-8")
+            with urllib.request.urlopen(request) as changed:
+                self.assertNotEqual(etag, changed.headers["ETag"])
+                changed.read()
+            self.assertEqual(2, render.call_count)
+            source.unlink()
+            with self.assertRaises(urllib.error.HTTPError) as missing:
+                urllib.request.urlopen(request)
+            self.assertEqual(400, missing.exception.code)
+            self.assertEqual(2, render.call_count)
+
     def test_thumbnail_preserves_gradient_and_ignores_hidden_shapes(self):
         from PIL import Image
         gradient = dict(SHAPE, type=1048787, type_word=211, resource_family="Gradient_Shapes", resource_index=11, color=[240, 100, 180, 255])

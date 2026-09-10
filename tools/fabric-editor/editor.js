@@ -293,6 +293,7 @@ let lastHistoryAt = 0;
 let nudgeHistoryTimer = null;
 let nudgeHistoryStarted = null;
 let nudgeHistoryPending = false;
+const pendingNudgeObjects = new Set();
 let showFavoritesOnly = false;
 let favorites = loadFavoriteShapes();
 let shapeNames = { families: {} };
@@ -354,6 +355,7 @@ let nextEditorObjectId = 1;
 let editorMutationRunning = false;
 const editorMutationQueue = [];
 let layerRefreshFrame = null;
+let layerRefreshNeedsStructure = false;
 let canvasRenderFrame = null;
 let canvasGeometryFrame = null;
 let visualGridFrame = null;
@@ -380,6 +382,7 @@ let jsonBrowserState = {
   selectedGroupIndex: -1,
   selectedEntryIndex: -1,
   loading: false,
+  request: null,
 };
 let projectBrowserState = {
   entries: [],
@@ -3264,9 +3267,23 @@ function drawHybridOverlay(renderer, viewMatrix) {
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, overlay.texture);
   if (overlay.source !== source) {
+    let uploadCanvas = null;
     try {
+      const width = source.naturalWidth || source.width;
+      const height = source.naturalHeight || source.height;
+      const limit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      let uploadSource = source;
+      // Only the GPU preview is resized; sampling and project data keep the original.
+      if (Math.max(width, height) > limit) {
+        const scale = limit / Math.max(width, height);
+        uploadCanvas = document.createElement("canvas");
+        uploadCanvas.width = Math.max(1, Math.floor(width * scale));
+        uploadCanvas.height = Math.max(1, Math.floor(height * scale));
+        uploadCanvas.getContext("2d").drawImage(source, 0, 0, uploadCanvas.width, uploadCanvas.height);
+        uploadSource = uploadCanvas;
+      }
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadSource);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -3275,6 +3292,8 @@ function drawHybridOverlay(renderer, viewMatrix) {
     } catch (err) {
       console.warn(KfpsI18n.t("GPU source overlay upload skipped."), err);
       return false;
+    } finally {
+      if (uploadCanvas) uploadCanvas.width = uploadCanvas.height = 1;
     }
   }
   hybridMat3FromFabric(overlayImage.calcTransformMatrix(), overlay.world || (overlay.world = new Float32Array(9)));
@@ -4429,6 +4448,7 @@ function resetHistory() {
   nudgeHistoryTimer = null;
   nudgeHistoryPending = false;
   history = [];
+  pendingNudgeObjects.clear();
   historyIndex = -1;
   protectedHistoryIndex = -1;
   lastHistoryReason = "";
@@ -4644,7 +4664,9 @@ function flushPendingNudgeHistory() {
   nudgeHistoryStarted = null;
   if (!nudgeHistoryPending) return false;
   nudgeHistoryPending = false;
-  pushHistory("nudge");
+  const changedObjects = [...pendingNudgeObjects];
+  pendingNudgeObjects.clear();
+  pushHistory("nudge", { changedObjects });
   return true;
 }
 
@@ -4674,6 +4696,7 @@ function establishLoadedHistoryBoundary(reason = "loaded source", options = {}) 
   nudgeHistoryTimer = null;
   nudgeHistoryPending = false;
   const snapshot = captureSharedHistoryState();
+  pendingNudgeObjects.clear();
   snapshot.history_reason = String(reason || "loaded source");
   snapshot.history_at = new Date().toISOString();
   history = [snapshot];
@@ -4742,10 +4765,17 @@ function markOverlayChanged(reason = "reference image changed") {
   setStatus(KfpsI18n.t("{0}. Recovery pending; reference images never export.", humanizeHistoryReason(reason)));
 }
 
+let historyTimeFormatter = null;
+let historyTimeLocale = null;
+
 function historyTimeLabel(value) {
   const date = new Date(value || "");
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(KfpsI18n.locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (!historyTimeFormatter || historyTimeLocale !== KfpsI18n.locale) {
+    historyTimeLocale = KfpsI18n.locale;
+    historyTimeFormatter = new Intl.DateTimeFormat(historyTimeLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+  return historyTimeFormatter.format(date);
 }
 
 function renderHistoryList() {
@@ -4893,12 +4923,16 @@ function round(value) {
 }
 
 function requestCanvasRender() {
-  if (!canvas || canvasRenderFrame) return;
+  if (!canvas) return;
+  if (hybridRenderActive) {
+    requestHybridRender();
+    return;
+  }
+  if (canvasRenderFrame) return;
   canvasRenderFrame = requestAnimationFrame(() => {
     canvasRenderFrame = null;
     if (hybridRenderActive) {
-      hybridRenderNow();
-      canvas.renderTop?.();
+      requestHybridRender();
     } else {
       canvas.requestRenderAll();
     }
@@ -4961,6 +4995,9 @@ function initCanvas() {
     moveCursor: "move",
     freeDrawingCursor: "default",
   });
+  KfpsFabricAdapter.installSceneRenderGate(canvas, () => hybridRenderActive
+    && canvas.lowerCanvasEl.style.visibility === "hidden"
+    && !hybridDisabledReason);
   initHybridRenderer();
   styleAllTransformControls();
   resizeCanvas();
@@ -5023,7 +5060,7 @@ function initCanvas() {
       selectedVinylObjects().forEach((obj) => applyOverlayColorToObject(obj, { remember: true, silent: true }));
     }
     updateSelectionPanel();
-    scheduleRefreshLayers();
+    scheduleRefreshLayers({ geometryOnly: true });
     pushHistory("object edit", { changedObjects: selectedVinylObjects(), validationScheduled: true });
   });
   canvas.on("object:moving", (event) => {
@@ -7038,7 +7075,7 @@ function renderJsonBrowserGroups() {
     button.addEventListener("click", () => {
       jsonBrowserState.selectedGroupIndex = index;
       jsonBrowserState.selectedEntryIndex = group.entries?.length ? 0 : -1;
-      renderJsonBrowserGroups();
+      setBrowserActiveRow(container, ".jsonBrowserCard", index);
       renderJsonBrowserEntries();
     });
     container.appendChild(button);
@@ -7078,7 +7115,8 @@ function renderJsonBrowserEntries() {
     button.append(textWrap, layers);
     button.addEventListener("click", () => {
       jsonBrowserState.selectedEntryIndex = index;
-      renderJsonBrowserEntries();
+      setBrowserActiveRow(container, ".jsonBrowserEntry", index);
+      setJsonBrowserPreview(entry);
     });
     button.addEventListener("dblclick", () => importSelectedBrowserJson());
     container.appendChild(button);
@@ -7087,16 +7125,26 @@ function renderJsonBrowserEntries() {
   setJsonBrowserStatus(selectedJsonBrowserEntry() ? KfpsI18n.t("Choose Select JSON or double-click a row.") : KfpsI18n.t("This source has no JSON entries."));
 }
 
+function setBrowserActiveRow(container, selector, selectedIndex) {
+  container.querySelectorAll(selector).forEach((row, index) => {
+    row.classList.toggle("active", index === selectedIndex);
+  });
+}
+
 async function refreshJsonBrowser() {
-  if (jsonBrowserState.loading) return;
+  jsonBrowserState.request?.abort();
+  const request = new AbortController();
+  jsonBrowserState.request = request;
+  const timeout = setTimeout(() => request.abort(), 15000);
   jsonBrowserState.loading = true;
   setText("jsonBrowserSummary", KfpsI18n.t("Loading JSON browser..."));
   setJsonBrowserStatus(KfpsI18n.t("Scanning app folders..."));
   try {
     const source = $("jsonBrowserSource")?.value || "generated";
     jsonBrowserState.source = source;
-    const response = await fetch(`${JSON_BROWSER_API}?source=${encodeURIComponent(source)}`, { cache: "no-store" });
+    const response = await fetch(`${JSON_BROWSER_API}?source=${encodeURIComponent(source)}`, { cache: "no-store", signal: request.signal });
     const data = await response.json();
+    if (jsonBrowserState.request !== request) return;
     if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     jsonBrowserState.groups = Array.isArray(data.groups) ? data.groups : [];
     jsonBrowserState.selectedGroupIndex = jsonBrowserState.groups.length ? 0 : -1;
@@ -7105,6 +7153,7 @@ async function refreshJsonBrowser() {
     renderJsonBrowserGroups();
     renderJsonBrowserEntries();
   } catch (err) {
+    if (jsonBrowserState.request !== request) return;
     console.error(err);
     jsonBrowserState.groups = [];
     jsonBrowserState.selectedGroupIndex = -1;
@@ -7114,7 +7163,11 @@ async function refreshJsonBrowser() {
     setText("jsonBrowserSummary", KfpsI18n.t("JSON browser failed to load."));
     setJsonBrowserStatus(err.message || String(err));
   } finally {
-    jsonBrowserState.loading = false;
+    clearTimeout(timeout);
+    if (jsonBrowserState.request === request) {
+      jsonBrowserState.request = null;
+      jsonBrowserState.loading = false;
+    }
   }
 }
 
@@ -7152,6 +7205,7 @@ async function openJsonBrowser() {
 }
 
 async function importSelectedBrowserJson() {
+  if (jsonBrowserState.loading) return;
   const entry = selectedJsonBrowserEntry();
   if (!entry) {
     setJsonBrowserStatus(KfpsI18n.t("Select a JSON first."));
@@ -7220,7 +7274,8 @@ function renderProjectBrowser() {
     button.append(textWrap, file);
     button.addEventListener("click", () => {
       projectBrowserState.selectedIndex = index;
-      renderProjectBrowser();
+      setBrowserActiveRow(container, ".projectBrowserEntry", index);
+      setProjectBrowserStatus(KfpsI18n.t("Choose Load Project or double-click a project."));
     });
     button.addEventListener("dblclick", () => loadSelectedProject());
     container.appendChild(button);
@@ -8100,11 +8155,20 @@ function cancelLayerDrag() {
 }
 
 
-function scheduleRefreshLayers() {
+function scheduleRefreshLayers(options = {}) {
+  if (!options.geometryOnly) layerRefreshNeedsStructure = true;
   if (layerRefreshFrame) return;
   layerRefreshFrame = requestAnimationFrame(() => {
     layerRefreshFrame = null;
-    refreshLayers();
+    const rebuild = layerRefreshNeedsStructure;
+    layerRefreshNeedsStructure = false;
+    if (rebuild) refreshLayers();
+    else {
+      invalidateLayerStats();
+      renderVirtualLayerWindow(true);
+      refreshExportValidation();
+      updateHud();
+    }
   });
 }
 
@@ -8233,8 +8297,11 @@ function exportValidation(objects = vinylObjects()) {
   let outside = 0;
   let unresolved = 0;
   let ineffectiveMasks = 0;
+  let normalLayerBelow = false;
   const signatures = new Map();
-  objects.forEach((object, index) => {
+  objects.forEach((object) => {
+    const hasNormalBelow = normalLayerBelow;
+    if (!object.kloudy?.mask) normalLayerBelow = true;
     let shape;
     try {
       shape = objectToShape(object, { includeEditorMeta: false });
@@ -8249,7 +8316,7 @@ function exportValidation(objects = vinylObjects()) {
       zeroScale += 1;
     }
     if (Number(shape.type) > 1000000 && !resolvedResourceForObject(object)) unresolved += 1;
-    if (shape.mask && !objects.slice(0, index).some((candidate) => !candidate.kloudy?.mask)) {
+    if (shape.mask && !hasNormalBelow) {
       ineffectiveMasks += 1;
     }
     try {
@@ -8346,6 +8413,7 @@ function refreshExportValidation(objects = vinylObjects()) {
 }
 
 function refreshLayers() {
+  layerRefreshNeedsStructure = false;
   if (layerRefreshFrame) {
     cancelAnimationFrame(layerRefreshFrame);
     layerRefreshFrame = null;
@@ -8688,7 +8756,7 @@ function makeMaskOutlineForObject(obj) {
 function syncMaskHelperTransform(obj, helper) {
   if (!obj || !helper) return;
   const locked = Boolean(obj.kloudy?.locked);
-  helper.set({
+  const state = {
     left: obj.left,
     top: obj.top,
     scaleX: obj.scaleX,
@@ -8707,8 +8775,16 @@ function syncMaskHelperTransform(obj, helper) {
     lockScalingX: locked,
     lockScalingY: locked,
     lockRotation: locked,
-  });
-  helper.setCoords();
+  };
+  const changed = Object.keys(state).some(key => helper[key] !== state[key]);
+  const viewport = canvas.viewportTransform;
+  if (changed) helper.set(state);
+  // Preserve coordinates when unchanged; in-place pan/zoom still invalidates them.
+  if (changed || !helper.__kloudyMaskViewport
+    || viewport.some((value, index) => helper.__kloudyMaskViewport[index] !== value)) {
+    helper.setCoords();
+    helper.__kloudyMaskViewport = viewport.slice();
+  }
 }
 
 function syncMaskPreviewOutlines() {
@@ -8748,8 +8824,9 @@ function syncMaskPreviewOutlines() {
   });
   if (!orderedHelpers.length) return;
   const helperSet = new Set(orderedHelpers);
-  const nextObjects = canvas.getObjects().filter((object) => !helperSet.has(object)).concat(orderedHelpers);
-  if (!nextObjects.every((object, index) => canvas.getObjects()[index] === object)) {
+  const currentObjects = canvas.getObjects();
+  const nextObjects = currentObjects.filter((object) => !helperSet.has(object)).concat(orderedHelpers);
+  if (!nextObjects.every((object, index) => currentObjects[index] === object)) {
     KfpsFabricAdapter.replaceObjectStack(canvas, nextObjects);
     nextObjects.forEach((object) => { object.canvas = canvas; });
     invalidateVinylObjectRegistry();
@@ -12065,6 +12142,7 @@ function nudgeSelected(dx, dy) {
     settleHybridRender();
   } else canvas.requestRenderAll();
   updateSelectionPanel();
+  objects.forEach(object => pendingNudgeObjects.add(object));
   scheduleNudgeHistory();
   if (objects.length !== selected.length) setStatus(KfpsI18n.t("Nudged {0} unlocked layer(s). Skipped {1} locked layer(s).", objects.length, selected.length - objects.length));
 }
@@ -12086,14 +12164,16 @@ function rebuildOverlaySampler(img) {
   sampleCanvas.width = width;
   sampleCanvas.height = height;
   const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, width, height);
-  overlaySampler = {
-    width,
-    height,
-    data: ctx.getImageData(0, 0, width, height).data,
-  };
-  sampleCanvas.width = 1;
-  sampleCanvas.height = 1;
+  try {
+    ctx.drawImage(img, 0, 0, width, height);
+    overlaySampler = {
+      width,
+      height,
+      data: ctx.getImageData(0, 0, width, height).data,
+    };
+  } finally {
+    sampleCanvas.width = sampleCanvas.height = 1;
+  }
 }
 
 function sourceOverlayProjectState() {
@@ -12525,9 +12605,6 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
     const img = new Image();
     img.onload = () => {
       try {
-        const width = img.naturalWidth || img.width;
-        const height = img.naturalHeight || img.height;
-        if (width * height > 4096 * 4096) throw new Error(KfpsI18n.t("Reference exceeds 16 megapixels. Resize it before loading."));
         if (new Blob([String(layeredOverlayState?.sourceText || url)]).size > 20 * 1024 * 1024) {
           throw new Error(KfpsI18n.t("Reference exceeds the 20 MiB storage budget. Use a smaller image."));
         }

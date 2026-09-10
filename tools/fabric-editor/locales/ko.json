@@ -524,7 +524,7 @@
     "JSON path is outside the editable browser roots": "JSON 경로가 편집기 탐색 허용 폴더 밖에 있습니다",
     "JSON preview could not be rendered": "JSON 미리보기를 렌더링하지 못했습니다",
     "JSON shapes list is empty.": "JSON의 shapes 목록이 비어 있습니다.",
-    "KFPS Vinyl Editor": "KFPS 비닐 편집기",
+    "KFPS Vinyl Editor": "K-FPS",
     "KFPS Vinyl Editor Guide": "KFPS 비닐 편집기 사용 설명서",
     "KFPS recovery storage returned HTTP {0}.": "KFPS 복구 저장소에서 HTTP {0}을(를) 반환했습니다.",
     "Keep Current Work": "현재 작업 유지",
