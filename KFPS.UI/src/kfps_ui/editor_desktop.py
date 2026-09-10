@@ -12,7 +12,7 @@ from PySide6.QtCore import QFile, QIODevice, QLockFile, QObject, QTimer, QUrl, Q
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings
+from PySide6.QtWebEngineCore import QWebEngineLoadingInfo, QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QFileDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 from shiboken6 import delete, isValid
@@ -83,7 +83,12 @@ class EditorPage(QWebEnginePage):
 
     def javaScriptConsoleMessage(self, level, message, line, source):
         if level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
-            print(f"Editor JavaScript error {line}: {message}", flush=True)
+            # pythonw has no console; Windows console encodings may reject Korean.
+            try:
+                with (self.parent().runtime / "desktop.log").open("a", encoding="utf-8") as log:
+                    log.write(f"Editor JavaScript error {line}: {message[:16384]}\n")
+            except (OSError, AttributeError):
+                pass
 
 
 class EditorBridge(QObject):
@@ -148,6 +153,11 @@ class EditorDesktop(QMainWindow):
         self.ready_timer.setInterval(250)
         self.ready_timer.timeout.connect(self._check_ready)
         self._checking_ready = False
+        self.startup_timer = QTimer(self)
+        self.startup_timer.setSingleShot(True)
+        self.startup_timer.setInterval(60000)
+        self.startup_timer.timeout.connect(lambda: self._show_failure(
+            "The editor could not finish starting. Reopen Editor to retry without reopening the selected project. Saved projects and recovery files are unchanged."))
 
     def start(self, request: dict) -> bool:
         request = validate_request(request)
@@ -166,7 +176,7 @@ class EditorDesktop(QMainWindow):
         self.server_thread.start()
         port = self.server.server_address[1]
         self.module._write_server_marker(port, self.server.editor_session_token)
-        self.module._write_json_atomic(self.runtime / "desktop.json", {"service": "kfps-editor-desktop", "pid": os.getpid(), "root": str(self.app_root), "instance": name})
+        self._write_state("starting")
         query = f"?project={quote(request['project'], safe='')}" if request["project"] else "?browse=json" if request["mode"] == "json" else ""
         self.url = QUrl(f"http://127.0.0.1:{port}/tools/fabric-editor/index.html#session={quote(self.server.editor_session_token, safe='')}")
         startup_url = QUrl(self.url)
@@ -203,12 +213,21 @@ class EditorDesktop(QMainWindow):
         self.stack.addWidget(self.view)
         self.stack.setCurrentWidget(self.view)
         self.page.loadFinished.connect(self._loaded)
+        self.page.loadingChanged.connect(self._loading_changed)
         self.page.renderProcessTerminated.connect(self._renderer_stopped)
         self.page.titleChanged.connect(lambda title: self.setWindowTitle(title or self.translator.tr("KFPS Vinyl Editor")))
         if request["mode"] == "tutorial":
             self._queued_requests.append({"mode": "tutorial", "project": ""})
+        self.startup_timer.start()
         self.page.load(startup_url)
         return True
+
+    def _write_state(self, state, error=""):
+        if self.module:
+            self.module._write_json_atomic(self.runtime / "desktop.json", {
+                "service": "kfps-editor-desktop", "pid": os.getpid(), "root": str(self.app_root),
+                "instance": instance_name(self.app_root, self.runtime), "state": state, "error": error[:2000],
+            })
 
     def _accept_connection(self):
         while self.instance.hasPendingConnections():
@@ -249,6 +268,11 @@ class EditorDesktop(QMainWindow):
         self.showNormal() if self.isMinimized() else self.show()
         self.raise_()
         self.activateWindow()
+        if self._failed:
+            self._failed = False
+            self._write_state("starting")
+            # Recreating Chromium's page can take longer than the IPC ACK budget.
+            QTimer.singleShot(0, self.reload_editor)
         if request == {"project": "", "mode": "activate"}:
             return
         self._queued_requests.append(request)
@@ -256,23 +280,44 @@ class EditorDesktop(QMainWindow):
 
     def _loaded(self, ok):
         if not ok:
-            self._show_failure("The editor page could not be loaded. Your saved projects and recovery files have not been removed.")
             return
         self._checking_ready = False
         self.ready_timer.start()
+
+    def _loading_changed(self, info):
+        # Reopen cancels an older navigation. A cancellation is not a page failure.
+        if not self._stopped and info.status() == QWebEngineLoadingInfo.LoadStatus.LoadFailedStatus:
+            self._show_failure("The editor page could not be loaded. Your saved projects and recovery files have not been removed.")
 
     def _check_ready(self):
         if self._checking_ready or not self.page:
             return
         self._checking_ready = True
-        def checked(ready):
+        def checked(state):
             self._checking_ready = False
-            if self._stopped or not ready:
+            if self._stopped or self._failed:
+                return
+            try:
+                state = json.loads(state)
+            except (ValueError, TypeError):
+                return
+            if not isinstance(state, dict):
+                return
+            if state.get("error"):
+                self._show_failure(str(state["error"]))
+                return
+            if not state.get("ready"):
                 return
             self.ready_timer.stop()
+            self.startup_timer.stop()
+            try:
+                self._write_state("ready")
+            except OSError as exc:
+                self._show_failure(str(exc))
+                return
             self._ready = True
             self._dispatch_open()
-        self.page.runJavaScript("Boolean(window.KfpsDesktop?.ready && window.KfpsDesktopBridge)", checked)
+        self.page.runJavaScript("JSON.stringify({ready: Boolean(window.KfpsDesktop?.ready && window.KfpsDesktopBridge), error: window.KfpsDesktop?.error || ''})", checked)
 
     def _dispatch_open(self):
         if not self._ready or self._commands or not self._queued_requests or self._closing:
@@ -336,15 +381,33 @@ class EditorDesktop(QMainWindow):
         self._closing = False
         self._commands.clear()
         self.ready_timer.stop()
+        self.startup_timer.stop()
         self.close_timer.stop()
+        try:
+            self._write_state("failed", message)
+        except OSError as exc:
+            print(f"Editor startup status could not be written: {exc}", flush=True)
         self.error_label.setText(self.translator.message(message))
         self.stack.setCurrentWidget(self.error_panel)
 
     def reload_editor(self):
+        if self._stopped or not self.page:
+            return
         self._failed = False
         self._ready = False
+        self._checking_ready = False
+        try:
+            self._write_state("starting")
+        except OSError as exc:
+            self._show_failure(str(exc))
+            return
+        self.startup_timer.start()
         self.stack.setCurrentWidget(self.view)
-        self.page.load(self.url)
+        # The script removes the session fragment. Restoring only that fragment is
+        # a same-document navigation, not a reload, even after a failed startup.
+        restart_url = QUrl(self.url)
+        restart_url.setQuery(f"restart={uuid.uuid4().hex}")
+        self.page.load(restart_url)
 
     def closeEvent(self, event):
         if self._allow_close or self._failed or not self.page:
@@ -410,6 +473,7 @@ class EditorDesktop(QMainWindow):
             return
         self._stopped = True
         self.ready_timer.stop()
+        self.startup_timer.stop()
         self.close_timer.stop()
         self.instance.close()
         for socket in list(self._sockets):

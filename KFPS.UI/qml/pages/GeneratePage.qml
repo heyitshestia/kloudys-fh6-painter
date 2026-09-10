@@ -390,11 +390,21 @@ Item {
                             onClicked: generationService.refreshPreview()
                         }
                         GhostButton {
-                            text: "Open Editor"
+                            text: editorService.launching ? "Starting Editor..." : "Open Editor"
                             minimumWidth: Theme.px(104)
-                            toolTipText: "Open the manual editor in a new browser window for detailed shape changes."
-                            onClicked: editorService.launch()
+                            enabled: !editorService.launching
+                            toolTipText: "Open or activate the independent editor window without replacing its current work."
+                            onClicked: editorService.activate()
                         }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: editorService.launching || editorService.lastError.length > 0
+                        text: editorService.lastError || editorService.status
+                        color: editorService.lastError ? Theme.danger : Theme.muted
+                        font.pixelSize: Theme.px(12)
+                        wrapMode: Text.Wrap
                     }
 
                     Rectangle {

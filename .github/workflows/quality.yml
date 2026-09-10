@@ -89,6 +89,22 @@ jobs:
           python tools/fabric-editor/tests/editor-localization-native.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Test native editor startup and retry
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: python tools/fabric-editor/tests/editor-launch-native.py runtime/ci-editor-launch
+
+      - name: Upload native editor launch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-launch-evidence
+          path: |
+            runtime/ci-editor-launch/*.json
+            runtime/ci-editor-launch/*.png
+          if-no-files-found: warn
+
       - name: Launch the real Outputs page offscreen
         env:
           QT_QPA_PLATFORM: offscreen

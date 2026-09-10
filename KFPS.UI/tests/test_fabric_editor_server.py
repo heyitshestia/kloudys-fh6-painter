@@ -61,6 +61,16 @@ def post_json(base_url: str, path: str, payload: dict, token=True):
 
 
 class FabricEditorServerTests(unittest.TestCase):
+    def test_rejected_posts_reliably_return_403_without_creating_projects(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            projects = Path(temporary) / "projects"
+            with patch.object(fabric_server, "EDITOR_PROJECT_ROOT", projects), RunningEditorServer() as server:
+                for _ in range(30):
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        post_json(server, fabric_server.PROJECT_SAVE_API, {"name": "rejected", "payload": {"shapes": [{"type": 1}]}}, token=False)
+                    self.assertEqual(403, error.exception.code)
+                self.assertFalse(projects.exists())
+
     def test_recovery_revisions_survive_clear_restart_and_reordered_requests(self):
         with tempfile.TemporaryDirectory() as temporary:
             marker = Path(temporary) / "autosave.json"

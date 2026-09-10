@@ -235,6 +235,24 @@ class EditorProjectManagerTests(unittest.TestCase):
 
 
 class EditorWindowLaunchTests(unittest.TestCase):
+    def test_failed_worker_start_is_retryable_and_activate_preserves_canvas(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = make_paths(Path(temporary))
+            entry = paths.app_root / "KFPS.UI" / "editor.py"
+            entry.parent.mkdir(parents=True, exist_ok=True)
+            entry.touch()
+            service = EditorService(paths, DummyPreview(), DummyDesktop(), DummyLog())
+            self.addCleanup(service.close)
+            with patch.object(service, "_start_thread", side_effect=RuntimeError("No worker available")):
+                service.activate()
+            self.assertFalse(service.launching)
+            self.assertIn("No worker", service.lastError)
+            with patch.object(service, "_start_thread") as start:
+                service.activate()
+                self.assertTrue(service.launching)
+                self.assertEqual("", service.lastError)
+                self.assertEqual("activate", start.call_args.kwargs["args"][2])
+
     def test_launch_worker_preserves_project_and_reports_window_status(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

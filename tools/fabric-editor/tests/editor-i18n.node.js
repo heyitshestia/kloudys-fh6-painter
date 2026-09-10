@@ -19,6 +19,15 @@ function fixture(system = "ko-KR", saved = null, query = "", desktopSystem = nul
 let t = fixture();
 assert.equal(t.language, "ko");
 assert.equal(t.t("KFPS Vinyl Editor"), "K-FPS");
+for (const [key, limit] of [
+  ["Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.", 100],
+  ["Recovery exceeds the {0} MiB project limit. Use a smaller reference image.", 100],
+  ["Reference exceeds the {0} MiB storage budget. Use a smaller image.", 50],
+]) {
+  assert.ok(t.t(key, limit).includes(`${limit} MiB`));
+  assert.ok(!t.t(key, limit).includes("{0}"));
+  assert.notEqual(t.t(key, limit), fixture("en-US").t(key, limit));
+}
 assert.equal(t.t("Save"), "저장");
 assert.equal(t.familyLabel("Primitives"), "기본 도형");
 assert.equal(t.shapeLabel("Square"), "정사각형");

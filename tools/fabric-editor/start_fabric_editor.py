@@ -57,6 +57,7 @@ EDITOR_ASSETS_API = "/api/fabric-editor/assets"
 EDITOR_ASSET_PREVIEW_API = "/api/fabric-editor/asset-preview"
 EDITOR_ASSET_FORMAT = "kfps_editor_asset_v1"
 EDITOR_ASSET_MAX_BYTES = 8 * 1024 * 1024
+EDITOR_PROJECT_MAX_BYTES = 100 * 1024 * 1024
 EDITOR_MUTATION_HEADER = "X-KFPS-Editor-Session"
 EDITOR_MUTATION_APIS = {
     STARTUP_HELP_API,
@@ -913,6 +914,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return False
         return str(self.headers.get("Sec-Fetch-Site") or "").casefold() not in {"cross-site"}
 
+    def _discard_small_rejected_body(self) -> None:
+        # Closing with unread POST bytes can reset the connection before Windows
+        # clients receive the 403. Never parse/store rejected data or drain unbounded input.
+        try:
+            remaining = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            return
+        if not 0 < remaining <= 64 * 1024 or self.headers.get("Transfer-Encoding"):
+            return
+        timeout = self.connection.gettimeout()
+        deadline = time.monotonic() + 0.2
+        try:
+            while remaining and (wait := deadline - time.monotonic()) > 0:
+                self.connection.settimeout(wait)
+                chunk = self.rfile.read1(min(8192, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            pass
+        finally:
+            self.connection.settimeout(timeout)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == EDITOR_HEALTH_API:
@@ -1078,6 +1102,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path in EDITOR_MUTATION_APIS and not self._mutation_authorized():
+            self._discard_small_rejected_body()
             self._send_json(
                 {"error": "editor session authorization failed"},
                 status=403,
@@ -1152,7 +1177,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == EDITOR_AUTOSAVE_API:
             try:
                 length = int(self.headers.get("Content-Length") or "0")
-                if length <= 0 or length > 25 * 1024 * 1024:
+                if length <= 0 or length > EDITOR_PROJECT_MAX_BYTES:
                     raise ValueError("invalid autosave size")
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
                 result = self.server.store_autosave(data)
@@ -1186,7 +1211,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == PROJECT_SAVE_API:
             try:
                 length = int(self.headers.get("Content-Length") or "0")
-                if length <= 0 or length > 25 * 1024 * 1024:
+                if length <= 0 or length > EDITOR_PROJECT_MAX_BYTES:
                     raise ValueError("invalid project save size")
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
                 payload = data.get("payload")

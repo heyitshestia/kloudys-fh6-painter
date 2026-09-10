@@ -722,6 +722,7 @@ window.KfpsEditorLocales.ko = {
     "Project JSON must contain a shapes list.": "프로젝트 JSON에는 shapes 목록이 있어야 합니다.",
     "Project browser failed to load.": "프로젝트 탐색기를 불러오지 못했습니다.",
     "Project exceeds the 25 MiB save limit. Use a smaller reference image and save again.": "프로젝트가 저장 한도 25 MiB를 초과합니다. 더 작은 참조 이미지를 사용한 후 다시 저장하세요.",
+    "Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.": "프로젝트가 저장 한도 {0} MiB를 초과합니다. 더 작은 참조 이미지를 사용한 후 다시 저장하세요.",
     "Project folder opened. Drop .fabric-project.json files there, then click Refresh.": "프로젝트 폴더를 열었습니다. .fabric-project.json 파일을 넣은 후 새로고침을 클릭하세요.",
     "Project load failed": "프로젝트 불러오기 실패",
     "Project load failed.": "프로젝트를 불러오지 못했습니다.",
@@ -750,6 +751,7 @@ window.KfpsEditorLocales.ko = {
     "Recovered without reference image": "참조 이미지 없이 복구됨",
     "Recovered {0}, but its reference image could not be restored. ": "{0}을(를) 복구했지만 참조 이미지는 복원하지 못했습니다. ",
     "Recovery exceeds the 25 MiB project limit. Use a smaller reference image.": "복구 사본이 프로젝트 크기 한도 25 MiB를 초과합니다. 더 작은 참조 이미지를 사용하세요.",
+    "Recovery exceeds the {0} MiB project limit. Use a smaller reference image.": "복구 사본이 프로젝트 크기 한도 {0} MiB를 초과합니다. 더 작은 참조 이미지를 사용하세요.",
     "Recovery failed; save the project": "복구 저장 실패; 프로젝트를 저장하세요",
     "Recovery is a temporary safety backup in this app folder/browser. Use": "복구 사본은 이 앱 폴더/브라우저의 임시 안전 백업입니다. 정식 저장:",
     "Recovery pending": "복구 저장 대기 중",
@@ -767,6 +769,7 @@ window.KfpsEditorLocales.ko = {
     "Reference controls open. Reference images are editor-only and never exported.": "참조 이미지 설정을 열었습니다. 참조 이미지는 편집기 전용이며 내보내지 않습니다.",
     "Reference exceeds 16 megapixels. Resize it before loading.": "참조 이미지가 1,600만 픽셀을 초과합니다. 크기를 줄인 후 불러오세요.",
     "Reference exceeds the 20 MiB storage budget. Use a smaller image.": "참조 이미지가 저장 한도 20 MiB를 초과합니다. 더 작은 이미지를 사용하세요.",
+    "Reference exceeds the {0} MiB storage budget. Use a smaller image.": "참조 이미지가 저장 한도 {0} MiB를 초과합니다. 더 작은 이미지를 사용하세요.",
     "Reference image controls.": "참조 이미지 설정.",
     "Reference image draws {0} vinyl layers.": "참조 이미지를 비닐 레이어 {0}에 표시합니다.",
     "Reference image loaded: {0}": "참조 이미지를 불러왔습니다: {0}",
@@ -1483,7 +1486,8 @@ window.KfpsEditorLocales.ko = {
     "V": "V",
     "X": "X",
     "Y": "Y",
-    "x 0, y 0": "x 0, y 0"
+    "x 0, y 0": "x 0, y 0",
+    "The editor could not finish starting. Reopen Editor to retry without reopening the selected project. Saved projects and recovery files are unchanged.": "에디터를 시작하지 못했습니다. '에디터 다시 열기'를 누르면 선택한 프로젝트를 불러오지 않고 다시 시작합니다. 저장된 프로젝트와 복구 파일은 그대로 유지됩니다."
   },
   "html": {
     "Choose <b>Open JSON</b>, or add a shape to begin on a blank canvas.": "<b>JSON 열기</b>를 선택하거나 도형을 추가하여 빈 캔버스에서 시작하세요.",

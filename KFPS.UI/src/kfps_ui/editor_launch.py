@@ -9,6 +9,12 @@ from pathlib import Path, PurePosixPath
 
 from PySide6.QtNetwork import QLocalSocket
 
+STARTUP_TIMEOUT = 65
+
+
+class EditorConnectionError(RuntimeError):
+    """A live instance must not be replaced or replayed after an uncertain ACK."""
+
 
 def instance_name(app_root: Path, runtime: Path) -> str:
     identity = f"{app_root.resolve()}\0{runtime.resolve()}"
@@ -47,12 +53,14 @@ def forward_request(name: str, request: dict, timeout: int = 800) -> bool:
                     result.extend(bytes(socket.readAll()))
                     if len(result) > 64:
                         socket.abort()
-                        return False
+                        raise EditorConnectionError("The open editor returned an invalid response. Close it normally and try again.")
                     if b"\n" in result:
                         socket.disconnectFromServer()
-                        return bytes(result).strip() == b"ok"
+                        if bytes(result).strip() == b"ok":
+                            return True
+                        raise EditorConnectionError("The editor is busy starting, opening a document, or closing. Finish the current operation and try again.")
             socket.abort()
-            return False
+            raise EditorConnectionError("The open editor has not responded yet. Give it a moment and try again; no second editor was started.")
         socket.abort()
         if timeout <= 800:
             return False
@@ -68,12 +76,53 @@ def editor_is_open(paths) -> bool:
     return connected
 
 
+def read_desktop_state(runtime: Path, name: str) -> dict:
+    try:
+        marker = runtime / "desktop.json"
+        if marker.stat().st_size > 16384:
+            return {}
+        state = json.loads(marker.read_text(encoding="utf-8"))
+        return state if isinstance(state, dict) and state.get("instance") == name else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def wait_until_ready(runtime: Path, name: str, cancelled=None, process=None, connected=True) -> str:
+    deadline = time.monotonic() + STARTUP_TIMEOUT
+    while time.monotonic() < deadline:
+        if cancelled is not None and cancelled.is_set():
+            return "Editor continues independently."
+        if process is not None and process.poll() not in (None, 0):
+            detail = ""
+            try:
+                report = json.loads((runtime / "desktop-startup-error.json").read_text(encoding="utf-8"))
+                if report.get("pid") == process.pid:
+                    detail = str(report.get("error", ""))[:2000]
+            except (OSError, ValueError, AttributeError):
+                pass
+            raise RuntimeError(f"The editor could not start. {detail}\nSee {runtime / 'desktop.log'}")
+        if not connected:
+            try:
+                connected = forward_request(name, {"mode": "activate", "project": ""}, timeout=300)
+            except EditorConnectionError:
+                # Activation is idempotent; never replay the opening request.
+                pass
+        if connected:
+            state = read_desktop_state(runtime, name)
+            if state.get("state") == "failed":
+                raise RuntimeError(f"{state.get('error') or 'The editor could not finish starting.'}\nSee {runtime / 'desktop.log'}")
+            if state.get("state") == "ready" or "state" not in state:
+                return "Editor opened in its own window."
+        time.sleep(0.12)
+    raise RuntimeError(f"The editor is taking too long to become ready. Check its window and try Reopen Editor. Saved projects and recovery files are unchanged.\nSee {runtime / 'desktop.log'}")
+
+
 def launch_editor(paths, project: str = "", mode: str = "activate", cancelled=None) -> str:
     request = validate_request({"project": project, "mode": mode or "activate"})
     runtime = paths.runtime_root / "fabric-editor"
     name = instance_name(paths.app_root, runtime)
     if forward_request(name, request):
-        return "Connected to the open editor window."
+        return wait_until_ready(runtime, name, cancelled)
     if cancelled is not None and cancelled.is_set():
         return "Editor launch cancelled."
     entry = paths.app_root / "KFPS.UI" / "editor.py"
@@ -81,7 +130,7 @@ def launch_editor(paths, project: str = "", mode: str = "activate", cancelled=No
         raise FileNotFoundError(f"Editor launcher not found: {entry}")
     runtime.mkdir(parents=True, exist_ok=True)
     log_path = runtime / "desktop.log"
-    args = [paths.python_executable, str(entry), "--runtime-root", str(runtime), "--mode", request["mode"]]
+    args = [paths.python_executable, str(entry), "--from-kfps", "--runtime-root", str(runtime), "--mode", request["mode"]]
     if project:
         args.extend(["--project-id", project])
     env = os.environ.copy()
@@ -91,13 +140,4 @@ def launch_editor(paths, project: str = "", mode: str = "activate", cancelled=No
         process = subprocess.Popen(args, cwd=paths.app_root, env=env, creationflags=flags, close_fds=True, stdout=stream, stderr=stream)
     # The new process receives the opening request on its command line. Only ping
     # for activation here, so startup cannot open the same document twice.
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        if cancelled is not None and cancelled.is_set():
-            return "Editor continues independently."
-        if process.poll() is not None and process.returncode != 0:
-            break
-        if forward_request(name, {"mode": "activate", "project": ""}, timeout=300):
-            return "Editor window started independently of KFPS."
-        time.sleep(0.12)
-    raise RuntimeError(f"The editor did not respond. See {log_path}")
+    return wait_until_ready(runtime, name, cancelled, process, connected=False)

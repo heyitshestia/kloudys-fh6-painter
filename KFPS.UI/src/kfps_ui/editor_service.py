@@ -231,6 +231,10 @@ class EditorService(QObject):
         self._launch("", "new")
 
     @Slot()
+    def activate(self):
+        self._launch("", "activate")
+
+    @Slot()
     def launchJsonBrowser(self):
         self._launch("", "json")
 
@@ -378,11 +382,14 @@ class EditorService(QObject):
         self._last_error = ""
         self._status = "Opening the editor window..."
         self.changed.emit()
-        self._start_thread(
-            target=self._launch_worker,
-            args=(launcher, project_id, mode),
-            name="kfps-editor-launch",
-        )
+        try:
+            self._start_thread(
+                target=self._launch_worker,
+                args=(launcher, project_id, mode),
+                name="kfps-editor-launch",
+            )
+        except Exception as exc:
+            self._finish_launch(False, "", str(exc))
 
     def _start_thread(self, *, target, args, name):
         def run():
@@ -395,7 +402,12 @@ class EditorService(QObject):
         worker = threading.Thread(target=run, daemon=True, name=name)
         with self._threads_lock:
             self._threads.add(worker)
-        worker.start()
+        try:
+            worker.start()
+        except Exception:
+            with self._threads_lock:
+                self._threads.discard(worker)
+            raise
         return worker
 
     def _launch_worker(self, launcher: Path, project_id: str, mode: str):

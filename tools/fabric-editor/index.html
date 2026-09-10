@@ -6,7 +6,11 @@
   <title>KFPS Vinyl Editor</title>
   <link rel="icon" href="../../assets/kfps-logo.ico">
   <script>
-    document.documentElement.dataset.editorTheme = localStorage.getItem("kloudyFabricTheme") || "pastel";
+    try {
+      document.documentElement.dataset.editorTheme = localStorage.getItem("kloudyFabricTheme") || "pastel";
+    } catch (_) {
+      document.documentElement.dataset.editorTheme = "pastel";
+    }
   </script>
   <link rel="stylesheet" href="style.css?engine=editor-2.1&amp;locale=1">
   <script src="locales/en.js?locale=2"></script>

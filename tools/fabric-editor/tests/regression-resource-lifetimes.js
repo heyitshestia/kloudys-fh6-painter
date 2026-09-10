@@ -22,7 +22,7 @@ async page => {
     assert(hybridRenderNow() && hybridRenderer.overlay.source, "Texture was not recreated");
     const current = overlayImage;
     let rejected = false;
-    const oversizedSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><!--' + 'x'.repeat(21 * 1024 * 1024) + '--></svg>';
+    const oversizedSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><!--' + 'x'.repeat(EDITOR_REFERENCE_MAX_BYTES + 1) + '--></svg>';
     try { await loadOverlayImageFromUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(oversizedSvg)}`, "oversized-reference.svg"); } catch (_) { rejected = true; }
     assert(rejected && overlayImage === current, "Over-budget reference replaced existing work");
     image.width = image.height = 1;

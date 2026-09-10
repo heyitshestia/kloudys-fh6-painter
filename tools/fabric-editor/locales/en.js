@@ -722,6 +722,7 @@ window.KfpsEditorLocales.en = {
     "Project JSON must contain a shapes list.": "Project JSON must contain a shapes list.",
     "Project browser failed to load.": "Project browser failed to load.",
     "Project exceeds the 25 MiB save limit. Use a smaller reference image and save again.": "Project exceeds the 25 MiB save limit. Use a smaller reference image and save again.",
+    "Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.": "Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.",
     "Project folder opened. Drop .fabric-project.json files there, then click Refresh.": "Project folder opened. Drop .fabric-project.json files there, then click Refresh.",
     "Project load failed": "Project load failed",
     "Project load failed.": "Project load failed.",
@@ -750,6 +751,7 @@ window.KfpsEditorLocales.en = {
     "Recovered without reference image": "Recovered without reference image",
     "Recovered {0}, but its reference image could not be restored. ": "Recovered {0}, but its reference image could not be restored. ",
     "Recovery exceeds the 25 MiB project limit. Use a smaller reference image.": "Recovery exceeds the 25 MiB project limit. Use a smaller reference image.",
+    "Recovery exceeds the {0} MiB project limit. Use a smaller reference image.": "Recovery exceeds the {0} MiB project limit. Use a smaller reference image.",
     "Recovery failed; save the project": "Recovery failed; save the project",
     "Recovery is a temporary safety backup in this app folder/browser. Use": "Recovery is a temporary safety backup in this app folder/browser. Use",
     "Recovery pending": "Recovery pending",
@@ -767,6 +769,7 @@ window.KfpsEditorLocales.en = {
     "Reference controls open. Reference images are editor-only and never exported.": "Reference controls open. Reference images are editor-only and never exported.",
     "Reference exceeds 16 megapixels. Resize it before loading.": "Reference exceeds 16 megapixels. Resize it before loading.",
     "Reference exceeds the 20 MiB storage budget. Use a smaller image.": "Reference exceeds the 20 MiB storage budget. Use a smaller image.",
+    "Reference exceeds the {0} MiB storage budget. Use a smaller image.": "Reference exceeds the {0} MiB storage budget. Use a smaller image.",
     "Reference image controls.": "Reference image controls.",
     "Reference image draws {0} vinyl layers.": "Reference image draws {0} vinyl layers.",
     "Reference image loaded: {0}": "Reference image loaded: {0}",
@@ -1483,7 +1486,8 @@ window.KfpsEditorLocales.en = {
     "V": "V",
     "X": "X",
     "Y": "Y",
-    "x 0, y 0": "x 0, y 0"
+    "x 0, y 0": "x 0, y 0",
+    "The editor could not finish starting. Reopen Editor to retry without reopening the selected project. Saved projects and recovery files are unchanged.": "The editor could not finish starting. Reopen Editor to retry without reopening the selected project. Saved projects and recovery files are unchanged."
   },
   "html": {
     "Choose <b>Open JSON</b>, or add a shape to begin on a blank canvas.": "Choose <b>Open JSON</b>, or add a shape to begin on a blank canvas.",

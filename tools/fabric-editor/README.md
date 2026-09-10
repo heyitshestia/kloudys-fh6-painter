@@ -239,8 +239,15 @@ References have no editor-imposed megapixel cap. Original pixels are retained
 for color sampling and project storage; only the GPU display texture is resized
 when it exceeds the device's texture dimension limit. Large images need more RAM
 and loading time, and remain subject to the browser's image/canvas capabilities.
-The 20 MiB stored-source budget and 25 MiB project save limit still apply.
+The stored-source budget is 50 MiB; project save and recovery requests are limited
+to 100 MiB. These measure serialized/embedded data, not the source file on disk.
+Large projects require more memory and can pause longer during save/recovery.
+Browser-only recovery remains subject to its own storage quota; check that recovery
+was saved in KFPS, especially with large embedded references.
 References rejected by these storage checks leave the current reference in place.
+Projects above the previous limits require an editor version supporting the
+higher budgets to save or recover normally. Indented project files on disk can
+be slightly larger than the serialized request limit.
 
 ## History And Recovery
 
@@ -358,7 +365,16 @@ write leaves the notice open for retry. Resetting the tutorial does not reset
 this separate acknowledgment.
 
 - If the editor does not open, read the status on the KFPS Editor page.
-- Check `runtime/fabric-editor/server.log` for server startup errors.
+- Check `runtime/fabric-editor/desktop.log` for native startup and JavaScript errors.
+- The native launcher waits for page readiness, not just an open process. If the
+  page cannot start within a minute, Reopen Editor retries with a fresh document
+  and no selected-project query. Existing saved projects, settings and recovery
+  files are preserved; a recovery prompt can still be offered.
+- Open Editor on the generator page activates the current editor without creating
+  a new canvas. The Editor page's New Canvas keeps its explicit replacement prompt.
+- A busy/unresponsive existing window is not replaced with a duplicate process.
+  Finish its open/save/close dialog and retry. Early bootstrap failures are also
+  recorded in `desktop-startup-error.json` with the failing process ID.
 - Use Settings > `Reset Editor Tutorial` to show the first-run guide again.
 - If the panels are hidden, use `View > Panels`.
 - If a project is missing, choose `Folder` and confirm it ends in
@@ -399,6 +415,15 @@ profile and disposable artwork. Do not interpret throttling as measured hardware
 performance or a short benchmark as proof that all stalls/leaks are eliminated.
 
 ## Developer Checks
+
+`python tools/fabric-editor/tests/editor-launch-native.py <fresh-output-directory>`
+exercises real Qt startup, occupied-port fallback, busy IPC rejection, a missing
+JavaScript startup deadline, external retry, and renderer-crash retry. It uses an
+isolated runtime and only terminates its own renderer. This is a Windows test and
+runs in CI with `QT_QPA_PLATFORM=offscreen`. `regression-startup-hardening.js` adds
+3,000-layer cold project opening in Korean, failed-read preservation/retry,
+reference callback failure, and denied browser-storage coverage to the native
+page regression harness.
 
 The dependency-free geometry and ordering tests live in
 `tools/fabric-editor/tests`:

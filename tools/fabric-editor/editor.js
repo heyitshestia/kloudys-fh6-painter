@@ -53,7 +53,8 @@ const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
 const AUTOSAVE_CLEAR_KEY = `${AUTOSAVE_KEY}:clearedRevision`;
-const EDITOR_PROJECT_MAX_BYTES = 25 * 1024 * 1024;
+const EDITOR_PROJECT_MAX_BYTES = 100 * 1024 * 1024;
+const EDITOR_REFERENCE_MAX_BYTES = 50 * 1024 * 1024;
 const AUTOSAVE_IDLE_MS = 500;
 const AUTOSAVE_MAX_WAIT_MS = 2000;
 const TEXT_VINYL_FONT_KEY = "kloudyFabricTextVinylFont";
@@ -311,7 +312,8 @@ let overlaySampler = null;
 let layeredOverlayState = null;
 let overlaySourceState = null;
 let liveOverlayColorFrame = null;
-let resolvedResourceBase = localStorage.getItem("kloudyFabricResourceBase") || null;
+// Resource locations are installation-relative, never a persisted browser origin.
+let resolvedResourceBase = null;
 let collapsedLayerGroups = new Set();
 let dropperPreservedActiveObject = null;
 let guideState = defaultGuideState();
@@ -2011,7 +2013,12 @@ async function startBlankCanvas() {
 }
 
 function nextFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return new Promise((resolve) => {
+    let frame;
+    const done = () => { clearTimeout(timer); cancelAnimationFrame(frame); resolve(); };
+    const timer = setTimeout(done, 100);
+    frame = requestAnimationFrame(done);
+  });
 }
 
 function colorToHex(color) {
@@ -2373,7 +2380,7 @@ async function loadResourcePayloadForResolved(resolved) {
   if (resourcePayloadPromiseCache.has(cacheKey)) return resourcePayloadPromiseCache.get(cacheKey);
   const pending = (async () => {
     const url = await resolveVinylResourceUrl(resolved.family, resolved.index, "");
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(KfpsI18n.t("Missing shape resource: {0}", url));
     const payload = await response.json();
     resourcePayloadCache.set(cacheKey, payload);
@@ -2617,8 +2624,15 @@ async function loadFabricImage(url) {
     pending = new Promise((resolve, reject) => {
       const element = new Image();
       element.crossOrigin = "anonymous";
-      element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error(KfpsI18n.t("Failed to load image resource: {0}", url)));
+      const finish = (error) => {
+        clearTimeout(timer);
+        element.onload = element.onerror = null;
+        if (error) { element.src = ""; reject(error); }
+        else resolve(element);
+      };
+      const timer = setTimeout(() => finish(new Error(KfpsI18n.t("Failed to load image resource: {0}", url))), 30000);
+      element.onload = () => finish();
+      element.onerror = () => finish(new Error(KfpsI18n.t("Failed to load image resource: {0}", url)));
       element.src = url;
     });
     fabricImageElementPromiseCache.set(url, pending);
@@ -3392,10 +3406,9 @@ async function resolveVinylResourceUrl(family, index, suffix = "") {
     const url = `${base}/${family}/${index}${suffix}`;
     lastUrl = url;
     try {
-      const response = await fetch(url, { cache: "force-cache" });
+      const response = await fetch(url, { cache: "force-cache", signal: AbortSignal.timeout(15000) });
       if (response.ok) {
         resolvedResourceBase = base;
-        localStorage.setItem("kloudyFabricResourceBase", base);
         return url;
       }
     } catch (_err) {
@@ -4513,7 +4526,7 @@ function drainAutosaveQueue() {
         serialized = JSON.stringify(operation);
         if (new Blob([serialized]).size > EDITOR_PROJECT_MAX_BYTES) {
           retryable = false;
-          throw new Error(KfpsI18n.t("Recovery exceeds the 25 MiB project limit. Use a smaller reference image."));
+          throw new Error(KfpsI18n.t("Recovery exceeds the {0} MiB project limit. Use a smaller reference image.", EDITOR_PROJECT_MAX_BYTES / (1024 * 1024)));
         }
         if (!clearing) {
           try {
@@ -7289,7 +7302,7 @@ async function refreshProjectBrowser() {
   setText("projectBrowserSummary", KfpsI18n.t("Loading internal projects..."));
   setProjectBrowserStatus(KfpsI18n.t("Scanning runtime/fabric-editor/projects..."));
   try {
-    const response = await fetch(PROJECT_BROWSER_API, { cache: "no-store" });
+    const response = await fetch(PROJECT_BROWSER_API, { cache: "no-store", signal: AbortSignal.timeout(15000) });
     const data = await response.json();
     if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     projectBrowserState.entries = Array.isArray(data.entries) ? data.entries : [];
@@ -7351,7 +7364,7 @@ async function loadSelectedProject() {
   }
   setProjectBrowserStatus(KfpsI18n.t("Loading {0}...", entry.title || entry.name));
   try {
-    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
+    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
     const data = await response.json();
     if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadProjectPayload(data.payload, entry.title || entry.name);
@@ -7368,7 +7381,7 @@ async function loadStartupProjectFromQuery() {
   if (!projectId) return false;
   setBusy(KfpsI18n.t("Loading selected project..."));
   try {
-    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(projectId)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
     const data = await response.json();
     if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadProjectPayload(data.payload, data.name || "project");
@@ -8944,7 +8957,7 @@ async function saveEditorJsonToAppFolder(name, payload) {
 async function saveProjectToAppFolder(name, payload, overwrite = false) {
   const body = JSON.stringify({ name, payload, overwrite: Boolean(overwrite) });
   if (new Blob([body]).size > EDITOR_PROJECT_MAX_BYTES) {
-    throw new Error(KfpsI18n.t("Project exceeds the 25 MiB save limit. Use a smaller reference image and save again."));
+    throw new Error(KfpsI18n.t("Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.", EDITOR_PROJECT_MAX_BYTES / (1024 * 1024)));
   }
   const response = await fetch(PROJECT_SAVE_API, {
     method: "POST",
@@ -12603,62 +12616,68 @@ function sampleOverlayColorForSelected() {
 function loadOverlayImageFromUrl(url, fileName, options = {}) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      try {
-        if (new Blob([String(layeredOverlayState?.sourceText || url)]).size > 20 * 1024 * 1024) {
-          throw new Error(KfpsI18n.t("Reference exceeds the 20 MiB storage budget. Use a smaller image."));
-        }
-        rebuildOverlaySampler(img);
-      } catch (error) {
-        setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
-        reject(error);
-        return;
-      }
-      releaseHybridOverlay();
-      if (overlayImage) discardFabricObject(overlayImage);
-      overlaySourceState = {
-        kind: layeredOverlayState ? "layered_svg" : "image",
-        fileName,
-        mimeType: options.mimeType || null,
-        dataUrl: layeredOverlayState ? null : url,
-        svgText: layeredOverlayState?.sourceText || null,
-      };
-      overlayImage = new fabric.Image(img, {
-        originX: "center",
-        originY: "center",
-        left: 0,
-        top: 0,
-        opacity: Number($("overlayOpacity").value) / 100,
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-      });
-      overlayImage.kloudyOverlay = true;
-      if (options.projectState) {
-        applyOverlayProjectTransform(options.projectState);
-        if (options.projectState.controls) {
-          syncOverlayScaleControls(options.projectState.controls.scale_percent || 100);
-          if ($("overlayOpacity")) $("overlayOpacity").value = Math.round((overlayImage.opacity ?? 1) * 100);
-        }
-      } else {
-        const fit = 1800 / Math.max(img.width, img.height);
-        const factor = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100) / 100;
-        overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
-      }
-      canvas.add(overlayImage);
-      if (layeredOverlayState) populateLayeredOverlayControls();
-      if (activeToolMode === "source") updateSourceInteractivity();
-      else layerEditorHelpers();
-      canvas.requestRenderAll();
-      setStatus(layeredOverlayState ? KfpsI18n.t("Layered SVG reference loaded: {0}", fileName) : KfpsI18n.t("Reference image loaded: {0}", fileName));
-      updateHud();
-      markOverlayChanged("reference image loaded");
-      resolve(overlayImage);
-    };
-    img.onerror = () => {
-      const error = new Error(KfpsI18n.t("{0} is not a usable image.", fileName));
+    const fail = (error) => {
+      clearTimeout(timer);
+      img.onload = img.onerror = null;
+      img.src = "";
       setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
       reject(error);
+    };
+    const timer = setTimeout(() => fail(new Error(KfpsI18n.t("{0} is not a usable image.", fileName))), 30000);
+    img.onload = () => {
+      clearTimeout(timer);
+      img.onload = img.onerror = null;
+      try {
+        if (new Blob([String(layeredOverlayState?.sourceText || url)]).size > EDITOR_REFERENCE_MAX_BYTES) {
+          throw new Error(KfpsI18n.t("Reference exceeds the {0} MiB storage budget. Use a smaller image.", EDITOR_REFERENCE_MAX_BYTES / (1024 * 1024)));
+        }
+        rebuildOverlaySampler(img);
+        releaseHybridOverlay();
+        if (overlayImage) discardFabricObject(overlayImage);
+        overlaySourceState = {
+          kind: layeredOverlayState ? "layered_svg" : "image",
+          fileName,
+          mimeType: options.mimeType || null,
+          dataUrl: layeredOverlayState ? null : url,
+          svgText: layeredOverlayState?.sourceText || null,
+        };
+        overlayImage = new fabric.Image(img, {
+          originX: "center",
+          originY: "center",
+          left: 0,
+          top: 0,
+          opacity: Number($("overlayOpacity").value) / 100,
+          selectable: false,
+          evented: false,
+          excludeFromExport: true,
+        });
+        overlayImage.kloudyOverlay = true;
+        if (options.projectState) {
+          applyOverlayProjectTransform(options.projectState);
+          if (options.projectState.controls) {
+            syncOverlayScaleControls(options.projectState.controls.scale_percent || 100);
+            if ($("overlayOpacity")) $("overlayOpacity").value = Math.round((overlayImage.opacity ?? 1) * 100);
+          }
+        } else {
+          const fit = 1800 / Math.max(img.width, img.height);
+          const factor = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100) / 100;
+          overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
+        }
+        canvas.add(overlayImage);
+        if (layeredOverlayState) populateLayeredOverlayControls();
+        if (activeToolMode === "source") updateSourceInteractivity();
+        else layerEditorHelpers();
+        canvas.requestRenderAll();
+        setStatus(layeredOverlayState ? KfpsI18n.t("Layered SVG reference loaded: {0}", fileName) : KfpsI18n.t("Reference image loaded: {0}", fileName));
+        updateHud();
+        markOverlayChanged("reference image loaded");
+        resolve(overlayImage);
+      } catch (error) {
+        fail(error);
+      }
+    };
+    img.onerror = () => {
+      fail(new Error(KfpsI18n.t("{0} is not a usable image.", fileName)));
     };
     img.src = url;
   });
@@ -12683,13 +12702,13 @@ function addOverlayFile(file) {
         setStatus(KfpsI18n.t("Reference load failed: {0} could not be rendered.", file.name));
         return;
       }
-      loadOverlayImageFromUrl(url, file.name, { mimeType: file.type || "image/svg+xml" });
+      loadOverlayImageFromUrl(url, file.name, { mimeType: file.type || "image/svg+xml" }).catch(() => {});
     };
     reader.readAsText(file);
     return;
   }
   clearLayeredOverlayState();
-  reader.onload = () => loadOverlayImageFromUrl(reader.result, file.name, { mimeType: file.type || null });
+  reader.onload = () => loadOverlayImageFromUrl(reader.result, file.name, { mimeType: file.type || null }).catch(() => {});
   reader.readAsDataURL(file);
 }
 
@@ -12878,7 +12897,7 @@ function bindEnterToApply(ids) {
 
 async function readStartupHelpConfirmed() {
   try {
-    const response = await fetch(STARTUP_HELP_CONFIRMED_API, { cache: "no-store" });
+    const response = await fetch(STARTUP_HELP_CONFIRMED_API, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (response.ok) {
       const data = await response.json();
       return data.confirmed === true;
@@ -12886,7 +12905,8 @@ async function readStartupHelpConfirmed() {
   } catch (_err) {
     // Direct file/browser fallback only. Normal app launches use the app-folder marker API.
   }
-  return localStorage.getItem(STARTUP_HELP_CONFIRMED_KEY) === "true";
+  try { return localStorage.getItem(STARTUP_HELP_CONFIRMED_KEY) === "true"; }
+  catch (_) { return false; }
 }
 
 async function writeStartupHelpConfirmed() {
@@ -13989,5 +14009,12 @@ async function startEditor() {
   if (window.KfpsEditorPreferences?.error) setStatus(KfpsEditorPreferences.error);
 }
 
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startEditor, { once: true });
-else startEditor();
+function beginEditorStartup() {
+  startEditor().catch((err) => {
+    window.KfpsDesktop.error = KfpsI18n.t("Editor operation failed") + ": " + (err.message || String(err));
+    showError(KfpsI18n.t("Editor operation failed"), err);
+  });
+}
+
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", beginEditorStartup, { once: true });
+else beginEditorStartup();

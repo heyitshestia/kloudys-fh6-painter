@@ -1,5 +1,14 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.74
+- Hardened editor startup from KFPS and the standalone launcher. Startup now waits for the editor to become ready, reports failures, and avoids starting redundant processes when an existing window is busy.
+- Fixed Reopen Editor sometimes changing only the URL fragment instead of reloading the page. Retrying a failed editor now starts a fresh page without deleting saved projects, settings or recovery files.
+- Added bounded waits for project/resource/reference loading and backgrounded editor work. Reference-image installation errors now finish with an error instead of leaving a project load pending indefinitely.
+- Open Editor on the generator page now activates the existing window without requesting a new canvas, and shows startup progress or errors on that page.
+- Hardened startup against unavailable browser storage and made Korean editor error logging independent of Windows console encoding.
+- Increased the embedded-reference budget to 50 MiB and total project/recovery budget to 100 MiB. Very large references still require more memory and can produce longer save/recovery pauses.
+- Added native startup, failed-page retry, renderer-crash recovery, cold-launch, saved-project and storage regression coverage. Hardware-specific black-screen reports still need reporter logs to confirm their exact cause.
+
 ## 3.1.73
 - Reduced editor interaction stalls by removing redundant hidden-canvas drawing, repeated mask-stack copies and unchanged mask-coordinate updates. Dense projects still have CPU-bound operations; this is not a guarantee of stutter-free editing.
 - Reduced unnecessary layer-list rebuilding, nudge-history serialization and thumbnail work. Rapidly changing JSON browser sources now keeps the newest request authoritative.
