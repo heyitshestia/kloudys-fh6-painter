@@ -10,7 +10,7 @@
 
 Turn an image into Forza vinyl shapes, build artwork by hand, and keep your designs together in one Windows app. KFPS combines GPU-assisted generation, a standalone vinyl editor, file management, community sharing, and game-specific import and export tools.
 
-**[Download KFPS](https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/latest)** · **[Community Discord](https://discord.gg/Mu2nUqVt3j)**
+**[Download KFPS](https://github.com/heyitshestia/kloudys-forza-painter-suite/releases/latest)** · **[Community Discord](https://discord.gg/hRu8AtzD9j)**
 
 ![KFPS Create page showing a freshly generated Mini Kloudy vinyl and completed generation results](docs/screenshots/showcase/create.png)
 
