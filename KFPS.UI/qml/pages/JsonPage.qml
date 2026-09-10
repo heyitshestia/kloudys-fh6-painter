@@ -133,7 +133,7 @@ Item {
                                 text: "3000"
                                 placeholderText: "Layer count"
                                 inputMethodHints: Qt.ImhDigitsOnly
-                                toolTipText: "For online transfer, enter the exact number of editable layers in the template currently open in the game."
+                                toolTipText: "Online import: use the open template's exact layer count (3000 for the standard template), not the JSON shape count. Online export: enter the actual shape-layer count of the open artwork, not its group count."
                             }
                         }
 
