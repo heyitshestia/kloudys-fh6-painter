@@ -11,6 +11,11 @@ rejects mutation requests that did not originate from the editor page.
 
 ## Open The Editor
 
+English and Korean are available from the lower-left language dropdown. A saved
+choice takes precedence over the Windows display language and applies when the
+editor is reopened. The first-run arrow notice stays until explicitly acknowledged.
+See [localization maintenance](locales/README.md) for the shared catalog workflow.
+
 Open `KFPS Editor.exe` beside `KFPS.exe`, or use the `Editor` page in KFPS:
 
 - `New Canvas` opens a blank editor.
@@ -53,6 +58,47 @@ before closing; write failures keep the window open unless you explicitly choose
 to close anyway. Discard leaves the last recovery copy available. Opening another
 document, including from KFPS, also asks before replacing unsaved work. Recovery
 is a safety net, not a replacement for `Save`.
+
+## Reusable Groups
+
+The `Assets` tab stores independent copies of selected artwork. `Save Selection`
+keeps shape identities, colors, transforms, masks, visibility, names and group
+metadata. Search the thumbnail grid and choose `Insert` to add a separate copy
+at the current view center. New layers and groups receive fresh IDs; copies are
+unlocked, matching Paste. The 3,000-layer limit is checked before insertion.
+
+Saved assets live only in `runtime/fabric-editor/assets/*.asset.json`, not in
+`imgs/editor`, generated outputs or the game/library JSON folders. They do not
+link back to source files. Deleting an export or source project cannot remove a
+saved asset, and editing/deleting a saved asset cannot change inserted copies.
+
+The asset menu provides Rename, Export Asset and Delete. Portable
+`.kfps-asset.json` files preserve reusable groups and can be added with Import
+Asset. These are editor asset files, not flat game-import JSONs. Existing project
+files remain the format for sharing a whole editable project.
+
+Asset writes are atomic and use revision checks; unreadable files are reported
+and retained. Each asset is limited to 8 MB and 3,000 layers. Thumbnails preserve
+native gradient alpha and masks, exclude hidden layers, and use a 32-entry
+rebuildable memory cache. A missing preview does not delete or prevent insertion
+of the saved artwork. The grid initially mounts 40 assets, with Show More for
+additional entries.
+
+## Selection And Numbers
+
+`Cycle overlapping layers` is off by default and persists with editor settings.
+When enabled, repeated clicks cycle through the visible shapes under the pointer.
+A stationary right click opens the overlap menu; right-drag still pans. Picking
+uses shape/image alpha instead of bounding boxes, ignores locked/hidden layers,
+and respects selection lock and tool modes. The menu supports arrow keys,
+Home/End, Enter and Escape.
+
+Transform fields accept bounded arithmetic using `+ - * /`, parentheses,
+decimals and percentages (`50%` is `0.5`). Enter or leaving the field commits a
+valid value; Escape restores the current value. Invalid expressions and zero
+scale do not alter the artwork. Drag a numeric label to adjust its field, with
+Shift for larger steps and Alt for finer steps. A complete drag makes one undo
+step; Escape or losing window focus cancels it. Arrow keys still step values.
 
 ## Favorites And Settings
 
@@ -287,6 +333,10 @@ For dense projects, the editor:
 - constructs shape assets with bounded concurrency while preserving order
 - virtualizes the layer list
 - shares unchanged history state and restores changed objects in place
+- serializes only known changed layers for transform commits, with full capture
+  for structural/unknown edits and pending nudges
+- avoids duplicate immediate export validation after a mouse transform; explicit
+  export still performs a complete fresh validation
 - defers recovery serialization during edit bursts
 - uses a transient accelerated interaction preview from 300 layers upward
 - resumes the exact Fabric render when interaction ends

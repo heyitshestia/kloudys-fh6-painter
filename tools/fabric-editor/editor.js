@@ -17,6 +17,8 @@ const PROJECT_SHARING_ACK_KEY = "kloudyFabricProjectSharingAcknowledged";
 const PROJECT_SHARING_NOTICE_VERSION = "1";
 let startupProjectWasLoaded = false;
 let projectSharingConfirmationPending = false;
+const LANGUAGE_NOTICE_ACK_KEY = "kloudyFabricLanguageNoticeAcknowledged";
+let languageNoticeConfirmationPending = false;
 const EDITOR_PREFS_API = "/api/fabric-editor/preferences";
 const EDITOR_THEMES_API = "/api/fabric-editor/themes";
 const EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave";
@@ -124,64 +126,64 @@ const BUILTIN_EDITOR_THEMES = [
 const THEME_MAIN_FIELDS = ["--shell", "--panel", "--text", "--accent", "--fabric-canvas-bg", "--line"];
 
 const THEME_FIELDS = [
-  ["--bg", "App background"],
-  ["--shell", "Outer shell"],
-  ["--panel", "Main panels"],
-  ["--panel2", "Raised panels"],
-  ["--panel3", "Inset panels"],
-  ["--text", "Main text"],
-  ["--muted", "Muted text"],
-  ["--soft", "Soft labels"],
-  ["--line", "Thin borders"],
-  ["--line2", "Strong borders"],
-  ["--accent", "Primary accent"],
-  ["--accent2", "Secondary accent"],
-  ["--good", "Success color"],
-  ["--warn", "Warning color"],
-  ["--danger", "Danger color"],
-  ["--canvas-bg", "Canvas surround"],
-  ["--fabric-canvas-bg", "Canvas color"],
-  ["--editor-grid-line", "Grid lines"],
-  ["--editor-grid-axis", "Grid axis"],
-  ["--editor-guide-line", "Guide lines"],
-  ["--editor-guide-selected", "Selected guide"],
-  ["--editor-guide-draft", "Guide draft"],
-  ["--editor-notch-line", "Rotation notch"],
-  ["--editor-notch-muted", "Muted notch"],
-  ["--editor-notch-active", "Active notch"],
-  ["--editor-selection-border", "Selection border"],
-  ["--editor-shape-outline", "Shape outline"],
-  ["--editor-selection-corner", "Transform handles"],
-  ["--editor-selection-corner-stroke", "Handle stroke"],
-  ["--editor-skew-corner", "Skew handle"],
-  ["--shape-tile-bg", "Shape tile background"],
-  ["--dialog-bg", "Dialog background"],
-  ["--dialog-header", "Dialog header"],
+  ["--bg", KfpsI18n.t("App background")],
+  ["--shell", KfpsI18n.t("Outer shell")],
+  ["--panel", KfpsI18n.t("Main panels")],
+  ["--panel2", KfpsI18n.t("Raised panels")],
+  ["--panel3", KfpsI18n.t("Inset panels")],
+  ["--text", KfpsI18n.t("Main text")],
+  ["--muted", KfpsI18n.t("Muted text")],
+  ["--soft", KfpsI18n.t("Soft labels")],
+  ["--line", KfpsI18n.t("Thin borders")],
+  ["--line2", KfpsI18n.t("Strong borders")],
+  ["--accent", KfpsI18n.t("Primary accent")],
+  ["--accent2", KfpsI18n.t("Secondary accent")],
+  ["--good", KfpsI18n.t("Success color")],
+  ["--warn", KfpsI18n.t("Warning color")],
+  ["--danger", KfpsI18n.t("Danger color")],
+  ["--canvas-bg", KfpsI18n.t("Canvas surround")],
+  ["--fabric-canvas-bg", KfpsI18n.t("Canvas color")],
+  ["--editor-grid-line", KfpsI18n.t("Grid lines")],
+  ["--editor-grid-axis", KfpsI18n.t("Grid axis")],
+  ["--editor-guide-line", KfpsI18n.t("Guide lines")],
+  ["--editor-guide-selected", KfpsI18n.t("Selected guide")],
+  ["--editor-guide-draft", KfpsI18n.t("Guide draft")],
+  ["--editor-notch-line", KfpsI18n.t("Rotation notch")],
+  ["--editor-notch-muted", KfpsI18n.t("Muted notch")],
+  ["--editor-notch-active", KfpsI18n.t("Active notch")],
+  ["--editor-selection-border", KfpsI18n.t("Selection border")],
+  ["--editor-shape-outline", KfpsI18n.t("Shape outline")],
+  ["--editor-selection-corner", KfpsI18n.t("Transform handles")],
+  ["--editor-selection-corner-stroke", KfpsI18n.t("Handle stroke")],
+  ["--editor-skew-corner", KfpsI18n.t("Skew handle")],
+  ["--shape-tile-bg", KfpsI18n.t("Shape tile background")],
+  ["--dialog-bg", KfpsI18n.t("Dialog background")],
+  ["--dialog-header", KfpsI18n.t("Dialog header")],
 ];
 
 const SHORTCUT_LABELS = {
-  selectTool: "Select / Move",
-  shapeLibrary: "Shape Library",
-  textTool: "Text Builder",
-  pixelArt: "Pixel Art",
-  dropper: "Eyedropper",
-  guides: "Guides / Snap",
-  overlay: "Reference Image",
-  sourceTool: "Move Reference",
-  delete: "Delete selected",
-  duplicate: "Duplicate selected",
-  copy: "Copy selected",
-  paste: "Paste copied layers",
-  undo: "Undo",
-  redo: "Redo",
-  layerForward: "Layer forward",
-  layerBackward: "Layer backward",
-  flipVertical: "Flip vertical",
-  flipHorizontal: "Flip horizontal",
-  makeMask: "Toggle mask layer",
-  axisLockX: "Drag lock X axis",
-  axisLockY: "Drag lock Y axis",
-  selectionLock: "Lock current selection",
+  selectTool: KfpsI18n.t("Select / Move"),
+  shapeLibrary: KfpsI18n.t("Shape Library"),
+  textTool: KfpsI18n.t("Text Builder"),
+  pixelArt: KfpsI18n.t("Pixel Art"),
+  dropper: KfpsI18n.t("Eyedropper"),
+  guides: KfpsI18n.t("Guides / Snap"),
+  overlay: KfpsI18n.t("Reference Image"),
+  sourceTool: KfpsI18n.t("Move Reference"),
+  delete: KfpsI18n.t("Delete selected"),
+  duplicate: KfpsI18n.t("Duplicate selected"),
+  copy: KfpsI18n.t("Copy selected"),
+  paste: KfpsI18n.t("Paste copied layers"),
+  undo: KfpsI18n.t("Undo"),
+  redo: KfpsI18n.t("Redo"),
+  layerForward: KfpsI18n.t("Layer forward"),
+  layerBackward: KfpsI18n.t("Layer backward"),
+  flipVertical: KfpsI18n.t("Flip vertical"),
+  flipHorizontal: KfpsI18n.t("Flip horizontal"),
+  makeMask: KfpsI18n.t("Toggle mask layer"),
+  axisLockX: KfpsI18n.t("Drag lock X axis"),
+  axisLockY: KfpsI18n.t("Drag lock Y axis"),
+  selectionLock: KfpsI18n.t("Lock current selection"),
 };
 
 const VINYL_TYPE_BASES = {
@@ -303,6 +305,7 @@ let themeAdjustRestoreTheme = null;
 let themeAdjustSaving = false;
 let shapeEyedropperActive = false;
 let activeToolMode = "select";
+let editorAssetLibrary = null;
 let overlaySampler = null;
 let layeredOverlayState = null;
 let overlaySourceState = null;
@@ -505,7 +508,7 @@ function resetShortcuts() {
   saveShortcuts();
   renderShortcutEditor();
   updateShortcutLabels();
-  setStatus("Editor shortcuts reset to defaults.");
+  setStatus(KfpsI18n.t("Editor shortcuts reset to defaults."));
 }
 
 function setShortcut(action, combo) {
@@ -515,7 +518,7 @@ function setShortcut(action, combo) {
   saveShortcuts();
   renderShortcutEditor();
   updateShortcutLabels();
-  setStatus(`${SHORTCUT_LABELS[action] || action} shortcut set to ${normalized}.`);
+  setStatus(KfpsI18n.t("{0} shortcut set to {1}.", SHORTCUT_LABELS[action] || action, normalized));
 }
 
 function updateShortcutLabels() {
@@ -545,14 +548,11 @@ function renderShortcutEditor() {
   Object.keys(DEFAULT_SHORTCUTS).forEach((action) => {
     const row = document.createElement("label");
     row.className = "shortcutEditRow";
-    row.innerHTML = `
-      <span>${escapeHtml(SHORTCUT_LABELS[action] || action)}</span>
-      <input class="shortcutCapture" data-shortcut-action="${escapeHtml(action)}" readonly value="${escapeHtml(shortcutFor(action))}" title="Click, then press a new shortcut.">
-    `;
+    row.innerHTML = KfpsI18n.t("\n      <span>{0}</span>\n      <input class=\"shortcutCapture\" data-shortcut-action=\"{1}\" readonly value=\"{2}\" title=\"Click, then press a new shortcut.\">\n    ", escapeHtml(SHORTCUT_LABELS[action] || action), escapeHtml(action), escapeHtml(shortcutFor(action)));
     const input = row.querySelector("input");
     input.addEventListener("focus", () => {
       input.classList.add("capturing");
-      input.value = "Press keys...";
+      input.value = KfpsI18n.t("Press keys...");
     });
     input.addEventListener("blur", () => {
       input.classList.remove("capturing");
@@ -673,7 +673,7 @@ function populateEditorThemeSelect(selectedTheme = null) {
   [...editorThemes.values()].forEach((theme) => {
     const option = document.createElement("option");
     option.value = theme.id;
-    option.textContent = theme.builtin ? theme.name : `${theme.name} (Custom)`;
+    option.textContent = theme.builtin ? KfpsI18n.t(theme.name) : KfpsI18n.t("{0} (Custom)", theme.name);
     select.appendChild(option);
   });
   select.value = normalizeTheme(current);
@@ -758,13 +758,7 @@ async function loadEditorThemePreference() {
 function themeFieldInputRow(key, label, value) {
   const safeValue = String(value || "");
   const isHex = /^#[0-9a-f]{6}$/i.test(safeValue);
-  return `
-    <div class="themeAdjustRow">
-      <label for="theme-${escapeHtml(key.slice(2))}">${escapeHtml(label)}</label>
-      ${isHex ? `<input class="themeColorInput" type="color" aria-label="${escapeHtml(label)} color" value="${escapeHtml(safeValue)}" data-theme-color-for="${escapeHtml(key)}">` : '<span></span>'}
-      <input id="theme-${escapeHtml(key.slice(2))}" class="themeValueInput" data-theme-var="${escapeHtml(key)}" value="${escapeHtml(safeValue)}" spellcheck="false" aria-label="${escapeHtml(label)} value">
-    </div>
-  `;
+  return KfpsI18n.t("\n    <div class=\"themeAdjustRow\">\n      <label for=\"theme-{0}\">{1}</label>\n      {2}\n      <input id=\"theme-{3}\" class=\"themeValueInput\" data-theme-var=\"{4}\" value=\"{5}\" spellcheck=\"false\" aria-label=\"{6} value\">\n    </div>\n  ", escapeHtml(key.slice(2)), escapeHtml(label), isHex ? KfpsI18n.t("<input class=\"themeColorInput\" type=\"color\" aria-label=\"{0} color\" value=\"{1}\" data-theme-color-for=\"{2}\">", escapeHtml(label), escapeHtml(safeValue), escapeHtml(key)) : '<span></span>', escapeHtml(key.slice(2)), escapeHtml(key), escapeHtml(safeValue), escapeHtml(label));
 }
 
 function themeFieldInput(fields, key) {
@@ -778,11 +772,10 @@ function themeColorInput(fields, key) {
 function renderThemeAdjustFields(values) {
   const fields = $("themeAdjustFields");
   if (fields) {
-    const basicLabels = { "--shell": "Window", "--panel": "Panels", "--text": "Text", "--accent": "Accent", "--fabric-canvas-bg": "Canvas", "--line": "Borders" };
+    const basicLabels = { "--shell": KfpsI18n.t("Window"), "--panel": KfpsI18n.t("Panels"), "--text": KfpsI18n.t("Text"), "--accent": KfpsI18n.t("Accent"), "--fabric-canvas-bg": KfpsI18n.t("Canvas"), "--line": KfpsI18n.t("Borders") };
     const rows = keys => THEME_FIELDS.filter(([key]) => keys.includes(key))
       .map(([key, label]) => themeFieldInputRow(key, basicLabels[key] || label, values[key])).join("");
-    fields.innerHTML = `<div class="themeColorGrid">${rows(THEME_MAIN_FIELDS)}</div>
-      <details class="themeAdvanced"><summary>More colors</summary><div class="themeColorGrid">${rows(THEME_FIELDS.map(([key]) => key).filter(key => !THEME_MAIN_FIELDS.includes(key)))}</div></details>`;
+    fields.innerHTML = KfpsI18n.t("<div class=\"themeColorGrid\">{0}</div>\n      <details class=\"themeAdvanced\"><summary>More colors</summary><div class=\"themeColorGrid\">{1}</div></details>", rows(THEME_MAIN_FIELDS), rows(THEME_FIELDS.map(([key]) => key).filter(key => !THEME_MAIN_FIELDS.includes(key))));
     fields.querySelectorAll(".themeValueInput").forEach((input) => {
       input.addEventListener("input", () => {
         const key = input.dataset.themeVar;
@@ -826,7 +819,7 @@ function updateThemeContrastStatus() {
   const minimum = ratios.every(value => value !== null) ? Math.min(...ratios) : null;
   const status = $("themeAdjustStatus");
   if (status) {
-    status.textContent = invalid ? "Invalid color value" : minimum === null ? "Text contrast: unavailable for these colors" : `${minimum < 4.5 ? "Low text contrast" : "Text contrast"}: ${minimum.toFixed(1)}:1`;
+    status.textContent = invalid ? KfpsI18n.t("Invalid color value") : minimum === null ? KfpsI18n.t("Text contrast: unavailable for these colors") : `${minimum < 4.5 ? KfpsI18n.t("Low text contrast") : KfpsI18n.t("Text contrast")}: ${minimum.toFixed(1)}:1`;
     status.dataset.warning = String(invalid || (minimum !== null && minimum < 4.5));
   }
   if ($("saveThemeAdjust")) $("saveThemeAdjust").disabled = themeAdjustSaving || invalid;
@@ -842,11 +835,11 @@ function openThemeAdjustDialog() {
   if (!dialog || themeAdjustSaving) return;
   themeAdjustRestoreTheme = normalizeTheme($("editorThemeSelect")?.value || editorSettings.getItem("kloudyFabricTheme") || "pastel");
   const current = themeById(themeAdjustRestoreTheme);
-  $("themeAdjustName").value = current.builtin ? `${current.name} Custom` : current.name;
+  $("themeAdjustName").value = current.builtin ? KfpsI18n.t("{0} Custom", current.name) : current.name;
   $("themeAdjustBase").replaceChildren(...[...editorThemes.values()].map(theme => {
     const option = document.createElement("option");
     option.value = theme.id;
-    option.textContent = theme.name;
+    option.textContent = theme.builtin ? KfpsI18n.t(theme.name) : theme.name;
     return option;
   }));
   $("themeAdjustBase").value = themeAdjustRestoreTheme;
@@ -885,16 +878,16 @@ async function saveAdjustedTheme() {
       body: JSON.stringify({ name, values, base: document.documentElement.dataset.editorThemeBase || "pastel" }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadEditorThemes();
     const themeId = data.theme?.id;
     if (themeId) applyEditorTheme(themeId);
     themeAdjustRestoreTheme = null;
     $("themeAdjustDialog")?.close();
-    setStatus(`Saved custom editor theme: ${data.theme?.name || name}.`);
+    setStatus(KfpsI18n.t("Saved custom editor theme: {0}.", data.theme?.name || name));
   } catch (err) {
-    showError("Theme save failed", err);
-    setStatus(`Theme save failed: ${err.message || err}`);
+    showError(KfpsI18n.t("Theme save failed"), err);
+    setStatus(KfpsI18n.t("Theme save failed: {0}", KfpsI18n.error(err.message || err)));
   } finally {
     themeAdjustSaving = false;
     controls.forEach(control => { control.disabled = false; });
@@ -1318,7 +1311,7 @@ function ensureSelectionOutlinePath(object) {
       refreshSelectionOutlineHelperForObject(selected.length === 1 ? selected[0] : object);
     })
     .catch((err) => {
-      console.warn("Selection outline load failed.", err);
+      console.warn(KfpsI18n.t("Selection outline load failed."), err);
       object.kloudy.outline_path_failed = true;
       refreshSelectionOutlineHelperForObject(object);
     })
@@ -1831,8 +1824,8 @@ function updateHud(pointer = null, options = {}) {
     const selected = selectedVinylObjects().length;
     const stats = getLayerStats(Boolean(options.forceStats));
     const zoom = `${Math.round((canvas.getZoom() || 1) * 100)}%`;
-    const layerText = `${stats.count} layer${stats.count === 1 ? "" : "s"}`;
-    const selectionText = selected ? `${selected} selected` : "No layer selected";
+    const layerText = KfpsI18n.t("{0} layer{1}", stats.count, stats.count === 1 ? "" : "s");
+    const selectionText = selected ? KfpsI18n.t("{0} selected", selected) : KfpsI18n.t("No layer selected");
     setText("selectedCount", String(selected));
     setText("visibleCount", String(stats.visible));
     setText("zoomValue", zoom);
@@ -1853,22 +1846,22 @@ function updateHud(pointer = null, options = {}) {
 }
 
 function currentHudMode(selectedCount = 0) {
-  if (shapeEyedropperActive || activeToolMode === "dropper") return "Eyedropper";
-  if (activeToolMode === "guides") return selectedGuideId ? "Guide selected" : "Draw guides";
-  if (activeToolMode === "source") return overlayImage ? "Move reference image" : "Move Reference - no image";
-  if (activeToolMode === "shapeLibrary") return "Place from library";
-  if (activeToolMode === "text") return "Build native text";
-  if (activeToolMode === "pixelArt") return "Build pixel art";
-  if (activeToolMode === "overlay") return "Reference controls";
-  return selectedCount ? "Edit selected" : "Select / box-select";
+  if (shapeEyedropperActive || activeToolMode === "dropper") return KfpsI18n.t("Eyedropper");
+  if (activeToolMode === "guides") return selectedGuideId ? KfpsI18n.t("Guide selected") : KfpsI18n.t("Draw guides");
+  if (activeToolMode === "source") return overlayImage ? KfpsI18n.t("Move reference image") : KfpsI18n.t("Move Reference - no image");
+  if (activeToolMode === "shapeLibrary") return KfpsI18n.t("Place from library");
+  if (activeToolMode === "text") return KfpsI18n.t("Build native text");
+  if (activeToolMode === "pixelArt") return KfpsI18n.t("Build pixel art");
+  if (activeToolMode === "overlay") return KfpsI18n.t("Reference controls");
+  return selectedCount ? KfpsI18n.t("Edit selected") : KfpsI18n.t("Select / box-select");
 }
 
 function setHoverHud(target) {
   if (!$("hudHover")) return;
   if (target?.kloudy) {
-    $("hudHover").textContent = `over ${target.kloudy.name || typeLabel(target.kloudy.type)}`;
+    $("hudHover").textContent = KfpsI18n.t("over {0}", target.kloudy.name || localizedTypeLabel(target.kloudy.type));
   } else {
-    $("hudHover").textContent = "over nothing";
+    $("hudHover").textContent = KfpsI18n.t("over nothing");
   }
 }
 
@@ -1900,7 +1893,7 @@ function clearBusy(message = null) {
 }
 
 function showError(prefix, err) {
-  const message = err && err.stack ? err.stack : (err && err.message ? err.message : String(err));
+  const message = KfpsI18n.error(err && err.stack ? err.stack : (err && err.message ? err.message : String(err)));
   console.error(prefix, err);
   clearBusy(`${prefix}: ${message.split("\n")[0]}`);
   showEditorMessage(prefix, message);
@@ -1914,7 +1907,7 @@ function scheduleCanvasResize() {
 
 function showEditorMessage(title, message) {
   const dialog = $("messageDialog");
-  setText("messageDialogTitle", title || "Editor message");
+  setText("messageDialogTitle", title || KfpsI18n.t("Editor message"));
   setText("messageDialogBody", String(message || ""));
   if (!dialog) return;
   try {
@@ -1933,8 +1926,8 @@ function requestTextInput(title, label, value = "", description = "") {
     textPromptResolver(null);
     textPromptResolver = null;
   }
-  setText("textPromptTitle", title || "Enter a name");
-  setText("textPromptLabel", label || "Name");
+  setText("textPromptTitle", title || KfpsI18n.t("Enter a name"));
+  setText("textPromptLabel", label || KfpsI18n.t("Name"));
   setText("textPromptDescription", description || "");
   input.value = String(value || "");
   return new Promise((resolve) => {
@@ -1964,14 +1957,14 @@ function finishConfirmation(value) {
   if (resolver) resolver(Boolean(value));
 }
 
-function requestConfirmation(title, body, confirmLabel = "Continue") {
+function requestConfirmation(title, body, confirmLabel = KfpsI18n.t("Continue")) {
   const dialog = $("confirmationDialog");
   if (!dialog) return Promise.resolve(false);
   if (confirmationResolver) finishConfirmation(false);
   if (dialog.open) dialog.close();
-  setText("confirmationDialogTitle", String(title || "Continue?"));
+  setText("confirmationDialogTitle", String(title || KfpsI18n.t("Continue?")));
   setText("confirmationDialogBody", String(body || ""));
-  setText("confirmationDialogConfirm", String(confirmLabel || "Continue"));
+  setText("confirmationDialogConfirm", String(confirmLabel || KfpsI18n.t("Continue")));
   return new Promise((resolve) => {
     confirmationResolver = resolve;
     try {
@@ -1985,15 +1978,15 @@ function requestConfirmation(title, body, confirmLabel = "Continue") {
 async function confirmWorkspaceReplacement(nextDocument) {
   if (!documentDirty) return true;
   return requestConfirmation(
-    "Unsaved editor changes",
-    `Opening ${nextDocument || "another document"} replaces the current workspace. Save the project first if these changes should be kept.`,
-    "Open Anyway",
+    KfpsI18n.t("Unsaved editor changes"),
+    KfpsI18n.t("Opening {0} replaces the current workspace. Save the project first if these changes should be kept.", nextDocument || KfpsI18n.t("another document")),
+    KfpsI18n.t("Open Anyway"),
   );
 }
 
 async function startBlankCanvas() {
-  if (!await confirmWorkspaceReplacement("a new blank canvas")) {
-    setStatus("Current unsaved work was kept.");
+  if (!await confirmWorkspaceReplacement(KfpsI18n.t("a new blank canvas"))) {
+    setStatus(KfpsI18n.t("Current unsaved work was kept."));
     return;
   }
   clearVinylObjects();
@@ -2011,7 +2004,7 @@ async function startBlankCanvas() {
   refreshLayers();
   updateSelectionPanel();
   refreshExportValidation();
-  setStatus("Blank canvas ready. Open Shapes, Text, or Pixel to begin.");
+  setStatus(KfpsI18n.t("Blank canvas ready. Open Shapes, Text, or Pixel to begin."));
 }
 
 function nextFrame() {
@@ -2094,6 +2087,7 @@ function saveFavoriteColors() {
 }
 
 function activateDockPanel(panelId) {
+  if (panelId === "assetsPane") editorAssetLibrary?.refresh();
   if (panelId === "layersPane") {
     setDockVisible(true);
     setLayersCollapsed(false);
@@ -2151,7 +2145,7 @@ function setLayersCollapsed(collapsed, options = {}) {
   if (!dock) return;
   dock.classList.toggle("layersCollapsed", Boolean(collapsed));
   const button = $("collapseLayersDock");
-  if (button) button.textContent = collapsed ? "Restore" : "Collapse";
+  if (button) button.textContent = collapsed ? KfpsI18n.t("Restore") : KfpsI18n.t("Collapse");
   if (options.persist !== false) writeDockState({ layersCollapsed: Boolean(collapsed) });
   scheduleCanvasResize();
 }
@@ -2205,8 +2199,8 @@ function setToolRailMode(mode, label = null) {
     if (!tool.classList.contains("toolActionButton")) tool.setAttribute("aria-pressed", String(active));
   });
   const activeButton = document.querySelector(`.toolButton[data-tool-mode="${activeToolMode}"]`);
-  label = label || activeButton?.dataset.tool || "Select / Move";
-  setText("activeToolLabel", label);
+  label = label || activeButton?.dataset.tool || KfpsI18n.t("Select / Move");
+  setText("activeToolLabel", KfpsI18n.term(label));
   setText("hudMode", currentHudMode(selectedVinylObjects().length));
   updateGuideInteractivity();
   updateSourceInteractivity();
@@ -2233,13 +2227,13 @@ function setActiveTool(button) {
     renderGuideObjects();
   }
   if (button.dataset.focusPanel) activateDockPanel(button.dataset.focusPanel);
-  if (mode === "select") setStatus("Select mode. Drag empty canvas to box-select; mouse wheel zooms; middle/right drag pans.");
-  if (mode === "shapeLibrary") setStatus("Shape Library open. Click a shape tile to place it in the current viewport.");
-  if (mode === "text") setStatus("Text builder open. Text is built from editable native Forza letter shapes.");
-  if (mode === "pixelArt") setStatus("Pixel Art builder open. Adjacent same-color pixels are merged to save layers.");
-  if (mode === "guides") setStatus("Guides mode. Drag on the canvas to create editor-only guide lines. Hold Control while moving vinyl layers to snap.");
-  if (mode === "overlay") setStatus("Reference controls open. Reference images are editor-only and never exported.");
-  if (mode === "source") setStatus(overlayImage ? "Move Reference mode. Drag only the reference image; vinyl layers and guides are ignored. Hold Control to snap it to the grid or guides." : "Move Reference needs an image first. Add one in Reference controls.");
+  if (mode === "select") setStatus(KfpsI18n.t("Select mode. Drag empty canvas to box-select; mouse wheel zooms; middle/right drag pans."));
+  if (mode === "shapeLibrary") setStatus(KfpsI18n.t("Shape Library open. Click a shape tile to place it in the current viewport."));
+  if (mode === "text") setStatus(KfpsI18n.t("Text builder open. Text is built from editable native Forza letter shapes."));
+  if (mode === "pixelArt") setStatus(KfpsI18n.t("Pixel Art builder open. Adjacent same-color pixels are merged to save layers."));
+  if (mode === "guides") setStatus(KfpsI18n.t("Guides mode. Drag on the canvas to create editor-only guide lines. Hold Control while moving vinyl layers to snap."));
+  if (mode === "overlay") setStatus(KfpsI18n.t("Reference controls open. Reference images are editor-only and never exported."));
+  if (mode === "source") setStatus(overlayImage ? KfpsI18n.t("Move Reference mode. Drag only the reference image; vinyl layers and guides are ignored. Hold Control to snap it to the grid or guides.") : KfpsI18n.t("Move Reference needs an image first. Add one in Reference controls."));
 }
 
 function activateToolShortcut(key) {
@@ -2260,7 +2254,7 @@ function setVBoxSelectActive(active) {
     canvas.hoverCursor = vBoxSelectActive ? "crosshair" : "default";
     canvas.requestRenderAll();
   }
-  if (vBoxSelectActive) setText("hudMode", "V box select");
+  if (vBoxSelectActive) setText("hudMode", KfpsI18n.t("V box select"));
   else setText("hudMode", currentHudMode(selectedVinylObjects().length));
 }
 
@@ -2268,9 +2262,9 @@ function leaveGuideModeForLayerEdit() {
   if (activeToolMode !== "guides") return;
   guideDraft = null;
   selectedGuideId = null;
-  setToolRailMode("select", "Select / Move");
+  setToolRailMode("select", KfpsI18n.t("Select / Move"));
   renderGuideObjects();
-  setStatus("Guide drawing disengaged. Select mode is active while editing shapes.");
+  setStatus(KfpsI18n.t("Guide drawing disengaged. Select mode is active while editing shapes."));
 }
 
 function resourceCountForFamilyDefinition(family) {
@@ -2326,14 +2320,14 @@ function resourceToTypeCode(family, index) {
 function resourceToShapeWord(family, index) {
   if (family === "Primitives") return (100 + Number(index)) & 0xffff;
   const base = VINYL_TYPE_BASES[family];
-  if (!base) throw new Error(`Unknown shape family: ${family}`);
+  if (!base) throw new Error(KfpsI18n.t("Unknown shape family: {0}", family));
   if (family.includes("Letters")) return (base + Number(index) - 1) & 0xffff;
   return ((base & 0xffff) + Number(index) - 1) & 0xffff;
 }
 
 async function loadResourcePath(typeCode) {
   const resolved = typeCodeToResource(typeCode);
-  if (!resolved) throw new Error(`Unsupported FH6 type code: ${typeCode}`);
+  if (!resolved) throw new Error(KfpsI18n.t("Unsupported FH6 type code: {0}", typeCode));
   return loadResourcePathForResolved(resolved);
 }
 
@@ -2377,7 +2371,7 @@ async function loadResourcePayloadForResolved(resolved) {
   const pending = (async () => {
     const url = await resolveVinylResourceUrl(resolved.family, resolved.index, "");
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Missing shape resource: ${url}`);
+    if (!response.ok) throw new Error(KfpsI18n.t("Missing shape resource: {0}", url));
     const payload = await response.json();
     resourcePayloadCache.set(cacheKey, payload);
     return payload;
@@ -2621,7 +2615,7 @@ async function loadFabricImage(url) {
       const element = new Image();
       element.crossOrigin = "anonymous";
       element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error(`Failed to load image resource: ${url}`));
+      element.onerror = () => reject(new Error(KfpsI18n.t("Failed to load image resource: {0}", url)));
       element.src = url;
     });
     fabricImageElementPromiseCache.set(url, pending);
@@ -2639,9 +2633,9 @@ function compileHybridShader(gl, type, source) {
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const message = gl.getShaderInfoLog(shader) || "unknown shader error";
+    const message = gl.getShaderInfoLog(shader) || KfpsI18n.t("unknown shader error");
     gl.deleteShader(shader);
-    throw new Error(message);
+    throw new Error(KfpsI18n.error(message));
   }
   return shader;
 }
@@ -2677,9 +2671,9 @@ function createHybridProgram(gl) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const message = gl.getProgramInfoLog(program) || "unknown program error";
+    const message = gl.getProgramInfoLog(program) || KfpsI18n.t("unknown program error");
     gl.deleteProgram(program);
-    throw new Error(message);
+    throw new Error(KfpsI18n.error(message));
   }
   return {
     program,
@@ -2731,9 +2725,9 @@ function createHybridTextureProgram(gl) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const message = gl.getProgramInfoLog(program) || "unknown texture shader error";
+    const message = gl.getProgramInfoLog(program) || KfpsI18n.t("unknown texture shader error");
     gl.deleteProgram(program);
-    throw new Error(message);
+    throw new Error(KfpsI18n.error(message));
   }
   return {
     program,
@@ -2789,9 +2783,9 @@ function createHybridInstancedProgram(gl) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const message = gl.getProgramInfoLog(program) || "unknown instanced shader error";
+    const message = gl.getProgramInfoLog(program) || KfpsI18n.t("unknown instanced shader error");
     gl.deleteProgram(program);
-    throw new Error(message);
+    throw new Error(KfpsI18n.error(message));
   }
   return {
     program,
@@ -2814,7 +2808,7 @@ function initHybridRenderer() {
   if (hybridRenderer || hybridDisabledReason) return hybridRenderer;
   const element = $("hybridRenderCanvas");
   if (!element) {
-    hybridDisabledReason = "missing canvas";
+    hybridDisabledReason = KfpsI18n.t("missing canvas");
     return null;
   }
   if (!element.__kloudyContextListeners) {
@@ -2845,7 +2839,7 @@ function initHybridRenderer() {
     preserveDrawingBuffer: true,
   });
   if (!gl) {
-    hybridDisabledReason = "WebGL unavailable";
+    hybridDisabledReason = KfpsI18n.t("WebGL unavailable");
     return null;
   }
   try {
@@ -2891,7 +2885,7 @@ function initHybridRenderer() {
     };
   } catch (err) {
     hybridDisabledReason = err?.message || String(err);
-    console.warn("Hybrid renderer disabled.", err);
+    console.warn(KfpsI18n.t("Hybrid renderer disabled."), err);
     hybridRenderer = null;
   }
   return hybridRenderer;
@@ -3279,7 +3273,7 @@ function drawHybridOverlay(renderer, viewMatrix) {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       overlay.source = source;
     } catch (err) {
-      console.warn("GPU source overlay upload skipped.", err);
+      console.warn(KfpsI18n.t("GPU source overlay upload skipped."), err);
       return false;
     }
   }
@@ -3348,7 +3342,7 @@ function beginHybridRender(reason = "interaction") {
   hybridRenderer.element.hidden = false;
   hideHybridFabricBulkObjects(objects);
   requestHybridRender();
-  setText("hudMode", `${currentHudMode(selectedVinylObjects().length)} / GPU preview`);
+  setText("hudMode", KfpsI18n.t("{0} / GPU preview", currentHudMode(selectedVinylObjects().length)));
   return true;
 }
 
@@ -3432,7 +3426,7 @@ function computeLegacyOffset(shapes) {
 function legacyToFh6Shape(shape, legacyOffset = { x: 0, y: 0 }) {
   const type = Number(shape.type);
   const data = Array.isArray(shape.data) ? shape.data : [];
-  if (data.length < 4) throw new Error("Legacy shape requires at least x,y,w,h data.");
+  if (data.length < 4) throw new Error(KfpsI18n.t("Legacy shape requires at least x,y,w,h data."));
   const x = Number(data[0]) || 0;
   const y = Number(data[1]) || 0;
   const w = Number(data[2]) || 1;
@@ -3650,6 +3644,23 @@ function shapeDisplayName(family, index) {
   return `${familyLabel} slot ${index}${suffix}`;
 }
 
+// Display-only helpers. Never use these when writing shape_name or identifiers.
+function localizedShapeDisplayName(family, index) {
+  const original = shapeDisplayName(family, index);
+  const named = KfpsI18n.shapeLabel(original);
+  if (named !== original || KfpsI18n.language !== "ko") return named;
+  let word;
+  try { word = resourceToShapeWord(family, index); }
+  catch (_) { word = shapeWords?.families?.[family]?.[String(index)]; }
+  return KfpsI18n.t("{0} slot {1}{2}", KfpsI18n.familyLabel(family), index,
+    word !== undefined ? KfpsI18n.t(" / word {0}", word) : "");
+}
+
+function localizedTypeLabel(typeCode) {
+  const resource = typeCodeToResource(typeCode);
+  return resource ? localizedShapeDisplayName(resource.family, resource.index) : KfpsI18n.t("Unknown {0}", typeCode);
+}
+
 function shapeSearchText(family, index, typeCode) {
   return [
     family,
@@ -3658,6 +3669,8 @@ function shapeSearchText(family, index, typeCode) {
     typeCode,
     `#${index}`,
     shapeDisplayName(family, index),
+    localizedShapeDisplayName(family, index),
+    KfpsI18n.familyLabel(family),
   ].join(" ").toLowerCase();
 }
 
@@ -3678,13 +3691,13 @@ async function loadShapeNames() {
       fetch("/tools/fabric-editor/shape-names.json"),
       fetch("/tools/fabric-editor/shape-words.json"),
     ]);
-    if (!namesResponse.ok) throw new Error(`shape-names HTTP ${namesResponse.status}`);
-    if (!wordsResponse.ok) throw new Error(`shape-words HTTP ${wordsResponse.status}`);
+    if (!namesResponse.ok) throw new Error(KfpsI18n.t("shape-names HTTP {0}", namesResponse.status));
+    if (!wordsResponse.ok) throw new Error(KfpsI18n.t("shape-words HTTP {0}", wordsResponse.status));
     shapeNames = await namesResponse.json();
     shapeWords = await wordsResponse.json();
     renderShapeGrid();
   } catch (err) {
-    console.warn("Shape metadata unavailable.", err);
+    console.warn(KfpsI18n.t("Shape metadata unavailable."), err);
   }
 }
 
@@ -3746,15 +3759,15 @@ function renderFavoriteColors() {
     const selected = index === selectedFavoriteColorSlot;
     button.className = `favoriteColorSwatch${color ? "" : " empty"}${selected ? " selected" : ""}${color && colorToHex(color) === activeHex ? " active" : ""}`;
     button.title = color
-      ? `Slot ${index + 1}: use ${colorToHex(color).toUpperCase()} / A ${color[3]}`
-      : `Slot ${index + 1}: empty. Click to select, then Save Color.`;
+      ? KfpsI18n.t("Slot {0}: use {1} / A {2}", index + 1, colorToHex(color).toUpperCase(), color[3])
+      : KfpsI18n.t("Slot {0}: empty. Click to select, then Save Color.", index + 1);
     if (color) button.style.setProperty("--swatch", colorToHex(color));
     button.addEventListener("click", () => {
       selectedFavoriteColorSlot = index;
       if (color) applyEditorColor(color, "saved color");
       else {
         renderFavoriteColors();
-        setStatus(`Selected empty color slot ${index + 1}. Choose a color, then Save Color.`);
+        setStatus(KfpsI18n.t("Selected empty color slot {0}. Choose a color, then Save Color.", index + 1));
       }
     });
     grid.appendChild(button);
@@ -3803,7 +3816,7 @@ function applyEditorColor(color, reason = "color") {
   if (selected.length === 1) {
     if (selected[0].kloudy?.locked) {
       updateSelectionPanel();
-      setStatus("Selected layer is locked. Unlock it before changing color.");
+      setStatus(KfpsI18n.t("Selected layer is locked. Unlock it before changing color."));
       return;
     }
     rememberColor(normalized);
@@ -3819,7 +3832,7 @@ function applyEditorColor(color, reason = "color") {
     if (!editable.length) {
       rememberColor(normalized);
       updateSelectionPanel();
-      setStatus("Selected layers are locked. Unlock them before changing color.");
+      setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before changing color."));
       return;
     }
     rememberColor(normalized);
@@ -3830,14 +3843,14 @@ function applyEditorColor(color, reason = "color") {
     canvas.requestRenderAll();
     updateSelectionPanel();
     pushHistory("batch color edit");
-    setStatus(`Applied ${colorToHex(normalized).toUpperCase()} / A ${normalized[3]} to ${editable.length} selected layer(s).${editable.length !== selected.length ? ` Skipped ${selected.length - editable.length} locked layer(s).` : ""}`);
+    setStatus(KfpsI18n.t("Applied {0} / A {1} to {2} selected layer(s).{3}", colorToHex(normalized).toUpperCase(), normalized[3], editable.length, editable.length !== selected.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", selected.length - editable.length) : ""));
     return;
   }
   rememberColor(normalized);
   if ($("colorPicker")) $("colorPicker").value = colorToHex(normalized);
   if ($("opacitySlider")) $("opacitySlider").value = normalized[3];
   updateSelectionPanel();
-  setStatus(`Active color set to ${colorToHex(normalized).toUpperCase()}.`);
+  setStatus(KfpsI18n.t("Active color set to {0}.", colorToHex(normalized).toUpperCase()));
 }
 
 function alphaForObject(object) {
@@ -3870,7 +3883,7 @@ function saveCurrentFavoriteColor() {
   favoriteColors = favoriteColors.slice(0, FAVORITE_COLOR_SLOTS);
   saveFavoriteColors();
   renderFavoriteColors();
-  setStatus(`Saved ${hex.toUpperCase()} to color slot ${selectedFavoriteColorSlot + 1}.`);
+  setStatus(KfpsI18n.t("Saved {0} to color slot {1}.", hex.toUpperCase(), selectedFavoriteColorSlot + 1));
 }
 
 function removeCurrentFavoriteColor() {
@@ -3880,14 +3893,14 @@ function removeCurrentFavoriteColor() {
   favoriteColors[slot] = null;
   saveFavoriteColors();
   renderFavoriteColors();
-  setStatus(hadColor ? `Cleared color slot ${slot + 1}.` : `Color slot ${slot + 1} is already empty.`);
+  setStatus(hadColor ? KfpsI18n.t("Cleared color slot {0}.", slot + 1) : KfpsI18n.t("Color slot {0} is already empty.", slot + 1));
 }
 
 function clearFavoriteColors() {
   favoriteColors = Array(FAVORITE_COLOR_SLOTS).fill(null);
   saveFavoriteColors();
   renderFavoriteColors();
-  setStatus("Cleared saved colors.");
+  setStatus(KfpsI18n.t("Cleared saved colors."));
 }
 
 function setShapeEyedropper(active, options = {}) {
@@ -3909,8 +3922,8 @@ function setShapeEyedropper(active, options = {}) {
   }
   if (!options.silent) {
     setStatus(active
-      ? "Eyedropper active. Click a vinyl layer to copy its color, or click the reference image to sample it."
-      : "Eyedropper off.");
+      ? KfpsI18n.t("Eyedropper active. Click a vinyl layer to copy its color, or click the reference image to sample it.")
+      : KfpsI18n.t("Eyedropper off."));
   }
   updateHud();
 }
@@ -3947,7 +3960,7 @@ function pickShapeColorFromEvent(opt) {
       restoreDropperSelection();
       applyEditorColor(overlayColor, "source eyedropper");
       restoreDropperSelection();
-      setStatus(`Picked reference color ${colorToHex(overlayColor).toUpperCase()}.`);
+      setStatus(KfpsI18n.t("Picked reference color {0}.", colorToHex(overlayColor).toUpperCase()));
       return;
     }
   }
@@ -3957,17 +3970,17 @@ function pickShapeColorFromEvent(opt) {
     const color = hexToRgb(target.fill || "#ffffff", (target.opacity ?? 1) * 255);
     applyEditorColor(color, "shape eyedropper");
     restoreDropperSelection();
-    setStatus(`Picked layer color ${colorToHex(color).toUpperCase()} without changing selection.`);
+    setStatus(KfpsI18n.t("Picked layer color {0} without changing selection.", colorToHex(color).toUpperCase()));
     return;
   }
   const color = overlayColorAtCanvasPoint(pointer.x, pointer.y);
   if (!color) {
-    setStatus("No vinyl layer or reference-image pixel under the eyedropper.");
+    setStatus(KfpsI18n.t("No vinyl layer or reference-image pixel under the eyedropper."));
     return;
   }
   applyEditorColor(color, "source eyedropper");
   restoreDropperSelection();
-  setStatus(`Picked reference color ${colorToHex(color).toUpperCase()}.`);
+  setStatus(KfpsI18n.t("Picked reference color {0}.", colorToHex(color).toUpperCase()));
 }
 
 function signedScaleX(object) {
@@ -4178,7 +4191,7 @@ function persistCollapsedLayerState() {
       autosavePayloadFromState(currentHistoryState() || snapshotEditorState()),
     );
   } catch (err) {
-    console.warn("Collapsed layer autosave skipped.", err);
+    console.warn(KfpsI18n.t("Collapsed layer autosave skipped."), err);
   }
   updateDocumentState();
   renderHistoryList();
@@ -4207,13 +4220,27 @@ function setHistoryShapeSignature(shape, signature) {
   return shape;
 }
 
-function captureSharedHistoryState(previousState = null) {
+function captureSharedHistoryState(previousState = null, changedObjects = null) {
+  const objects = vinylObjects();
+  const objectSet = new Set(objects);
+  const previousShapes = Array.isArray(previousState?.shapes) ? previousState.shapes : [];
+  // Only known non-structural edits may reuse records without re-serializing them.
+  const changed = Array.isArray(changedObjects) && changedObjects.length
+    && changedObjects.every(object => objectSet.has(object))
+    && previousShapes.length === objects.length
+    && objects.every((object, index) => object.kloudy?.editor_id
+      && object.kloudy.editor_id === previousShapes[index]?.editor_id)
+    ? new Set(changedObjects) : null;
   const previousById = new Map(
     (Array.isArray(previousState?.shapes) ? previousState.shapes : [])
       .map((shape) => [String(shape?.editor_id || ""), shape])
       .filter(([editorId]) => editorId),
   );
-  const shapes = vinylObjects().map((object) => {
+  const shapes = objects.map((object, index) => {
+    if (changed && !changed.has(object)) {
+      object.__kloudyHistoryShape = previousShapes[index];
+      return previousShapes[index];
+    }
     const shape = objectToShape(object, { includeEditorMeta: true });
     const signature = historyShapeSignature(shape);
     const editorId = String(shape.editor_id || "");
@@ -4440,13 +4467,13 @@ function reportAutosaveResult(operation, browserOk, serverOk, error) {
   if (operation.recovery_revision !== autosaveRevision) return;
   const ok = browserOk || serverOk;
   autosaveStatus = { state: ok ? "saved" : "failed", revision: autosaveRevision, browserOk, serverOk, error };
-  const message = serverOk ? "Recovery saved in KFPS" : browserOk ? "Recovery saved in this browser only" : "Recovery failed; save the project";
+  const message = serverOk ? KfpsI18n.t("Recovery saved in KFPS") : browserOk ? KfpsI18n.t("Recovery saved in this browser only") : KfpsI18n.t("Recovery failed; save the project");
   const status = $("status");
-  const recoveryMessage = /Recovery pending|Recovery saved in KFPS|Recovery saved in this browser only|Recovery failed; save the project/;
+  const recoveryMessage = KfpsI18n.recoveryPattern();
   if (status && recoveryMessage.test(status.textContent)) {
     setStatus(status.textContent.replace(recoveryMessage, message));
   }
-  if (!ok) showCornerNotice("Recovery unavailable", error || "Save the project to protect your changes.");
+  if (!ok) showCornerNotice(KfpsI18n.t("Recovery unavailable"), error || KfpsI18n.t("Save the project to protect your changes."));
 }
 
 function drainAutosaveQueue() {
@@ -4466,14 +4493,14 @@ function drainAutosaveQueue() {
         serialized = JSON.stringify(operation);
         if (new Blob([serialized]).size > EDITOR_PROJECT_MAX_BYTES) {
           retryable = false;
-          throw new Error("Recovery exceeds the 25 MiB project limit. Use a smaller reference image.");
+          throw new Error(KfpsI18n.t("Recovery exceeds the 25 MiB project limit. Use a smaller reference image."));
         }
         if (!clearing) {
           try {
             localStorage.setItem(AUTOSAVE_KEY, serialized);
             browserOk = true;
           } catch (err) {
-            console.warn("Browser autosave skipped.", err);
+            console.warn(KfpsI18n.t("Browser autosave skipped."), err);
           }
         }
         const response = await fetch(EDITOR_AUTOSAVE_API, {
@@ -4482,16 +4509,16 @@ function drainAutosaveQueue() {
           body: serialized,
           signal: AbortSignal.timeout(10000),
         });
-        if (!response.ok) throw new Error(`KFPS recovery storage returned HTTP ${response.status}.`);
+        if (!response.ok) throw new Error(KfpsI18n.t("KFPS recovery storage returned HTTP {0}.", response.status));
         const result = await response.json();
         if (result.ok !== true || result.applied === false) {
           retryable = false;
-          throw new Error("A newer recovery revision is already stored.");
+          throw new Error(KfpsI18n.t("A newer recovery revision is already stored."));
         }
         serverOk = true;
       } catch (err) {
         error = err.message || String(err);
-        console.warn("App-folder autosave skipped.", err);
+        console.warn(KfpsI18n.t("App-folder autosave skipped."), err);
       }
       if (!clearing) reportAutosaveResult(operation, browserOk, serverOk, error);
       if (serverOk) autosaveRetryDelay = 2000;
@@ -4551,7 +4578,7 @@ function flushPendingAutosaveToBrowser() {
     localStorage.setItem(AUTOSAVE_KEY, serialized);
     return true;
   } catch (err) {
-    console.warn("Final browser autosave skipped.", err);
+    console.warn(KfpsI18n.t("Final browser autosave skipped."), err);
     return false;
   }
 }
@@ -4578,10 +4605,10 @@ function clearAutosave() {
   return drainAutosaveQueue();
 }
 
-function pushHistory(reason = "change") {
+function pushHistory(reason = "change", options = {}) {
   if (historyLocked) return;
   const previous = historyIndex >= 0 && typeof history[historyIndex] === "object" ? history[historyIndex] : null;
-  const snapshot = captureSharedHistoryState(previous);
+  const snapshot = captureSharedHistoryState(previous, nudgeHistoryTimer ? null : options.changedObjects);
   if (historyStatesEqual(previous, snapshot)) return;
   snapshot.history_reason = String(reason || "change");
   snapshot.history_at = new Date().toISOString();
@@ -4607,8 +4634,8 @@ function pushHistory(reason = "change") {
   const autosaveOk = writeAutosavePayload(autosavePayloadFromState(snapshot));
   updateDocumentState();
   renderHistoryList();
-  refreshExportValidation();
-  setStatus(`Changed: ${humanizeHistoryReason(reason)}.${autosaveOk ? " Recovery pending." : " Recovery could not be queued."}`);
+  if (!options.validationScheduled) refreshExportValidation();
+  setStatus(KfpsI18n.t("Changed: {0}.{1}", humanizeHistoryReason(reason), autosaveOk ? KfpsI18n.t(" Recovery pending.") : KfpsI18n.t(" Recovery could not be queued.")));
 }
 
 function flushPendingNudgeHistory() {
@@ -4666,7 +4693,9 @@ function establishLoadedHistoryBoundary(reason = "loaded source", options = {}) 
 
 function humanizeHistoryReason(reason) {
   const text = String(reason || "change").replace(/[-_]+/g, " ").trim();
-  return text ? text[0].toUpperCase() + text.slice(1) : "Change";
+  const localized = KfpsI18n.history(text);
+  if (localized !== text) return localized;
+  return text ? text[0].toUpperCase() + text.slice(1) : KfpsI18n.t("Change");
 }
 
 function currentHistoryState() {
@@ -4683,15 +4712,17 @@ function updateDocumentState() {
     || overlayRevision !== savedOverlayRevision
     || nudgeHistoryPending
   );
-  const title = cleanProjectBaseName(currentProjectName || loadedName || "untitled", "untitled");
-  setText("projectNameLabel", currentProjectName ? `${title}.fabric-project.json` : `${title} - not saved as a project`);
+  const title = !currentProjectName && loadedName === "untitled"
+    ? KfpsI18n.t("Untitled vinyl")
+    : cleanProjectBaseName(currentProjectName || loadedName || "untitled", "untitled");
+  setText("projectNameLabel", currentProjectName ? `${title}.fabric-project.json` : KfpsI18n.t("{0} - not saved as a project", title));
   const chip = $("projectDirtyChip");
   if (chip) {
     chip.classList.toggle("dirty", documentDirty);
     chip.classList.toggle("saved", hasLayers && !documentDirty);
-    chip.textContent = !hasLayers ? "Blank canvas" : (documentDirty ? "Unsaved changes" : "Project saved");
+    chip.textContent = !hasLayers ? KfpsI18n.t("Blank canvas") : (documentDirty ? KfpsI18n.t("Unsaved changes") : KfpsI18n.t("Project saved"));
   }
-  document.title = `${documentDirty ? "* " : ""}${title} - KFPS Vinyl Editor`;
+  document.title = KfpsI18n.t("{0}{1} - KFPS Vinyl Editor", documentDirty ? "* " : "", title);
 }
 
 function markCurrentHistorySaved(projectName) {
@@ -4708,13 +4739,13 @@ function markOverlayChanged(reason = "reference image changed") {
   const state = currentHistoryState() || snapshotEditorState();
   writeAutosavePayload(autosavePayloadFromState(state));
   updateDocumentState();
-  setStatus(`${humanizeHistoryReason(reason)}. Recovery pending; reference images never export.`);
+  setStatus(KfpsI18n.t("{0}. Recovery pending; reference images never export.", humanizeHistoryReason(reason)));
 }
 
 function historyTimeLabel(value) {
   const date = new Date(value || "");
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleTimeString(KfpsI18n.locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function renderHistoryList() {
@@ -4735,7 +4766,7 @@ function renderHistoryList() {
   });
   if (!history.length) {
     const empty = document.createElement("p");
-    empty.textContent = "Changes will appear here after you import or add a shape.";
+    empty.textContent = KfpsI18n.t("Changes will appear here after you import or add a shape.");
     list.appendChild(empty);
     return;
   }
@@ -4747,16 +4778,9 @@ function renderHistoryList() {
     button.classList.toggle("protected", index === protectedHistoryIndex);
     button.disabled = index < floor;
     const reason = humanizeHistoryReason(
-      state?.history_reason || (index === protectedHistoryIndex ? "loaded source" : "change"),
+      state?.history_reason || (index === protectedHistoryIndex ? KfpsI18n.t("loaded source") : "change"),
     );
-    button.innerHTML = `
-      <span class="historyEntryIndex">${index + 1}</span>
-      <span class="historyEntryText">
-        <b>${escapeHtml(reason)}</b>
-        <small>${state?.shapes?.length || 0} layers${state?.history_at ? ` / ${escapeHtml(historyTimeLabel(state.history_at))}` : ""}</small>
-      </span>
-      <span class="historyEntryState">${index === historyIndex ? "Current" : (state === savedHistoryState ? "Saved" : "")}</span>
-    `;
+    button.innerHTML = KfpsI18n.t("\n      <span class=\"historyEntryIndex\">{0}</span>\n      <span class=\"historyEntryText\">\n        <b>{1}</b>\n        <small>{2} layers{3}</small>\n      </span>\n      <span class=\"historyEntryState\">{4}</span>\n    ", index + 1, escapeHtml(reason), state?.shapes?.length || 0, state?.history_at ? ` / ${escapeHtml(historyTimeLabel(state.history_at))}` : "", index === historyIndex ? KfpsI18n.t("Current") : (state === savedHistoryState ? KfpsI18n.t("Saved") : ""));
     button.addEventListener("click", () => jumpToHistory(index));
     list.appendChild(button);
   });
@@ -4772,7 +4796,7 @@ function jumpToHistory(index) {
     await restoreEditorState(history[historyIndex]);
     updateDocumentState();
     renderHistoryList();
-    setStatus(`Returned to ${humanizeHistoryReason(history[historyIndex]?.history_reason || "change")}.`);
+    setStatus(KfpsI18n.t("Returned to {0}.", humanizeHistoryReason(history[historyIndex]?.history_reason || "change")));
   });
 }
 
@@ -4823,12 +4847,12 @@ async function undoNow() {
   if (interrupted?.actionPerformed && currentHistoryState()) {
     await restoreEditorState(currentHistoryState());
     updateDocumentState();
-    setStatus("Current drag cancelled.");
+    setStatus(KfpsI18n.t("Current drag cancelled."));
     return;
   }
   const floor = Math.max(0, protectedHistoryIndex);
   if (historyIndex <= floor) {
-    setStatus(protectedHistoryIndex >= 0 ? "Undo stopped at loaded source." : "Nothing to undo.");
+    setStatus(protectedHistoryIndex >= 0 ? KfpsI18n.t("Undo stopped at loaded source.") : KfpsI18n.t("Nothing to undo."));
     return;
   }
   lastHistoryReason = "";
@@ -4836,7 +4860,7 @@ async function undoNow() {
   await restoreEditorState(history[historyIndex]);
   updateDocumentState();
   renderHistoryList();
-  setStatus("Undo.");
+  setStatus(KfpsI18n.t("Undo."));
 }
 
 function undo() {
@@ -4856,7 +4880,7 @@ async function redoNow() {
   await restoreEditorState(history[historyIndex]);
   updateDocumentState();
   renderHistoryList();
-  setStatus("Redo.");
+  setStatus(KfpsI18n.t("Redo."));
 }
 
 function redo() {
@@ -4955,7 +4979,7 @@ function initCanvas() {
   canvas.on("selection:updated", handleSelectionChanged);
   canvas.on("selection:cleared", () => {
     if (selectionLockActive && !selectionLockRestoring) {
-      requestAnimationFrame(() => restoreSelectionLock("a canvas misclick"));
+      requestAnimationFrame(() => restoreSelectionLock(KfpsI18n.t("a canvas misclick")));
       return;
     }
     clearSnapOverlay();
@@ -5000,7 +5024,7 @@ function initCanvas() {
     }
     updateSelectionPanel();
     scheduleRefreshLayers();
-    pushHistory("object edit");
+    pushHistory("object edit", { changedObjects: selectedVinylObjects(), validationScheduled: true });
   });
   canvas.on("object:moving", (event) => {
     if (event.target?.kloudyOverlay) {
@@ -5099,7 +5123,7 @@ function initCanvas() {
         canvas.selection = false;
         canvas.skipTargetFind = true;
         transformAnchorSnapshot = null;
-        setGuideStatus("Guide mode: panning canvas. Left-drag still draws guide lines.");
+        setGuideStatus(KfpsI18n.t("Guide mode: panning canvas. Left-drag still draws guide lines."));
         return;
       }
       if (selectGuideObject(opt.target)) return;
@@ -5115,19 +5139,19 @@ function initCanvas() {
         canvas.selection = false;
         canvas.skipTargetFind = true;
         transformAnchorSnapshot = null;
-        setStatus("Move Reference mode: panning canvas. Left-drag the reference image to move it.");
+        setStatus(KfpsI18n.t("Move Reference mode: panning canvas. Left-drag the reference image to move it."));
         return;
       }
       if (!overlayImage) {
         canvas.discardActiveObject();
-        setStatus("Move Reference needs an image first. Add one in Reference controls.");
+        setStatus(KfpsI18n.t("Move Reference needs an image first. Add one in Reference controls."));
         return;
       }
       canvas.selection = false;
       transformAnchorSnapshot = null;
       if (opt.target !== overlayImage) {
         canvas.setActiveObject(overlayImage);
-        setStatus("Move Reference only edits the reference image. Drag the image itself to move it.");
+        setStatus(KfpsI18n.t("Move Reference only edits the reference image. Drag the image itself to move it."));
       }
       return;
     }
@@ -5490,7 +5514,7 @@ function setOverlayLayerMode(mode) {
   if ($("overlayLayerMode")) $("overlayLayerMode").value = overlayLayerMode;
   layerEditorHelpers();
   canvas?.requestRenderAll();
-  setStatus(`Reference image draws ${overlayLayerMode === "above" ? "above" : "below"} vinyl layers.`);
+  setStatus(KfpsI18n.t("Reference image draws {0} vinyl layers.", overlayLayerMode === "above" ? KfpsI18n.t("above") : KfpsI18n.t("below")));
 }
 
 function cancelFabricGroupSelection() {
@@ -5652,16 +5676,16 @@ function snapSourceOverlayToGuides(event = null) {
   const now = Date.now();
   if (now - lastSnapMessageAt > 350) {
     lastSnapMessageAt = now;
-    setText("guideStatus", `Source snapped ${bestX ? bestX.point : ""}${bestX && bestY ? " + " : ""}${bestY ? bestY.point : ""} to ${bestX?.source || bestY?.source}.`);
+    setText("guideStatus", KfpsI18n.t("Source snapped {0}{1}{2} to {3}.", bestX ? KfpsI18n.term(bestX.point) : "", bestX && bestY ? " + " : "", bestY ? KfpsI18n.term(bestY.point) : "", KfpsI18n.term(bestX?.source || bestY?.source)));
   }
   return true;
 }
 
 function updateGuideUi() {
-  setText("guideCountBadge", `${guideState.guides.length} guide${guideState.guides.length === 1 ? "" : "s"}`);
+  setText("guideCountBadge", KfpsI18n.t("{0} guide{1}", guideState.guides.length, guideState.guides.length === 1 ? "" : "s"));
   setText("guideModeLabel", activeToolMode === "guides"
-    ? (selectedGuideId ? "Guide selected. Delete it or draw another line." : "Drag on canvas to draw a guide.")
-    : "Select the Guides tool to draw lines.");
+    ? (selectedGuideId ? KfpsI18n.t("Guide selected. Delete it or draw another line.") : KfpsI18n.t("Drag on canvas to draw a guide."))
+    : KfpsI18n.t("Select the Guides tool to draw lines."));
 }
 
 function setGuideStatus(message) {
@@ -5725,7 +5749,7 @@ function finishGuideDraft() {
   if (length < 8 / zoom) {
     guideDraft = null;
     renderGuideObjects();
-    setGuideStatus("Guide was too short and was discarded.");
+    setGuideStatus(KfpsI18n.t("Guide was too short and was discarded."));
     return;
   }
   const guide = {
@@ -5742,7 +5766,7 @@ function finishGuideDraft() {
   guideDraft = null;
   renderGuideObjects();
   pushHistory("add guide");
-  setGuideStatus(`Added ${guide.constraint === "free" ? "free" : guide.constraint} guide. Hold Control while moving shapes to snap.`);
+  setGuideStatus(KfpsI18n.t("Added {0} guide. Hold Control while moving shapes to snap.", KfpsI18n.term(guide.constraint)));
 }
 
 function selectGuideObject(object) {
@@ -5750,13 +5774,13 @@ function selectGuideObject(object) {
   selectedGuideId = object.kloudyGuideId;
   canvas.discardActiveObject();
   renderGuideObjects();
-  setGuideStatus("Guide selected. Press Delete or use Delete Selected Guide to remove it.");
+  setGuideStatus(KfpsI18n.t("Guide selected. Press Delete or use Delete Selected Guide to remove it."));
   return true;
 }
 
 function deleteSelectedGuide() {
   if (!selectedGuideId) {
-    setGuideStatus("No guide selected. Switch to Guides and click a guide line first.");
+    setGuideStatus(KfpsI18n.t("No guide selected. Switch to Guides and click a guide line first."));
     return;
   }
   ensureHistoryBaseline();
@@ -5766,10 +5790,10 @@ function deleteSelectedGuide() {
   renderGuideObjects();
   if (before !== guideState.guides.length) {
     pushHistory("delete guide");
-    setGuideStatus("Deleted selected guide.");
+    setGuideStatus(KfpsI18n.t("Deleted selected guide."));
   } else {
     saveGuideAutosave();
-    setGuideStatus("Selected guide was already gone.");
+    setGuideStatus(KfpsI18n.t("Selected guide was already gone."));
   }
 }
 
@@ -5782,7 +5806,7 @@ function clearGuides() {
   renderGuideObjects();
   if (hadGuides) pushHistory("clear guides");
   else saveGuideAutosave();
-  setGuideStatus("Cleared guide lines. Grid settings were kept.");
+  setGuideStatus(KfpsI18n.t("Cleared guide lines. Grid settings were kept."));
 }
 
 function syncGuideStateFromUi() {
@@ -5820,7 +5844,7 @@ function saveGuideAutosave() {
   try {
     writeAutosavePayload(autosavePayloadFromState(snapshotEditorState()));
   } catch (err) {
-    console.warn("Guide autosave skipped.", err);
+    console.warn(KfpsI18n.t("Guide autosave skipped."), err);
   }
 }
 
@@ -6137,15 +6161,15 @@ function applyDragAxisLock(target) {
 function setDragAxisLock(axis) {
   if (dragAxisLock === axis) return;
   dragAxisLock = axis;
-  const label = axis === "x" ? "X / horizontal" : "Y / vertical";
-  setStatus(`Axis lock active: ${label}. Release ${axis.toUpperCase()} to drag freely.`);
+  const label = axis === "x" ? KfpsI18n.t("X / horizontal") : KfpsI18n.t("Y / vertical");
+  setStatus(KfpsI18n.t("Axis lock active: {0}. Release {1} to drag freely.", label, axis.toUpperCase()));
 }
 
 function clearDragAxisLock(axis = null) {
   if (axis && dragAxisLock !== axis) return;
   const hadLock = Boolean(dragAxisLock);
   dragAxisLock = null;
-  if (hadLock) setStatus("Axis lock released.");
+  if (hadLock) setStatus(KfpsI18n.t("Axis lock released."));
 }
 
 function ensureTransformAnchorSnapshot(target) {
@@ -6515,7 +6539,7 @@ function snapRotationToNotches(target, event = null) {
   if (Math.abs(delta) <= threshold) {
     target.set({ angle: notch });
     target.setCoords();
-    setText("guideStatus", `Rotation notch: ${round(notch)} deg.`);
+    setText("guideStatus", KfpsI18n.t("Rotation notch: {0} deg.", round(notch)));
     return { snapped: true, notch, delta };
   }
   return { snapped: false, notch, delta };
@@ -6689,8 +6713,8 @@ function snapTargetToGuides(target, event = null) {
     if (now - lastSnapMessageAt > 350) {
       lastSnapMessageAt = now;
       setText("guideStatus", sideSnap
-        ? `Resize anchored: ${sideSnap.anchorKind || "opposite"} side stays fixed; pulled ${contact.kind} side snapped to ${sideSnap.line.source || "guide"}.`
-        : `${transformAction === "skew" ? "Skew" : "Resize"} anchored: ${anchorResult?.anchorKind || "opposite"} side stays fixed while the pulled ${contact.kind} side changes.`);
+        ? KfpsI18n.t("Resize anchored: {0} side stays fixed; pulled {1} side snapped to {2}.", KfpsI18n.message(sideSnap.anchorKind || KfpsI18n.t("opposite")), KfpsI18n.message(contact.kind), KfpsI18n.message(sideSnap.line.source || KfpsI18n.t("guide")))
+        : KfpsI18n.t("{0} anchored: {1} side stays fixed while the pulled {2} side changes.", transformAction === "skew" ? KfpsI18n.t("Skew") : KfpsI18n.t("Resize"), KfpsI18n.message(anchorResult?.anchorKind || KfpsI18n.t("opposite")), KfpsI18n.message(contact.kind)));
     }
     return false;
   }
@@ -6782,9 +6806,9 @@ function snapTargetToGuides(target, event = null) {
   if (now - lastSnapMessageAt > 350) {
     lastSnapMessageAt = now;
     if (shouldUseLine) {
-      setText("guideStatus", `Snapped ${contact.kind} edge to angled guide${allowAngledRotation && isSingleVinylShape ? ` and rotated to ${round(target.angle || 0)} deg` : " without rotating during resize/skew"}.`);
+      setText("guideStatus", KfpsI18n.t("Snapped {0} edge to angled guide{1}.", KfpsI18n.message(contact.kind), allowAngledRotation && isSingleVinylShape ? KfpsI18n.t(" and rotated to {0} deg", round(target.angle || 0)) : KfpsI18n.t(" without rotating during resize/skew")));
     } else {
-      setText("guideStatus", `Snapped ${bestX ? bestX.point : ""}${bestX && bestY ? " + " : ""}${bestY ? bestY.point : ""} to ${bestX?.source || bestY?.source}.`);
+      setText("guideStatus", KfpsI18n.t("Snapped {0}{1}{2} to {3}.", bestX ? KfpsI18n.term(bestX.point) : "", bestX && bestY ? " + " : "", bestY ? KfpsI18n.term(bestY.point) : "", KfpsI18n.term(bestX?.source || bestY?.source)));
     }
   }
   return true;
@@ -6883,15 +6907,15 @@ function fitObjectsView(objects) {
 function fitSelectedView() {
   const objects = selectedVinylObjects();
   if (!objects.length) {
-    setStatus("Select a layer before using Fit Selected.");
+    setStatus(KfpsI18n.t("Select a layer before using Fit Selected."));
     return;
   }
   fitObjectsView(objects);
-  setStatus(`Fit view to ${objects.length} selected layer(s).`);
+  setStatus(KfpsI18n.t("Fit view to {0} selected layer(s).", objects.length));
 }
 
 async function loadJsonFile(file) {
-  setBusy(`Loading JSON: ${file.name}`);
+  setBusy(KfpsI18n.t("Loading JSON: {0}", file.name));
   await nextFrame();
   const text = await file.text();
   const payload = JSON.parse(text);
@@ -6910,13 +6934,13 @@ async function loadJsonFile(file) {
 
 function formatBrowserDate(mtime) {
   const numeric = Number(mtime);
-  if (!Number.isFinite(numeric) || numeric <= 0) return "unknown date";
-  return new Date(numeric * 1000).toLocaleString();
+  if (!Number.isFinite(numeric) || numeric <= 0) return KfpsI18n.t("unknown date");
+  return new Date(numeric * 1000).toLocaleString(KfpsI18n.locale);
 }
 
 function layerLabel(count) {
   const numeric = Number(count) || 0;
-  return `${numeric.toLocaleString()} layer${numeric === 1 ? "" : "s"}`;
+  return KfpsI18n.t("{0} layer{1}", numeric.toLocaleString(), numeric === 1 ? "" : "s");
 }
 
 function selectedJsonBrowserGroup() {
@@ -6933,9 +6957,9 @@ function setJsonBrowserStatus(message) {
 }
 
 function jsonBrowserSourceLabel(source = jsonBrowserState.source) {
-  if (source === "editor") return "Editor export";
-  if (source === "exported") return "Exported JSON";
-  return "Generated final run";
+  if (source === "editor") return KfpsI18n.t("Editor export");
+  if (source === "exported") return KfpsI18n.t("Exported JSON");
+  return KfpsI18n.t("Generated final run");
 }
 
 function jsonBrowserSourceFolder(source = jsonBrowserState.source) {
@@ -6951,12 +6975,12 @@ function setJsonBrowserPreview(entry = null) {
   image.onerror = () => {
     image.hidden = true;
     empty.hidden = false;
-    empty.textContent = "Preview unavailable";
+    empty.textContent = KfpsI18n.t("Preview unavailable");
   };
   if (!entry?.preview_url) {
     image.hidden = true;
     empty.hidden = false;
-    empty.textContent = "No preview selected";
+    empty.textContent = KfpsI18n.t("No preview selected");
     image.removeAttribute("src");
     return;
   }
@@ -6973,11 +6997,11 @@ function renderJsonBrowserGroups() {
     const empty = document.createElement("p");
     empty.className = "hint";
     if (jsonBrowserState.source === "editor") {
-      empty.textContent = "No editor exports found. Export from the editor into imgs/editor, then click Refresh.";
+      empty.textContent = KfpsI18n.t("No editor exports found. Export from the editor into imgs/editor, then click Refresh.");
     } else if (jsonBrowserState.source === "exported") {
-      empty.textContent = "No exported JSONs found. Drop downloaded, shared, or game-exported JSONs into imgs/exported, then click Refresh.";
+      empty.textContent = KfpsI18n.t("No exported JSONs found. Drop downloaded, shared, or game-exported JSONs into imgs/exported, then click Refresh.");
     } else {
-      empty.textContent = "No generated final JSONs found yet. Generate a vinyl first, then click Refresh.";
+      empty.textContent = KfpsI18n.t("No generated final JSONs found yet. Generate a vinyl first, then click Refresh.");
     }
     container.appendChild(empty);
     return;
@@ -6990,7 +7014,7 @@ function renderJsonBrowserGroups() {
     const thumb = document.createElement("img");
     thumb.className = "jsonBrowserThumb";
     thumb.loading = "lazy";
-    thumb.alt = `${group.title || group.key || "JSON"} preview`;
+    thumb.alt = KfpsI18n.t("{0} preview", group.title || group.key || "JSON");
     if (previewEntry?.preview_url) {
       thumb.src = previewEntry.preview_url;
     } else {
@@ -7001,13 +7025,13 @@ function renderJsonBrowserGroups() {
     };
     const title = document.createElement("b");
     title.title = group.title || group.key || "";
-    title.textContent = group.title || group.key || "Untitled JSON";
+    title.textContent = group.title || group.key || KfpsI18n.t("Untitled JSON");
     const kind = document.createElement("span");
     kind.textContent = group.source === "generated"
-      ? `${group.count || 0} finalized JSON${group.count === 1 ? "" : "s"}`
+      ? KfpsI18n.t("{0} finalized JSON{1}", group.count || 0, group.count === 1 ? "" : "s")
       : jsonBrowserSourceLabel(group.source);
     const layers = document.createElement("span");
-    layers.textContent = `${layerLabel(group.max_layers || 0)} max`;
+    layers.textContent = KfpsI18n.t("{0} max", layerLabel(group.max_layers || 0));
     const modified = document.createElement("span");
     modified.textContent = formatBrowserDate(group.mtime);
     button.append(thumb, title, kind, layers, modified);
@@ -7028,14 +7052,14 @@ function renderJsonBrowserEntries() {
   container.innerHTML = "";
   $("selectJsonBrowserEntry").disabled = !selectedJsonBrowserEntry();
   if (!group) {
-    setText("jsonBrowserTitle", "Select a source");
-    setText("jsonBrowserMeta", "JSON folders are sorted newest first. Files are sorted high layer count to low.");
+    setText("jsonBrowserTitle", KfpsI18n.t("Select a source"));
+    setText("jsonBrowserMeta", KfpsI18n.t("JSON folders are sorted newest first. Files are sorted high layer count to low."));
     setJsonBrowserPreview(null);
-    setJsonBrowserStatus("Choose a source on the left.");
+    setJsonBrowserStatus(KfpsI18n.t("Choose a source on the left."));
     return;
   }
   setText("jsonBrowserTitle", group.title || group.key);
-  setText("jsonBrowserMeta", `${jsonBrowserSourceLabel(group.source)} - ${formatBrowserDate(group.mtime)} - select any JSON below to preview and import it.`);
+  setText("jsonBrowserMeta", KfpsI18n.t("{0} - {1} - select any JSON below to preview and import it.", jsonBrowserSourceLabel(group.source), formatBrowserDate(group.mtime)));
   setJsonBrowserPreview(selectedJsonBrowserEntry());
   (group.entries || []).forEach((entry, index) => {
     const button = document.createElement("button");
@@ -7044,7 +7068,7 @@ function renderJsonBrowserEntries() {
     const textWrap = document.createElement("span");
     const name = document.createElement("b");
     name.title = entry.name || "";
-    name.textContent = entry.name || "Untitled JSON";
+    name.textContent = entry.name || KfpsI18n.t("Untitled JSON");
     const path = document.createElement("span");
     path.textContent = entry.id || "";
     textWrap.append(name, path);
@@ -7060,24 +7084,24 @@ function renderJsonBrowserEntries() {
     container.appendChild(button);
   });
   $("selectJsonBrowserEntry").disabled = !selectedJsonBrowserEntry();
-  setJsonBrowserStatus(selectedJsonBrowserEntry() ? "Choose Select JSON or double-click a row." : "This source has no JSON entries.");
+  setJsonBrowserStatus(selectedJsonBrowserEntry() ? KfpsI18n.t("Choose Select JSON or double-click a row.") : KfpsI18n.t("This source has no JSON entries."));
 }
 
 async function refreshJsonBrowser() {
   if (jsonBrowserState.loading) return;
   jsonBrowserState.loading = true;
-  setText("jsonBrowserSummary", "Loading JSON browser...");
-  setJsonBrowserStatus("Scanning app folders...");
+  setText("jsonBrowserSummary", KfpsI18n.t("Loading JSON browser..."));
+  setJsonBrowserStatus(KfpsI18n.t("Scanning app folders..."));
   try {
     const source = $("jsonBrowserSource")?.value || "generated";
     jsonBrowserState.source = source;
     const response = await fetch(`${JSON_BROWSER_API}?source=${encodeURIComponent(source)}`, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     jsonBrowserState.groups = Array.isArray(data.groups) ? data.groups : [];
     jsonBrowserState.selectedGroupIndex = jsonBrowserState.groups.length ? 0 : -1;
     jsonBrowserState.selectedEntryIndex = jsonBrowserState.groups[0]?.entries?.length ? 0 : -1;
-    setText("jsonBrowserSummary", `${data.total_entries || 0} JSON${data.total_entries === 1 ? "" : "s"} found in ${jsonBrowserSourceFolder(source)}.`);
+    setText("jsonBrowserSummary", KfpsI18n.t("{0} JSON{1} found in {2}.", data.total_entries || 0, data.total_entries === 1 ? "" : "s", jsonBrowserSourceFolder(source)));
     renderJsonBrowserGroups();
     renderJsonBrowserEntries();
   } catch (err) {
@@ -7087,7 +7111,7 @@ async function refreshJsonBrowser() {
     jsonBrowserState.selectedEntryIndex = -1;
     renderJsonBrowserGroups();
     renderJsonBrowserEntries();
-    setText("jsonBrowserSummary", "JSON browser failed to load.");
+    setText("jsonBrowserSummary", KfpsI18n.t("JSON browser failed to load."));
     setJsonBrowserStatus(err.message || String(err));
   } finally {
     jsonBrowserState.loading = false;
@@ -7130,15 +7154,15 @@ async function openJsonBrowser() {
 async function importSelectedBrowserJson() {
   const entry = selectedJsonBrowserEntry();
   if (!entry) {
-    setJsonBrowserStatus("Select a JSON first.");
+    setJsonBrowserStatus(KfpsI18n.t("Select a JSON first."));
     return;
   }
-  if (!await confirmWorkspaceReplacement(entry.name || "the selected JSON")) {
-    setJsonBrowserStatus("Current unsaved work was kept.");
+  if (!await confirmWorkspaceReplacement(entry.name || KfpsI18n.t("the selected JSON"))) {
+    setJsonBrowserStatus(KfpsI18n.t("Current unsaved work was kept."));
     return;
   }
-  setJsonBrowserStatus(`Loading ${entry.name}...`);
-  setBusy(`Loading JSON: ${entry.name}`);
+  setJsonBrowserStatus(KfpsI18n.t("Loading {0}...", entry.name));
+  setBusy(KfpsI18n.t("Loading JSON: {0}", entry.name));
   await nextFrame();
   const previousName = loadedName;
   const previousProjectName = currentProjectName;
@@ -7147,14 +7171,14 @@ async function importSelectedBrowserJson() {
   try {
     const response = await fetch(`${JSON_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadPayload(data.payload);
     $("jsonBrowserDialog")?.close();
-    setStatus(`Imported ${entry.name} from ${jsonBrowserSourceFolder()}.`);
+    setStatus(KfpsI18n.t("Imported {0} from {1}.", entry.name, jsonBrowserSourceFolder()));
   } catch (err) {
     loadedName = previousName;
     currentProjectName = previousProjectName;
-    showError("JSON browser import failed", err);
+    showError(KfpsI18n.t("JSON browser import failed"), err);
     setJsonBrowserStatus(err.message || String(err));
   }
 }
@@ -7176,9 +7200,9 @@ function renderProjectBrowser() {
   if (!projectBrowserState.entries.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = "No saved projects found yet. Use Save to create an editable project.";
+    empty.textContent = KfpsI18n.t("No saved projects found yet. Use Save to create an editable project.");
     container.appendChild(empty);
-    setProjectBrowserStatus("No internal project saves found.");
+    setProjectBrowserStatus(KfpsI18n.t("No internal project saves found."));
     return;
   }
   projectBrowserState.entries.forEach((entry, index) => {
@@ -7187,7 +7211,7 @@ function renderProjectBrowser() {
     button.className = `projectBrowserEntry${index === projectBrowserState.selectedIndex ? " active" : ""}`;
     const textWrap = document.createElement("span");
     const title = document.createElement("b");
-    title.textContent = entry.title || entry.name || "Untitled project";
+    title.textContent = entry.title || entry.name || KfpsI18n.t("Untitled project");
     const meta = document.createElement("span");
     meta.textContent = `${layerLabel(entry.layers)} - ${formatBrowserDate(entry.mtime)}`;
     textWrap.append(title, meta);
@@ -7201,28 +7225,28 @@ function renderProjectBrowser() {
     button.addEventListener("dblclick", () => loadSelectedProject());
     container.appendChild(button);
   });
-  setProjectBrowserStatus(selected ? "Choose Load Project or double-click a project." : "Select a project.");
+  setProjectBrowserStatus(selected ? KfpsI18n.t("Choose Load Project or double-click a project.") : KfpsI18n.t("Select a project."));
 }
 
 async function refreshProjectBrowser() {
   if (projectBrowserState.loading) return;
   projectBrowserState.loading = true;
-  setText("projectBrowserSummary", "Loading internal projects...");
-  setProjectBrowserStatus("Scanning runtime/fabric-editor/projects...");
+  setText("projectBrowserSummary", KfpsI18n.t("Loading internal projects..."));
+  setProjectBrowserStatus(KfpsI18n.t("Scanning runtime/fabric-editor/projects..."));
   try {
     const response = await fetch(PROJECT_BROWSER_API, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     projectBrowserState.entries = Array.isArray(data.entries) ? data.entries : [];
     projectBrowserState.selectedIndex = projectBrowserState.entries.length ? 0 : -1;
-    setText("projectBrowserSummary", `${data.total_entries || 0} project${data.total_entries === 1 ? "" : "s"} saved inside KFPS.`);
+    setText("projectBrowserSummary", KfpsI18n.t("{0} project{1} saved inside KFPS.", data.total_entries || 0, data.total_entries === 1 ? "" : "s"));
     renderProjectBrowser();
   } catch (err) {
     console.error(err);
     projectBrowserState.entries = [];
     projectBrowserState.selectedIndex = -1;
     renderProjectBrowser();
-    setText("projectBrowserSummary", "Project browser failed to load.");
+    setText("projectBrowserSummary", KfpsI18n.t("Project browser failed to load."));
     setProjectBrowserStatus(err.message || String(err));
   } finally {
     projectBrowserState.loading = false;
@@ -7232,17 +7256,17 @@ async function refreshProjectBrowser() {
 async function openProjectFolder() {
   const button = $("openProjectFolder");
   if (button) button.disabled = true;
-  setProjectBrowserStatus("Opening internal project folder...");
+  setProjectBrowserStatus(KfpsI18n.t("Opening internal project folder..."));
   try {
     const response = await fetch(PROJECT_OPEN_FOLDER_API, {
       method: "POST",
       headers: EDITOR_MUTATION_HEADERS,
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    setProjectBrowserStatus("Project folder opened. Drop .fabric-project.json files there, then click Refresh.");
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
+    setProjectBrowserStatus(KfpsI18n.t("Project folder opened. Drop .fabric-project.json files there, then click Refresh."));
   } catch (err) {
-    showError("Open project folder failed", err);
+    showError(KfpsI18n.t("Open project folder failed"), err);
     setProjectBrowserStatus(err.message || String(err));
   } finally {
     if (button) button.disabled = false;
@@ -7263,23 +7287,23 @@ async function openProjectBrowser() {
 async function loadSelectedProject() {
   const entry = selectedProjectEntry();
   if (!entry) {
-    setProjectBrowserStatus("Select a project first.");
+    setProjectBrowserStatus(KfpsI18n.t("Select a project first."));
     return;
   }
-  if (!await confirmWorkspaceReplacement(entry.title || entry.name || "the selected project")) {
-    setProjectBrowserStatus("Current unsaved work was kept.");
+  if (!await confirmWorkspaceReplacement(entry.title || entry.name || KfpsI18n.t("the selected project"))) {
+    setProjectBrowserStatus(KfpsI18n.t("Current unsaved work was kept."));
     return;
   }
-  setProjectBrowserStatus(`Loading ${entry.title || entry.name}...`);
+  setProjectBrowserStatus(KfpsI18n.t("Loading {0}...", entry.title || entry.name));
   try {
     const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadProjectPayload(data.payload, entry.title || entry.name);
     $("projectBrowserDialog")?.close();
-    clearBusy(`Loaded project: ${entry.title || entry.name}`);
+    clearBusy(KfpsI18n.t("Loaded project: {0}", entry.title || entry.name));
   } catch (err) {
-    showError("Project load failed", err);
+    showError(KfpsI18n.t("Project load failed"), err);
     setProjectBrowserStatus(err.message || String(err));
   }
 }
@@ -7287,36 +7311,36 @@ async function loadSelectedProject() {
 async function loadStartupProjectFromQuery() {
   const projectId = startupProjectId();
   if (!projectId) return false;
-  setBusy("Loading selected project...");
+  setBusy(KfpsI18n.t("Loading selected project..."));
   try {
     const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(projectId)}`, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadProjectPayload(data.payload, data.name || "project");
-    clearBusy(`Loaded project: ${data.name || projectId}`);
+    clearBusy(KfpsI18n.t("Loaded project: {0}", data.name || projectId));
     return true;
   } catch (err) {
-    clearBusy("Project load failed.");
-    showError("Project load failed", err);
+    clearBusy(KfpsI18n.t("Project load failed."));
+    showError(KfpsI18n.t("Project load failed"), err);
     return false;
   }
 }
 
 async function loadPayload(payload) {
   const shapes = Array.isArray(payload.shapes) ? payload.shapes : null;
-  if (!shapes) throw new Error("JSON must contain a shapes list.");
-  if (!shapes.length) throw new Error("JSON shapes list is empty.");
+  if (!shapes) throw new Error(KfpsI18n.t("JSON must contain a shapes list."));
+  if (!shapes.length) throw new Error(KfpsI18n.t("JSON shapes list is empty."));
   const hasLegacyGeometry = shapes.some((shape) => LEGACY_RECTANGLE_TYPES.has(Number(shape.type)) || LEGACY_ELLIPSE_TYPES.has(Number(shape.type)));
   const legacyOffset = hasLegacyGeometry ? computeLegacyOffset(shapes) : { x: 0, y: 0 };
   const normalized = assignUniqueEditorIds(
     shapes.map((shape, index) => normalizeInputShape(shape, index, legacyOffset)).filter(Boolean),
   );
-  if (!normalized.length) throw new Error("JSON did not contain any usable FH6 vinyl layers.");
+  if (!normalized.length) throw new Error(KfpsI18n.t("JSON did not contain any usable FH6 vinyl layers."));
   if (normalized.length > MAX_VINYL_LAYERS) {
-    throw new Error(`This design has ${normalized.length} editable layers. The editor supports up to ${MAX_VINYL_LAYERS} layers per vinyl.`);
+    throw new Error(KfpsI18n.t("This design has {0} editable layers. The editor supports up to {1} layers per vinyl.", normalized.length, MAX_VINYL_LAYERS));
   }
   documentGeneration += 1;
-  setBusy(`Building ${normalized.length} editable layer(s)...`);
+  setBusy(KfpsI18n.t("Building {0} editable layer(s)...", normalized.length));
   await nextFrame();
   let completed = 0;
   let failed = 0;
@@ -7333,7 +7357,7 @@ async function loadPayload(payload) {
       } finally {
         completed += 1;
         if (completed % 100 === 0 || completed === normalized.length) {
-          setBusy(`Building layers: ${completed - failed}/${normalized.length}`);
+          setBusy(KfpsI18n.t("Building layers: {0}/{1}", completed - failed, normalized.length));
           await nextFrame();
         }
       }
@@ -7341,7 +7365,7 @@ async function loadPayload(payload) {
   );
   const builtObjects = results.filter(Boolean);
   if (!builtObjects.length) {
-    throw new Error(`JSON did not contain any loadable FH6 vinyl layers. Failed to build ${failed}/${normalized.length}. Current canvas was left unchanged.`);
+    throw new Error(KfpsI18n.t("JSON did not contain any loadable FH6 vinyl layers. Failed to build {0}/{1}. Current canvas was left unchanged.", failed, normalized.length));
   }
   clearVinylObjects();
   clearSourceOverlayState();
@@ -7357,11 +7381,11 @@ async function loadPayload(payload) {
   refreshLayers();
   fitDesignView();
   if (hybridShouldUse(builtObjects)) {
-    setBusy(`Preparing GPU preview: ${builtObjects.length} layer(s)...`);
+    setBusy(KfpsI18n.t("Preparing GPU preview: {0} layer(s)...", builtObjects.length));
     await prewarmHybridMeshesForObjects(builtObjects);
   }
   establishLoadedHistoryBoundary("loaded source");
-  clearBusy(`Loaded ${builtObjects.length}/${normalized.length} editable FH6 layer(s).${failed ? ` Failed: ${failed}.` : ""}`);
+  clearBusy(KfpsI18n.t("Loaded {0}/{1} editable FH6 layer(s).{2}", builtObjects.length, normalized.length, failed ? KfpsI18n.t(" Failed: {0}.", failed) : ""));
 }
 
 function removeVinylObjectHelpers(object) {
@@ -7427,7 +7451,7 @@ function requireLayerCapacity(additionalLayers, action = "add layers") {
   const requested = Math.max(0, Math.floor(Number(additionalLayers)) || 0);
   const available = remainingLayerCapacity();
   if (requested <= available) return true;
-  setStatus(`Cannot ${action}: ${requested} new layer(s) would exceed the ${MAX_VINYL_LAYERS}-layer maximum. ${available} slot(s) remain.`);
+  setStatus(KfpsI18n.t("Cannot {0}: {1} new layer(s) would exceed the {2}-layer maximum. {3} slot(s) remain.", KfpsI18n.term(action), requested, MAX_VINYL_LAYERS, available));
   return false;
 }
 
@@ -7512,10 +7536,10 @@ function updateSelectionLockButton() {
   if (!button) return;
   button.classList.toggle("active", selectionLockActive);
   button.setAttribute("aria-pressed", selectionLockActive ? "true" : "false");
-  button.textContent = selectionLockActive ? "Selection Locked" : "Lock Selection";
+  button.textContent = selectionLockActive ? KfpsI18n.t("Selection Locked") : KfpsI18n.t("Lock Selection");
 }
 
-function releaseSelectionLock(message = "Selection lock released.") {
+function releaseSelectionLock(message = KfpsI18n.t("Selection lock released.")) {
   const hadLock = selectionLockActive;
   selectionLockActive = false;
   selectionLockObjects = [];
@@ -7528,13 +7552,13 @@ function restoreSelectionLock(reason = "misclick") {
   if (!selectionLockActive || selectionLockRestoring) return false;
   const objects = validSelectionLockObjects();
   if (!objects.length) {
-    releaseSelectionLock("Selection lock released because the locked layer no longer exists.");
+    releaseSelectionLock(KfpsI18n.t("Selection lock released because the locked layer no longer exists."));
     return false;
   }
   const selected = selectedVinylObjects();
   if (selectionSetEquals(selected, objects)) return false;
   setActiveObjectsForSelectionLock(objects);
-  setStatus(`Selection lock kept ${objects.length} layer(s) selected after ${reason}. Unlock to choose something else.`);
+  setStatus(KfpsI18n.t("Selection lock kept {0} layer(s) selected after {1}. Unlock to choose something else.", objects.length, KfpsI18n.message(reason)));
   return true;
 }
 
@@ -7545,13 +7569,13 @@ function toggleSelectionLock() {
   }
   const selected = selectedVinylObjects();
   if (!selected.length) {
-    setStatus("Select one or more layers before locking the selection.");
+    setStatus(KfpsI18n.t("Select one or more layers before locking the selection."));
     return;
   }
   selectionLockActive = true;
   selectionLockObjects = [...selected];
   updateSelectionLockButton();
-  setStatus(`Selection locked to ${selected.length} layer(s). Misclicks will keep this selection.`);
+  setStatus(KfpsI18n.t("Selection locked to {0} layer(s). Misclicks will keep this selection.", selected.length));
 }
 
 function shouldInvertCurrentSelection(event = null) {
@@ -7569,7 +7593,7 @@ function invertCurrentSelection(event = null) {
   const selectedSet = new Set(selectedVinylObjects());
   const inverted = vinylObjects().filter((obj) => obj.visible !== false && !selectedSet.has(obj));
   if (!inverted.length) {
-    setStatus("Invert box select found no layers outside the box.");
+    setStatus(KfpsI18n.t("Invert box select found no layers outside the box."));
     return false;
   }
   selectionInvertLocked = true;
@@ -7577,12 +7601,12 @@ function invertCurrentSelection(event = null) {
   else canvas.setActiveObject(styledActiveSelection(inverted));
   selectionInvertLocked = false;
   canvas.requestRenderAll();
-  setStatus(`Invert box selected ${inverted.length} layer(s) outside the drag box.`);
+  setStatus(KfpsI18n.t("Invert box selected {0} layer(s) outside the drag box.", inverted.length));
   return true;
 }
 
 function handleSelectionChanged(event = null) {
-  if (selectionLockActive && !selectionLockRestoring && restoreSelectionLock("a selection change")) {
+  if (selectionLockActive && !selectionLockRestoring && restoreSelectionLock(KfpsI18n.t("a selection change"))) {
     return;
   }
   if (invertCurrentSelection(event)) {
@@ -7613,7 +7637,7 @@ function setObjectLocked(object, locked) {
 }
 
 function groupNameForObject(object) {
-  return object?.kloudy?.group_name || "Layer Group";
+  return object?.kloudy?.group_name || KfpsI18n.t("Layer Group");
 }
 
 function selectedGroupIds() {
@@ -7681,13 +7705,13 @@ function layerDragLabel(objects = []) {
     const groupName = objects[0]?.kloudy?.group_id && objects.every((obj) => obj.kloudy?.group_id === objects[0].kloudy.group_id)
       ? groupNameForObject(objects[0])
       : null;
-    return groupName ? `${groupName} (${objects.length})` : `${objects.length} layers`;
+    return groupName ? `${groupName} (${objects.length})` : KfpsI18n.t("{0} layers", objects.length);
   }
-  return objects[0]?.kloudy?.name || "1 layer";
+  return objects[0]?.kloudy?.name || KfpsI18n.t("1 layer");
 }
 
 function layerDragModeLabel(mode) {
-  return mode === "group" ? "Group layers" : "Move depth";
+  return mode === "group" ? KfpsI18n.t("Group layers") : KfpsI18n.t("Move depth");
 }
 
 function ensureLayerDragGhost(state) {
@@ -7840,7 +7864,7 @@ function updateLayerDropPreview(event) {
   layerDragState.dropSlot = null;
   if (layerDragState.mode === "reorder") {
     if (layerSearchActive()) {
-      setStatus("Clear the layer search before dragging layers; filtered rows cannot safely define canvas depth.");
+      setStatus(KfpsI18n.t("Clear the layer search before dragging layers; filtered rows cannot safely define canvas depth."));
       return null;
     }
     const slot = layerDropSlotAtPoint(event);
@@ -7885,7 +7909,7 @@ function handleLayerDragWheel(event) {
 function selectLayerEntry(entry) {
   if (!entry?.objects?.length) return;
   if (entry.objects.length === 1) selectObjects(entry.objects, "layer");
-  else selectObjects(entry.objects, "layer group");
+  else selectObjects(entry.objects, KfpsI18n.t("layer group"));
 }
 
 function selectLayerEntryByKey(key, reason = "layer") {
@@ -7893,7 +7917,7 @@ function selectLayerEntryByKey(key, reason = "layer") {
   if (!entry) return false;
   selectLayerEntry(entry);
   lastLayerListKey = key;
-  setStatus(entry.objects.length > 1 ? `Selected ${entry.objects.length} layer(s) by ${reason}.` : `Selected 1 layer by ${reason}.`);
+  setStatus(entry.objects.length > 1 ? KfpsI18n.t("Selected {0} layer(s) by {1}.", entry.objects.length, KfpsI18n.message(reason)) : KfpsI18n.t("Selected 1 layer by {0}.", KfpsI18n.message(reason)));
   return true;
 }
 
@@ -7902,7 +7926,7 @@ function clearLayerSelection(reason = "layer multi-select") {
   canvas.requestRenderAll();
   updateSelectionPanel();
   updateLayerSelectionStyles();
-  setStatus(`Cleared selection by ${reason}.`);
+  setStatus(KfpsI18n.t("Cleared selection by {0}.", KfpsI18n.message(reason)));
 }
 
 function selectLayerToggleByKey(key, reason = "layer multi-select") {
@@ -7923,7 +7947,7 @@ function selectLayerToggleByKey(key, reason = "layer multi-select") {
     return true;
   }
   selectObjects(next, reason);
-  setStatus(`Selected ${next.length} layer(s) by ${reason}.`);
+  setStatus(KfpsI18n.t("Selected {0} layer(s) by {1}.", next.length, KfpsI18n.message(reason)));
   return true;
 }
 
@@ -7940,9 +7964,9 @@ function selectLayerRangeByKeys(startKey, endKey) {
   const b = Math.min(displayObjects.length - 1, Math.max(start.displayIndex, end.displayIndex));
   const selected = displayObjects.slice(a, b + 1);
   if (!selected.length) return false;
-  selectObjects(selected, "layer range");
+  selectObjects(selected, KfpsI18n.t("layer range"));
   lastLayerListKey = endKey;
-  setStatus(`Selected layer range: ${selected.length} layer(s).`);
+  setStatus(KfpsI18n.t("Selected layer range: {0} layer(s).", selected.length));
   return true;
 }
 
@@ -7955,10 +7979,10 @@ function groupDisplayRange(startKey, endKey) {
   const b = Math.min(displayObjects.length - 1, Math.max(start.displayIndex, end.displayIndex));
   const range = displayObjects.slice(a, b + 1);
   if (range.length < 2) {
-    setStatus("Drag across at least two layers to create an editor group.");
+    setStatus(KfpsI18n.t("Drag across at least two layers to create an editor group."));
     return false;
   }
-  selectObjects(range, "layer drag group");
+  selectObjects(range, KfpsI18n.t("layer drag group"));
   groupSelectedLayers();
   return true;
 }
@@ -7967,7 +7991,7 @@ function dropLayerBlockAtSlot(dragObjects, slot) {
   const selectedSet = new Set(dragObjects || []);
   if (!selectedSet.size || !slot) return false;
   if (layerSearchActive()) {
-    setStatus("Clear the layer search before dragging layers; filtered rows cannot safely define canvas depth.");
+    setStatus(KfpsI18n.t("Clear the layer search before dragging layers; filtered rows cannot safely define canvas depth."));
     return false;
   }
   const displayObjects = displayObjectsFromCurrentStack();
@@ -7979,14 +8003,14 @@ function dropLayerBlockAtSlot(dragObjects, slot) {
   const nextDisplay = blocks.flatMap((block) => block.objects);
   if (nextDisplay.length !== displayObjects.length) return false;
   if (nextDisplay.every((obj, index) => obj === displayObjects[index])) {
-    setStatus("Layer order unchanged.");
+    setStatus(KfpsI18n.t("Layer order unchanged."));
     return false;
   }
   setVinylStackOrder(nextDisplay.slice().reverse());
-  selectObjects(sourceObjects, sourceObjects.length > 1 ? "moved layer group" : "moved layer");
+  selectObjects(sourceObjects, sourceObjects.length > 1 ? KfpsI18n.t("moved layer group") : KfpsI18n.t("moved layer"));
   refreshLayers();
   pushHistory("layer drag reorder");
-  setStatus(`Moved ${sourceObjects.length > 1 ? `${sourceObjects.length} layers` : "1 layer"} in the layer stack.`);
+  setStatus(KfpsI18n.t("Moved {0} in the layer stack.", sourceObjects.length > 1 ? KfpsI18n.t("{0} layers", sourceObjects.length) : KfpsI18n.t("1 layer")));
   return true;
 }
 
@@ -8043,11 +8067,11 @@ function handleLayerPointerUp(event) {
       event.preventDefault();
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(state.key, "layer multi-select")) {
+    if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(state.key, KfpsI18n.t("layer multi-select"))) {
       event.preventDefault();
       return;
     }
-    selectLayerEntryByKey(state.key, "layer row");
+    selectLayerEntryByKey(state.key, KfpsI18n.t("layer row"));
     event.preventDefault();
     return;
   }
@@ -8090,13 +8114,7 @@ function createVirtualLayerElement(entry, activeSet) {
     const li = document.createElement("li");
     const active = entry.objects.some((object) => activeSet.has(object));
     li.className = `layerGroupRow${active ? " active" : ""}${entry.collapsed ? " collapsed" : ""}`;
-    li.innerHTML = `
-      <button class="layerGroupTwist" type="button" title="${entry.collapsed ? "Expand group" : "Collapse group"}">${entry.collapsed ? "+" : "-"}</button>
-      <span class="layerGroupTitle">${escapeHtml(entry.groupName)}</span>
-      <span class="layerGroupMeta">${entry.objects.length} layers | ${entry.visibility.hidden ? `${entry.visibility.hidden} hidden` : "visible"} | ${entry.locks.locked ? `${entry.locks.locked} locked` : "unlocked"}</span>
-      <button class="layerIcon layerGroupVisibility" type="button" title="Hide/show this group">${entry.visibility.visible ? "V" : "H"}</button>
-      <button class="layerIcon layerGroupLock" type="button" title="Lock/unlock this group">${entry.locks.unlocked ? "U" : "L"}</button>
-    `;
+    li.innerHTML = KfpsI18n.t("\n      <button class=\"layerGroupTwist\" type=\"button\" title=\"{0}\">{1}</button>\n      <span class=\"layerGroupTitle\">{2}</span>\n      <span class=\"layerGroupMeta\">{3} layers | {4} | {5}</span>\n      <button class=\"layerIcon layerGroupVisibility\" type=\"button\" title=\"Hide/show this group\">{6}</button>\n      <button class=\"layerIcon layerGroupLock\" type=\"button\" title=\"Lock/unlock this group\">{7}</button>\n    ", entry.collapsed ? KfpsI18n.t("Expand group") : KfpsI18n.t("Collapse group"), entry.collapsed ? "+" : "-", escapeHtml(entry.groupName), entry.objects.length, entry.visibility.hidden ? KfpsI18n.t("{0} hidden", entry.visibility.hidden) : KfpsI18n.t("visible"), entry.locks.locked ? KfpsI18n.t("{0} locked", entry.locks.locked) : KfpsI18n.t("unlocked"), entry.visibility.visible ? "V" : "H", entry.locks.unlocked ? "U" : "L");
     li.querySelector(".layerGroupTwist").addEventListener("click", (event) => {
       event.stopPropagation();
       setCollapsedGroup(entry.groupId, !entry.collapsed);
@@ -8114,7 +8132,7 @@ function createVirtualLayerElement(entry, activeSet) {
     li.addEventListener("click", (event) => {
       if (suppressLayerClick) return;
       if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, entry.key)) return;
-      if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(entry.key, "layer multi-select")) return;
+      if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(entry.key, KfpsI18n.t("layer multi-select"))) return;
       selectObjects(entry.objects, entry.groupName);
       lastLayerListKey = entry.key;
     });
@@ -8131,18 +8149,10 @@ function createVirtualLayerElement(entry, activeSet) {
   if (obj.kloudy?.locked) li.classList.add("lockedLayer");
   const color = hexToRgb(obj.fill || "#ffffff", (obj.opacity ?? 1) * 255);
   const groupBadge = entry.groupId
-    ? `<button class="layerGroupBadge" type="button" title="Select all layers in ${escapeHtml(entry.groupName)}.">${escapeHtml(entry.groupName)} (${entry.groupCount})</button>`
+    ? KfpsI18n.t("<button class=\"layerGroupBadge\" type=\"button\" title=\"Select all layers in {0}.\">{1} ({2})</button>", escapeHtml(entry.groupName), escapeHtml(entry.groupName), entry.groupCount)
     : "";
   const data = fh6DataFromObject(obj);
-  li.innerHTML = `
-    <button class="layerIcon layerVisibility" type="button" title="${obj.visible === false ? "Show layer" : "Hide layer"}">${obj.visible === false ? "H" : "V"}</button>
-    <button class="layerIcon layerLock" type="button" title="${obj.kloudy?.locked ? "Unlock layer" : "Lock layer"}">${obj.kloudy?.locked ? "L" : "U"}</button>
-    <span class="layerColorChip" style="--swatch:${colorToHex(color)}"></span>
-    <span class="layerMain">
-      <b>${escapeHtml(entry.label)}</b>
-      <small>${groupBadge} Type ${escapeHtml(obj.kloudy?.type || "unknown")} | X ${round(data[0])} Y ${round(data[1])}</small>
-    </span>
-  `;
+  li.innerHTML = KfpsI18n.t("\n    <button class=\"layerIcon layerVisibility\" type=\"button\" title=\"{0}\">{1}</button>\n    <button class=\"layerIcon layerLock\" type=\"button\" title=\"{2}\">{3}</button>\n    <span class=\"layerColorChip\" style=\"--swatch:{4}\"></span>\n    <span class=\"layerMain\">\n      <b>{5}</b>\n      <small>{6} Type {7} | X {8} Y {9}</small>\n    </span>\n  ", obj.visible === false ? KfpsI18n.t("Show layer") : KfpsI18n.t("Hide layer"), obj.visible === false ? "H" : "V", obj.kloudy?.locked ? KfpsI18n.t("Unlock layer") : KfpsI18n.t("Lock layer"), obj.kloudy?.locked ? "L" : "U", colorToHex(color), escapeHtml(entry.label), groupBadge, escapeHtml(obj.kloudy?.type || KfpsI18n.t("unknown")), round(data[0]), round(data[1]));
   li.querySelector(".layerGroupBadge")?.addEventListener("click", (event) => {
     event.stopPropagation();
     selectGroupForObject(obj);
@@ -8165,8 +8175,8 @@ function createVirtualLayerElement(entry, activeSet) {
   li.addEventListener("click", (event) => {
     if (suppressLayerClick) return;
     if (event.shiftKey && lastLayerListKey && selectLayerRangeByKeys(lastLayerListKey, entry.key)) return;
-    if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(entry.key, "layer multi-select")) return;
-    selectLayerEntryByKey(entry.key, "layer row");
+    if ((event.ctrlKey || event.metaKey) && selectLayerToggleByKey(entry.key, KfpsI18n.t("layer multi-select"))) return;
+    selectLayerEntryByKey(entry.key, KfpsI18n.t("layer row"));
   });
   registerLayerListRow(li, entry.key, entry.objects, entry.displayIndex);
   return li;
@@ -8209,12 +8219,12 @@ function exportValidation(objects = vinylObjects()) {
   const masks = objects.filter((object) => Boolean(object.kloudy?.mask));
   const hidden = objects.filter((object) => !objectEditorVisible(object));
   if (!objects.length) {
-    issues.push({ severity: "error", message: "Add or import at least one vinyl layer before exporting." });
+    issues.push({ severity: "error", message: KfpsI18n.t("Add or import at least one vinyl layer before exporting.") });
   }
   if (objects.length > MAX_VINYL_LAYERS) {
     issues.push({
       severity: "error",
-      message: `${objects.length - MAX_VINYL_LAYERS} layer(s) must be removed to meet the ${MAX_VINYL_LAYERS}-layer limit.`,
+      message: KfpsI18n.t("{0} layer(s) must be removed to meet the {1}-layer limit.", objects.length - MAX_VINYL_LAYERS, MAX_VINYL_LAYERS),
     });
   }
 
@@ -8269,28 +8279,28 @@ function exportValidation(objects = vinylObjects()) {
     0,
   );
   if (invalidTransforms) {
-    issues.push({ severity: "error", message: `${invalidTransforms} layer(s) have invalid transform data and cannot be exported safely.` });
+    issues.push({ severity: "error", message: KfpsI18n.t("{0} layer(s) have invalid transform data and cannot be exported safely.", invalidTransforms) });
   }
   if (zeroScale) {
-    issues.push({ severity: "error", message: `${zeroScale} layer(s) have a zero-width or zero-height scale.` });
+    issues.push({ severity: "error", message: KfpsI18n.t("{0} layer(s) have a zero-width or zero-height scale.", zeroScale) });
   }
   if (hidden.length) {
-    issues.push({ severity: "warning", message: `${hidden.length} hidden editor layer(s) will still be included in the exported JSON.` });
+    issues.push({ severity: "warning", message: KfpsI18n.t("{0} hidden editor layer(s) will still be included in the exported JSON.", hidden.length) });
   }
   if (outside) {
-    issues.push({ severity: "warning", message: `${outside} layer(s) are completely outside the FH canvas and may be invisible in game.` });
+    issues.push({ severity: "warning", message: KfpsI18n.t("{0} layer(s) are completely outside the FH canvas and may be invisible in game.", outside) });
   }
   if (unresolved) {
-    issues.push({ severity: "warning", message: `${unresolved} layer(s) use shape resources the editor could not verify.` });
+    issues.push({ severity: "warning", message: KfpsI18n.t("{0} layer(s) use shape resources the editor could not verify.", unresolved) });
   }
   if (ineffectiveMasks) {
-    issues.push({ severity: "warning", message: `${ineffectiveMasks} mask layer(s) have no normal layer below them to cut.` });
+    issues.push({ severity: "warning", message: KfpsI18n.t("{0} mask layer(s) have no normal layer below them to cut.", ineffectiveMasks) });
   }
   if (duplicateLayers) {
-    issues.push({ severity: "warning", message: `${duplicateLayers} exact duplicate layer(s) were found. Keep them only if they are intentional.` });
+    issues.push({ severity: "warning", message: KfpsI18n.t("{0} exact duplicate layer(s) were found. Keep them only if they are intentional.", duplicateLayers) });
   }
   if (objects.length && !issues.length) {
-    issues.push({ severity: "info", message: "No blocking export problems were found." });
+    issues.push({ severity: "info", message: KfpsI18n.t("No blocking export problems were found.") });
   }
   return {
     issues,
@@ -8309,8 +8319,8 @@ function refreshExportValidation(objects = vinylObjects()) {
   setText("exportHiddenCount", String(result.hidden));
   setText("exportWarningCount", String(issueCount));
   const readyLabel = !result.count
-    ? "No design"
-    : (result.errors.length ? "Blocked" : (result.warnings.length ? "Review" : "Ready"));
+    ? KfpsI18n.t("No design")
+    : (result.errors.length ? KfpsI18n.t("Blocked") : (result.warnings.length ? KfpsI18n.t("Review") : KfpsI18n.t("Ready")));
   setText("normalExportStatus", readyLabel);
   setText("exportReadyChip", readyLabel);
   setText("exportCheckBadge", readyLabel);
@@ -8371,15 +8381,15 @@ function refreshLayers() {
   });
   layerStatsCache = { objects, count: objects.length, visible: visibleCount };
   $("layerInfo").textContent = activeSet.size > 1
-    ? `${activeSet.size} selected / ${objects.length} editable layer(s). Drag selection to move together.`
-    : `${objects.length} editable layer(s). Export writes bottom-to-top order.`;
+    ? KfpsI18n.t("{0} selected / {1} editable layer(s). Drag selection to move together.", activeSet.size, objects.length)
+    : KfpsI18n.t("{0} editable layer(s). Export writes bottom-to-top order.", objects.length);
 
   const entries = [];
   const renderedGroups = new Set();
   const displayObjects = objects.slice().reverse();
   displayObjects.forEach((obj, displayIndex) => {
     const actualIndex = objects.length - displayIndex;
-    const label = `${actualIndex}. ${obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0)}`;
+    const label = `${actualIndex}. ${obj.kloudy?.name || localizedTypeLabel(obj.kloudy?.type || 0)}`;
     const groupId = obj.kloudy?.group_id ? String(obj.kloudy.group_id) : null;
     const groupName = groupId ? (groupNames.get(groupId) || groupNameForObject(obj)) : "";
     const searchText = `${label} ${groupName} ${obj.kloudy?.type || ""} ${obj.kloudy?.type_word || ""}`.toLowerCase();
@@ -8438,6 +8448,8 @@ function refreshLayers() {
 
 function updateSelectionPanel() {
   const selected = selectedVinylObjects();
+  editorAssetLibrary?.selectionChanged();
+  ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput"].forEach(id => $(id).removeAttribute("aria-invalid"));
   syncSelectedShapeOutlines(selected);
   const enabled = selected.length === 1;
   ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput"].forEach((id) => {
@@ -8473,21 +8485,21 @@ function updateSelectionPanel() {
   $("opacitySlider").disabled = selected.length < 1;
   $("equalizeAlpha").disabled = selected.length < 2;
   if (!enabled) {
-    $("selectedShapeName").textContent = selected.length > 1 ? `${selected.length} layers selected` : "No layer selected";
+    $("selectedShapeName").textContent = selected.length > 1 ? KfpsI18n.t("{0} layers selected", selected.length) : KfpsI18n.t("No layer selected");
     $("selectedShapeCode").textContent = selected.length > 1
-      ? (sharedAlpha === null ? "Mixed alpha. Color applies to all selected layers; alpha uses the slider value." : `Shared alpha ${sharedAlpha}. Color and alpha apply to all selected layers.`)
-      : "Click a layer or a shape tile.";
+      ? (sharedAlpha === null ? KfpsI18n.t("Mixed alpha. Color applies to all selected layers; alpha uses the slider value.") : KfpsI18n.t("Shared alpha {0}. Color and alpha apply to all selected layers.", sharedAlpha))
+      : KfpsI18n.t("Click a layer or a shape tile.");
     if (selected.length > 1) $("opacitySlider").value = sharedAlpha ?? rememberedColor[3] ?? 255;
     if (selected.length > 1) {
-      $("layerInfo").textContent = `${selected.length} layer(s) selected. Drag the selection box to move them together. Color edits apply to unlocked selected layers.`;
+      $("layerInfo").textContent = KfpsI18n.t("{0} layer(s) selected. Drag the selection box to move them together. Color edits apply to unlocked selected layers.", selected.length);
     }
     refreshColorUi();
     updateLayerSelectionStyles();
     return;
   }
   const obj = selected[0];
-  $("selectedShapeName").textContent = obj.kloudy?.name || typeLabel(obj.kloudy?.type || 0);
-  $("selectedShapeCode").textContent = `Type ${obj.kloudy?.type || "unknown"}${obj.kloudy?.mask ? " / mask" : ""}`;
+  $("selectedShapeName").textContent = obj.kloudy?.name || localizedTypeLabel(obj.kloudy?.type || 0);
+  $("selectedShapeCode").textContent = KfpsI18n.t("Type {0}{1}", obj.kloudy?.type || KfpsI18n.t("unknown"), obj.kloudy?.mask ? KfpsI18n.t(" / mask") : "");
   $("colorPicker").value = colorToHex(currentPanelColor());
   $("opacitySlider").value = alphaForObject(obj);
   updateObjectScaleSigns(obj);
@@ -8502,17 +8514,17 @@ function updateSelectionPanel() {
   updateLayerSelectionStyles();
 }
 
-function applySelectionFields() {
+function applySelectionFields(options = {}) {
   const selected = selectedVinylObjects();
   if (selected.length > 1) {
     const editable = unlockedObjects(selected);
     if (!editable.length) {
-      setStatus("Selected layers are locked. Unlock them before editing.");
+      setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before editing."));
       updateSelectionPanel();
       return;
     }
     if (editable.length !== selected.length) {
-      setStatus(`Skipped ${selected.length - editable.length} locked layer(s). Unlock them before batch editing.`);
+      setStatus(KfpsI18n.t("Skipped {0} locked layer(s). Unlock them before batch editing.", selected.length - editable.length));
     }
     const alpha = Math.max(0, Math.min(255, Math.round(Number($("opacitySlider").value) || 0)));
     const color = hexToRgb($("colorPicker").value || colorToHex(rememberedColor), alpha);
@@ -8521,44 +8533,61 @@ function applySelectionFields() {
     canvas.requestRenderAll();
     updateSelectionPanel();
     pushHistory("batch appearance edit");
-    setStatus(`Applied ${colorToHex(color).toUpperCase()} / A ${alpha} to ${editable.length} selected layer(s).${editable.length !== selected.length ? " Locked layers were skipped." : ""}`);
+    setStatus(KfpsI18n.t("Applied {0} / A {1} to {2} selected layer(s).{3}", colorToHex(color).toUpperCase(), alpha, editable.length, editable.length !== selected.length ? KfpsI18n.t(" Locked layers were skipped.") : ""));
     return;
   }
   const obj = selected[0];
   if (!obj || !obj.kloudy) return;
   if (obj.kloudy.locked) {
-    setStatus("Selected layer is locked. Unlock it before editing.");
+    setStatus(KfpsI18n.t("Selected layer is locked. Unlock it before editing."));
     updateSelectionPanel();
     return;
+  }
+  const values = {};
+  for (const id of ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput"]) {
+    try {
+      const value = KfpsEditorCore.parseNumericExpression($(id).value);
+      if (["sxInput", "syInput"].includes(id) && Math.abs(value) < 0.000001) throw new Error(KfpsI18n.t("Scale cannot be zero."));
+      if (id === "skewInput" && Math.abs(value) >= 89.9) throw new Error(KfpsI18n.t("Skew must be between -89.9 and 89.9 degrees."));
+      values[id] = value;
+      $(id).removeAttribute("aria-invalid");
+    } catch (error) {
+      $(id).setAttribute("aria-invalid", "true");
+      setStatus(KfpsI18n.error(error.message));
+      return false;
+    }
   }
   const color = hexToRgb($("colorPicker").value, $("opacitySlider").value);
   rememberColor(color);
   const transformProps = fabricPropsFromFh6Data([
-    Number($("xInput").value) || 0,
-    Number($("yInput").value) || 0,
-    Number($("sxInput").value) || 1,
-    Number($("syInput").value) || 1,
-    Number($("rotInput").value) || 0,
+    values.xInput,
+    values.yInput,
+    values.sxInput,
+    values.syInput,
+    values.rotInput,
     fh6SkewFromFabricDegrees(
-      Number($("skewInput").value) || 0,
-      Number($("sxInput").value) || 1,
-      Number($("syInput").value) || 1
+      values.skewInput,
+      values.sxInput,
+      values.syInput
     ),
   ]);
   obj.set({
     ...transformProps,
+    scaleX: transformProps.scaleX * (obj.kloudy.render_scale || 1),
+    scaleY: transformProps.scaleY * (obj.kloudy.render_scale || 1),
   });
   applyObjectColor(obj, color);
   obj.kloudy.scaleSigns = {
-    x: (Number($("sxInput").value) || 1) < 0 ? -1 : 1,
-    y: (Number($("syInput").value) || 1) < 0 ? -1 : 1,
+    x: values.sxInput < 0 ? -1 : 1,
+    y: values.syInput < 0 ? -1 : 1,
   };
   applyMaskVisual(obj);
   obj.setCoords();
   applyLiveOverlayColor(obj);
   canvas.requestRenderAll();
   updateSelectionPanel();
-  pushHistory("field edit");
+  if (!options.preview) pushHistory("field edit", { changedObjects: [obj] });
+  return true;
 }
 
 function applyMaskVisual(obj, options = {}) {
@@ -8742,12 +8771,12 @@ function syncMaskPreviewForTarget(target) {
 function toggleSelectedMaskLayers() {
   const selected = selectedVinylObjects();
   if (!selected.length) {
-    setStatus("Select one or more layers first.");
+    setStatus(KfpsI18n.t("Select one or more layers first."));
     return;
   }
   const editable = unlockedObjects(selected);
   if (!editable.length) {
-    setStatus("Selected layers are locked. Unlock them before marking them as masks.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before marking them as masks."));
     return;
   }
   const shouldMask = editable.some((obj) => !obj.kloudy?.mask);
@@ -8764,20 +8793,20 @@ function toggleSelectedMaskLayers() {
   pushHistory(shouldMask ? "make mask layer" : "clear mask layer");
   setStatus(
     changed
-      ? `${shouldMask ? "Marked" : "Cleared"} ${changed} layer(s) ${shouldMask ? "as mask/cutout layers" : "back to normal vinyl layers"}.`
-      : `Selected editable layers were already ${shouldMask ? "mask layers" : "normal layers"}.`
+      ? KfpsI18n.t("{0} {1} layer(s) {2}.", shouldMask ? KfpsI18n.t("Marked") : KfpsI18n.t("Cleared"), changed, shouldMask ? KfpsI18n.t("as mask/cutout layers") : KfpsI18n.t("back to normal vinyl layers"))
+      : KfpsI18n.t("Selected editable layers were already {0}.", shouldMask ? KfpsI18n.t("mask layers") : KfpsI18n.t("normal layers"))
   );
 }
 
 function equalizeSelectedAlpha() {
   const selected = selectedVinylObjects();
   if (selected.length < 2) {
-    setStatus("Select two or more layers before equalizing alpha.");
+    setStatus(KfpsI18n.t("Select two or more layers before equalizing alpha."));
     return;
   }
   const editable = unlockedObjects(selected);
   if (!editable.length) {
-    setStatus("Selected layers are locked. Unlock them before equalizing alpha.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before equalizing alpha."));
     return;
   }
   const alpha = alphaForObject(editable[0]);
@@ -8787,7 +8816,7 @@ function equalizeSelectedAlpha() {
   canvas.requestRenderAll();
   updateSelectionPanel();
   pushHistory("equalize alpha");
-  setStatus(`Equalized ${editable.length} selected layer(s) to alpha ${alpha}.${editable.length !== selected.length ? " Locked layers were skipped." : ""}`);
+  setStatus(KfpsI18n.t("Equalized {0} selected layer(s) to alpha {1}.{2}", editable.length, alpha, editable.length !== selected.length ? KfpsI18n.t(" Locked layers were skipped.") : ""));
 }
 
 function downloadText(filename, text) {
@@ -8831,14 +8860,14 @@ async function saveEditorJsonToAppFolder(name, payload) {
     body: JSON.stringify({ name, payload }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
   return data;
 }
 
 async function saveProjectToAppFolder(name, payload, overwrite = false) {
   const body = JSON.stringify({ name, payload, overwrite: Boolean(overwrite) });
   if (new Blob([body]).size > EDITOR_PROJECT_MAX_BYTES) {
-    throw new Error("Project exceeds the 25 MiB save limit. Use a smaller reference image and save again.");
+    throw new Error(KfpsI18n.t("Project exceeds the 25 MiB save limit. Use a smaller reference image and save again."));
   }
   const response = await fetch(PROJECT_SAVE_API, {
     method: "POST",
@@ -8848,7 +8877,7 @@ async function saveProjectToAppFolder(name, payload, overwrite = false) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error || `HTTP ${response.status}`);
+    const error = new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     error.code = data.code || "";
     throw error;
   }
@@ -8857,31 +8886,31 @@ async function saveProjectToAppFolder(name, payload, overwrite = false) {
 
 async function exportJson() {
   if (exportSaveInProgress) {
-    setStatus("Export is already saving. Wait for it to finish.");
+    setStatus(KfpsI18n.t("Export is already saving. Wait for it to finish."));
     return;
   }
   const shapes = vinylObjects().map((object) => objectToShape(object, { includeEditorMeta: false }));
   if (!shapes.length) {
-    setStatus("Nothing to export. Import a JSON or add at least one shape first.");
+    setStatus(KfpsI18n.t("Nothing to export. Import a JSON or add at least one shape first."));
     return;
   }
   const validation = refreshExportValidation();
   if (validation.errors.length) {
     activateDockPanel("exportCheckPane");
-    setStatus(`Export blocked by ${validation.errors.length} problem${validation.errors.length === 1 ? "" : "s"}. Open Export Check for details.`);
+    setStatus(KfpsI18n.t("Export blocked by {0} problem{1}. Open Export Check for details.", validation.errors.length, validation.errors.length === 1 ? "" : "s"));
     return;
   }
   const defaultName = cleanProjectBaseName(currentProjectName || loadedName, "vinyl");
   let exportName = currentProjectName;
   if (!exportName) {
     const requestedName = await requestTextInput(
-      "Export Vinyl JSON",
-      "JSON name",
+      KfpsI18n.t("Export Vinyl JSON"),
+      KfpsI18n.t("JSON name"),
       defaultName,
-      "This creates a game-ready JSON in KFPS imgs/editor. It does not replace the editable project.",
+      KfpsI18n.t("This creates a game-ready JSON in KFPS imgs/editor. It does not replace the editable project."),
     );
     if (requestedName === null) {
-      setStatus("JSON export cancelled.");
+      setStatus(KfpsI18n.t("JSON export cancelled."));
       return;
     }
     exportName = cleanProjectBaseName(requestedName, defaultName);
@@ -8896,11 +8925,11 @@ async function exportJson() {
     setJsonBrowserSource("editor");
     await refreshJsonBrowser();
     selectJsonBrowserEntryById(result.id);
-    setStatus(`Exported ${shapes.length} layer(s) to imgs/editor/${result.name || `${exportName}.fh6-import.json`}.`);
-    showCornerNotice("FH6 JSON saved inside KFPS", "Open Import JSON, choose Editor exports, and import it from there.");
+    setStatus(KfpsI18n.t("Exported {0} layer(s) to imgs/editor/{1}.", shapes.length, result.name || `${exportName}.fh6-import.json`));
+    showCornerNotice(KfpsI18n.t("FH6 JSON saved inside KFPS"), KfpsI18n.t("Open Import JSON, choose Editor exports, and import it from there."));
   } catch (err) {
     downloadText(filenameWithSuffix(exportName, "fh6-import"), JSON.stringify(payload, null, 2));
-    setStatus(`Saved-to-folder failed (${err.message || err}). Downloaded ${shapes.length} layer(s) instead.`);
+    setStatus(KfpsI18n.t("Saved-to-folder failed ({0}). Downloaded {1} layer(s) instead.", KfpsI18n.error(err.message || err), shapes.length));
   } finally {
     exportSaveInProgress = false;
     refreshExportValidation();
@@ -8923,24 +8952,24 @@ function editableProjectPayload(projectName) {
 
 async function saveProject(options = {}) {
   if (projectSaveInProgress) {
-    setStatus("Project save is already running. Wait for it to finish.");
+    setStatus(KfpsI18n.t("Project save is already running. Wait for it to finish."));
     return;
   }
   if (!vinylObjects().length) {
-    setStatus("Nothing to save. Import a JSON or add at least one shape first.");
+    setStatus(KfpsI18n.t("Nothing to save. Import a JSON or add at least one shape first."));
     return;
   }
   const defaultName = cleanProjectBaseName(loadedName, "vinyl");
   let projectName = currentProjectName;
   if (!projectName || options.saveAs) {
     const requestedName = await requestTextInput(
-      options.saveAs ? "Save Project As" : "Save Editable Project",
-      "Project name",
+      options.saveAs ? KfpsI18n.t("Save Project As") : KfpsI18n.t("Save Editable Project"),
+      KfpsI18n.t("Project name"),
       options.saveAs ? cleanProjectBaseName(currentProjectName || defaultName, defaultName) : defaultName,
-      "Projects preserve editable layers, groups, guides, and the reference image. Export JSON separately when the vinyl is ready.",
+      KfpsI18n.t("Projects preserve editable layers, groups, guides, and the reference image. Export JSON separately when the vinyl is ready."),
     );
     if (requestedName === null) {
-      setStatus("Project save cancelled.");
+      setStatus(KfpsI18n.t("Project save cancelled."));
       return;
     }
     projectName = cleanProjectBaseName(requestedName, defaultName);
@@ -8970,13 +8999,13 @@ async function saveProject(options = {}) {
       renderHistoryList();
       if (!documentDirty) clearAutosave();
       else writeAutosavePayload(autosavePayloadFromState(currentHistoryState() || snapshotEditorState()));
-      setStatus(`Saved project internally: ${currentProjectName}${documentDirty ? ". Newer changes are still unsaved. Recovery pending." : ""}`);
+      setStatus(KfpsI18n.t("Saved project internally: {0}{1}", currentProjectName, documentDirty ? KfpsI18n.t(". Newer changes are still unsaved. Recovery pending.") : ""));
     }
-    showCornerNotice("Project saved inside KFPS", `Saved ${result.title || projectName}.`);
+    showCornerNotice(KfpsI18n.t("Project saved inside KFPS"), KfpsI18n.t("Saved {0}.", result.title || projectName));
   } catch (err) {
     const title = err?.code === "project_exists"
-      ? "That project name is already used"
-      : "Project save failed";
+      ? KfpsI18n.t("That project name is already used")
+      : KfpsI18n.t("Project save failed");
     setStatus(`${title}: ${err.message || err}`);
     showError(title, err);
   } finally {
@@ -8991,9 +9020,9 @@ function saveProjectAs() {
 }
 
 async function loadProjectPayload(payload, displayName = "project") {
-  setBusy(`Loading project: ${displayName}`);
+  setBusy(KfpsI18n.t("Loading project: {0}", displayName));
   await nextFrame();
-  if (!Array.isArray(payload.shapes)) throw new Error("Project JSON must contain a shapes list.");
+  if (!Array.isArray(payload.shapes)) throw new Error(KfpsI18n.t("Project JSON must contain a shapes list."));
   const previousName = loadedName;
   const previousProjectName = currentProjectName;
   const projectName = cleanProjectBaseName(payload.name || displayName, "project");
@@ -9019,12 +9048,12 @@ async function loadProjectPayload(payload, displayName = "project") {
       savedOverlayRevision = overlayRevision - 1;
       updateDocumentState();
       setStatus(
-        `Loaded ${projectName}, but its saved reference image could not be restored. `
-        + "The project remains unsaved so the missing reference is not overwritten accidentally.",
+        KfpsI18n.t("Loaded {0}, but its saved reference image could not be restored. ", projectName)
+        + KfpsI18n.t("The project remains unsaved so the missing reference is not overwritten accidentally."),
       );
       showCornerNotice(
-        "Reference image unavailable",
-        referenceError.message || String(referenceError),
+        KfpsI18n.t("Reference image unavailable"),
+        KfpsI18n.error(referenceError.message || String(referenceError)),
       );
     }
   } catch (err) {
@@ -9068,7 +9097,7 @@ function updateShapePlacementLabel() {
   const select = $("shapePlacementMode");
   const label = $("shapePlacementModeLabel");
   if (!select || !label) return;
-  label.textContent = select.options[select.selectedIndex]?.textContent || "Add at top";
+  label.textContent = select.options[select.selectedIndex]?.textContent || KfpsI18n.t("Add at top");
 }
 
 function shapeWordForObject(object) {
@@ -9103,7 +9132,7 @@ function shapeReplaceListEntry(object) {
   const resource = resolvedResourceForObject(object);
   const family = resource?.family || object.kloudy?.resource_family || "Unknown";
   const index = Number(resource?.index || object.kloudy?.resource_index || 0);
-  const name = object.kloudy?.name || (resource ? shapeDisplayName(resource.family, resource.index) : `Shape word ${word}`);
+  const name = object.kloudy?.name || (resource ? localizedShapeDisplayName(resource.family, resource.index) : KfpsI18n.t("Shape word {0}", word));
   return { word, family, index, name };
 }
 
@@ -9124,7 +9153,7 @@ function renderGlobalShapeReplacePanel() {
   if (!used.size) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = "No replaceable vinyl shapes are loaded.";
+    empty.textContent = KfpsI18n.t("No replaceable vinyl shapes are loaded.");
     list.appendChild(empty);
     panel.hidden = false;
     return;
@@ -9136,13 +9165,7 @@ function renderGlobalShapeReplacePanel() {
       button.type = "button";
       button.className = "usedShapeButton";
       const thumb = entry.family !== "Unknown" && entry.index ? vinylResourceUrl(entry.family, entry.index, ".png") : "";
-      button.innerHTML = `
-        ${thumb ? `<img alt="" src="${thumb}">` : "<span></span>"}
-        <span>
-          <b>${escapeHtml(entry.name)}</b>
-          <span>${entry.count} layer${entry.count === 1 ? "" : "s"} / word ${entry.word}</span>
-        </span>
-      `;
+      button.innerHTML = KfpsI18n.t("\n        {0}\n        <span>\n          <b>{1}</b>\n          <span>{2} layer{3} / word {4}</span>\n        </span>\n      ", thumb ? `<img alt="" src="${thumb}">` : "<span></span>", escapeHtml(entry.name), entry.count, entry.count === 1 ? "" : "s", entry.word);
       button.addEventListener("click", () => armGlobalShapeReplacement(entry));
       list.appendChild(button);
     });
@@ -9166,7 +9189,7 @@ function armGlobalShapeReplacement(entry) {
   const shapeTool = document.querySelector('.toolButton[data-tool-mode="shapeLibrary"]');
   if (shapeTool) setActiveTool(shapeTool);
   else activateDockPanel("shapeLibraryPane");
-  setStatus(`Global Change Shape armed for ${pendingGlobalShapeReplacement.name} (${pendingGlobalShapeReplacement.count} layer${pendingGlobalShapeReplacement.count === 1 ? "" : "s"}). Click a shape tile to replace every matching layer.`);
+  setStatus(KfpsI18n.t("Global Change Shape armed for {0} ({1} layer{2}). Click a shape tile to replace every matching layer.", pendingGlobalShapeReplacement.name, pendingGlobalShapeReplacement.count, pendingGlobalShapeReplacement.count === 1 ? "" : "s"));
 }
 
 function armShapeReplacementFromLayers() {
@@ -9174,12 +9197,12 @@ function armShapeReplacementFromLayers() {
   if (!selected.length) {
     pendingGlobalShapeReplacement = null;
     renderGlobalShapeReplacePanel();
-    setStatus("No layers selected. Choose a used shape type, then click its replacement in Shape Library.");
+    setStatus(KfpsI18n.t("No layers selected. Choose a used shape type, then click its replacement in Shape Library."));
     return;
   }
   const editable = unlockedObjects(selected);
   if (!editable.length) {
-    setStatus("Selected layers are locked. Unlock them before changing shape type.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before changing shape type."));
     return;
   }
   pendingGlobalShapeReplacement = null;
@@ -9192,7 +9215,7 @@ function armShapeReplacementFromLayers() {
   const shapeTool = document.querySelector('.toolButton[data-tool-mode="shapeLibrary"]');
   if (shapeTool) setActiveTool(shapeTool);
   else activateDockPanel("shapeLibraryPane");
-  setStatus(`Change Shape armed for ${editable.length} selected layer(s). Click a shape tile to replace them.${editable.length !== selected.length ? ` ${selected.length - editable.length} locked layer(s) will be skipped.` : ""}`);
+  setStatus(KfpsI18n.t("Change Shape armed for {0} selected layer(s). Click a shape tile to replace them.{1}", editable.length, editable.length !== selected.length ? KfpsI18n.t(" {0} locked layer(s) will be skipped.", selected.length - editable.length) : ""));
 }
 
 function orderedSelectedVinylObjects() {
@@ -9215,7 +9238,7 @@ function insertNewVinylObject(object, mode) {
   }
   const reference = insertionReferenceForMode(mode);
   if (!reference) {
-    setStatus("Select a layer before using Insert above/below selected.");
+    setStatus(KfpsI18n.t("Select a layer before using Insert above/below selected."));
     return false;
   }
   const referenceIndex = canvas.getObjects().indexOf(reference);
@@ -9328,49 +9351,49 @@ async function replaceObjectsWithResource(objects, family, index) {
 async function replaceSelectedShapes(family, index) {
   const selected = orderedSelectedVinylObjects();
   if (!selected.length) {
-    setStatus("Select one or more layers before replacing their shape type.");
+    setStatus(KfpsI18n.t("Select one or more layers before replacing their shape type."));
     return;
   }
   const editable = unlockedObjects(selected);
   if (!editable.length) {
-    setStatus("Selected layers are locked. Unlock them before replacing shape type.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before replacing shape type."));
     return;
   }
   const replacements = await replaceObjectsWithResource(editable, family, index);
-  selectObjects(replacements, "shape replacement");
+  selectObjects(replacements, KfpsI18n.t("shape replacement"));
   canvas.requestRenderAll();
   refreshLayers();
   pushHistory("replace shape type");
-  setStatus(`Replaced ${replacements.length} layer(s) with ${shapeDisplayName(family, index)}.${editable.length !== selected.length ? ` Skipped ${selected.length - editable.length} locked layer(s).` : ""}`);
+  setStatus(KfpsI18n.t("Replaced {0} layer(s) with {1}.{2}", replacements.length, localizedShapeDisplayName(family, index), editable.length !== selected.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", selected.length - editable.length) : ""));
 }
 
 async function replaceMatchingShapeWords(source, family, index) {
   const rawSourceWord = Number(source?.word);
   if (!Number.isFinite(rawSourceWord)) {
     pendingGlobalShapeReplacement = null;
-    setStatus("Global Change Shape cancelled because the source shape was invalid.");
+    setStatus(KfpsI18n.t("Global Change Shape cancelled because the source shape was invalid."));
     return;
   }
   const sourceWord = rawSourceWord & 0xffff;
   const matches = vinylObjects().filter((object) => shapeWordForObject(object) === sourceWord);
   if (!matches.length) {
     pendingGlobalShapeReplacement = null;
-    setStatus("No matching layers remain for that source shape.");
+    setStatus(KfpsI18n.t("No matching layers remain for that source shape."));
     return;
   }
   const editable = unlockedObjects(matches);
   if (!editable.length) {
     pendingGlobalShapeReplacement = null;
-    setStatus("Matching layers are locked. Unlock them before replacing shape type.");
+    setStatus(KfpsI18n.t("Matching layers are locked. Unlock them before replacing shape type."));
     return;
   }
   const replacements = await replaceObjectsWithResource(editable, family, index);
   pendingGlobalShapeReplacement = null;
-  selectObjects(replacements, "global shape replacement");
+  selectObjects(replacements, KfpsI18n.t("global shape replacement"));
   canvas.requestRenderAll();
   refreshLayers();
   pushHistory("replace shape globally");
-  setStatus(`Replaced ${replacements.length} ${source.name || `word ${sourceWord}`} layer(s) with ${shapeDisplayName(family, index)}.${editable.length !== matches.length ? ` Skipped ${matches.length - editable.length} locked layer(s).` : ""}`);
+  setStatus(KfpsI18n.t("Replaced {0} {1} layer(s) with {2}.{3}", replacements.length, source.name || KfpsI18n.t("word {0}", sourceWord), localizedShapeDisplayName(family, index), editable.length !== matches.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", matches.length - editable.length) : ""));
 }
 
 async function addShape(family, index) {
@@ -9385,11 +9408,11 @@ async function addShape(family, index) {
     if (hadSelection && $("shapePlacementMode")) {
       $("shapePlacementMode").value = "top";
       updateShapePlacementLabel();
-      setStatus("Shape replaced. Placement returned to At top.");
+      setStatus(KfpsI18n.t("Shape replaced. Placement returned to At top."));
     }
     return;
   }
-  if (!requireLayerCapacity(1, "add this shape")) return;
+  if (!requireLayerCapacity(1, KfpsI18n.t("add this shape"))) return;
   const typeCode = resourceToTypeCode(family, index);
   const shapeWord = resourceToShapeWord(family, index);
   const shape = {
@@ -9445,7 +9468,7 @@ function setPixelArtGridInputs(grid) {
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
-      reject(new Error("Choose a pixel-art source image first."));
+      reject(new Error(KfpsI18n.t("Choose a pixel-art source image first.")));
       return;
     }
     const url = URL.createObjectURL(file);
@@ -9456,7 +9479,7 @@ function loadImageFromFile(file) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error(`Could not read image: ${file.name || "source"}`));
+      reject(new Error(KfpsI18n.t("Could not read image: {0}", file.name || KfpsI18n.t("source"))));
     };
     image.src = url;
   });
@@ -9729,25 +9752,25 @@ async function generatePixelArtRectangles() {
     if (!canvas) return;
     const alphaCutoff = numberInputValue("pixelArtAlphaCutoff", 128, 0, 255);
     const tolerance = numberInputValue("pixelArtTolerance", 24, 0, 80);
-    setBusy("Detecting source pixel grid...");
+    setBusy(KfpsI18n.t("Detecting source pixel grid..."));
     const image = await loadImageFromFile(pixelArtSourceFile);
     const detected = sampleDetectedPixelArtGrid(image, alphaCutoff, tolerance);
     const gridW = detected.gridW;
     const gridH = detected.gridH;
     setPixelArtGridInputs(detected);
-    setBusy(`Detected ${gridW}x${gridH} source pixel grid. Building rectangles...`);
+    setBusy(KfpsI18n.t("Detected {0}x{1} source pixel grid. Building rectangles...", gridW, gridH));
     const rows = detected.rows;
     const runs = buildPixelArtRuns(rows);
     if (!runs.length) {
-      setText("pixelArtStatus", "No visible pixel-art cells found.");
-      clearBusy("No visible pixel-art cells found.");
+      setText("pixelArtStatus", KfpsI18n.t("No visible pixel-art cells found."));
+      clearBusy(KfpsI18n.t("No visible pixel-art cells found."));
       return;
     }
     const clearPrevious = Boolean($("pixelArtClearPrevious")?.checked);
     const previousCount = clearPrevious ? vinylObjects().filter((obj) => obj.kloudy?.pixel_art_generated).length : 0;
     const projectedCount = vinylObjects().length - previousCount + runs.length;
     if (projectedCount > MAX_VINYL_LAYERS) {
-      const message = `Pixel-art generation needs ${projectedCount} total layers, above the ${MAX_VINYL_LAYERS}-layer maximum. Increase Cell px or reduce the source size.`;
+      const message = KfpsI18n.t("Pixel-art generation needs {0} total layers, above the {1}-layer maximum. Increase Cell px or reduce the source size.", projectedCount, MAX_VINYL_LAYERS);
       setText("pixelArtStatus", message);
       clearBusy(message);
       return;
@@ -9797,16 +9820,16 @@ async function generatePixelArtRectangles() {
     }
     bringGuidesToBack();
     syncCanvasObjectCoords();
-    selectObjects(created.slice(0, 200), "pixel-art generation");
+    selectObjects(created.slice(0, 200), KfpsI18n.t("pixel-art generation"));
     refreshLayers();
     pushHistory("generate pixel art");
-    const message = `Generated ${created.length} pixel-art rectangle layer(s) from detected ${gridW}x${gridH} grid, source step ${detected.stepX}x${detected.stepY}px.${removed ? ` Removed ${removed} previous pixel-art layer(s).` : ""}`;
+    const message = KfpsI18n.t("Generated {0} pixel-art rectangle layer(s) from detected {1}x{2} grid, source step {3}x{4}px.{5}", created.length, gridW, gridH, detected.stepX, detected.stepY, removed ? KfpsI18n.t(" Removed {0} previous pixel-art layer(s).", removed) : "");
     setText("pixelArtStatus", message);
     clearBusy(message);
   } catch (err) {
     historyLocked = false;
-    setText("pixelArtStatus", `Pixel-art generation failed: ${err.message || err}`);
-    showError("Pixel-art generation failed", err);
+    setText("pixelArtStatus", KfpsI18n.t("Pixel-art generation failed: {0}", KfpsI18n.error(err.message || err)));
+    showError(KfpsI18n.t("Pixel-art generation failed"), err);
   }
 }
 
@@ -10055,7 +10078,7 @@ async function loadTextVinylResourceMesh(resource) {
   if (textVinylMeshCache.has(key)) return textVinylMeshCache.get(key);
   const url = await resolveVinylResourceUrl(resource.family, resource.index, "");
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Missing shape mesh resource: ${url}`);
+  if (!response.ok) throw new Error(KfpsI18n.t("Missing shape mesh resource: {0}", url));
   const payload = await response.json();
   const vertices = (payload.Vertices || []).map((vertex) => ({
     x: Number(vertex.X) || 0,
@@ -11191,7 +11214,7 @@ async function generateTextVinylShapes() {
     if (!canvas) return;
     const text = $("textVinylInput")?.value || "";
     if (!text.trim()) {
-      setTextVinylStatus("Type some text first.");
+      setTextVinylStatus(KfpsI18n.t("Type some text first."));
       return;
     }
     const options = {
@@ -11206,7 +11229,7 @@ async function generateTextVinylShapes() {
       bold: Boolean($("textVinylBold")?.checked),
       italic: Boolean($("textVinylItalic")?.checked),
     };
-    setBusy("Rasterizing text...");
+    setBusy(KfpsI18n.t("Rasterizing text..."));
     await nextFrame();
     const mask = renderTextVinylMask(text, options);
     const color = normalizeColor(currentPanelColor());
@@ -11222,14 +11245,14 @@ async function generateTextVinylShapes() {
       shapeSpecs = built.shapes;
       sourceWidth = shapeSpecs.length;
       sourceHeight = 1;
-      sourceLabel = `Forza Font ${built.fontNumber}, ${shapeSpecs.length} glyph(s)${built.unsupported ? `, ${built.unsupported} unsupported character(s) skipped` : ""}`;
+      sourceLabel = KfpsI18n.t("Forza Font {0}, {1} glyph(s){2}", built.fontNumber, shapeSpecs.length, built.unsupported ? KfpsI18n.t(", {0} unsupported character(s) skipped", built.unsupported) : "");
     } else if (options.mode === "curveBands") {
       const bands = buildTextVinylCurveBands(mask, options.bandSize, options.alphaCutoff, options.coverage);
       sourceWidth = bands.gridW;
       sourceHeight = bands.gridH;
       const layout = textVinylLayout(sourceWidth, sourceHeight, options.targetHeight);
       shapeSpecs = buildTextVinylCurveShapes(bands.runs, layout, color, groupId, groupName);
-      sourceLabel = `${bands.runs.length} scanline run(s)`;
+      sourceLabel = KfpsI18n.t("{0} scanline run(s)", bands.runs.length);
     } else if (options.mode === "smartFit") {
       const grid = textVinylCellsFromMask(mask, options.cellSize, options.alphaCutoff, options.coverage);
       const layout = textVinylLayout(grid.gridW, grid.gridH, options.targetHeight);
@@ -11241,7 +11264,7 @@ async function generateTextVinylShapes() {
       const types = fitted.typeSummary.length
         ? ` (${fitted.typeSummary.map(([name, count]) => `${count} ${name}`).join(", ")})`
         : "";
-      sourceLabel = `${fitted.componentShapeCount} component shape(s) + ${fitted.earlyShapeCount} early shape(s) + ${fitted.strokeCount} fitted stroke(s) + ${fitted.cornerCount} curve corner(s) + ${fitted.broadShapeCount} scored shape(s) + ${fitted.residualCount} residual shape(s)${types}`;
+      sourceLabel = KfpsI18n.t("{0} component shape(s) + {1} early shape(s) + {2} fitted stroke(s) + {3} curve corner(s) + {4} scored shape(s) + {5} residual shape(s){6}", fitted.componentShapeCount, fitted.earlyShapeCount, fitted.strokeCount, fitted.cornerCount, fitted.broadShapeCount, fitted.residualCount, types);
     } else {
       const grid = textVinylCellsFromMask(mask, options.cellSize, options.alphaCutoff, options.coverage);
       const rects = buildTextVinylRects(grid.rows);
@@ -11254,23 +11277,23 @@ async function generateTextVinylShapes() {
         shapeWord: resourceToShapeWord("Primitives", 1),
       };
       shapeSpecs = rects.map((rect) => textVinylShapeFromBox(rect, layout, square, color, groupId, groupName, "Square"));
-      sourceLabel = `${grid.gridW}x${grid.gridH} cells`;
+      sourceLabel = KfpsI18n.t("{0}x{1} cells", grid.gridW, grid.gridH);
     }
     if (!shapeSpecs.length) {
-      setTextVinylStatus("No supported Forza letter shapes found for this text.");
-      clearBusy("No supported Forza letter shapes found.");
+      setTextVinylStatus(KfpsI18n.t("No supported Forza letter shapes found for this text."));
+      clearBusy(KfpsI18n.t("No supported Forza letter shapes found."));
       return;
     }
     const clearPrevious = Boolean($("textVinylClearPrevious")?.checked);
     const previousCount = clearPrevious ? vinylObjects().filter((obj) => obj.kloudy?.source_format === TEXT_VINYL_SOURCE_FLAG).length : 0;
     const projectedCount = vinylObjects().length - previousCount + shapeSpecs.length;
     if (projectedCount > MAX_VINYL_LAYERS) {
-      const message = `Text generation needs ${projectedCount} total layers, above the ${MAX_VINYL_LAYERS}-layer maximum. Increase Cell/Band px or simplify the source.`;
+      const message = KfpsI18n.t("Text generation needs {0} total layers, above the {1}-layer maximum. Increase Cell/Band px or simplify the source.", projectedCount, MAX_VINYL_LAYERS);
       setTextVinylStatus(message);
       clearBusy(message);
       return;
     }
-    setBusy(`Building ${shapeSpecs.length} text vinyl layer(s)...`);
+    setBusy(KfpsI18n.t("Building {0} text vinyl layer(s)...", shapeSpecs.length));
     const removed = clearPrevious ? clearPreviousTextVinylLayers() : 0;
     let created = [];
     historyLocked = true;
@@ -11286,16 +11309,16 @@ async function generateTextVinylShapes() {
     }
     bringGuidesToBack();
     syncCanvasObjectCoords();
-    selectObjects(created.slice(0, 200), "text vinyl generation");
+    selectObjects(created.slice(0, 200), KfpsI18n.t("text vinyl generation"));
     refreshLayers();
     pushHistory("generate text vinyl");
-    const message = `Generated ${created.length} text layer(s) from ${sourceLabel}, source ${sourceWidth}x${sourceHeight}.${removed ? ` Removed ${removed} previous text layer(s).` : ""}`;
+    const message = KfpsI18n.t("Generated {0} text layer(s) from {1}, source {2}x{3}.{4}", created.length, sourceLabel, sourceWidth, sourceHeight, removed ? KfpsI18n.t(" Removed {0} previous text layer(s).", removed) : "");
     setTextVinylStatus(message);
     clearBusy(message);
   } catch (err) {
     historyLocked = false;
-    setTextVinylStatus(`Text vinyl generation failed: ${err.message || err}`);
-    showError("Text vinyl generation failed", err);
+    setTextVinylStatus(KfpsI18n.t("Text vinyl generation failed: {0}", KfpsI18n.error(err.message || err)));
+    showError(KfpsI18n.t("Text vinyl generation failed"), err);
   }
 }
 
@@ -11304,7 +11327,7 @@ function buildShapeLibrary() {
   FAMILY_ORDER.forEach((family) => {
     const option = document.createElement("option");
     option.value = family;
-    option.textContent = family.replaceAll("_", " ");
+    option.textContent = KfpsI18n.familyLabel(family);
     select.appendChild(option);
   });
   select.value = "Primitives";
@@ -11326,24 +11349,18 @@ function renderShapeGrid() {
     const favKey = `${family}:${index}`;
     const isFavorite = favorites.has(favKey);
     if (showFavoritesOnly && !isFavorite) continue;
-    const name = shapeDisplayName(family, index);
+    const name = localizedShapeDisplayName(family, index);
     if (query && !shapeSearchText(family, index, typeCode).includes(query)) continue;
     const tile = document.createElement("div");
     tile.className = `shapeTile${isFavorite ? " favorite" : ""}`;
     tile.tabIndex = 0;
-    tile.title = `${name}\n${family.replaceAll("_", " ")} #${index}\nType ${typeCode} / word ${shapeWord}`;
-    tile.innerHTML = `
-      <button class="favButton" type="button" title="${isFavorite ? "Remove favorite" : "Add favorite"}">${isFavorite ? "x" : "+"}</button>
-      <img alt="" src="${vinylResourceUrl(family, index, ".png")}">
-      <span class="shapeName">${escapeHtml(name)}</span>
-      <span class="shapeMeta">${family.replaceAll("_", " ")} #${index}</span>
-      <span class="shapeWord">word ${shapeWord}</span>
-    `;
-    tile.addEventListener("click", () => addShape(family, index).catch((err) => showError("Shape add failed", err)));
+    tile.title = KfpsI18n.t("{0}\n{1} #{2}\nType {3} / word {4}", name, KfpsI18n.familyLabel(family), index, typeCode, shapeWord);
+    tile.innerHTML = KfpsI18n.t("\n      <button class=\"favButton\" type=\"button\" title=\"{0}\">{1}</button>\n      <img alt=\"\" src=\"{2}\">\n      <span class=\"shapeName\">{3}</span>\n      <span class=\"shapeMeta\">{4} #{5}</span>\n      <span class=\"shapeWord\">word {6}</span>\n    ", isFavorite ? KfpsI18n.t("Remove favorite") : KfpsI18n.t("Add favorite"), isFavorite ? "x" : "+", vinylResourceUrl(family, index, ".png"), escapeHtml(name), KfpsI18n.familyLabel(family), index, shapeWord);
+    tile.addEventListener("click", () => addShape(family, index).catch((err) => showError(KfpsI18n.t("Shape add failed"), err)));
     tile.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        addShape(family, index).catch((err) => showError("Shape add failed", err));
+        addShape(family, index).catch((err) => showError(KfpsI18n.t("Shape add failed"), err));
       }
     });
     tile.querySelector(".favButton").addEventListener("click", (event) => {
@@ -11388,12 +11405,12 @@ async function duplicateSelectedNow() {
   const objects = unlockedObjects(orderedSelection);
   if (!selected.length) return;
   if (!objects.length) {
-    setStatus("Selected layers are locked. Unlock them before duplicating.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before duplicating."));
     return;
   }
-  if (!requireLayerCapacity(objects.length, "duplicate this selection")) return;
+  if (!requireLayerCapacity(objects.length, KfpsI18n.t("duplicate this selection"))) return;
   if (objects.length !== selected.length) {
-    setStatus(`Duplicating ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
+    setStatus(KfpsI18n.t("Duplicating {0} unlocked layer(s). Skipped {1} locked layer(s).", objects.length, selected.length - objects.length));
   }
   const editableSet = new Set(objects);
   const duplicateGroupMap = new Map();
@@ -11446,11 +11463,11 @@ async function duplicateSelectedNow() {
     refreshLayers();
     canvas.requestRenderAll();
     pushHistory(placement === "top" ? "duplicate" : `duplicate ${placement}`);
-    const placementText = placement === "top" ? "at top" : `${placement} selected layer(s)`;
-    setStatus(`Duplicated ${clones.length} layer(s) ${placementText}.${objects.length !== selectedSet.size ? ` Skipped ${selectedSet.size - objects.length} locked layer(s).` : ""}`);
+    const placementText = placement === "top" ? KfpsI18n.t("at top") : KfpsI18n.t("{0} selected layer(s)", KfpsI18n.message(placement));
+    setStatus(KfpsI18n.t("Duplicated {0} layer(s) {1}.{2}", clones.length, placementText, objects.length !== selectedSet.size ? KfpsI18n.t(" Skipped {0} locked layer(s).", selectedSet.size - objects.length) : ""));
   } catch (err) {
-    showError("Duplicate failed", err);
-    setStatus(`Duplicate failed: ${err.message || err}`);
+    showError(KfpsI18n.t("Duplicate failed"), err);
+    setStatus(KfpsI18n.t("Duplicate failed: {0}", KfpsI18n.error(err.message || err)));
   }
 }
 
@@ -11467,7 +11484,7 @@ function deleteSelected() {
   const objects = unlockedObjects(selected);
   if (!selected.length) return;
   if (!objects.length) {
-    setStatus("Selected layers are locked. Unlock them before deleting.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before deleting."));
     return;
   }
   cancelEditorTransform();
@@ -11477,7 +11494,7 @@ function deleteSelected() {
   canvas.requestRenderAll();
   refreshLayers();
   pushHistory("delete");
-  setStatus(`Deleted ${objects.length} layer(s).${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
+  setStatus(KfpsI18n.t("Deleted {0} layer(s).{1}", objects.length, objects.length !== selected.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", selected.length - objects.length) : ""));
 }
 
 function moveSelected(direction) {
@@ -11485,17 +11502,17 @@ function moveSelected(direction) {
   const objects = unlockedObjects(selected);
   if (!selected.length) return;
   if (!objects.length) {
-    setStatus("Selected layers are locked. Unlock them before changing layer order.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before changing layer order."));
     return;
   }
   const moved = moveLayerBlock(objects, direction);
   if (!moved) {
-    setStatus(`Selected layer(s) are already at the ${direction > 0 ? "front" : "back"} of the vinyl stack.`);
+    setStatus(KfpsI18n.t("Selected layer(s) are already at the {0} of the vinyl stack.", direction > 0 ? KfpsI18n.t("front") : KfpsI18n.t("back")));
     return;
   }
   refreshLayers();
   pushHistory("layer order");
-  setStatus(`Moved ${objects.length} unlocked layer(s) ${direction > 0 ? "forward" : "backward"}.${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
+  setStatus(KfpsI18n.t("Moved {0} unlocked layer(s) {1}.{2}", objects.length, direction > 0 ? KfpsI18n.t("forward") : KfpsI18n.t("backward"), objects.length !== selected.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", selected.length - objects.length) : ""));
 }
 
 function moveSelectedToEdge(front) {
@@ -11503,7 +11520,7 @@ function moveSelectedToEdge(front) {
   const objects = unlockedObjects(selected);
   if (!selected.length) return;
   if (!objects.length) {
-    setStatus("Selected layers are locked. Unlock them before changing layer order.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before changing layer order."));
     return;
   }
   const selectedSet = new Set(objects);
@@ -11513,7 +11530,7 @@ function moveSelectedToEdge(front) {
   setVinylStackOrder(front ? remaining.concat(moving) : moving.concat(remaining));
   refreshLayers();
   pushHistory(front ? "move to front" : "move to back");
-  setStatus(`Moved ${objects.length} layer(s) all the way to the ${front ? "front" : "back"}.`);
+  setStatus(KfpsI18n.t("Moved {0} layer(s) all the way to the {1}.", objects.length, front ? KfpsI18n.t("front") : KfpsI18n.t("back")));
 }
 
 function setVinylStackOrder(order) {
@@ -11578,7 +11595,7 @@ function flipSelected(axis) {
   const objects = unlockedObjects(selected);
   if (!selected.length) return;
   if (!objects.length) {
-    setStatus("Selected layers are locked. Unlock them before flipping.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before flipping."));
     return;
   }
   const active = canvas.getActiveObject();
@@ -11600,13 +11617,13 @@ function flipSelected(axis) {
   updateSelectionPanel();
   scheduleRefreshLayers();
   pushHistory(axis === "x" ? "flip horizontal" : "flip vertical");
-  setStatus(`Flipped ${objects.length} layer(s) ${axis === "x" ? "horizontally" : "vertically"}.${objects.length !== selected.length ? ` Skipped ${selected.length - objects.length} locked layer(s).` : ""}`);
+  setStatus(KfpsI18n.t("Flipped {0} layer(s) {1}.{2}", objects.length, axis === "x" ? KfpsI18n.t("horizontally") : KfpsI18n.t("vertically"), objects.length !== selected.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", selected.length - objects.length) : ""));
 }
 
 function selectObjects(objects, reason) {
   const normalized = [...new Set(objects.map(interactiveVinylTarget).filter((obj) => obj?.kloudy && !obj.kloudyGuide))];
   if (!normalized.length) {
-    setStatus(`No layers found for ${reason}.`);
+    setStatus(KfpsI18n.t("No layers found for {0}.", KfpsI18n.message(reason)));
     return;
   }
   releaseSelectionLock("");
@@ -11617,31 +11634,31 @@ function selectObjects(objects, reason) {
   canvas.requestRenderAll();
   updateSelectionPanel();
   updateLayerSelectionStyles();
-  setStatus(`Selected ${normalized.length} layer(s) by ${reason}.`);
+  setStatus(KfpsI18n.t("Selected {0} layer(s) by {1}.", normalized.length, KfpsI18n.message(reason)));
 }
 
 function selectAllLayers() {
-  selectObjects(vinylObjects().filter((object) => object.visible !== false), "Select All");
+  selectObjects(vinylObjects().filter((object) => object.visible !== false), KfpsI18n.t("Select All"));
 }
 
 function selectInverseLayers() {
   const selected = new Set(selectedVinylObjects());
   selectObjects(
     vinylObjects().filter((object) => object.visible !== false && !selected.has(object)),
-    "inverse selection",
+    KfpsI18n.t("inverse selection"),
   );
 }
 
 function selectSameShapeLayers() {
   const source = selectedVinylObjects()[0];
   if (!source) {
-    setStatus("Select a source layer before choosing Same Shape.");
+    setStatus(KfpsI18n.t("Select a source layer before choosing Same Shape."));
     return;
   }
   const word = shapeWordForObject(source);
   selectObjects(
     vinylObjects().filter((object) => shapeWordForObject(object) === word),
-    "shape type",
+    KfpsI18n.t("shape type"),
   );
 }
 
@@ -11656,7 +11673,7 @@ function objectColorSignature(object) {
 function selectSameColorLayers() {
   const source = selectedVinylObjects()[0];
   if (!source) {
-    setStatus("Select a source layer before choosing Same Color.");
+    setStatus(KfpsI18n.t("Select a source layer before choosing Same Color."));
     return;
   }
   const color = objectColorSignature(source);
@@ -11668,18 +11685,18 @@ function clearLayerSelection() {
   canvas.discardActiveObject();
   canvas.requestRenderAll();
   updateSelectionPanel();
-  setStatus("Selection cleared.");
+  setStatus(KfpsI18n.t("Selection cleared."));
 }
 
 function selectedEditableForLayout(action, minimum = 1) {
   const selected = selectedVinylObjects();
   if (selected.length < minimum) {
-    setStatus(`Select ${minimum === 1 ? "one or more" : `${minimum} or more`} layers before ${action}.`);
+    setStatus(KfpsI18n.t("Select {0} layers before {1}.", minimum === 1 ? KfpsI18n.t("one or more") : KfpsI18n.t("{0} or more", minimum), KfpsI18n.term(action)));
     return [];
   }
   const editable = unlockedObjects(selected);
   if (editable.length < minimum) {
-    setStatus(`Not enough selected layers are unlocked for ${action}.`);
+    setStatus(KfpsI18n.t("Not enough selected layers are unlocked for {0}.", KfpsI18n.term(action)));
     return [];
   }
   if (isActiveSelectionObject(canvas.getActiveObject())) canvas.discardActiveObject();
@@ -11740,7 +11757,7 @@ function alignSelected(mode) {
   });
   restoreLayoutSelection(objects);
   pushHistory(`align ${mode}`);
-  setStatus(`Aligned ${objects.length} layer(s): ${humanizeHistoryReason(mode)}.`);
+  setStatus(KfpsI18n.t("Aligned {0} layer(s): {1}.", objects.length, humanizeHistoryReason(mode)));
 }
 
 function distributeSelected(axis) {
@@ -11764,7 +11781,7 @@ function distributeSelected(axis) {
   });
   restoreLayoutSelection(objects);
   pushHistory(axis === "x" ? "distribute horizontal" : "distribute vertical");
-  setStatus(`Distributed ${objects.length} layers evenly ${axis === "x" ? "horizontally" : "vertically"}.`);
+  setStatus(KfpsI18n.t("Distributed {0} layers evenly {1}.", objects.length, axis === "x" ? KfpsI18n.t("horizontally") : KfpsI18n.t("vertically")));
 }
 
 function rotateSelectedQuarter(turns) {
@@ -11787,7 +11804,7 @@ function rotateSelectedQuarter(turns) {
   });
   restoreLayoutSelection(objects);
   pushHistory(turns < 0 ? "rotate left" : "rotate right");
-  setStatus(`Rotated ${objects.length} layer(s) ${turns < 0 ? "left" : "right"} by 90 degrees.`);
+  setStatus(KfpsI18n.t("Rotated {0} layer(s) {1} by 90 degrees.", objects.length, turns < 0 ? KfpsI18n.t("left") : KfpsI18n.t("right")));
 }
 
 function loadEditorClipboard() {
@@ -11803,7 +11820,7 @@ function loadEditorClipboard() {
 function copySelectedLayers() {
   const objects = orderedSelectedVinylObjects();
   if (!objects.length) {
-    setStatus("Select one or more layers before copying.");
+    setStatus(KfpsI18n.t("Select one or more layers before copying."));
     return;
   }
   editorClipboard = {
@@ -11818,7 +11835,7 @@ function copySelectedLayers() {
     // The in-memory clipboard still works when browser storage is full.
   }
   if ($("pasteLayer")) $("pasteLayer").disabled = false;
-  setStatus(`Copied ${objects.length} layer(s).`);
+  setStatus(KfpsI18n.t("Copied {0} layer(s).", objects.length));
 }
 
 async function pasteCopiedLayersNow() {
@@ -11826,12 +11843,16 @@ async function pasteCopiedLayersNow() {
   if (!shapes.length) {
     loadEditorClipboard();
     if (!editorClipboard?.shapes?.length) {
-      setStatus("The editor layer clipboard is empty.");
+      setStatus(KfpsI18n.t("The editor layer clipboard is empty."));
       return;
     }
   }
   const sourceShapes = editorClipboard.shapes;
-  if (!requireLayerCapacity(sourceShapes.length, "paste these layers")) return;
+  return insertCopiedShapesNow(sourceShapes);
+}
+
+async function insertCopiedShapesNow(sourceShapes, { asset = false } = {}) {
+  if (!requireLayerCapacity(sourceShapes.length, KfpsI18n.t("insert these layers"))) return;
   const groupMap = new Map();
   const normalized = sourceShapes.map((source) => {
     const shape = JSON.parse(JSON.stringify(source));
@@ -11844,26 +11865,39 @@ async function pasteCopiedLayersNow() {
     }
     shape.editor_locked = false;
     shape.data = Array.isArray(shape.data) ? shape.data.slice() : [0, 0, 1, 1, 0, 0, 0];
-    shape.data[0] = round((Number(shape.data[0]) || 0) + 30);
-    shape.data[1] = round((Number(shape.data[1]) || 0) - 30);
+    shape.data[0] = round((Number(shape.data[0]) || 0) + (asset ? 0 : 30));
+    shape.data[1] = round((Number(shape.data[1]) || 0) - (asset ? 0 : 30));
     return shape;
   });
-  setBusy(`Pasting ${normalized.length} layer(s)...`);
+  setBusy(KfpsI18n.t("Inserting {0} layer(s)...", normalized.length));
+  const builtObjects = [];
+  let inserted = false;
   try {
     const objects = await KfpsEditorCore.mapWithConcurrency(
       normalized,
       OBJECT_BUILD_CONCURRENCY,
-      (shape) => makeFabricObject(shape),
+      async shape => { const object = await makeFabricObject(shape); builtObjects.push(object); return object; },
     );
+    if (asset && objects.length) {
+      const bounds = objects.map(object => object.getBoundingRect(true, true));
+      const left = Math.min(...bounds.map(rect => rect.left));
+      const top = Math.min(...bounds.map(rect => rect.top));
+      const right = Math.max(...bounds.map(rect => rect.left + rect.width));
+      const bottom = Math.max(...bounds.map(rect => rect.top + rect.height));
+      const center = fabric.util.transformPoint(new fabric.Point(canvas.width / 2, canvas.height / 2), fabric.util.invertTransform(canvas.viewportTransform));
+      objects.forEach(object => { object.set({ left: object.left + center.x - (left + right) / 2, top: object.top + center.y - (top + bottom) / 2 }); object.setCoords(); });
+    }
     const mode = ["above", "below"].includes(shapePlacementMode()) ? shapePlacementMode() : "top";
     insertDuplicateVinylObjects(objects, orderedSelectedVinylObjects(), mode);
+    inserted = true;
     bringGuidesToBack();
     restoreLayoutSelection(objects);
     refreshLayers();
-    pushHistory("paste");
-    clearBusy(`Pasted ${objects.length} layer(s).`);
+    pushHistory(asset ? "insert asset" : "paste");
+    clearBusy(KfpsI18n.t("Inserted {0} layer(s).", objects.length));
   } catch (err) {
-    showError("Paste failed", err);
+    if (!inserted) builtObjects.forEach(discardFabricObject);
+    showError(KfpsI18n.t("Insert failed"), err);
   }
 }
 
@@ -11874,16 +11908,16 @@ function pasteCopiedLayers() {
 function nextLayerGroupName() {
   const names = new Set(vinylObjects().map((obj) => obj.kloudy?.group_name).filter(Boolean));
   for (let i = 1; i < 10000; i++) {
-    const name = `Group ${i}`;
+    const name = KfpsI18n.t("Group {0}", i);
     if (!names.has(name)) return name;
   }
-  return `Group ${Date.now().toString(36)}`;
+  return KfpsI18n.t("Group {0}", Date.now().toString(36));
 }
 
 function groupSelectedLayers() {
   const selected = selectedVinylObjects();
   if (selected.length < 2) {
-    setStatus("Select two or more layers before creating a group.");
+    setStatus(KfpsI18n.t("Select two or more layers before creating a group."));
     return;
   }
   const groupId = `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -11896,22 +11930,22 @@ function groupSelectedLayers() {
   refreshLayers();
   updateSelectionPanel();
   pushHistory("group layers");
-  setStatus(`${groupName}: grouped ${selected.length} layer(s). Export remains flat.`);
+  setStatus(KfpsI18n.t("{0}: grouped {1} layer(s). Export remains flat.", groupName, selected.length));
 }
 
 async function renameSelectedLayer() {
   const selected = selectedVinylObjects();
   if (selected.length !== 1) {
-    setStatus("Select exactly one layer before renaming it.");
+    setStatus(KfpsI18n.t("Select exactly one layer before renaming it."));
     return;
   }
   const object = selected[0];
   const currentName = object.kloudy?.name || typeLabel(object.kloudy?.type || 0);
   const nextName = await requestTextInput(
-    "Rename Layer",
-    "Layer name",
+    KfpsI18n.t("Rename Layer"),
+    KfpsI18n.t("Layer name"),
     currentName,
-    "This name is for project organization and does not change the native shape used in game.",
+    KfpsI18n.t("This name is for project organization and does not change the native shape used in game."),
   );
   if (nextName === null) return;
   const cleaned = String(nextName).trim().slice(0, 64) || currentName;
@@ -11919,30 +11953,30 @@ async function renameSelectedLayer() {
   refreshLayers();
   updateSelectionPanel();
   pushHistory("rename layer");
-  setStatus(`Renamed layer to ${cleaned}.`);
+  setStatus(KfpsI18n.t("Renamed layer to {0}.", cleaned));
 }
 
 async function renameSelectedGroup() {
   const groupIds = selectedGroupIds();
   if (!groupIds.length) {
-    setStatus("Select a grouped layer before renaming a group.");
+    setStatus(KfpsI18n.t("Select a grouped layer before renaming a group."));
     return;
   }
   if (groupIds.length > 1) {
-    setStatus("Select one editor group before renaming.");
+    setStatus(KfpsI18n.t("Select one editor group before renaming."));
     return;
   }
   const members = membersForGroupIds(groupIds);
   if (!members.length) {
-    setStatus("Selected group has no editable layers.");
+    setStatus(KfpsI18n.t("Selected group has no editable layers."));
     return;
   }
   const currentName = groupNameForObject(members[0]);
   const nextName = await requestTextInput(
-    "Rename Editor Group",
-    "Group name",
+    KfpsI18n.t("Rename Editor Group"),
+    KfpsI18n.t("Group name"),
     currentName,
-    "Groups organize the project only. The exported game JSON remains a flat layer list.",
+    KfpsI18n.t("Groups organize the project only. The exported game JSON remains a flat layer list."),
   );
   if (nextName === null) return;
   const cleaned = nextName.trim().slice(0, 64) || currentName;
@@ -11952,7 +11986,7 @@ async function renameSelectedGroup() {
   refreshLayers();
   updateSelectionPanel();
   pushHistory("rename group");
-  setStatus(`Renamed editor group to ${cleaned}. Export remains flat.`);
+  setStatus(KfpsI18n.t("Renamed editor group to {0}. Export remains flat.", cleaned));
 }
 
 function ungroupSelectedLayers() {
@@ -11960,7 +11994,7 @@ function ungroupSelectedLayers() {
   const groupIds = selectedGroupIds();
   const targets = groupIds.length ? membersForGroupIds(groupIds) : selected.filter((obj) => obj.kloudy?.group_id);
   if (!targets.length) {
-    setStatus("Select a grouped layer before ungrouping.");
+    setStatus(KfpsI18n.t("Select a grouped layer before ungrouping."));
     return;
   }
   targets.forEach((obj) => {
@@ -11971,13 +12005,13 @@ function ungroupSelectedLayers() {
   refreshLayers();
   updateSelectionPanel();
   pushHistory("ungroup layers");
-  setStatus(`Removed editor grouping from ${targets.length} layer(s).`);
+  setStatus(KfpsI18n.t("Removed editor grouping from {0} layer(s).", targets.length));
 }
 
 function toggleSelectedGroupVisibility() {
   const targets = selectedGroupMembers();
   if (!targets.length) {
-    setStatus("Select a grouped layer before hiding/showing a group.");
+    setStatus(KfpsI18n.t("Select a grouped layer before hiding/showing a group."));
     return;
   }
   const shouldHide = targets.some((obj) => obj.visible !== false);
@@ -11987,13 +12021,13 @@ function toggleSelectedGroupVisibility() {
   canvas.requestRenderAll();
   refreshLayers();
   pushHistory(shouldHide ? "hide group" : "show group");
-  setStatus(`${shouldHide ? "Hid" : "Showed"} ${targets.length} layer(s) in selected group.`);
+  setStatus(KfpsI18n.t("{0} {1} layer(s) in selected group.", shouldHide ? KfpsI18n.t("Hid") : KfpsI18n.t("Showed"), targets.length));
 }
 
 function toggleSelectedGroupLock() {
   const targets = selectedGroupMembers();
   if (!targets.length) {
-    setStatus("Select a grouped layer before locking/unlocking a group.");
+    setStatus(KfpsI18n.t("Select a grouped layer before locking/unlocking a group."));
     return;
   }
   const shouldLock = targets.some((obj) => !obj.kloudy?.locked);
@@ -12002,7 +12036,7 @@ function toggleSelectedGroupLock() {
   refreshLayers();
   updateSelectionPanel();
   pushHistory(shouldLock ? "lock group" : "unlock group");
-  setStatus(`${shouldLock ? "Locked" : "Unlocked"} ${targets.length} layer(s) in selected group.`);
+  setStatus(KfpsI18n.t("{0} {1} layer(s) in selected group.", shouldLock ? KfpsI18n.t("Locked") : KfpsI18n.t("Unlocked"), targets.length));
 }
 
 function nudgeSelected(dx, dy) {
@@ -12010,7 +12044,7 @@ function nudgeSelected(dx, dy) {
   const objects = unlockedObjects(selected);
   if (!selected.length) return;
   if (!objects.length) {
-    setStatus("Selected layers are locked. Unlock them before nudging.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before nudging."));
     return;
   }
   beginHybridRender("nudge");
@@ -12032,7 +12066,7 @@ function nudgeSelected(dx, dy) {
   } else canvas.requestRenderAll();
   updateSelectionPanel();
   scheduleNudgeHistory();
-  if (objects.length !== selected.length) setStatus(`Nudged ${objects.length} unlocked layer(s). Skipped ${selected.length - objects.length} locked layer(s).`);
+  if (objects.length !== selected.length) setStatus(KfpsI18n.t("Nudged {0} unlocked layer(s). Skipped {1} locked layer(s).", objects.length, selected.length - objects.length));
 }
 
 function setPixelSelection(enabled) {
@@ -12133,7 +12167,7 @@ async function restoreSourceOverlayFromProject(state) {
     ));
     layeredOverlayState.viewMode = String(layered.view_mode || "original");
     const url = layeredSvgDataUrl();
-    if (!url) throw new Error("The saved layered SVG reference could not be rendered.");
+    if (!url) throw new Error(KfpsI18n.t("The saved layered SVG reference could not be rendered."));
     await loadOverlayImageFromUrl(url, fileName, { mimeType: state.mime_type || "image/svg+xml", projectState: state });
     return;
   }
@@ -12169,7 +12203,7 @@ function clearLayeredOverlayState() {
   setHidden("layeredOverlayControls", true);
   const select = $("overlaySvgLayerSelect");
   if (select) select.innerHTML = "";
-  setText("overlaySvgLayerInfo", "Load a layered SVG to flip through its reference, guide, and color layers.");
+  setText("overlaySvgLayerInfo", KfpsI18n.t("Load a layered SVG to flip through its reference, guide, and color layers."));
 }
 
 function svgLayerLabel(group) {
@@ -12199,7 +12233,7 @@ function setSvgElementVisible(element, visible) {
 function parseLayeredSvg(text, fileName = "overlay.svg") {
   const parser = new DOMParser();
   const doc = parser.parseFromString(text, "image/svg+xml");
-  if (doc.querySelector("parsererror")) throw new Error("SVG parser rejected the file.");
+  if (doc.querySelector("parsererror")) throw new Error(KfpsI18n.t("SVG parser rejected the file."));
   const svg = doc.documentElement;
   const groups = Array.from(svg.querySelectorAll("g")).filter((group) => {
     const label = svgLayerLabel(group);
@@ -12293,7 +12327,7 @@ function updateLayeredOverlayInfo() {
   const colorCount = layeredOverlayState.layers.filter((item) => item.kind === "color").length;
   setText(
     "overlaySvgLayerInfo",
-    `${layeredOverlayState.fileName}: ${layeredOverlayState.layers.length} layer(s), ${colorCount} color layer(s). Showing ${layer?.label || "original visibility"}.`
+    KfpsI18n.t("{0}: {1} layer(s), {2} color layer(s). Showing {3}.", layeredOverlayState.fileName, layeredOverlayState.layers.length, colorCount, layer?.label || KfpsI18n.t("original visibility"))
   );
 }
 
@@ -12315,7 +12349,7 @@ function refreshLayeredOverlayImage() {
   if (!layeredOverlayState || !overlayImage) return;
   const url = layeredSvgDataUrl();
   if (!url) {
-    setStatus("Layered SVG reference refresh failed.");
+    setStatus(KfpsI18n.t("Layered SVG reference refresh failed."));
     return;
   }
   const img = new Image();
@@ -12330,7 +12364,7 @@ function refreshLayeredOverlayImage() {
     updateLayeredOverlayInfo();
     canvas.requestRenderAll();
   };
-  img.onerror = () => setStatus("Layered SVG reference refresh failed.");
+  img.onerror = () => setStatus(KfpsI18n.t("Layered SVG reference refresh failed."));
   img.src = url;
 }
 
@@ -12416,12 +12450,12 @@ function dominantOverlayColorForObject(obj) {
 
 function applyOverlayColorToObject(obj, options = {}) {
   if (obj?.kloudy?.locked) {
-    if (!options.silent) setStatus("Selected layer is locked. Unlock it before sampling the reference color.");
+    if (!options.silent) setStatus(KfpsI18n.t("Selected layer is locked. Unlock it before sampling the reference color."));
     return false;
   }
   const color = dominantOverlayColorForObject(obj);
   if (!color) {
-    if (!options.silent) setStatus("No reference color was found under the selected layer.");
+    if (!options.silent) setStatus(KfpsI18n.t("No reference color was found under the selected layer."));
     return false;
   }
   const alpha = Math.round((obj.opacity ?? 1) * 255);
@@ -12433,7 +12467,7 @@ function applyOverlayColorToObject(obj, options = {}) {
     $("opacitySlider").value = alpha;
   }
   obj.setCoords();
-  if (!options.silent) setStatus(`Sampled ${$("overlaySampleMode")?.value || "dominant"} reference color ${colorToHex(applied)}.`);
+  if (!options.silent) setStatus(KfpsI18n.t("Sampled {0} reference color {1}.", KfpsI18n.term($("overlaySampleMode")?.value || "dominant"), colorToHex(applied)));
   return true;
 }
 
@@ -12464,12 +12498,12 @@ function scheduleLiveOverlayColor(target) {
 function sampleOverlayColorForSelected() {
   const objects = selectedVinylObjects();
   if (!objects.length) {
-    setStatus("Select one or more layers before sampling a reference color.");
+    setStatus(KfpsI18n.t("Select one or more layers before sampling a reference color."));
     return;
   }
   const editable = unlockedObjects(objects);
   if (!editable.length) {
-    setStatus("Selected layers are locked. Unlock them before sampling a reference color.");
+    setStatus(KfpsI18n.t("Selected layers are locked. Unlock them before sampling a reference color."));
     return;
   }
   let changed = 0;
@@ -12480,9 +12514,9 @@ function sampleOverlayColorForSelected() {
   updateSelectionPanel();
   if (changed) {
     pushHistory("reference color sample");
-    setStatus(`Sampled reference color for ${changed} selected layer(s).${editable.length !== objects.length ? ` Skipped ${objects.length - editable.length} locked layer(s).` : ""}`);
+    setStatus(KfpsI18n.t("Sampled reference color for {0} selected layer(s).{1}", changed, editable.length !== objects.length ? KfpsI18n.t(" Skipped {0} locked layer(s).", objects.length - editable.length) : ""));
   } else {
-    setStatus("No reference-image pixels were found under the selected layer(s).");
+    setStatus(KfpsI18n.t("No reference-image pixels were found under the selected layer(s)."));
   }
 }
 
@@ -12493,13 +12527,13 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
       try {
         const width = img.naturalWidth || img.width;
         const height = img.naturalHeight || img.height;
-        if (width * height > 4096 * 4096) throw new Error("Reference exceeds 16 megapixels. Resize it before loading.");
+        if (width * height > 4096 * 4096) throw new Error(KfpsI18n.t("Reference exceeds 16 megapixels. Resize it before loading."));
         if (new Blob([String(layeredOverlayState?.sourceText || url)]).size > 20 * 1024 * 1024) {
-          throw new Error("Reference exceeds the 20 MiB storage budget. Use a smaller image.");
+          throw new Error(KfpsI18n.t("Reference exceeds the 20 MiB storage budget. Use a smaller image."));
         }
         rebuildOverlaySampler(img);
       } catch (error) {
-        setStatus(`Reference load failed: ${error.message}`);
+        setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
         reject(error);
         return;
       }
@@ -12539,14 +12573,14 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
       if (activeToolMode === "source") updateSourceInteractivity();
       else layerEditorHelpers();
       canvas.requestRenderAll();
-      setStatus(layeredOverlayState ? `Layered SVG reference loaded: ${fileName}` : `Reference image loaded: ${fileName}`);
+      setStatus(layeredOverlayState ? KfpsI18n.t("Layered SVG reference loaded: {0}", fileName) : KfpsI18n.t("Reference image loaded: {0}", fileName));
       updateHud();
       markOverlayChanged("reference image loaded");
       resolve(overlayImage);
     };
     img.onerror = () => {
-      const error = new Error(`${fileName} is not a usable image.`);
-      setStatus(`Reference load failed: ${error.message}`);
+      const error = new Error(KfpsI18n.t("{0} is not a usable image.", fileName));
+      setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
       reject(error);
     };
     img.src = url;
@@ -12556,20 +12590,20 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
 function addOverlayFile(file) {
   const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name || "");
   const reader = new FileReader();
-  reader.onerror = () => setStatus(`Reference load failed: could not read ${file.name}.`);
+  reader.onerror = () => setStatus(KfpsI18n.t("Reference load failed: could not read {0}.", file.name));
   if (isSvg) {
     reader.onload = () => {
       try {
         layeredOverlayState = parseLayeredSvg(String(reader.result || ""), file.name);
       } catch (err) {
         clearLayeredOverlayState();
-        setStatus(`Reference load failed: ${err.message || "SVG could not be parsed."}`);
+        setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(err.message || KfpsI18n.t("SVG could not be parsed."))));
         return;
       }
       const url = layeredSvgDataUrl();
       if (!url) {
         clearLayeredOverlayState();
-        setStatus(`Reference load failed: ${file.name} could not be rendered.`);
+        setStatus(KfpsI18n.t("Reference load failed: {0} could not be rendered.", file.name));
         return;
       }
       loadOverlayImageFromUrl(url, file.name, { mimeType: file.type || "image/svg+xml" });
@@ -12599,7 +12633,7 @@ function updateOverlay() {
 
 function toggleOverlay() {
   if (!overlayImage) {
-    setStatus("No reference image is loaded. Add one first.");
+    setStatus(KfpsI18n.t("No reference image is loaded. Add one first."));
     return;
   }
   overlayImage.visible = !overlayImage.visible;
@@ -12609,13 +12643,148 @@ function toggleOverlay() {
 
 function removeOverlay() {
   if (!overlayImage) {
-    setStatus("No reference image is loaded to remove.");
+    setStatus(KfpsI18n.t("No reference image is loaded to remove."));
     return;
   }
   clearSourceOverlayState();
   canvas.requestRenderAll();
   updateHud();
   markOverlayChanged("reference image removed");
+}
+
+function bindTransformInputs() {
+  const ids = ["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput"];
+  let drag = null;
+  function finishDrag(cancel) {
+    if (!drag) return;
+    const current = drag;
+    drag = null;
+    if (cancel) applyHistoryShapeToObject(current.object, current.shape);
+    else pushHistory("numeric drag", { changedObjects: [current.object] });
+    syncMaskPreviewOutlines();
+    updateSelectionPanel();
+    canvas.requestRenderAll();
+    if (current.label.hasPointerCapture(current.pointerId)) current.label.releasePointerCapture(current.pointerId);
+  }
+  ids.forEach(id => {
+    const input = $(id);
+    let owner = null, original = "";
+    input.addEventListener("focus", () => { owner = selectedVinylObjects()[0]; original = input.value; });
+    const commit = () => {
+      if (owner && selectedVinylObjects()[0] === owner && input.value !== original) {
+        if (applySelectionFields()) original = input.value;
+      }
+    };
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", event => {
+      if (event.isComposing) return;
+      if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) commit(); }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); updateSelectionPanel(); original = input.value; }
+      if (["ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        try {
+          input.value = round(KfpsEditorCore.parseNumericExpression(input.value) + (event.key === "ArrowUp" ? 1 : -1) * Number(input.dataset.step) * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1));
+          commit();
+        } catch (error) { input.setAttribute("aria-invalid", "true"); setStatus(KfpsI18n.error(error.message)); }
+      }
+    });
+  });
+  document.querySelectorAll("[data-numeric-for]").forEach(label => {
+    label.addEventListener("pointerdown", event => {
+      const input = $(label.dataset.numericFor), object = selectedVinylObjects()[0];
+      if (event.button !== 0 || input.disabled || object?.kloudy?.locked || !object) return;
+      event.preventDefault();
+      document.activeElement?.blur();
+      flushPendingNudgeHistory();
+      updateSelectionPanel();
+      drag = { label, pointerId: event.pointerId, input, object, shape: objectToShape(object, { includeEditorMeta: true }), x: event.clientX, value: Number(input.value) };
+      label.setPointerCapture(event.pointerId);
+    });
+    label.addEventListener("pointermove", event => {
+      if (!drag || drag.label !== label) return;
+      if (selectedVinylObjects()[0] !== drag.object) { finishDrag(true); return; }
+      drag.input.value = round(drag.value + (event.clientX - drag.x) * Number(drag.input.dataset.step) * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1));
+      applySelectionFields({ preview: true });
+    });
+    label.addEventListener("pointerup", () => finishDrag(false));
+    label.addEventListener("pointercancel", () => finishDrag(true));
+    label.addEventListener("lostpointercapture", () => finishDrag(true));
+  });
+  window.addEventListener("blur", () => finishDrag(true));
+  window.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (!drag) return;
+    if (event.key === "Escape") finishDrag(true);
+    event.preventDefault(); event.stopImmediatePropagation();
+  }, true);
+}
+
+function overlappingVinylObjects(point) {
+  return vinylObjects().slice().reverse().filter(object => object.visible && !object.kloudy?.locked
+    && (object.opacity > 0 || object.kloudy?.mask) && KfpsFabricAdapter.visiblePixelAt(canvas, object, point));
+}
+
+function bindOverlapSelection() {
+  const setting = $("overlapCycle");
+  setting.checked = editorSettings.getItem("kloudyFabricOverlapCycle") === "1";
+  setting.addEventListener("change", () => editorSettings.setItem("kloudyFabricOverlapCycle", setting.checked ? "1" : "0"));
+  let pressed = null, rightPressed = null, menu = null;
+  const allowed = event => activeToolMode === "select" && !shapeEyedropperActive && !vBoxSelectActive && !isPanning
+    && !selectionLockActive && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+  const close = () => { menu?.remove(); menu = null; };
+  const select = object => {
+    if (!vinylObjects().includes(object) || object.kloudy?.locked) return;
+    canvas.discardActiveObject();
+    restoreLayoutSelection([object]);
+    updateSelectionPanel();
+    canvas.requestRenderAll();
+  };
+  canvas.upperCanvasEl.addEventListener("mousedown", event => {
+    close();
+    rightPressed = event.button === 2 && allowed(event) ? { x: event.clientX, y: event.clientY } : null;
+    pressed = event.button === 0 && setting.checked && allowed(event)
+      && !canvas.getActiveObject()?.__corner
+      ? { x: event.clientX, y: event.clientY, selected: selectedVinylObjects()[0], point: KfpsFabricAdapter.scenePoint(canvas, event) } : null;
+  }, true);
+  window.addEventListener("mouseup", event => {
+    const down = pressed; pressed = null;
+    if (!down || !allowed(event) || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 3) return;
+    queueMicrotask(() => {
+      const hits = overlappingVinylObjects(down.point);
+      if (hits.length) select(hits[(hits.indexOf(down.selected) + 1) % hits.length]);
+    });
+  });
+  canvas.upperCanvasEl.addEventListener("contextmenu", event => {
+    if (!allowed(event) || !rightPressed || Math.hypot(event.clientX - rightPressed.x, event.clientY - rightPressed.y) > 3) return;
+    rightPressed = null;
+    const hits = overlappingVinylObjects(KfpsFabricAdapter.scenePoint(canvas, event));
+    if (!hits.length) return;
+    event.preventDefault(); close();
+    menu = document.createElement("div"); menu.className = "overlapMenu";
+    menu.setAttribute("role", "menu"); menu.setAttribute("aria-label", KfpsI18n.t("Overlapping layers"));
+    for (const [index, object] of hits.entries()) {
+      const item = document.createElement("button"); item.type = "button"; item.setAttribute("role", "menuitem");
+      item.textContent = `${index + 1}. ${object.kloudy?.name || localizedTypeLabel(object.kloudy?.type)}${object.kloudy?.mask ? KfpsI18n.t(" (mask)") : ""}`;
+      item.addEventListener("click", () => { select(object); close(); canvas.upperCanvasEl.focus(); });
+      menu.append(item);
+    }
+    document.body.append(menu);
+    menu.style.left = `${Math.max(4, Math.min(event.clientX, innerWidth - menu.offsetWidth - 4))}px`;
+    menu.style.top = `${Math.max(4, Math.min(event.clientY, innerHeight - menu.offsetHeight - 4))}px`;
+    menu.firstElementChild.focus();
+  });
+  document.addEventListener("pointerdown", event => { if (menu && !menu.contains(event.target)) close(); }, true);
+  document.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (!menu) return;
+    if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); close(); canvas.upperCanvasEl.focus(); }
+    if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      const items = Array.from(menu.children), index = items.indexOf(document.activeElement);
+      items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowUp" ? -1 : 1) + items.length) % items.length].focus();
+    }
+  }, true);
+  window.addEventListener("blur", () => { close(); pressed = null; });
 }
 
 function bindEnterToApply(ids) {
@@ -12673,8 +12842,52 @@ function maybeShowProjectSharingNotice() {
 
 async function continueEditorStartup() {
   if (maybeShowProjectSharingNotice()) return;
+  if (maybeShowLanguageNotice()) return;
   if (!startupProjectWasLoaded) await maybeShowAutosaveRecovery();
   if (startupBrowseMode() === "json") openJsonBrowser();
+}
+
+function maybeShowLanguageNotice() {
+  if (editorSettings.getItem(LANGUAGE_NOTICE_ACK_KEY) === "1") return false;
+  const dialog = $("languageNoticeDialog");
+  if (!dialog) return false;
+  $("languageNoticeAcknowledge").checked = false;
+  $("languageNoticeContinue").disabled = true;
+  $("languageNoticeError").hidden = true;
+  if (!dialog.open) dialog.showModal();
+  return true;
+}
+
+async function confirmLanguageNotice() {
+  const checkbox = $("languageNoticeAcknowledge");
+  if (!checkbox.checked || languageNoticeConfirmationPending) return;
+  const button = $("languageNoticeContinue");
+  const error = $("languageNoticeError");
+  const previous = editorSettings.getItem(LANGUAGE_NOTICE_ACK_KEY);
+  let saved = false;
+  languageNoticeConfirmationPending = true;
+  checkbox.disabled = button.disabled = true;
+  error.hidden = true;
+  try {
+    editorSettings.setItem(LANGUAGE_NOTICE_ACK_KEY, "1");
+    if (window.KfpsEditorPreferences && !await KfpsEditorPreferences.flush()) throw new Error("Preference write failed");
+    if (location.protocol === "file:" && localStorage.getItem(LANGUAGE_NOTICE_ACK_KEY) !== "1") throw new Error("Preference write failed");
+    saved = true;
+  } catch (_) {
+    if (previous === null) editorSettings.removeItem(LANGUAGE_NOTICE_ACK_KEY);
+    else editorSettings.setItem(LANGUAGE_NOTICE_ACK_KEY, previous);
+    error.textContent = KfpsI18n.t("Your acknowledgment could not be saved. Please try again.");
+    error.hidden = false;
+  } finally {
+    languageNoticeConfirmationPending = false;
+    checkbox.disabled = false;
+    button.disabled = !checkbox.checked;
+  }
+  if (saved) {
+    $("languageNoticeDialog").close();
+    $("editorLanguageSelect").focus();
+    await continueEditorStartup();
+  }
 }
 
 async function confirmProjectSharingNotice() {
@@ -12690,10 +12903,10 @@ async function confirmProjectSharingNotice() {
   try {
     editorSettings.setItem(PROJECT_SHARING_ACK_KEY, PROJECT_SHARING_NOTICE_VERSION);
     if (window.KfpsEditorPreferences && !await KfpsEditorPreferences.flush()) {
-      throw new Error("Your acknowledgment could not be saved. Please try Continue again.");
+      throw new Error(KfpsI18n.t("Your acknowledgment could not be saved. Please try Continue again."));
     }
     if (location.protocol === "file:" && localStorage.getItem(PROJECT_SHARING_ACK_KEY) !== PROJECT_SHARING_NOTICE_VERSION) {
-      throw new Error("Browser storage is unavailable. Your acknowledgment could not be saved.");
+      throw new Error(KfpsI18n.t("Browser storage is unavailable. Your acknowledgment could not be saved."));
     }
     saved = true;
   } catch (err) {
@@ -12733,12 +12946,12 @@ function autosaveSummary(payload) {
   const count = Array.isArray(payload?.shapes) ? payload.shapes.length : 0;
   const name = cleanProjectBaseName(payload?.name || "autosave", "autosave");
   const stamp = payload?.saved_at || payload?.created || "";
-  let time = "unknown time";
+  let time = KfpsI18n.t("unknown time");
   if (stamp) {
     const date = new Date(stamp);
-    if (!Number.isNaN(date.getTime())) time = date.toLocaleString();
+    if (!Number.isNaN(date.getTime())) time = date.toLocaleString(KfpsI18n.locale);
   }
-  return `${name} - ${count} layer${count === 1 ? "" : "s"} - saved ${time}`;
+  return KfpsI18n.t("{0} - {1} layer{2} - saved {3}", name, count, count === 1 ? "" : "s", time);
 }
 
 async function readAutosavePayload() {
@@ -12769,7 +12982,7 @@ async function readAutosavePayload() {
 
 async function recoverAutosavePayload(payload) {
   if (!payload || !Array.isArray(payload.shapes)) {
-    setStatus("Autosave recovery failed: temp save has no shapes list.");
+    setStatus(KfpsI18n.t("Autosave recovery failed: temp save has no shapes list."));
     return;
   }
   loadedName = cleanProjectBaseName(payload.name, "autosave");
@@ -12790,18 +13003,18 @@ async function recoverAutosavePayload(payload) {
     establishLoadedHistoryBoundary("recovered work");
     if (referenceError) {
       setStatus(
-        `Recovered ${autosaveSummary(payload)}, but its reference image could not be restored. `
-        + "Use Save if you want to keep the recovered layers and guides.",
+        KfpsI18n.t("Recovered {0}, but its reference image could not be restored. ", autosaveSummary(payload))
+        + KfpsI18n.t("Use Save if you want to keep the recovered layers and guides."),
       );
       showCornerNotice(
-        "Recovered without reference image",
-        referenceError.message || String(referenceError),
+        KfpsI18n.t("Recovered without reference image"),
+        KfpsI18n.error(referenceError.message || String(referenceError)),
       );
     } else {
-      setStatus(`Recovered temp save: ${autosaveSummary(payload)}. Use Save if you want to keep it.`);
+      setStatus(KfpsI18n.t("Recovered temp save: {0}. Use Save if you want to keep it.", autosaveSummary(payload)));
     }
   } catch (err) {
-    setStatus(`Autosave recovery failed: ${err.message}`);
+    setStatus(KfpsI18n.t("Autosave recovery failed: {0}", KfpsI18n.error(err.message)));
   }
 }
 
@@ -12814,7 +13027,7 @@ async function maybeShowAutosaveRecovery() {
   if (!payload || !Array.isArray(payload.shapes) || payload.shapes.length <= 0) return false;
   recoveryAutosavePayload = payload;
   const summary = $("autosaveRecoverySummary");
-  if (summary) summary.textContent = `Found: ${autosaveSummary(payload)}`;
+  if (summary) summary.textContent = KfpsI18n.t("Found: {0}", autosaveSummary(payload));
   const dialog = $("autosaveRecoveryDialog");
   if (!dialog) return false;
   requestAnimationFrame(() => {
@@ -12831,86 +13044,86 @@ async function maybeShowAutosaveRecovery() {
 
 const EDITOR_TOUR_STEPS = [
   {
-    title: "Open, Save, And Export",
-    body: "New starts a blank workspace. Open JSON starts from a portable vinyl, while Open Project restores editable work. Save keeps layers, groups, guides, and your reference image; Export JSON creates the game-ready file used in KFPS Outputs.",
+    title: KfpsI18n.t("Open, Save, And Export"),
+    body: KfpsI18n.t("New starts a blank workspace. Open JSON starts from a portable vinyl, while Open Project restores editable work. Save keeps layers, groups, guides, and your reference image; Export JSON creates the game-ready file used in KFPS Outputs."),
     target: ".menuGroup:first-child",
     panel: "propertiesPane",
     tool: "select",
   },
   {
-    title: "Choose A Tool",
-    body: "The left rail exposes every creation mode: selection, native shapes, text, pixel art, color picking, guides, reference controls, reference movement, and masks. Picking a tool opens its matching inspector.",
+    title: KfpsI18n.t("Choose A Tool"),
+    body: KfpsI18n.t("The left rail exposes every creation mode: selection, native shapes, text, pixel art, color picking, guides, reference controls, reference movement, and masks. Picking a tool opens its matching inspector."),
     target: ".toolRail",
     tool: "select",
   },
   {
-    title: "Work On The Canvas",
-    body: "Click or box-select layers, then move, scale, rotate, or skew them. Mouse wheel zooms; middle or right drag pans. The HUD reports the current tool, pointer position, layer count, and hovered shape.",
+    title: KfpsI18n.t("Work On The Canvas"),
+    body: KfpsI18n.t("Click or box-select layers, then move, scale, rotate, or skew them. Mouse wheel zooms; middle or right drag pans. The HUD reports the current tool, pointer position, layer count, and hovered shape."),
     target: ".canvasStage",
     panel: "propertiesPane",
     tool: "select",
     canvasPulse: true,
   },
   {
-    title: "Layers Stay In Reach",
-    body: "The upper-right panel always shows draw order. Top rows draw over lower rows. Select, search, group, rename, hide, lock, and move layers one step or all the way forward or backward. Drag the divider to resize this list.",
+    title: KfpsI18n.t("Layers Stay In Reach"),
+    body: KfpsI18n.t("The upper-right panel always shows draw order. Top rows draw over lower rows. Select, search, group, rename, hide, lock, and move layers one step or all the way forward or backward. Drag the divider to resize this list."),
     target: "#layersPane",
     panel: "layersPane",
     tool: "select",
   },
   {
-    title: "Edit Precisely",
-    body: "Properties combines color, alpha, exact transforms, flips, quarter turns, align and distribute commands, selection helpers, and picking behavior. Locked layers are skipped instead of changed accidentally.",
+    title: KfpsI18n.t("Edit Precisely"),
+    body: KfpsI18n.t("Properties combines color, alpha, exact transforms, flips, quarter turns, align and distribute commands, selection helpers, and picking behavior. Locked layers are skipped instead of changed accidentally."),
     target: "#propertiesPane",
     panel: "propertiesPane",
     tool: "select",
   },
   {
-    title: "Add Native Shapes",
-    body: "Search the native shape library or browse by family. The Place control in the toolbar adds at the top, inserts around your selection, or replaces once while preserving the selected layer's transform and appearance.",
+    title: KfpsI18n.t("Add Native Shapes"),
+    body: KfpsI18n.t("Search the native shape library or browse by family. The Place control in the toolbar adds at the top, inserts around your selection, or replaces once while preserving the selected layer's transform and appearance."),
     target: "#shapeLibraryPane",
     panel: "shapeLibraryPane",
     tool: "shapeLibrary",
   },
   {
-    title: "Build Editable Text",
-    body: "Text converts typed characters into real native Forza letter shapes. The result remains a normal editable layer group, so you can adjust spacing, color, transforms, and layer order afterward.",
+    title: KfpsI18n.t("Build Editable Text"),
+    body: KfpsI18n.t("Text converts typed characters into real native Forza letter shapes. The result remains a normal editable layer group, so you can adjust spacing, color, transforms, and layer order afterward."),
     target: "#textPane",
     panel: "textPane",
     tool: "text",
   },
   {
-    title: "Build Pixel Art",
-    body: "Pixel Art detects a deliberate source grid and merges neighboring same-color pixels into stretched native rectangles. Check the predicted grid and layer budget before generating.",
+    title: KfpsI18n.t("Build Pixel Art"),
+    body: KfpsI18n.t("Pixel Art detects a deliberate source grid and merges neighboring same-color pixels into stretched native rectangles. Check the predicted grid and layer budget before generating."),
     target: "#pixelArtPane",
     panel: "pixelArtPane",
     tool: "pixelArt",
   },
   {
-    title: "Align With Guides",
-    body: "Draw free, horizontal, or vertical guides and enable a grid for repeated spacing. Hold Control during transforms to snap. Guides and grid lines are project helpers and never consume game layers.",
+    title: KfpsI18n.t("Align With Guides"),
+    body: KfpsI18n.t("Draw free, horizontal, or vertical guides and enable a grid for repeated spacing. Hold Control during transforms to snap. Guides and grid lines are project helpers and never consume game layers."),
     target: "#guidesPane",
     panel: "guidesPane",
     tool: "guides",
     canvasPulse: true,
   },
   {
-    title: "Trace With A Reference",
-    body: "Reference accepts images and layered SVGs for tracing and color sampling. Save keeps it for your next session. Export JSON never includes it or turns it into a game layer.",
+    title: KfpsI18n.t("Trace With A Reference"),
+    body: KfpsI18n.t("Reference accepts images and layered SVGs for tracing and color sampling. Save keeps it for your next session. Export JSON never includes it or turns it into a game layer."),
     target: "#overlayPane",
     panel: "overlayPane",
     tool: "overlay",
   },
   {
-    title: "History Is Visible",
-    body: "Every meaningful edit appears here. Click an entry to return to it, use Undo or Redo, and watch for the protected loaded-source marker. The title bar separately tells you whether the project is saved.",
+    title: KfpsI18n.t("History Is Visible"),
+    body: KfpsI18n.t("Every meaningful edit appears here. Click an entry to return to it, use Undo or Redo, and watch for the protected loaded-source marker. The title bar separately tells you whether the project is saved."),
     target: "#historyPane",
     panel: "historyPane",
     tool: "select",
   },
   {
-    title: "Check Before Export",
-    body: "Export Check reports blocking transform problems plus hidden, outside-canvas, duplicate, unresolved-resource, and ineffective-mask warnings. Review the list, export, then select the file from Editor exports in KFPS Outputs.",
+    title: KfpsI18n.t("Check Before Export"),
+    body: KfpsI18n.t("Export Check reports blocking transform problems plus hidden, outside-canvas, duplicate, unresolved-resource, and ineffective-mask warnings. Review the list, export, then select the file from Editor exports in KFPS Outputs."),
     target: "#exportCheckPane",
     panel: "exportCheckPane",
     tool: "select",
@@ -13019,13 +13232,13 @@ function showTourStep(index) {
   document.body.classList.add("editorTourActive");
   const target = document.querySelector(step.target || ".editorShell") || document.querySelector(".editorShell");
   target?.classList.add("editorTourTarget");
-  if (progress) progress.textContent = `Step ${index + 1} of ${EDITOR_TOUR_STEPS.length}`;
+  if (progress) progress.textContent = KfpsI18n.t("Step {0} of {1}", index + 1, EDITOR_TOUR_STEPS.length);
   if (title) title.textContent = step.title;
   if (body) body.textContent = step.body;
   if (back) back.disabled = index <= 0;
-  if (next) next.textContent = index >= EDITOR_TOUR_STEPS.length - 1 ? "Finish" : "Next";
+  if (next) next.textContent = index >= EDITOR_TOUR_STEPS.length - 1 ? KfpsI18n.t("Finish") : KfpsI18n.t("Next");
   if (pulse) pulse.hidden = !step.canvasPulse;
-  setStatus(`Tour: ${step.title}`);
+  setStatus(KfpsI18n.t("Tour: {0}", step.title));
   requestAnimationFrame(() => requestAnimationFrame(() => positionTourCard(target)));
 }
 
@@ -13056,7 +13269,7 @@ function stopEditorTour(completed = false) {
   const button = document.querySelector(`.toolButton[data-tool-mode="${previousTool}"]`) || document.querySelector(".toolButton[data-tool-mode='select']");
   if (button) setToolRailMode(button.dataset.toolMode || "select", button.dataset.tool || button.textContent.trim());
   if (previousTool !== "dropper") setShapeEyedropper(false, { keepTool: true, silent: true });
-  setStatus(completed ? "Editor tour complete. Use Help any time for the full reference." : "Editor tour closed.");
+  setStatus(completed ? KfpsI18n.t("Editor tour complete. Use Help any time for the full reference.") : KfpsI18n.t("Editor tour closed."));
 }
 
 function nextTourStep(delta) {
@@ -13072,6 +13285,42 @@ function repositionEditorTour() {
 }
 
 function bindUi() {
+  $("languageNoticeDialog")?.addEventListener("cancel", event => event.preventDefault());
+  $("languageNoticeAcknowledge")?.addEventListener("change", () => {
+    $("languageNoticeContinue").disabled = !$("languageNoticeAcknowledge").checked;
+  });
+  $("languageNoticeContinue")?.addEventListener("click", confirmLanguageNotice);
+  const languageSelect = $("editorLanguageSelect");
+  if (languageSelect) {
+    languageSelect.value = KfpsI18n.language;
+    languageSelect.addEventListener("change", async () => {
+      const next = languageSelect.value;
+      if (!["en", "ko"].includes(next)) return;
+      const previous = editorSettings.getItem(KfpsI18n.KEY);
+      languageSelect.disabled = true;
+      try {
+        editorSettings.setItem(KfpsI18n.KEY, next);
+        if (window.KfpsEditorPreferences && !await KfpsEditorPreferences.flush()) throw new Error(KfpsI18n.error("Preference write failed"));
+        if (location.protocol === "file:" && localStorage.getItem(KfpsI18n.KEY) !== next) throw new Error("Preference write failed");
+        showEditorMessage(KfpsI18n.t("Language saved"), KfpsI18n.t("Your language preference has been saved. Save your project, then close and reopen the editor to apply it. Your current workspace has not been changed."));
+      } catch (_) {
+        if (previous === null) editorSettings.removeItem(KfpsI18n.KEY);
+        else editorSettings.setItem(KfpsI18n.KEY, previous);
+        languageSelect.value = previous || KfpsI18n.language;
+        showEditorMessage(KfpsI18n.t("Language setting could not be saved"), KfpsI18n.t("The language preference could not be saved. Your current language and workspace are unchanged."));
+      } finally { languageSelect.disabled = false; }
+    });
+  }
+
+  editorAssetLibrary = KfpsEditorAssets.install({
+    headers: EDITOR_MUTATION_HEADERS, prompt: requestTextInput, confirm: requestConfirmation,
+    notify: setStatus, download: downloadText,
+    hasSelection: () => selectedVinylObjects().length > 0,
+    selection: () => orderedSelectedVinylObjects().map(object => objectToShape(object, { includeEditorMeta: true })),
+    insert: shapes => queueEditorMutation(() => insertCopiedShapesNow(shapes, { asset: true })),
+  });
+  bindTransformInputs();
+  bindOverlapSelection();
   restoreDockState();
   bindDockSplitter();
   loadEditorClipboard();
@@ -13116,15 +13365,15 @@ function bindUi() {
   $("jsonInput").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!await confirmWorkspaceReplacement(file.name || "the selected JSON")) {
-      setStatus("Current unsaved work was kept.");
+    if (!await confirmWorkspaceReplacement(file.name || KfpsI18n.t("the selected JSON"))) {
+      setStatus(KfpsI18n.t("Current unsaved work was kept."));
       event.target.value = "";
       return;
     }
-    setBusy(`Selected JSON: ${file.name}`);
+    setBusy(KfpsI18n.t("Selected JSON: {0}", file.name));
     loadJsonFile(file)
       .then(() => $("jsonBrowserDialog")?.close())
-      .catch((err) => showError("JSON import failed", err))
+      .catch((err) => showError(KfpsI18n.t("JSON import failed"), err))
       .finally(() => { event.target.value = ""; });
   });
   $("exportJson").addEventListener("click", exportJson);
@@ -13201,11 +13450,11 @@ function bindUi() {
       const marker = await writeStartupHelpConfirmed();
       $("startupHelpDialog")?.close();
       setStatus(marker
-        ? "Startup help confirmed for this app folder. The full Help menu is available from the Help button in the top toolbar."
-        : "Startup help confirmed for this browser. The full Help menu is available from the Help button in the top toolbar.");
+        ? KfpsI18n.t("Startup help confirmed for this app folder. The full Help menu is available from the Help button in the top toolbar.")
+        : KfpsI18n.t("Startup help confirmed for this browser. The full Help menu is available from the Help button in the top toolbar."));
       return;
     }
-    setStatus("Tick \"I have read and understood this\" before opening the editor.");
+    setStatus(KfpsI18n.t("Tick \"I have read and understood this\" before opening the editor."));
   });
   $("recoverAutosave")?.addEventListener("click", async () => {
     $("autosaveRecoveryDialog")?.close();
@@ -13213,13 +13462,13 @@ function bindUi() {
   });
   $("dismissAutosave")?.addEventListener("click", () => {
     $("autosaveRecoveryDialog")?.close();
-    setStatus("Temp save kept. It will be offered again next launch until recovered, discarded, or replaced.");
+    setStatus(KfpsI18n.t("Temp save kept. It will be offered again next launch until recovered, discarded, or replaced."));
   });
   $("discardAutosave")?.addEventListener("click", () => {
     $("autosaveRecoveryDialog")?.close();
     clearAutosave();
     recoveryAutosavePayload = null;
-    setStatus("Temp save discarded.");
+    setStatus(KfpsI18n.t("Temp save discarded."));
   });
   $("colorSwatchButton").addEventListener("click", openColorDialog);
   $("colorPanelSwatch").addEventListener("click", openColorDialog);
@@ -13270,7 +13519,7 @@ function bindUi() {
   $("cancelGlobalShapeReplace")?.addEventListener("click", () => {
     pendingGlobalShapeReplacement = null;
     hideGlobalShapeReplacePanel();
-    setStatus("Global Change Shape cancelled.");
+    setStatus(KfpsI18n.t("Global Change Shape cancelled."));
   });
   $("applyColorToSelection").addEventListener("click", () => {
     const alpha = Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
@@ -13294,7 +13543,7 @@ function bindUi() {
   $("selectSameShape")?.addEventListener("click", selectSameShapeLayers);
   $("selectSameColor")?.addEventListener("click", selectSameColorLayers);
   $("clearLayerSelection")?.addEventListener("click", clearLayerSelection);
-  bindEnterToApply(["xInput", "yInput", "sxInput", "syInput", "rotInput", "skewInput", "opacitySlider"]);
+  bindEnterToApply(["opacitySlider"]);
   $("layerSearch").addEventListener("input", refreshLayers);
   $("pixelSelect")?.addEventListener("change", () => setPixelSelection($("pixelSelect").checked));
   $("boxVisibleOnly").addEventListener("change", () => setPixelSelection($("boxVisibleOnly").checked));
@@ -13352,10 +13601,10 @@ function bindUi() {
   $("pixelArtInput")?.addEventListener("change", (event) => {
     pixelArtSourceFile = event.target.files?.[0] || null;
     if (!pixelArtSourceFile) {
-      setPixelArtStatus("Choose a pixel-art source image.");
+      setPixelArtStatus(KfpsI18n.t("Choose a pixel-art source image."));
       return;
     }
-    setPixelArtStatus(`Pixel-art source loaded: ${pixelArtSourceFile.name}. Press Generate to detect its pixel grid.`);
+    setPixelArtStatus(KfpsI18n.t("Pixel-art source loaded: {0}. Press Generate to detect its pixel grid.", pixelArtSourceFile.name));
   });
   $("generatePixelArt")?.addEventListener("click", generatePixelArtRectangles);
   loadTextVinylFontPreference();
@@ -13382,7 +13631,7 @@ function bindUi() {
     $("reuseLastFontSize").addEventListener("change", (event) => {
       reuseLastFontSize = Boolean(event.target.checked);
       editorSettings.setItem("kloudyFabricReuseLastFontSize", String(reuseLastFontSize));
-      setStatus(reuseLastFontSize ? "New font shapes reuse the last edited font size." : "New font shapes use viewport placement size.");
+      setStatus(reuseLastFontSize ? KfpsI18n.t("New font shapes reuse the last edited font size.") : KfpsI18n.t("New font shapes use viewport placement size."));
     });
   }
   document.querySelectorAll(".dockTab").forEach((button) => {
@@ -13396,6 +13645,7 @@ function bindUi() {
   renderShortcutEditor();
   updateShortcutLabels();
   document.addEventListener("keydown", (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if (editorTourState?.active) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -13431,7 +13681,7 @@ function bindUi() {
       if (toolAction === "selectTool" && !vBoxSelectActive) {
         event.preventDefault();
         setVBoxSelectActive(true);
-        setStatus("Hold Select shortcut: box-select override active. Drag from anywhere, even on top of a shape.");
+        setStatus(KfpsI18n.t("Hold Select shortcut: box-select override active. Drag from anywhere, even on top of a shape."));
       }
       return;
     }
@@ -13442,7 +13692,7 @@ function bindUi() {
         return;
       }
       if (activeToolMode === "guides") {
-        setGuideStatus("No guide selected. Vinyl layers are protected while the Guides tool is active.");
+        setGuideStatus(KfpsI18n.t("No guide selected. Vinyl layers are protected while the Guides tool is active."));
         return;
       }
       deleteSelected();
@@ -13525,6 +13775,7 @@ function bindUi() {
     }
   });
   document.addEventListener("keyup", (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.target && event.target.classList?.contains("shortcutCapture")) return;
     if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) flushPendingNudgeHistory();
@@ -13542,7 +13793,7 @@ function bindUi() {
     if (vBoxSelectActive) {
       event.preventDefault();
       setVBoxSelectActive(false);
-      setStatus("Box-select override released.");
+      setStatus(KfpsI18n.t("Box-select override released."));
     }
   });
   document.addEventListener("wheel", handleLayerDragWheel, { passive: false });
@@ -13575,9 +13826,10 @@ window.addEventListener("pagehide", flushPendingAutosaveToBrowser);
 async function executeDesktopOperation(operation, payload = {}) {
   if (operation === "state") {
     flushPendingNudgeHistory();
-    return { dirty: documentDirty, saving: projectSaveInProgress || exportSaveInProgress };
+    return { dirty: documentDirty, saving: projectSaveInProgress || exportSaveInProgress || Boolean(editorAssetLibrary?.busy) };
   }
   if (operation === "close") {
+    if (editorAssetLibrary?.busy) return { ok: false, error: KfpsI18n.t("Wait for the asset library operation to finish before closing.") };
     flushPendingNudgeHistory();
     if (payload.action === "save") {
       await saveProject();
@@ -13588,13 +13840,13 @@ async function executeDesktopOperation(operation, payload = {}) {
     await flushPendingAutosave();
     const settingsSaved = window.KfpsEditorPreferences ? await KfpsEditorPreferences.flush() : true;
     if (revision.generation !== documentGeneration || revision.history !== currentHistoryState() || revision.overlay !== overlayRevision) {
-      return { ok: false, error: "The document changed while preparing to close. Save the new changes first." };
+      return { ok: false, error: KfpsI18n.t("The document changed while preparing to close. Save the new changes first.") };
     }
-    if (!settingsSaved) return { ok: false, error: "The latest editor settings have not reached the app folder." };
-    if (documentDirty && autosaveStatus.serverOk !== true) return { ok: false, error: "The latest recovery has not reached the app folder. Save the project before closing." };
+    if (!settingsSaved) return { ok: false, error: KfpsI18n.t("The latest editor settings have not reached the app folder.") };
+    if (documentDirty && autosaveStatus.serverOk !== true) return { ok: false, error: KfpsI18n.t("The latest recovery has not reached the app folder. Save the project before closing.") };
     return { ok: true };
   }
-  if (operation !== "open") throw new Error("Unsupported editor window operation.");
+  if (operation !== "open") throw new Error(KfpsI18n.t("Unsupported editor window operation."));
   // An external launch must not replace work underneath a recovery, file, or
   // confirmation dialog already being handled in this window.
   let openDialog;
@@ -13605,9 +13857,9 @@ async function executeDesktopOperation(operation, payload = {}) {
     if (!await confirmWorkspaceReplacement(payload.project)) return { cancelled: true };
     const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(payload.project)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
     await loadProjectPayload(data.payload, data.name || "project");
-    clearBusy(`Loaded project: ${data.name || payload.project}`);
+    clearBusy(KfpsI18n.t("Loaded project: {0}", data.name || payload.project));
   } else if (payload.mode === "new") {
     await startBlankCanvas();
   } else if (payload.mode === "json") {
@@ -13627,7 +13879,7 @@ window.KfpsDesktop = {
     try { result = { ok: true, value: await executeDesktopOperation(operation, payload) }; }
     catch (err) {
       result = { ok: false, error: err.message || String(err) };
-      showError("Editor operation failed", err);
+      showError(KfpsI18n.t("Editor operation failed"), err);
     }
     window.KfpsDesktopBridge?.completed(requestId, JSON.stringify(result));
   },

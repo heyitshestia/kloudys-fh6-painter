@@ -1,5 +1,13 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.72
+- Added English and Korean editor localization, selected from a compact dropdown at the lower left. The first selection follows Windows display language; saved choices apply when the editor is reopened without discarding the current workspace.
+- Added a one-time arrow notice explaining the language switch. It requires acknowledgment, remembers confirmation across restarts, and remains retryable if settings cannot be saved.
+- Added a reusable asset library for shapes and editor groups, with thumbnails, search, insertion, renaming, deletion and portable asset import/export. Assets are stored independently of generated, exported and library JSON files.
+- Added optional overlap cycling and a selection menu for stacked layers, arithmetic expressions in numeric fields, and draggable numeric labels with consistent undo behavior.
+- Reduced repeated shape serialization when recording selected-object edits. Large projects can still pause during expensive operations; this is not a complete performance fix.
+- Added shared English/Korean catalogs and automated localization checks while preserving artwork names, shape identities, editor groups and flat game-export formats.
+
 ## 3.1.71
 - Added a searchable livery grid displaying original FH6 save thumbnails, with search by livery name, car model and car ID.
 - **3D preview is now optional.** Browse, select and export liveries without opening the 3D viewer.

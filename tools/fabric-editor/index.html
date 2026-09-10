@@ -8,7 +8,10 @@
   <script>
     document.documentElement.dataset.editorTheme = localStorage.getItem("kloudyFabricTheme") || "pastel";
   </script>
-  <link rel="stylesheet" href="style.css?engine=editor-2.1">
+  <link rel="stylesheet" href="style.css?engine=editor-2.1&amp;locale=1">
+  <script src="locales/en.js?locale=2"></script>
+  <script src="locales/ko.js?locale=2"></script>
+  <script src="editor-i18n.js?locale=1"></script>
   <script src="vendor/fabric.min.js"></script>
   <script src="editor-fabric-adapter.js?engine=editor-2.2"></script>
 </head>
@@ -204,6 +207,7 @@
           <div class="dockTabs" role="tablist">
             <button class="dockTab active" data-panel="propertiesPane" title="Edit appearance, exact transforms, layout, and selection.">Properties</button>
             <button class="dockTab" data-panel="shapeLibraryPane" title="Search and place native Forza shapes.">Shapes</button>
+            <button class="dockTab" data-panel="assetsPane" title="Save and reuse groups of layers.">Assets</button>
             <button class="dockTab" data-panel="textPane" title="Build editable words from native letter shapes.">Text</button>
             <button class="dockTab" data-panel="pixelArtPane" title="Convert deliberate pixel art into merged rectangle layers.">Pixel</button>
             <button class="dockTab" data-panel="guidesPane" title="Draw editor-only guides and configure snapping.">Guides</button>
@@ -254,12 +258,12 @@
             <div class="propertySection">
               <h3>Transform</h3>
               <div class="fieldGrid">
-                <label>X <input id="xInput" type="number" step="0.01"></label>
-                <label>Y <input id="yInput" type="number" step="0.01"></label>
-                <label>Scale X <input id="sxInput" type="number" step="0.001"></label>
-                <label>Scale Y <input id="syInput" type="number" step="0.001"></label>
-                <label>Rotation <input id="rotInput" type="number" step="0.01"></label>
-                <label>Skew X deg <input id="skewInput" type="number" step="0.1"></label>
+                <label><span class="numericDragLabel" data-numeric-for="xInput" title="Drag to adjust X">X</span> <input id="xInput" type="text" inputmode="decimal" data-step="1" autocomplete="off" title="X position; arithmetic expressions are accepted"></label>
+                <label><span class="numericDragLabel" data-numeric-for="yInput" title="Drag to adjust Y">Y</span> <input id="yInput" type="text" inputmode="decimal" data-step="1" autocomplete="off" title="Y position; arithmetic expressions are accepted"></label>
+                <label><span class="numericDragLabel" data-numeric-for="sxInput" title="Drag to adjust horizontal scale">Scale X</span> <input id="sxInput" type="text" inputmode="decimal" data-step="0.01" autocomplete="off" title="Horizontal scale; arithmetic expressions are accepted"></label>
+                <label><span class="numericDragLabel" data-numeric-for="syInput" title="Drag to adjust vertical scale">Scale Y</span> <input id="syInput" type="text" inputmode="decimal" data-step="0.01" autocomplete="off" title="Vertical scale; arithmetic expressions are accepted"></label>
+                <label><span class="numericDragLabel" data-numeric-for="rotInput" title="Drag to adjust rotation">Rotation</span> <input id="rotInput" type="text" inputmode="decimal" data-step="1" autocomplete="off" title="Rotation in degrees; arithmetic expressions are accepted"></label>
+                <label><span class="numericDragLabel" data-numeric-for="skewInput" title="Drag to adjust skew">Skew X deg</span> <input id="skewInput" type="text" inputmode="decimal" data-step="0.1" autocomplete="off" title="Skew in degrees; arithmetic expressions are accepted"></label>
               </div>
               <button id="applyFields" title="Apply the typed transform values to every selected unlocked layer.">Apply Selected Values</button>
               <div class="smallTools">
@@ -308,6 +312,9 @@
               <label class="inline" title="Box-select everything outside the dragged box instead of inside it. Single clicks are unaffected.">
                 <input id="invertBoxSelect" type="checkbox"> Invert box select
               </label>
+              <label class="inline" title="Repeated clicks cycle through visible overlapping layers. Dragging keeps its usual behavior.">
+                <input id="overlapCycle" type="checkbox"> Cycle overlapping layers
+              </label>
             </div>
           </section>
 
@@ -332,6 +339,19 @@
               <button id="showFavorites" title="Show only shapes saved as favorites.">Favorites</button>
             </div>
             <div id="shapeGrid"></div>
+          </section>
+
+          <section id="assetsPane" class="dockPane" hidden>
+            <div class="panelHeader"><h2>Assets</h2><button id="assetRefresh" type="button" title="Refresh assets" aria-label="Refresh assets">&#8635;</button></div>
+            <div class="smallTools">
+              <button id="assetSaveSelection" type="button" title="Save an independent copy of the selected layers in Assets" disabled>Save Selection</button>
+              <button id="assetImport" type="button" title="Add a shared KFPS editor asset to Assets">Import Asset</button>
+            </div>
+            <input id="assetInput" class="hiddenFileInput" type="file" accept=".json,application/json">
+            <input id="assetSearch" type="search" placeholder="Search assets" aria-label="Search assets">
+            <p id="assetStatus" role="status" aria-live="polite">No assets loaded.</p>
+            <div id="assetGrid"></div>
+            <button id="assetMore" type="button" title="Show the next 40 assets" hidden>Show More</button>
           </section>
 
           <section id="guidesPane" class="dockPane" hidden>
@@ -524,6 +544,13 @@
     </main>
 
     <footer class="bottomStatus">
+      <label id="editorLanguagePicker" class="languagePicker">
+        <span>Language</span>
+        <select id="editorLanguageSelect" aria-label="Editor language" title="Choose the editor language. Changes apply the next time the editor opens.">
+          <option value="en" lang="en" data-language-name>English</option>
+          <option value="ko" lang="ko" data-language-name>한국어</option>
+        </select>
+      </label>
       <span id="status">Ready. Mouse wheel zooms, middle/right drag pans.</span>
       <span id="bottomCoords">x 0, y 0</span>
       <span id="bottomZoom">100%</span>
@@ -531,6 +558,15 @@
       <span id="bottomHint">Tip: top layer rows draw over lower rows.</span>
     </footer>
   </div>
+
+  <dialog id="languageNoticeDialog" class="languageNoticeDialog" aria-labelledby="languageNoticeTitle" aria-describedby="languageNoticeMessage">
+    <h2 id="languageNoticeTitle">English and Korean are available</h2>
+    <p id="languageNoticeMessage">Change the editor language here. Save your project and reopen the editor to apply your choice.</p>
+    <label class="languageNoticeAcknowledgment"><input id="languageNoticeAcknowledge" type="checkbox"> I acknowledge. Don't show this again.</label>
+    <button id="languageNoticeContinue" type="button" disabled title="Save this acknowledgment and continue into the editor.">Got it!</button>
+    <p id="languageNoticeError" role="alert" hidden></p>
+    <span class="languageNoticeArrow" aria-hidden="true">&#8595;</span>
+  </dialog>
 
   <dialog id="helpDialog">
     <div class="helpHeader">
@@ -944,7 +980,8 @@
   </dialog>
 
   <script src="editor-core.js?engine=editor-2.1"></script>
-  <script src="editor-preferences.js"></script>
-  <script>KfpsEditorPreferences.loadEditor("editor.js?engine=editor-2.4");</script>
+  <script src="editor-assets.js?locale=1"></script>
+  <script src="editor-preferences.js?locale=1"></script>
+  <script>KfpsEditorPreferences.loadEditor("editor.js?engine=editor-2.4&locale=1");</script>
 </body>
 </html>

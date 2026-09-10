@@ -1,3 +1,27 @@
+#assetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+  gap: 10px;
+  padding: 8px 0;
+}
+.editorAsset { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.editorAsset > strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; height: 36px; font-size: 12px; line-height: 18px; margin-top: 6px; }
+.assetPreview { display: block; width: 100%; aspect-ratio: 1; padding: 0; overflow: hidden; border-radius: 4px; background: var(--canvas-bg); }
+.assetPreview img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.assetLayerCount { font-size: 11px; color: var(--muted); }
+.assetActions { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.assetActions > button { flex: 1; }
+.assetActions details { position: relative; }
+.assetActions summary { list-style: none; cursor: pointer; width: 30px; height: 30px; text-align: center; font-size: 20px; border: 1px solid var(--line); border-radius: 4px; }
+.assetMenu { position: absolute; right: 0; bottom: 100%; z-index: 10; display: grid; gap: 4px; width: 150px; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 4px; box-shadow: var(--shadow); }
+#assetSearch { width: 100%; min-width: 0; }
+#assetStatus { font-size: 12px; overflow-wrap: anywhere; }
+#assetStatus.assetError { color: var(--danger); }
+.numericDragLabel { cursor: ew-resize; touch-action: none; user-select: none; }
+.fieldGrid input[aria-invalid="true"] { border-color: var(--danger); outline: 1px solid var(--danger); }
+.overlapMenu { position: fixed; z-index: 200; width: min(260px, calc(100vw - 16px)); max-height: min(300px, calc(100vh - 16px)); overflow: auto; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; box-shadow: var(--shadow); }
+.overlapMenu button { display: block; width: 100%; margin: 3px 0; text-align: left; overflow-wrap: anywhere; white-space: normal; }
+
 :root {
   --bg: #fff7fb;
   --shell: #ffffff;
@@ -2919,3 +2943,36 @@ dialog::backdrop {
     grid-template-rows: minmax(135px, var(--editor-layer-height)) 7px minmax(150px, 1fr);
   }
 }
+
+/* Localized UI uses installed system fonts only (no font downloads). */
+html[lang="ko"] body,
+html[lang="ko"] button,
+html[lang="ko"] input,
+html[lang="ko"] select,
+html[lang="ko"] textarea {
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+}
+html[lang="ko"] button,
+html[lang="ko"] .toolButton,
+html[lang="ko"] .dialogHint,
+html[lang="ko"] .helpSection {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.editorShell { grid-template-rows: auto auto minmax(0, 1fr) 30px; }
+.appBar { min-height: 68px; }
+.brandMeta { flex-wrap: wrap; }
+.contextBar { min-height: 42px; overflow-x: auto; scrollbar-width: thin; }
+.contextBar > * { flex-shrink: 0; }
+.contextItem b { white-space: nowrap; }
+.languagePicker { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin: 0; text-transform: none; letter-spacing: 0; }
+.languagePicker select { width: 92px; min-width: 92px; height: 24px; padding: 1px 4px; color: var(--text); font-size: 12px; }
+.languageNoticeDialog { position: fixed; inset: auto auto 80px 12px; margin: 0; width: min(380px, calc(100vw - 24px)); max-height: calc(100vh - 120px); padding: 18px; overflow: visible; border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); color: var(--text); }
+.languageNoticeDialog::backdrop { background: rgba(0, 0, 0, 0.2); }
+.languageNoticeDialog h2 { margin: 0 0 10px; font-size: 17px; line-height: 1.4; letter-spacing: 0; }
+.languageNoticeDialog p { white-space: normal; overflow-wrap: anywhere; }
+.languageNoticeAcknowledgment { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0 12px; line-height: 1.5; }
+.languageNoticeAcknowledgment input { flex: 0 0 auto; width: 16px; height: 16px; margin: 2px 0 0; }
+.languageNoticeArrow { position: absolute; left: 88px; bottom: -54px; height: 52px; font-size: 44px; line-height: 52px; color: var(--text); text-shadow: 0 0 3px var(--panel), 0 0 3px var(--panel); pointer-events: none; }
+#languageNoticeError { color: var(--danger); }
+@media (max-width: 1100px) { .bottomStatus { gap: 8px; } #bottomHint { display: none; } }

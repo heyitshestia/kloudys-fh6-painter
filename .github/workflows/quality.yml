@@ -80,6 +80,14 @@ jobs:
           node tools/fabric-editor/tests/editor-core.node.js
           node tools/fabric-editor/tests/editor-shell.node.js
           node tools/fabric-editor/tests/editor-preferences.node.js
+          python tools/fabric-editor/locales/manage.py check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tools/fabric-editor/tests/editor-i18n.node.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/fabric-editor/tests/editor-localization.test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/fabric-editor/tests/editor-localization-native.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Launch the real Outputs page offscreen
         env:

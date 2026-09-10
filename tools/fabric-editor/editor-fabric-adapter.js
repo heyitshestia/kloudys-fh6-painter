@@ -90,7 +90,38 @@
     if (prototype && typeof prototype.toSVG === "function") prototype.toSVG = unsupportedSvgOperation;
   });
 
+  let hitSurface = null;
+  function visiblePixelAt(canvas, object, point) {
+    const bounds = object.getBoundingRect(true, true);
+    if (point.x < bounds.left || point.y < bounds.top || point.x > bounds.left + bounds.width || point.y > bounds.top + bounds.height) return false;
+    if (!hitSurface) { hitSurface = document.createElement("canvas"); hitSurface.width = hitSurface.height = 3; }
+    const context = hitSurface.getContext("2d", { willReadFrequently: true });
+    const screen = runtime.util.transformPoint(point, canvas.viewportTransform);
+    const previous = { objectCaching: object.objectCaching, globalCompositeOperation: object.globalCompositeOperation, opacity: object.opacity, selectionBackgroundColor: object.selectionBackgroundColor, shadow: object.shadow };
+    const groupTransformDone = object.group?._transformDone;
+    context.clearRect(0, 0, 3, 3);
+    context.save();
+    try {
+      context.translate(1 - screen.x, 1 - screen.y);
+      context.transform(...canvas.viewportTransform);
+      object.objectCaching = false;
+      object.globalCompositeOperation = "source-over";
+      object.selectionBackgroundColor = "";
+      object.shadow = null;
+      if (object.kloudy?.mask) object.opacity = 1;
+      // Render the actual path/image alpha, not its selection box or mask proxy.
+      if (object.group) object.group._transformDone = false;
+      object.render(context);
+      return context.getImageData(1, 1, 1, 1).data[3] > 0;
+    } finally {
+      Object.assign(object, previous);
+      if (object.group) object.group._transformDone = groupTransformDone;
+      context.restore();
+    }
+  }
+
   global.KfpsFabricAdapter = Object.freeze({
+    visiblePixelAt,
     bringObjectToFront,
     cancelObjectTransform,
     major,

@@ -46,6 +46,47 @@ def render_json_preview(path: Path | str, max_size: int = PREVIEW_MAX, transpare
     return _render_primitive_preview(path, max_size, transparent_background=transparent_background) or _render_typecode_preview(path, max_size, transparent_background=transparent_background)
 
 
+def render_editor_asset_preview(shapes: list[dict], max_size: int = PREVIEW_MAX) -> bytes | None:
+    """Fit visible editor layers, then use the alpha-aware native renderer."""
+    visible = [shape for shape in shapes if not shape.get("editor_hidden")]
+    points = []
+    resource_bounds = {}
+    for shape in visible:
+        data = shape.get("data", [])
+        if _shape_mask_flag(shape, data) or not (shape.get("color") or [0, 0, 0, 0])[3]:
+            continue
+        resource = _resolve_vinyl_resource(int(shape["type"]), shape)
+        if resource not in resource_bounds:
+            triangles = _resource_triangles(*resource) if resource else None
+            if not triangles:
+                return None
+            left = min(point[0] for triangle in triangles for point in triangle)
+            right = max(point[0] for triangle in triangles for point in triangle)
+            bottom = min(point[1] for triangle in triangles for point in triangle)
+            top = max(point[1] for triangle in triangles for point in triangle)
+            resource_bounds[resource] = [(left, bottom), (left, top), (right, top), (right, bottom)]
+        points.extend(_transform_resource_polygon(resource_bounds[resource], data))
+    if not points:
+        return None
+    min_x, max_x = min(p[0] for p in points), max(p[0] for p in points)
+    min_y, max_y = min(p[1] for p in points), max(p[1] for p in points)
+    padding = max(max_x - min_x, max_y - min_y, 1) * 0.04
+    bounds = (min_x - padding, min_y - padding, max_x + padding, max_y + padding)
+    width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    scale = min(max(1, min(1024, max_size)) / max(width, height), 4)
+    size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    body = render_typecode_layers_canvas(visible, *size, world_bounds=bounds, strict_assets=True)
+    if body is None:
+        return None
+    from PIL import Image
+
+    with Image.open(io.BytesIO(body)) as artwork:
+        preview = Image.alpha_composite(_checkerboard(size), artwork.convert("RGBA"))
+    output = io.BytesIO()
+    preview.save(output, format="PNG")
+    return output.getvalue()
+
+
 def _shape_word_from_shape(shape: dict, type_code: int) -> int:
     return shape_word_from_shape(shape, type_code)
 

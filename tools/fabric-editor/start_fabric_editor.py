@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
@@ -28,7 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
-from json_preview_renderer import render_json_preview as shared_render_json_preview
+from json_preview_renderer import render_json_preview as shared_render_json_preview, render_editor_asset_preview
 from kfps_shapes import resolve_full_type_resource, resolve_vinyl_resource, shape_word_resource_map
 
 EDITOR = ROOT / "tools" / "fabric-editor" / "index.html"
@@ -52,6 +53,10 @@ PROJECT_BROWSER_API = "/api/fabric-editor/project-browser"
 PROJECT_FILE_API = "/api/fabric-editor/project-file"
 PROJECT_SAVE_API = "/api/fabric-editor/save-project"
 PROJECT_OPEN_FOLDER_API = "/api/fabric-editor/open-project-folder"
+EDITOR_ASSETS_API = "/api/fabric-editor/assets"
+EDITOR_ASSET_PREVIEW_API = "/api/fabric-editor/asset-preview"
+EDITOR_ASSET_FORMAT = "kfps_editor_asset_v1"
+EDITOR_ASSET_MAX_BYTES = 8 * 1024 * 1024
 EDITOR_MUTATION_HEADER = "X-KFPS-Editor-Session"
 EDITOR_MUTATION_APIS = {
     STARTUP_HELP_API,
@@ -61,11 +66,13 @@ EDITOR_MUTATION_APIS = {
     EDITOR_EXPORT_API,
     PROJECT_SAVE_API,
     PROJECT_OPEN_FOLDER_API,
+    EDITOR_ASSETS_API,
 }
 GENERATED_ROOT = ROOT / "imgs" / "generated"
 EDITOR_JSON_ROOT = ROOT / "imgs" / "editor"
 EXPORTED_JSON_ROOT = ROOT / "imgs" / "exported"
 EDITOR_PROJECT_ROOT = ROOT / "runtime" / "fabric-editor" / "projects"
+EDITOR_ASSET_ROOT = ROOT / "runtime" / "fabric-editor" / "assets"
 VINYL_RESOURCE_ROOT = ROOT / "tools" / "fabric-editor" / "Resources" / "Vinyls"
 SHAPE_WORDS_PATH = ROOT / "tools" / "fabric-editor" / "shape-words.json"
 PREVIEW_MAX = 420
@@ -76,6 +83,7 @@ EDITOR_SETTING_KEYS = {
     "kloudyFabricOverlayLayerMode", "kloudyFabricReuseLastFontSize",
     "kloudyFabricLastFontShapeTransform", "kloudyFabricTextVinylFont",
     "kloudyFabricTextVinylCustomFont", "kloudyFabricProjectSharingAcknowledged",
+    "kloudyFabricOverlapCycle", "kloudyFabricLanguage", "kloudyFabricLanguageNoticeAcknowledged",
 }
 
 
@@ -124,6 +132,100 @@ def _record_desktop_change(marker: Path, target: Path) -> None:
     except OSError:
         # The editor save remains valid even if the desktop notification fails.
         pass
+
+
+def _asset_path(asset_id: str) -> Path:
+    if not isinstance(asset_id, str) or not re.fullmatch(r"[a-f0-9]{32}", asset_id):
+        raise ValueError("Invalid asset ID.")
+    path = (EDITOR_ASSET_ROOT / f"{asset_id}.asset.json").resolve()
+    if path.parent != EDITOR_ASSET_ROOT.resolve():
+        raise ValueError("Asset path is outside the library.")
+    return path
+
+
+def _asset_name(value: object) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 120:
+        raise ValueError("Enter an asset name between 1 and 120 characters.")
+    if any(ord(char) < 32 for char in value):
+        raise ValueError("Asset names cannot contain control characters.")
+    return value.strip()
+
+
+def _validated_asset_shapes(value: object) -> list[dict]:
+    if not isinstance(value, list) or not 1 <= len(value) <= 3000:
+        raise ValueError("An asset must contain between 1 and 3000 shapes.")
+    if len(json.dumps(value, allow_nan=False).encode("utf-8")) > EDITOR_ASSET_MAX_BYTES:
+        raise ValueError("The asset is too large.")
+    allowed = {
+        "type", "type_word", "data", "color", "mask", "score", "source_format",
+        "resource_family", "resource_index", "shape_name", "legacy_type",
+        "legacy_divisor", "legacy_offset", "editor_id", "editor_hidden",
+        "editor_locked", "editor_group_id", "editor_group_name",
+    }
+    for shape in value:
+        if not isinstance(shape, dict) or set(shape) - allowed:
+            raise ValueError("The asset contains unsupported shape fields.")
+        if type(shape.get("type")) is not int or not 0 < shape["type"] <= 0xFFFFFFFF:
+            raise ValueError("The asset contains an invalid shape type.")
+        data, color = shape.get("data"), shape.get("color")
+        if not isinstance(data, list) or not 6 <= len(data) <= 64 or any(
+            type(number) not in (int, float) or not math.isfinite(number) or abs(number) > 1e12
+            for number in data
+        ):
+            raise ValueError("The asset contains invalid transform data.")
+        if not isinstance(color, list) or len(color) != 4 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in color):
+            raise ValueError("The asset contains an invalid color.")
+        for key in ("mask", "editor_hidden", "editor_locked"):
+            if key in shape and type(shape[key]) is not bool:
+                raise ValueError("The asset contains an invalid layer flag.")
+        for key in ("editor_id", "editor_group_id", "editor_group_name", "shape_name", "source_format", "resource_family"):
+            if shape.get(key) is not None and (not isinstance(shape[key], str) or len(shape[key]) > 512):
+                raise ValueError("The asset contains invalid layer metadata.")
+        for key in ("type_word", "resource_index", "legacy_type"):
+            if shape.get(key) is not None and (type(shape[key]) is not int or not 0 <= shape[key] <= 0xFFFFFFFF):
+                raise ValueError("The asset contains invalid resource metadata.")
+        for key in ("score", "legacy_divisor"):
+            number = shape.get(key)
+            if number is not None and (type(number) not in (int, float) or not math.isfinite(number) or abs(number) > 1e12):
+                raise ValueError("The asset contains invalid numeric metadata.")
+        offset = shape.get("legacy_offset")
+        if offset is not None and (not isinstance(offset, list) or len(offset) != 2 or any(type(n) not in (int, float) or not math.isfinite(n) or abs(n) > 1e12 for n in offset)):
+            raise ValueError("The asset contains an invalid legacy offset.")
+    return value
+
+
+def _read_asset(asset_id: str) -> dict:
+    path = _asset_path(asset_id)
+    if path.stat().st_size > EDITOR_ASSET_MAX_BYTES:
+        raise ValueError("The asset is too large.")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("format") != EDITOR_ASSET_FORMAT or payload.get("id") != asset_id:
+        raise ValueError("The asset document is invalid.")
+    _asset_name(payload.get("name"))
+    _validated_asset_shapes(payload.get("shapes"))
+    if type(payload.get("revision")) is not int or payload["revision"] < 1:
+        raise ValueError("The asset revision is invalid.")
+    return payload
+
+
+def _asset_entry(payload: dict) -> dict:
+    return {
+        "id": payload["id"], "name": payload["name"], "revision": payload["revision"],
+        "layer_count": len(payload["shapes"]), "updated_utc": payload.get("updated_utc", ""),
+        "preview_url": f"{EDITOR_ASSET_PREVIEW_API}?id={payload['id']}&revision={payload['revision']}",
+    }
+
+
+def _asset_entries() -> dict:
+    entries, unavailable = [], []
+    for path in EDITOR_ASSET_ROOT.glob("*.asset.json"):
+        asset_id = path.name.removesuffix(".asset.json")
+        try:
+            entries.append(_asset_entry(_read_asset(asset_id)))
+        except (OSError, ValueError, TypeError, OverflowError) as err:
+            unavailable.append({"id": asset_id, "error": str(err)})
+    entries.sort(key=lambda entry: (entry["name"].casefold(), entry["id"]))
+    return {"entries": entries, "unavailable": unavailable}
 
 
 def _is_allowed_static_path(raw_path: str) -> bool:
@@ -900,6 +1002,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "payload": payload,
             })
             return
+        if parsed.path == EDITOR_ASSETS_API:
+            try:
+                asset_id = (parse_qs(parsed.query).get("id") or [""])[0]
+                result = {"payload": _read_asset(asset_id)} if asset_id else _asset_entries()
+            except (OSError, ValueError, TypeError, OverflowError) as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json(result)
+            return
+        if parsed.path == EDITOR_ASSET_PREVIEW_API:
+            try:
+                asset_id = (parse_qs(parsed.query).get("id") or [""])[0]
+                path = _asset_path(asset_id)
+                stat = path.stat()
+                key = (asset_id, stat.st_mtime_ns, stat.st_size)
+                with self.server.asset_preview_lock:
+                    body = self.server.asset_previews.get(key)
+                    if body is None:
+                        payload = _read_asset(asset_id)
+                        body = render_editor_asset_preview(payload["shapes"], max_size=PREVIEW_MAX)
+                        if not body:
+                            raise ValueError("Asset preview is unavailable.")
+                        self.server.asset_previews[key] = body
+                        while len(self.server.asset_previews) > 32:
+                            self.server.asset_previews.popitem(last=False)
+                    self.server.asset_previews.move_to_end(key)
+            except (OSError, ValueError, TypeError, OverflowError) as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_png(body)
+            return
         if parsed.path == JSON_PREVIEW_API:
             query = parse_qs(parsed.query)
             try:
@@ -927,6 +1060,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 {"error": "editor session authorization failed"},
                 status=403,
             )
+            return
+        if parsed.path == EDITOR_ASSETS_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if not 0 < length <= EDITOR_ASSET_MAX_BYTES:
+                    raise ValueError("Invalid asset request size.")
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                result = self.server.store_asset(data)
+            except FileExistsError as err:
+                self._send_json({"error": str(err)}, status=409)
+                return
+            except (OSError, ValueError, TypeError, OverflowError) as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({"ok": True, **result})
             return
         if parsed.path == STARTUP_HELP_API:
             _write_json_atomic(STARTUP_HELP_MARKER, {"confirmed": True})
@@ -1082,8 +1230,47 @@ class EditorServer(socketserver.ThreadingTCPServer):
         self.editor_session_token = secrets.token_urlsafe(32)
         self.autosave_lock = threading.Lock()
         self.preferences_lock = threading.Lock()
+        self.asset_lock = threading.Lock()
+        self.asset_preview_lock = threading.Lock()
+        self.asset_previews = OrderedDict()
         self.autosave_revision = None
         super().__init__(*args, **kwargs)
+
+    def store_asset(self, data: object) -> dict:
+        if not isinstance(data, dict):
+            raise ValueError("Invalid asset request.")
+        action = data.get("action")
+        with self.asset_lock:
+            if action == "save":
+                incoming = data.get("payload")
+                if not isinstance(incoming, dict) or incoming.get("format") != EDITOR_ASSET_FORMAT:
+                    raise ValueError("Choose a KFPS editor asset file.")
+                now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                payload = {
+                    "format": EDITOR_ASSET_FORMAT, "id": secrets.token_hex(16), "revision": 1,
+                    "name": _asset_name(data.get("name", incoming.get("name"))),
+                    "created_utc": now, "updated_utc": now,
+                    "shapes": _validated_asset_shapes(incoming.get("shapes")),
+                }
+                target = _asset_path(payload["id"])
+                if len(json.dumps(payload, indent=2, allow_nan=False).encode("utf-8")) + 1 > EDITOR_ASSET_MAX_BYTES:
+                    raise ValueError("The asset is too large.")
+                _write_json_atomic(target, payload)
+                return {"entry": _asset_entry(payload)}
+            if action not in {"rename", "delete"}:
+                raise ValueError("Unknown asset action.")
+            payload = _read_asset(data.get("id"))
+            if type(data.get("revision")) is not int or data["revision"] != payload["revision"]:
+                raise FileExistsError("The asset changed. Refresh the library before trying again.")
+            target = _asset_path(payload["id"])
+            if action == "delete":
+                target.unlink()
+                return {"deleted": payload["id"]}
+            payload["name"] = _asset_name(data.get("name"))
+            payload["revision"] += 1
+            payload["updated_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            _write_json_atomic(target, payload)
+            return {"entry": _asset_entry(payload)}
 
     def store_preferences(self, data: object) -> dict:
         if not isinstance(data, dict) or not data or set(data) - {"theme", "settings"}:

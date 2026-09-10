@@ -1,6 +1,7 @@
 "use strict";
 
 window.KfpsEditorPreferences = (() => {
+  const tr = (source, ...args) => window.KfpsI18n ? window.KfpsI18n.t(source, ...args) : source.replace(/\{(\d+)\}/g, (match, i) => i < args.length ? String(args[i]) : match);
   const localOnly = location.protocol === "file:";
   const keys = new Set([
     "kloudyFabricTheme", "kloudyFabricFavorites", "kloudyFabricFavoriteColors",
@@ -8,6 +9,7 @@ window.KfpsEditorPreferences = (() => {
     "kloudyFabricOverlayLayerMode", "kloudyFabricReuseLastFontSize",
     "kloudyFabricLastFontShapeTransform", "kloudyFabricTextVinylFont",
     "kloudyFabricTextVinylCustomFont", "kloudyFabricProjectSharingAcknowledged",
+    "kloudyFabricOverlapCycle", "kloudyFabricLanguage", "kloudyFabricLanguageNoticeAcknowledged",
   ]);
   const values = new Map();
   let pending = {};
@@ -54,12 +56,12 @@ window.KfpsEditorPreferences = (() => {
             signal: AbortSignal.timeout(5000),
           });
           const result = await response.json();
-          if (!response.ok || result.ok !== true) throw new Error(result.error || `HTTP ${response.status}`);
+          if (!response.ok || result.ok !== true) throw new Error(result.error || tr("HTTP {0}", response.status));
           retryDelay = 2000;
           report("");
         } catch (err) {
           pending = { ...batch, ...pending };
-          report(`Editor settings could not be saved: ${err.message || err}`);
+          report(tr("Editor settings could not be saved: {0}", err.message || err));
           schedule(retryDelay);
           retryDelay = Math.min(30000, retryDelay * 2);
           return false;
@@ -78,7 +80,7 @@ window.KfpsEditorPreferences = (() => {
     if (localOnly) return;
     try {
       const response = await fetch("/api/fabric-editor/preferences", { cache: "no-store", signal: AbortSignal.timeout(5000) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(tr("HTTP {0}", response.status));
       const result = await response.json();
       const stored = result.settings || {};
       if (typeof result.theme === "string" && !("kloudyFabricTheme" in stored)) {
@@ -95,7 +97,7 @@ window.KfpsEditorPreferences = (() => {
       if (Object.keys(pending).length) schedule();
       report("");
     } catch (err) {
-      report(`Editor settings could not be loaded: ${err.message || err}`);
+      report(tr("Editor settings could not be loaded: {0}", err.message || err));
       throw err;
     }
   }
@@ -107,7 +109,7 @@ window.KfpsEditorPreferences = (() => {
     get error() { return error; },
     getItem(key) { return keys.has(key) ? values.get(key) ?? null : browserGet(key); },
     setItem(key, value) {
-      if (!keys.has(key)) throw new Error(`Unsupported editor preference: ${key}`);
+      if (!keys.has(key)) throw new Error(tr("Unsupported editor preference: {0}", key));
       const text = String(value);
       if (values.get(key) === text) return;
       values.set(key, text);
@@ -116,7 +118,7 @@ window.KfpsEditorPreferences = (() => {
       schedule();
     },
     removeItem(key) {
-      if (!keys.has(key)) throw new Error(`Unsupported editor preference: ${key}`);
+      if (!keys.has(key)) throw new Error(tr("Unsupported editor preference: {0}", key));
       values.delete(key);
       try { localStorage.removeItem(key); } catch (_) { /* The server copy is still writable. */ }
       pending[key] = null;
@@ -127,9 +129,9 @@ window.KfpsEditorPreferences = (() => {
       catch (_) {
         const dialog = document.createElement("dialog");
         const message = document.createElement("p");
-        message.textContent = "Your editor settings could not be loaded. Retry to continue without replacing them with defaults.";
+        message.textContent = tr("Your editor settings could not be loaded. Retry to continue without replacing them with defaults.");
         const retry = document.createElement("button");
-        retry.textContent = "Retry";
+        retry.textContent = tr("Retry");
         dialog.append(message, retry);
         document.body.appendChild(dialog);
         dialog.showModal();
@@ -143,9 +145,11 @@ window.KfpsEditorPreferences = (() => {
           dialog.addEventListener("cancel", (event) => event.preventDefault());
         });
       }
+      window.KfpsI18n?.init(window.KfpsEditorPreferences);
+      window.KfpsI18n?.applyStatic(document);
       const script = document.createElement("script");
       script.src = source;
-      script.onerror = () => { document.body.textContent = "The editor could not load. Restart the editor or repair the KFPS installation."; };
+      script.onerror = () => { document.body.textContent = tr("The editor could not load. Restart the editor or repair the KFPS installation."); };
       document.body.appendChild(script);
     },
   };

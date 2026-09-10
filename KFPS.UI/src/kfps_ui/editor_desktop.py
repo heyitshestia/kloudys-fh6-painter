@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import quote
 
-from PySide6.QtCore import QFile, QIODevice, QLockFile, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QFile, QIODevice, QLockFile, QObject, QTimer, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWebChannel import QWebChannel
@@ -16,6 +16,7 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngin
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QFileDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 from shiboken6 import delete, isValid
+from .editor_localization import EditorTranslator, editor_system_language
 from .editor_launch import forward_request, instance_name, validate_request
 from .editor_update_guard import acquire_update_guard, updater_state_root
 
@@ -34,6 +35,7 @@ def load_editor_server(app_root: Path, runtime: Path):
         "EDITOR_PROJECT_CHANGE_MARKER": "project-change.json",
         "EDITOR_THEME_ROOT": "themes",
         "EDITOR_PROJECT_ROOT": "projects",
+        "EDITOR_ASSET_ROOT": "assets",
     }.items():
         setattr(module, key, runtime / filename)
     return module
@@ -99,6 +101,8 @@ class EditorDesktop(QMainWindow):
         self.app_root = app_root.resolve()
         self.runtime = runtime.resolve()
         self.runtime.mkdir(parents=True, exist_ok=True)
+        self.system_language = editor_system_language()
+        self.translator = EditorTranslator(self.app_root, self.runtime, self.system_language)
         self.instance = QLocalServer(self)
         self.instance.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
         self.instance.newConnection.connect(self._accept_connection)
@@ -123,7 +127,7 @@ class EditorDesktop(QMainWindow):
         self.close_timer.setSingleShot(True)
         self.close_timer.setInterval(15000)
         self.close_timer.timeout.connect(self._close_timed_out)
-        self.setWindowTitle("KFPS Vinyl Editor")
+        self.setWindowTitle(self.translator.tr("KFPS Vinyl Editor"))
         self.setWindowIcon(QIcon(str(self.app_root / "assets" / "kfps-logo.ico")))
         self.resize(1440, 900)
         self.setMinimumSize(900, 640)
@@ -132,9 +136,10 @@ class EditorDesktop(QMainWindow):
         self.error_panel = QWidget()
         layout = QVBoxLayout(self.error_panel)
         self.error_label = QLabel()
+        self.error_label.setTextFormat(Qt.TextFormat.PlainText)
         self.error_label.setWordWrap(True)
         layout.addWidget(self.error_label)
-        retry = QPushButton("Reopen Editor")
+        retry = QPushButton(self.translator.tr("Reopen Editor"))
         retry.clicked.connect(self.reload_editor)
         layout.addWidget(retry)
         layout.addStretch()
@@ -191,7 +196,7 @@ class EditorDesktop(QMainWindow):
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         script.setRunsOnSubFrames(False)
-        script.setSourceCode(javascript + "\nnew QWebChannel(qt.webChannelTransport, channel => { window.KfpsDesktopBridge = channel.objects.editor; });")
+        script.setSourceCode("window.KfpsEditorSystemLanguage = " + json.dumps(self.system_language) + ";\n" + javascript + "\nnew QWebChannel(qt.webChannelTransport, channel => { window.KfpsDesktopBridge = channel.objects.editor; });")
         self.page.scripts().insert(script)
         self.view = QWebEngineView(self)
         self.view.setPage(self.page)
@@ -199,7 +204,7 @@ class EditorDesktop(QMainWindow):
         self.stack.setCurrentWidget(self.view)
         self.page.loadFinished.connect(self._loaded)
         self.page.renderProcessTerminated.connect(self._renderer_stopped)
-        self.page.titleChanged.connect(lambda title: self.setWindowTitle(title or "KFPS Vinyl Editor"))
+        self.page.titleChanged.connect(lambda title: self.setWindowTitle(title or self.translator.tr("KFPS Vinyl Editor")))
         if request["mode"] == "tutorial":
             self._queued_requests.append({"mode": "tutorial", "project": ""})
         self.page.load(startup_url)
@@ -291,8 +296,28 @@ class EditorDesktop(QMainWindow):
                 result = {"ok": False, "error": "Invalid editor response"}
             callback(result)
 
+    def _message_box(self, kind, title, text, buttons=QMessageBox.StandardButton.Ok, default=QMessageBox.StandardButton.Ok):
+        box = QMessageBox(self)
+        icons = {"information": QMessageBox.Icon.Information,
+                 "question": QMessageBox.Icon.Question, "warning": QMessageBox.Icon.Warning}
+        box.setIcon(icons[kind])
+        box.setWindowTitle(self.translator.message(title))
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.setText(self.translator.message(text))
+        box.setStandardButtons(buttons)
+        box.setDefaultButton(default)
+        for flag, label in ((QMessageBox.StandardButton.Save, "Save"),
+                            (QMessageBox.StandardButton.Discard, "Discard"),
+                            (QMessageBox.StandardButton.Cancel, "Cancel"),
+                            (QMessageBox.StandardButton.Close, "Close"),
+                            (QMessageBox.StandardButton.Ok, "OK")):
+            button = box.button(flag)
+            if button is not None:
+                button.setText(self.translator.tr(label))
+        return QMessageBox.StandardButton(box.exec())
+
     def _download(self, download):
-        path, _ = QFileDialog.getSaveFileName(self, "Save Export", download.downloadFileName())
+        path, _ = QFileDialog.getSaveFileName(self, self.translator.tr("Save Export"), download.downloadFileName())
         if not path:
             download.cancel()
             return
@@ -312,7 +337,7 @@ class EditorDesktop(QMainWindow):
         self._commands.clear()
         self.ready_timer.stop()
         self.close_timer.stop()
-        self.error_label.setText(message)
+        self.error_label.setText(self.translator.message(message))
         self.stack.setCurrentWidget(self.error_panel)
 
     def reload_editor(self):
@@ -334,7 +359,7 @@ class EditorDesktop(QMainWindow):
             self.close()
             return
         if self._commands:
-            QMessageBox.information(self, "Editor is busy", "Finish or cancel the current editor operation before closing.")
+            self._message_box("information", "Editor is busy", "Finish or cancel the current editor operation before closing.")
             return
         self._closing = True
         self.close_timer.start()
@@ -345,11 +370,11 @@ class EditorDesktop(QMainWindow):
         state = result.get("value") or {}
         if not result.get("ok") or state.get("saving"):
             self._closing = False
-            QMessageBox.information(self, "Editor is busy", "Wait for the current save or open operation to finish before closing.")
+            self._message_box("information", "Editor is busy", "Wait for the current save or open operation to finish before closing.")
             return
         action = "keep-recovery"
         if state.get("dirty"):
-            choice = QMessageBox.question(self, "Save before closing?", "This project has unsaved changes.", QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+            choice = self._message_box("question", "Save before closing?", "This project has unsaved changes.", QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
             if choice == QMessageBox.StandardButton.Cancel:
                 self._closing = False
                 return
@@ -358,7 +383,7 @@ class EditorDesktop(QMainWindow):
         self.command("close", {"action": action}, self._close_prepared)
 
     def _close_timed_out(self):
-        choice = QMessageBox.warning(self, "Editor is not responding", "The editor has not responded to the close request. Keep it open to give it more time, or close anyway. Unsaved changes may be lost.", QMessageBox.StandardButton.Close | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+        choice = self._message_box("warning", "Editor is not responding", "The editor has not responded to the close request. Keep it open to give it more time, or close anyway. Unsaved changes may be lost.", QMessageBox.StandardButton.Close | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
         if choice == QMessageBox.StandardButton.Close:
             self._allow_close = True
             self.close()
@@ -374,7 +399,7 @@ class EditorDesktop(QMainWindow):
             if value.get("cancelled"):
                 return
             message = result.get("error") or value.get("error") or "The latest recovery or settings could not be written."
-            choice = QMessageBox.warning(self, "Could not finish saving", message + "\n\nClose anyway? Recent changes may be lost.", QMessageBox.StandardButton.Close | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+            choice = self._message_box("warning", "Could not finish saving", self.translator.message(message) + self.translator.tr("\n\nClose anyway? Recent changes may be lost."), QMessageBox.StandardButton.Close | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
             if choice != QMessageBox.StandardButton.Close:
                 return
         self._allow_close = True

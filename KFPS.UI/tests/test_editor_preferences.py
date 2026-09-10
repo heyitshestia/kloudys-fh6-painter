@@ -10,6 +10,22 @@ from test_fabric_editor_server import RunningEditorServer, fabric_server, post_j
 
 
 class EditorPreferencesTests(unittest.TestCase):
+    def test_language_and_notice_acknowledgment_survive_restart(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "preferences.json"
+            with patch.object(fabric_server, "EDITOR_PREFS_MARKER", marker):
+                with RunningEditorServer() as server:
+                    post_json(server, "/api/fabric-editor/preferences", {"settings": {
+                        "kloudyFabricFavorites": "[101,102]", "kloudyFabricLanguage": "ko"}})
+                    post_json(server, "/api/fabric-editor/preferences", {"settings": {
+                        "kloudyFabricLanguageNoticeAcknowledged": "1"}})
+                with RunningEditorServer() as server:
+                    with urllib.request.urlopen(f"{server}/api/fabric-editor/preferences") as response:
+                        settings = json.load(response)["settings"]
+                self.assertEqual(settings, {"kloudyFabricFavorites": "[101,102]",
+                                           "kloudyFabricLanguage": "ko",
+                                           "kloudyFabricLanguageNoticeAcknowledged": "1"})
+
     def test_matte_themes_and_custom_base_survive_restart(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

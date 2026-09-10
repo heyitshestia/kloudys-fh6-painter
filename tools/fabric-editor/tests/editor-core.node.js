@@ -13,6 +13,9 @@ const {
 } = globalThis.KfpsEditorCore;
 
 async function run() {
+  const parse = globalThis.KfpsEditorCore.parseNumericExpression;
+  for (const [expression, expected] of [["12 + 3 * 4", 24], ["(12 + 3) * 4", 60], ["-2.5 / .5", -5], ["50%", .5], ["1e2 + -4", 96], ["-(2+3)", -5]]) assert.equal(parse(expression), expected);
+  for (const expression of ["", "1/0", "NaN", "Infinity", "2**3", "alert(1)", "2foo", "1e20", "()", "1+", "(".repeat(20) + "1" + ")".repeat(20), "1+".repeat(200) + "1"]) assert.throws(() => parse(expression));
   const source = [{ vinyl: true }, { vinyl: false }, { vinyl: true }];
   const registry = new OrderedObjectRegistry((item) => item.vinyl);
   assert.deepEqual(registry.read(source), [source[0], source[2]]);

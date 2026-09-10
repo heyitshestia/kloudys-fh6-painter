@@ -146,7 +146,69 @@
     ));
   }
 
+  function parseNumericExpression(value) {
+    const text = String(value ?? "").trim();
+    if (!text || text.length > 256) throw new Error("Enter a number or arithmetic expression.");
+    let at = 0, tokens = 0;
+    const space = () => { while (/\s/.test(text[at] || "") && at < text.length) at++; };
+    const finite = number => {
+      if (!Number.isFinite(number) || Math.abs(number) > 1e9) throw new Error("The result must be finite and between -1,000,000,000 and 1,000,000,000.");
+      return number;
+    };
+    function primary(depth) {
+      space();
+      if (++tokens > 128 || depth > 16) throw new Error("The expression is too complex.");
+      let number;
+      if (text[at] === "+" || text[at] === "-") {
+        const negative = text[at++] === "-";
+        return finite((negative ? -1 : 1) * primary(depth + 1));
+      }
+      if (text[at] === "(") {
+        at++;
+        number = sum(depth + 1);
+        space();
+        if (text[at++] !== ")") throw new Error("Close the parentheses.");
+      } else {
+        const match = /^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?/i.exec(text.slice(at));
+        if (!match) throw new Error("Use numbers, parentheses and + - * / operators.");
+        at += match[0].length;
+        number = finite(Number(match[0]));
+      }
+      space();
+      if (text[at] === "%") { at++; number /= 100; }
+      return finite(number);
+    }
+    function product(depth) {
+      let number = primary(depth);
+      space();
+      while (text[at] === "*" || text[at] === "/") {
+        const operator = text[at++];
+        const right = primary(depth);
+        if (operator === "/" && right === 0) throw new Error("Division by zero is not allowed.");
+        number = finite(operator === "*" ? number * right : number / right);
+        space();
+      }
+      return number;
+    }
+    function sum(depth) {
+      let number = product(depth);
+      space();
+      while (text[at] === "+" || text[at] === "-") {
+        const operator = text[at++];
+        const right = product(depth);
+        number = finite(operator === "+" ? number + right : number - right);
+        space();
+      }
+      return number;
+    }
+    const result = sum(0);
+    space();
+    if (at !== text.length) throw new Error("The expression contains an unsupported value.");
+    return result;
+  }
+
   global.KfpsEditorCore = Object.freeze({
+    parseNumericExpression,
     alignmentDelta,
     distributionDeltas,
     OrderedObjectRegistry,
