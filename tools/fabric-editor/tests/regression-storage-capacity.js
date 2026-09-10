@@ -2,6 +2,7 @@ async (page, options) => {
   page.setDefaultTimeout(180000);
   const cdp = await page.context().newCDPSession(page);
   const checks = [];
+  const referenceFile = options.referenceFile || "reference-49.png";
   await page.evaluate(async () => {
     if (typeof clearVinylObjects !== "function" || typeof resetHistory !== "function" || typeof refreshLayers !== "function") throw new Error("Storage test cleanup helpers unavailable");
     await clearAutosave();
@@ -22,14 +23,16 @@ async (page, options) => {
       return new Blob([JSON.stringify(editableProjectPayload("Capacity boundary"))]).size;
     };
   });
-  await page.locator("#overlayInput").setInputFiles(`${options.fixtures}/reference-49.png`);
-  await page.waitForFunction(() => overlaySourceState?.fileName === "reference-49.png");
+  const { root } = await cdp.send("DOM.getDocument");
+  const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "#overlayInput" });
+  await cdp.send("DOM.setFileInputFiles", { nodeId, files: [`${options.fixtures}/${referenceFile}`] });
+  await page.waitForFunction(name => overlaySourceState?.fileName === name, referenceFile);
   const saved = await page.evaluate(async () => {
-    const bytes = capacitySetSize(99.5 * 1024 * 1024);
+    const bytes = capacitySetSize(EDITOR_PROJECT_MAX_BYTES - 0.5 * 1024 * 1024);
     currentProjectName = "Capacity boundary";
     const before = performance.now();
     await saveProject();
-    if (documentDirty) throw new Error("Near-100 MiB save failed");
+    if (documentDirty) throw new Error("Near-limit save failed");
     const saveMs = performance.now() - before;
     const expected = await capacityDigest({ shapes: snapshotShapes(), reference: overlaySourceState.dataUrl });
     const response = await fetch(`${PROJECT_FILE_API}?id=Capacity%20boundary.fabric-project.json`);
@@ -41,7 +44,7 @@ async (page, options) => {
     nudgeSelected(1, 0); flushPendingNudgeHistory();
     const recoveryStart = performance.now();
     await flushPendingAutosave();
-    if (!autosaveStatus.serverOk || autosaveStatus.browserOk) throw new Error("Near-limit recovery did not use app-folder storage");
+    if (!autosaveStatus.serverOk || !autosaveStatus.browserOk) throw new Error("Near-limit recovery did not acknowledge both storage copies");
     const recoveryMs = performance.now() - recoveryStart;
     const recovered = await readAutosavePayload();
     const recoveryHash = await capacityDigest({ shapes: snapshotShapes(), reference: overlaySourceState.dataUrl });
@@ -50,7 +53,7 @@ async (page, options) => {
   });
   checks.push({ nearLimit: saved });
   const rejected = await page.evaluate(async saved => {
-    const bytes = capacitySetSize(100.5 * 1024 * 1024);
+    const bytes = capacitySetSize(EDITOR_PROJECT_MAX_BYTES + 0.5 * 1024 * 1024);
     await saveProject();
     if (!documentDirty) throw new Error("Rejected save marked document clean");
     await flushPendingAutosave();
@@ -64,17 +67,20 @@ async (page, options) => {
     return { bytes, priorProjectPreserved: true, priorRecoveryPreserved: true };
   }, saved);
   checks.push({ overLimit: rejected });
-  const retry = await page.evaluate(async () => {
-    const originalFetch = window.fetch;
+  await page.evaluate(() => flushPendingAutosave());
+  const worker = page.workers().find(item => item.url().includes("editor-persistence-worker"));
+  await worker.evaluate(() => {
+    self.originalCapacityFetch = fetch;
     let failures = 0;
-    window.fetch = (...args) => {
-      if (args[0] === EDITOR_AUTOSAVE_API && args[1]?.method === "POST" && failures++ === 0) return Promise.resolve(new Response("unavailable", { status: 503 }));
-      return originalFetch(...args);
+    self.fetch = (...args) => {
+      if (args[0] === "/api/fabric-editor/autosave" && args[1]?.method === "POST" && failures++ === 0) return Promise.resolve(new Response("unavailable", { status: 503 }));
+      return originalCapacityFetch(...args);
     };
-    try {
+  });
+  const retry = await page.evaluate(async () => {
       selectObjects(vinylObjects().slice(0, 1), "capacity retry");
       nudgeSelected(1, 0); flushPendingNudgeHistory(); await flushPendingAutosave();
-      if (autosaveStatus.state !== "failed" || !documentDirty) throw new Error("Large recovery failure was hidden");
+      if (autosaveStatus.serverOk || !autosaveStatus.browserOk || !documentDirty) throw new Error("Large recovery did not identify the browser-only fallback");
       const start = performance.now();
       while (!autosaveStatus.serverOk && performance.now() - start < 25000) await new Promise(resolve => setTimeout(resolve, 200));
       if (!autosaveStatus.serverOk) throw new Error("Large recovery automatic retry failed");
@@ -82,8 +88,8 @@ async (page, options) => {
       const hash = await capacityDigest({ shapes: recovered.shapes, reference: recovered.editor_source_overlay.data_url });
       if (hash !== await capacityDigest({ shapes: snapshotShapes(), reference: overlaySourceState.dataUrl })) throw new Error("Retried recovery lost latest edit");
       return { automaticRetry: true, hash };
-    } finally { window.fetch = originalFetch; }
   });
+  await worker.evaluate(() => { self.fetch = originalCapacityFetch; delete self.originalCapacityFetch; });
   checks.push(retry);
   await page.evaluate(() => { documentDirty = false; });
   await page.reload();
@@ -96,7 +102,7 @@ async (page, options) => {
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(data)))), byte => byte.toString(16).padStart(2, "0")).join("");
     return { hash, count: vinylObjects().length, pixels: overlaySampler.width * overlaySampler.height };
   });
-  if (restart.hash !== retry.hash || restart.count !== 3000 || restart.pixels !== 24000000) throw new Error("Large recovery after page restart lost artwork or pixels");
+  if (restart.hash !== retry.hash || restart.count !== 3000 || restart.pixels !== (options.expectedPixels || 24000000)) throw new Error("Large recovery after page restart lost artwork or pixels");
   checks.push({ restart });
   await page.screenshot({ path: "near-limit-recovered.png" });
   await cdp.send("HeapProfiler.collectGarbage");

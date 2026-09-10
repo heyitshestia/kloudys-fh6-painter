@@ -28,6 +28,8 @@ async (page) => {
       data: [0, 0, 1, 1, 0],
     };
     await loadPayload({ shapes: sentinelShapes });
+    if (before !== 3000 || afterDuplicate !== 3000 || vinylObjects().length !== 3000
+      || !overLimitError.includes("3000") || remainingLayerCapacity() !== 0) throw new Error("Layer capacity contract failed");
     return {
       before,
       afterDuplicate,

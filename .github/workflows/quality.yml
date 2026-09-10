@@ -73,13 +73,14 @@ jobs:
 
       - name: Check and test the Fabric editor boundary
         run: |
-          node --check tools/fabric-editor/editor-core.js
-          node --check tools/fabric-editor/editor-fabric-adapter.js
-          node --check tools/fabric-editor/editor.js
-          node --check tools/fabric-editor/editor-preferences.js
-          node tools/fabric-editor/tests/editor-core.node.js
-          node tools/fabric-editor/tests/editor-shell.node.js
-          node tools/fabric-editor/tests/editor-preferences.node.js
+          foreach ($module in @('editor-core', 'editor-pixel-core', 'editor-pixel-worker', 'editor-persistence', 'editor-persistence-worker', 'editor-fabric-adapter', 'editor', 'editor-preferences')) {
+            node --check "tools/fabric-editor/$module.js"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          foreach ($suite in @('editor-core', 'editor-pixel-core', 'editor-persistence', 'editor-persistence-worker', 'editor-shell', 'editor-preferences')) {
+            node "tools/fabric-editor/tests/$suite.node.js"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           python tools/fabric-editor/locales/manage.py check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tools/fabric-editor/tests/editor-i18n.node.js

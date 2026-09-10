@@ -53,8 +53,9 @@ const SHORTCUTS_KEY = "kloudyFabricShortcuts";
 const OVERLAY_LAYER_MODE_KEY = "kloudyFabricOverlayLayerMode";
 const AUTOSAVE_KEY = "kloudyFabricAutosave";
 const AUTOSAVE_CLEAR_KEY = `${AUTOSAVE_KEY}:clearedRevision`;
-const EDITOR_PROJECT_MAX_BYTES = 100 * 1024 * 1024;
-const EDITOR_REFERENCE_MAX_BYTES = 50 * 1024 * 1024;
+const EDITOR_PROJECT_MAX_BYTES = 150 * 1024 * 1024;
+const EDITOR_REFERENCE_MAX_BYTES = 100 * 1024 * 1024;
+const editorPersistence = KfpsEditorPersistence.create({ headers: EDITOR_MUTATION_HEADERS, maxBytes: EDITOR_PROJECT_MAX_BYTES });
 const AUTOSAVE_IDLE_MS = 500;
 const AUTOSAVE_MAX_WAIT_MS = 2000;
 const TEXT_VINYL_FONT_KEY = "kloudyFabricTextVinylFont";
@@ -283,6 +284,8 @@ let savedHistoryState = null;
 let documentGeneration = 0;
 let documentDirty = false;
 let overlayRevision = 0;
+let overlayLoadGeneration = 0;
+let overlayRefreshGeneration = 0;
 let savedOverlayRevision = 0;
 let overlayImage = null;
 let history = [];
@@ -376,6 +379,10 @@ let queuedAutosaveOperation = null;
 let autosaveWritePromise = null;
 let autosaveStatus = { state: "idle", revision: 0 };
 let recoveryAutosavePayload = null;
+let recoveryRestoreDepth = 0;
+let unavailableSourceOverlayState = null;
+let startupRecoveryHandled = false;
+let recoveryReadWarning = "";
 let canvasResizeObserver = null;
 let lastCanvasSize = { width: 0, height: 0 };
 let jsonBrowserState = {
@@ -400,6 +407,9 @@ let confirmationResolver = null;
 let dockResizeState = null;
 let toastTimer = null;
 let pixelArtSourceFile = null;
+let pixelArtAnalysisCancel = null;
+let pixelArtGenerationRunning = false;
+let textVinylGenerationRunning = false;
 let editorTourState = null;
 const TEXT_VINYL_SOURCE_FLAG = "kfps_text_vinyl";
 
@@ -425,6 +435,7 @@ function setHidden(id, hidden) {
 }
 
 function normalizeShortcutKey(key) {
+  if (key === " ") return "Space";
   const raw = String(key || "").trim();
   if (!raw) return "";
   const lower = raw.toLowerCase();
@@ -466,6 +477,7 @@ function normalizeShortcutCombo(value) {
 }
 
 function eventToShortcutCombo(event) {
+  if (event.isComposing || event.keyCode === 229 || ["Process", "Dead", "Unidentified"].includes(event.key)) return "";
   const key = normalizeShortcutKey(event.key);
   if (!key || ["Control", "Shift", "Alt", "Meta"].includes(key)) return "";
   const parts = [];
@@ -519,6 +531,11 @@ function resetShortcuts() {
 function setShortcut(action, combo) {
   const normalized = normalizeShortcutCombo(combo);
   if (!normalized || !DEFAULT_SHORTCUTS[action]) return;
+  const conflict = Object.keys(DEFAULT_SHORTCUTS).find(other => other !== action && shortcutFor(other) === normalized);
+  if (conflict) {
+    setStatus(KfpsI18n.t("{0} is already assigned to {1}. Choose another shortcut.", normalized, SHORTCUT_LABELS[conflict] || conflict));
+    return;
+  }
   shortcuts[action] = normalized;
   saveShortcuts();
   renderShortcutEditor();
@@ -709,8 +726,10 @@ function applyEditorTheme(theme, options = {}) {
     document.documentElement.dataset.editorTheme = "custom";
     applyCustomThemeValues(entry.values || {});
   }
-  if (!options.preview) editorSettings.setItem("kloudyFabricTheme", safeTheme);
-  if (options.persist !== false) saveEditorThemePreference(safeTheme);
+  if (!options.preview && options.persist !== false) {
+    editorSettings.setItem("kloudyFabricTheme", safeTheme);
+    saveEditorThemePreference(safeTheme);
+  }
   populateEditorThemeSelect(safeTheme);
   if (canvas) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--fabric-canvas-bg").trim() || "#fffefe";
@@ -2009,7 +2028,7 @@ async function startBlankCanvas() {
   refreshLayers();
   updateSelectionPanel();
   refreshExportValidation();
-  setStatus(KfpsI18n.t("Blank canvas ready. Open Shapes, Text, or Pixel to begin."));
+  clearBusy(KfpsI18n.t("Blank canvas ready. Open Shapes, Text, or Pixel to begin."));
 }
 
 function nextFrame() {
@@ -3490,9 +3509,9 @@ function legacyToFh6Shape(shape, legacyOffset = { x: 0, y: 0 }) {
 }
 
 function normalizeInputShape(shape, index, legacyOffset = { x: 0, y: 0 }) {
+  if (!shape || typeof shape !== "object") return null;
   const color = normalizeColor(shape.color);
   if (index === 0 && Number(shape.type) === 1 && color[3] <= 0) return null;
-  if (color[3] <= 0) return null;
   const type = Number(shape.type);
   if (LEGACY_RECTANGLE_TYPES.has(type) || LEGACY_ELLIPSE_TYPES.has(type)) {
     return legacyToFh6Shape(shape, legacyOffset);
@@ -4402,6 +4421,8 @@ function applyHistoryShapeToObject(object, shape) {
 
 async function restoreEditorState(snapshot) {
   cancelEditorTransform();
+  const generation = documentGeneration;
+  const historyState = currentHistoryState();
   const state = Array.isArray(snapshot)
     ? { shapes: snapshot, editor_guides: null, editor_collapsed_groups: [] }
     : (snapshot && typeof snapshot === "object" ? snapshot : {});
@@ -4409,9 +4430,10 @@ async function restoreEditorState(snapshot) {
   const currentObjects = vinylObjects().slice();
   const currentById = new Map(currentObjects.map((object) => [String(object.kloudy?.editor_id || ""), object]));
   const selectedIds = new Set(selectedVinylObjects().map((object) => String(object.kloudy?.editor_id || "")));
-  if (isActiveSelectionObject(canvas.getActiveObject())) canvas.discardActiveObject();
   const reused = new Set();
-  historyLocked = true;
+  const created = [];
+  let buildError = null;
+  let committed = false;
   try {
     const targetObjects = await KfpsEditorCore.mapWithConcurrency(
       targetShapes,
@@ -4420,20 +4442,34 @@ async function restoreEditorState(snapshot) {
         const existing = currentById.get(String(shape.editor_id || ""));
         if (existing && objectMatchesHistoryShape(existing, shape)) {
           reused.add(existing);
-          if (existing.__kloudyHistoryShape !== shape) applyHistoryShapeToObject(existing, shape);
           return existing;
         }
-        const object = await makeFabricObject(shape);
-        object.__kloudyHistoryShape = shape;
-        return object;
+        try {
+          const object = await makeFabricObject(shape);
+          object.__kloudyHistoryShape = shape;
+          created.push(object);
+          return object;
+        } catch (error) {
+          buildError ||= error;
+          return null;
+        }
       },
     );
-    currentObjects.forEach((object) => {
-      if (!reused.has(object)) discardFabricObject(object);
+    if (buildError) throw buildError;
+    await prewarmHybridMeshesForObjects(created);
+    flushPendingNudgeHistory();
+    if (generation !== documentGeneration || historyState !== currentHistoryState()) return false;
+    // Prepare resources and install additions before changing or releasing any
+    // live objects. A failed build must not partially apply an undo.
+    historyLocked = true;
+    created.forEach((object) => canvas.add(object));
+    if (isActiveSelectionObject(canvas.getActiveObject())) canvas.discardActiveObject();
+    targetObjects.forEach((object, index) => {
+      const shape = targetShapes[index];
+      if (reused.has(object) && object.__kloudyHistoryShape !== shape) applyHistoryShapeToObject(object, shape);
     });
-    targetObjects.forEach((object) => {
-      if (object.canvas !== canvas) canvas.add(object);
-    });
+    currentObjects.forEach((object) => { if (!reused.has(object)) discardFabricObject(object); });
+    committed = true;
     setVinylStackOrder(targetObjects);
     applyCollapsedLayerGroups(state.editor_collapsed_groups || []);
     applySavedGuideState(state.editor_guides || null);
@@ -4446,17 +4482,22 @@ async function restoreEditorState(snapshot) {
     invalidateVinylObjectRegistry();
     refreshLayers();
     syncCanvasObjectCoords(restoredSelection);
-    await prewarmHybridMeshesForObjects(targetObjects);
     canvas.requestRenderAll();
     updateSelectionPanel();
     writeAutosavePayload(autosavePayloadFromState({ ...state, shapes: targetShapes }));
+    return true;
   } finally {
+    if (!committed) created.forEach(discardFabricObject);
     historyLocked = false;
   }
 }
 
-function resetHistory() {
-  documentGeneration += 1;
+function resetHistory({ preserveGeneration = false } = {}) {
+  if (!preserveGeneration) {
+    documentGeneration += 1;
+    recoveryRestoreDepth = 0;
+  }
+  pixelArtAnalysisCancel?.();
   if (nudgeHistoryTimer) clearTimeout(nudgeHistoryTimer);
   nudgeHistoryTimer = null;
   nudgeHistoryPending = false;
@@ -4476,6 +4517,10 @@ function autosavePayloadFromState(state) {
     format: "kloudy_fabric_editor_autosave_v1",
     name: cleanProjectBaseName(loadedName, "autosave"),
     saved_at: new Date().toISOString(),
+    editor_session: {
+      project_name: currentProjectName,
+      saved: !nudgeHistoryPending && state === savedHistoryState && savedOverlayRevision === overlayRevision,
+    },
     shapes: Array.isArray(state?.shapes) ? state.shapes : [],
     editor_guides: state?.editor_guides || savedGuideState(),
     editor_collapsed_groups: Array.isArray(state?.editor_collapsed_groups) ? state.editor_collapsed_groups : collapsedLayerGroupIds(),
@@ -4517,40 +4562,21 @@ function drainAutosaveQueue() {
       queuedAutosaveOperation = null;
       if (operation.recovery_revision !== autosaveRevision) continue;
       const clearing = operation.action === "clear";
-      let serialized;
       let browserOk = clearing;
       let serverOk = false;
       let retryable = true;
       let error = "";
       try {
-        serialized = JSON.stringify(operation);
-        if (new Blob([serialized]).size > EDITOR_PROJECT_MAX_BYTES) {
-          retryable = false;
-          throw new Error(KfpsI18n.t("Recovery exceeds the {0} MiB project limit. Use a smaller reference image.", EDITOR_PROJECT_MAX_BYTES / (1024 * 1024)));
-        }
-        if (!clearing) {
-          try {
-            localStorage.setItem(AUTOSAVE_KEY, serialized);
-            browserOk = true;
-          } catch (err) {
-            console.warn(KfpsI18n.t("Browser autosave skipped."), err);
-          }
-        }
-        const response = await fetch(EDITOR_AUTOSAVE_API, {
-          method: "POST",
-          headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
-          body: serialized,
-          signal: AbortSignal.timeout(10000),
-        });
-        if (!response.ok) throw new Error(KfpsI18n.t("KFPS recovery storage returned HTTP {0}.", response.status));
-        const result = await response.json();
-        if (result.ok !== true || result.applied === false) {
-          retryable = false;
-          throw new Error(KfpsI18n.t("A newer recovery revision is already stored."));
-        }
-        serverOk = true;
+        const result = await editorPersistence.request("recovery", { payload: operation });
+        browserOk = result.browserOk;
+        serverOk = result.serverOk;
+        retryable = result.retryable;
+        error = KfpsI18n.error(result.error || "");
       } catch (err) {
-        error = err.message || String(err);
+        if (err.code === "recovery_too_large") {
+          retryable = false;
+          error = KfpsI18n.t("Recovery exceeds the {0} MiB project limit. Use a smaller reference image.", EDITOR_PROJECT_MAX_BYTES / (1024 * 1024));
+        } else error = KfpsI18n.error(err.message || String(err));
         console.warn(KfpsI18n.t("App-folder autosave skipped."), err);
       }
       if (!clearing) reportAutosaveResult(operation, browserOk, serverOk, error);
@@ -4578,16 +4604,37 @@ function flushPendingAutosave() {
   autosaveWriteTimer = null;
   autosavePendingSince = null;
   if (pendingAutosavePayload) {
-    if (autosaveWritePromise && flushPendingAutosaveToBrowser()) {
-      reportAutosaveResult(pendingAutosavePayload, true, false, "");
-    }
     queuedAutosaveOperation = pendingAutosavePayload;
     pendingAutosavePayload = null;
   }
+  if (autosaveWritePromise && queuedAutosaveOperation) backupQueuedAutosave(queuedAutosaveOperation);
   return drainAutosaveQueue();
 }
 
+let browserBackupPromise = null;
+let queuedBrowserBackup = null;
+function backupQueuedAutosave(operation) {
+  queuedBrowserBackup = operation;
+  if (browserBackupPromise) return browserBackupPromise;
+  browserBackupPromise = (async () => {
+    while (queuedBrowserBackup) {
+      const payload = queuedBrowserBackup;
+      queuedBrowserBackup = null;
+      try {
+        const result = await editorPersistence.request("browserRecovery", { payload });
+        if (payload.recovery_revision === autosaveRevision && payload.action !== "clear" && result.browserOk) {
+          reportAutosaveResult(payload, true, autosaveStatus.serverOk === true, autosaveStatus.error || "");
+        }
+      } catch (_err) {
+        // The ordered app-folder writer reports failure and retries independently.
+      }
+    }
+  })().finally(() => { browserBackupPromise = null; });
+  return browserBackupPromise;
+}
+
 function writeAutosavePayload(payload) {
+  if (recoveryRestoreDepth) return false;
   if (!payload || !Array.isArray(payload.shapes)) return false;
   const revision = nextAutosaveRevision();
   pendingAutosavePayload = { ...payload, recovery_revision: revision };
@@ -4603,20 +4650,14 @@ function writeAutosavePayload(payload) {
 }
 
 function flushPendingAutosaveToBrowser() {
-  const payload = pendingAutosavePayload || queuedAutosaveOperation;
-  if (!payload || payload.action === "clear" || payload.recovery_revision !== autosaveRevision) return false;
-  try {
-    const serialized = JSON.stringify(payload);
-    if (new Blob([serialized]).size > EDITOR_PROJECT_MAX_BYTES) return false;
-    localStorage.setItem(AUTOSAVE_KEY, serialized);
-    return true;
-  } catch (err) {
-    console.warn(KfpsI18n.t("Final browser autosave skipped."), err);
-    return false;
-  }
+  // Native close awaits this writer. Browser unload cannot promise a last-second
+  // save; frequent acknowledged checkpoints provide the recoverable boundary.
+  void flushPendingAutosave();
+  return false;
 }
 
 function clearAutosave() {
+  recoveryAutosavePayload = null;
   const revision = nextAutosaveRevision();
   pendingAutosavePayload = null;
   autosavePendingSince = null;
@@ -4635,6 +4676,7 @@ function clearAutosave() {
   }
   autosaveStatus = { state: "cleared", revision };
   queuedAutosaveOperation = { action: "clear", shapes: [], recovery_revision: revision };
+  if (autosaveWritePromise) backupQueuedAutosave(queuedAutosaveOperation);
   return drainAutosaveQueue();
 }
 
@@ -4667,7 +4709,7 @@ function pushHistory(reason = "change", options = {}) {
   const autosaveOk = writeAutosavePayload(autosavePayloadFromState(snapshot));
   updateDocumentState();
   renderHistoryList();
-  if (!options.validationScheduled) refreshExportValidation();
+  if (!options.validationScheduled) scheduleExportValidation();
   setStatus(KfpsI18n.t("Changed: {0}.{1}", humanizeHistoryReason(reason), autosaveOk ? KfpsI18n.t(" Recovery pending.") : KfpsI18n.t(" Recovery could not be queued.")));
 }
 
@@ -4738,10 +4780,15 @@ function currentHistoryState() {
   return historyIndex >= 0 ? history[historyIndex] : null;
 }
 
+function hasEditableWorkspace() {
+  return Boolean(canvas && (vinylObjects().length || overlayImage || unavailableSourceOverlayState
+    || guideState.guides.length || currentProjectName));
+}
+
 function updateDocumentState() {
-  const hasLayers = Boolean(canvas && vinylObjects().length);
+  const hasWork = hasEditableWorkspace();
   const current = currentHistoryState();
-  documentDirty = hasLayers && (
+  documentDirty = hasWork && (
     !currentProjectName
     || !savedHistoryState
     || current !== savedHistoryState
@@ -4755,8 +4802,8 @@ function updateDocumentState() {
   const chip = $("projectDirtyChip");
   if (chip) {
     chip.classList.toggle("dirty", documentDirty);
-    chip.classList.toggle("saved", hasLayers && !documentDirty);
-    chip.textContent = !hasLayers ? KfpsI18n.t("Blank canvas") : (documentDirty ? KfpsI18n.t("Unsaved changes") : KfpsI18n.t("Project saved"));
+    chip.classList.toggle("saved", hasWork && !documentDirty);
+    chip.textContent = !hasWork ? KfpsI18n.t("Blank canvas") : (documentDirty ? KfpsI18n.t("Unsaved changes") : KfpsI18n.t("Project saved"));
   }
   document.title = KfpsI18n.t("{0}{1} - KFPS Vinyl Editor", documentDirty ? "* " : "", title);
 }
@@ -4834,9 +4881,9 @@ function jumpToHistory(index) {
     flushPendingNudgeHistory();
     const target = Math.max(Math.max(0, protectedHistoryIndex), Math.min(history.length - 1, Number(index)));
     if (!Number.isInteger(target) || target === historyIndex) return;
+    if (!await restoreEditorState(history[target])) return;
     historyIndex = target;
     lastHistoryReason = "";
-    await restoreEditorState(history[historyIndex]);
     updateDocumentState();
     renderHistoryList();
     setStatus(KfpsI18n.t("Returned to {0}.", humanizeHistoryReason(history[historyIndex]?.history_reason || "change")));
@@ -4845,7 +4892,7 @@ function jumpToHistory(index) {
 
 function queueEditorMutation(operation) {
   return new Promise((resolve, reject) => {
-    editorMutationQueue.push({ operation, resolve, reject });
+    editorMutationQueue.push({ operation, resolve, reject, generation: documentGeneration });
     drainEditorMutationQueue();
   });
 }
@@ -4857,7 +4904,7 @@ async function drainEditorMutationQueue() {
     while (editorMutationQueue.length) {
       const task = editorMutationQueue.shift();
       try {
-        task.resolve(await task.operation());
+        task.resolve(task.generation === documentGeneration ? await task.operation() : false);
       } catch (error) {
         task.reject(error);
       }
@@ -4888,7 +4935,7 @@ async function undoNow() {
   flushPendingNudgeHistory();
   const interrupted = cancelEditorTransform();
   if (interrupted?.actionPerformed && currentHistoryState()) {
-    await restoreEditorState(currentHistoryState());
+    if (!await restoreEditorState(currentHistoryState())) return;
     updateDocumentState();
     setStatus(KfpsI18n.t("Current drag cancelled."));
     return;
@@ -4899,8 +4946,9 @@ async function undoNow() {
     return;
   }
   lastHistoryReason = "";
-  historyIndex--;
-  await restoreEditorState(history[historyIndex]);
+  const target = historyIndex - 1;
+  if (!await restoreEditorState(history[target])) return;
+  historyIndex = target;
   updateDocumentState();
   renderHistoryList();
   setStatus(KfpsI18n.t("Undo."));
@@ -4914,13 +4962,14 @@ async function redoNow() {
   flushPendingNudgeHistory();
   const interrupted = cancelEditorTransform();
   if (interrupted?.actionPerformed && currentHistoryState()) {
-    await restoreEditorState(currentHistoryState());
+    if (!await restoreEditorState(currentHistoryState())) return;
     updateDocumentState();
   }
   if (historyIndex >= history.length - 1) return;
   lastHistoryReason = "";
-  historyIndex++;
-  await restoreEditorState(history[historyIndex]);
+  const target = historyIndex + 1;
+  if (!await restoreEditorState(history[target])) return;
+  historyIndex = target;
   updateDocumentState();
   renderHistoryList();
   setStatus(KfpsI18n.t("Redo."));
@@ -5860,6 +5909,7 @@ function clearGuides() {
 }
 
 function syncGuideStateFromUi() {
+  ensureHistoryBaseline();
   guideState.gridEnabled = Boolean($("gridEnabled")?.checked);
   guideState.gridSize = clampGuideSize($("gridSize")?.value);
   guideState.gridOpacity = Math.max(5, Math.min(65, Number($("gridOpacity")?.value) || 20));
@@ -5872,7 +5922,7 @@ function syncGuideStateFromUi() {
   guideState.snapGuideAnchor = $("snapGuideAnchor")?.checked !== false;
   guideState.snapGuideEnd = Boolean($("snapGuideEnd")?.checked);
   renderGuideObjects();
-  saveGuideAutosave();
+  pushHistory("guide settings", { changedObjects: [] });
 }
 
 function applyGuideStateToUi() {
@@ -6965,21 +7015,11 @@ function fitSelectedView() {
 }
 
 async function loadJsonFile(file) {
+  const generation = beginDocumentLoad();
   setBusy(KfpsI18n.t("Loading JSON: {0}", file.name));
   await nextFrame();
-  const text = await file.text();
-  const payload = JSON.parse(text);
-  const previousName = loadedName;
-  const previousProjectName = currentProjectName;
-  loadedName = cleanProjectBaseName(file.name, "vinyl");
-  currentProjectName = null;
-  try {
-    await loadPayload(payload);
-  } catch (err) {
-    loadedName = previousName;
-    currentProjectName = previousProjectName;
-    throw err;
-  }
+  const payload = await editorPersistence.request("parseFile", { file });
+  return loadPayload(payload, { generation, name: cleanProjectBaseName(file.name, "vinyl"), projectName: null });
 }
 
 function formatBrowserDate(mtime) {
@@ -7230,21 +7270,15 @@ async function importSelectedBrowserJson() {
   }
   setJsonBrowserStatus(KfpsI18n.t("Loading {0}...", entry.name));
   setBusy(KfpsI18n.t("Loading JSON: {0}", entry.name));
+  const generation = beginDocumentLoad();
   await nextFrame();
-  const previousName = loadedName;
-  const previousProjectName = currentProjectName;
-  loadedName = cleanProjectBaseName(entry.name, "vinyl");
-  currentProjectName = null;
   try {
-    const response = await fetch(`${JSON_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
-    await loadPayload(data.payload);
+    const data = await readEditorDocument(`${JSON_FILE_API}?id=${encodeURIComponent(entry.id)}`);
+    if (!await loadPayload(data.payload, { generation, name: cleanProjectBaseName(entry.name, "vinyl"), projectName: null })) return;
     $("jsonBrowserDialog")?.close();
     setStatus(KfpsI18n.t("Imported {0} from {1}.", entry.name, jsonBrowserSourceFolder()));
   } catch (err) {
-    loadedName = previousName;
-    currentProjectName = previousProjectName;
+    if (generation !== documentGeneration) return;
     showError(KfpsI18n.t("JSON browser import failed"), err);
     setJsonBrowserStatus(err.message || String(err));
   }
@@ -7364,10 +7398,9 @@ async function loadSelectedProject() {
   }
   setProjectBrowserStatus(KfpsI18n.t("Loading {0}...", entry.title || entry.name));
   try {
-    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(entry.id)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
-    await loadProjectPayload(data.payload, entry.title || entry.name);
+    const generation = beginDocumentLoad();
+    const data = await readEditorDocument(`${PROJECT_FILE_API}?id=${encodeURIComponent(entry.id)}`);
+    if (!await loadProjectPayload(data.payload, entry.title || entry.name, { generation })) return;
     $("projectBrowserDialog")?.close();
     clearBusy(KfpsI18n.t("Loaded project: {0}", entry.title || entry.name));
   } catch (err) {
@@ -7381,10 +7414,9 @@ async function loadStartupProjectFromQuery() {
   if (!projectId) return false;
   setBusy(KfpsI18n.t("Loading selected project..."));
   try {
-    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(projectId)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
-    await loadProjectPayload(data.payload, data.name || "project");
+    const generation = beginDocumentLoad();
+    const data = await readEditorDocument(`${PROJECT_FILE_API}?id=${encodeURIComponent(projectId)}`);
+    if (!await loadProjectPayload(data.payload, data.name || "project", { generation })) return true;
     clearBusy(KfpsI18n.t("Loaded project: {0}", data.name || projectId));
     return true;
   } catch (err) {
@@ -7394,20 +7426,32 @@ async function loadStartupProjectFromQuery() {
   }
 }
 
-async function loadPayload(payload) {
+function beginDocumentLoad() {
+  pixelArtAnalysisCancel?.();
+  recoveryRestoreDepth = 0;
+  return ++documentGeneration;
+}
+
+async function loadPayload(payload, options = {}) {
+  const generation = options.generation ?? beginDocumentLoad();
+  if (generation !== documentGeneration) return false;
+  const strict = options.strict ?? (recoveryRestoreDepth > 0);
   const shapes = Array.isArray(payload.shapes) ? payload.shapes : null;
   if (!shapes) throw new Error(KfpsI18n.t("JSON must contain a shapes list."));
-  if (!shapes.length) throw new Error(KfpsI18n.t("JSON shapes list is empty."));
-  const hasLegacyGeometry = shapes.some((shape) => LEGACY_RECTANGLE_TYPES.has(Number(shape.type)) || LEGACY_ELLIPSE_TYPES.has(Number(shape.type)));
+  const emptyProject = strict && shapes.length === 0;
+  if (!shapes.length && !emptyProject) throw new Error(KfpsI18n.t("JSON shapes list is empty."));
+  const hasLegacyGeometry = shapes.some((shape) => LEGACY_RECTANGLE_TYPES.has(Number(shape?.type)) || LEGACY_ELLIPSE_TYPES.has(Number(shape?.type)));
   const legacyOffset = hasLegacyGeometry ? computeLegacyOffset(shapes) : { x: 0, y: 0 };
   const normalized = assignUniqueEditorIds(
     shapes.map((shape, index) => normalizeInputShape(shape, index, legacyOffset)).filter(Boolean),
   );
-  if (!normalized.length) throw new Error(KfpsI18n.t("JSON did not contain any usable FH6 vinyl layers."));
+  if (strict && normalized.length !== shapes.length) {
+    throw new Error(KfpsI18n.t("Some saved layers are invalid. The current canvas and recovery checkpoint were kept."));
+  }
+  if (!normalized.length && !emptyProject) throw new Error(KfpsI18n.t("JSON did not contain any usable FH6 vinyl layers."));
   if (normalized.length > MAX_VINYL_LAYERS) {
     throw new Error(KfpsI18n.t("This design has {0} editable layers. The editor supports up to {1} layers per vinyl.", normalized.length, MAX_VINYL_LAYERS));
   }
-  documentGeneration += 1;
   setBusy(KfpsI18n.t("Building {0} editable layer(s)...", normalized.length));
   await nextFrame();
   let completed = 0;
@@ -7417,6 +7461,7 @@ async function loadPayload(payload) {
     OBJECT_BUILD_CONCURRENCY,
     async (shape) => {
       try {
+        if (generation !== documentGeneration) return null;
         return await makeFabricObject(shape);
       } catch (err) {
         failed += 1;
@@ -7424,7 +7469,7 @@ async function loadPayload(payload) {
         return null;
       } finally {
         completed += 1;
-        if (completed % 100 === 0 || completed === normalized.length) {
+        if (generation === documentGeneration && (completed % 100 === 0 || completed === normalized.length)) {
           setBusy(KfpsI18n.t("Building layers: {0}/{1}", completed - failed, normalized.length));
           await nextFrame();
         }
@@ -7432,28 +7477,46 @@ async function loadPayload(payload) {
     },
   );
   const builtObjects = results.filter(Boolean);
-  if (!builtObjects.length) {
+  if (generation !== documentGeneration) {
+    builtObjects.forEach(discardFabricObject);
+    return false;
+  }
+  if (strict && failed) {
+    builtObjects.forEach(discardFabricObject);
+    throw new Error(KfpsI18n.t("Some saved layers could not be restored. The current canvas and recovery checkpoint were kept."));
+  }
+  if (!builtObjects.length && !emptyProject) {
     throw new Error(KfpsI18n.t("JSON did not contain any loadable FH6 vinyl layers. Failed to build {0}/{1}. Current canvas was left unchanged.", failed, normalized.length));
   }
-  clearVinylObjects();
+  try {
+    await prewarmHybridMeshesForObjects(builtObjects);
+    if (generation !== documentGeneration) {
+      builtObjects.forEach(discardFabricObject);
+      return false;
+    }
+    builtObjects.forEach((object) => canvas.add(object));
+  } catch (error) {
+    builtObjects.forEach(discardFabricObject);
+    throw error;
+  }
+  clearVinylObjects({ keep: new Set(builtObjects) });
   clearSourceOverlayState();
   overlayRevision = 0;
   savedOverlayRevision = 0;
   applySavedGuideState(null);
-  resetHistory();
-  builtObjects.forEach((object) => canvas.add(object));
+  if (options.name !== undefined) loadedName = options.name;
+  if (options.projectName !== undefined) currentProjectName = options.projectName;
+  resetHistory({ preserveGeneration: true });
   if (Array.isArray(payload.editor_collapsed_groups)) applyCollapsedLayerGroups(payload.editor_collapsed_groups);
   else collapsedLayerGroups.clear();
   bringGuidesToBack();
   syncCanvasObjectCoords();
   refreshLayers();
   fitDesignView();
-  if (hybridShouldUse(builtObjects)) {
-    setBusy(KfpsI18n.t("Preparing GPU preview: {0} layer(s)...", builtObjects.length));
-    await prewarmHybridMeshesForObjects(builtObjects);
-  }
+  hybridRenderNow();
   establishLoadedHistoryBoundary("loaded source");
   clearBusy(KfpsI18n.t("Loaded {0}/{1} editable FH6 layer(s).{2}", builtObjects.length, normalized.length, failed ? KfpsI18n.t(" Failed: {0}.", failed) : ""));
+  return true;
 }
 
 function removeVinylObjectHelpers(object) {
@@ -7494,7 +7557,7 @@ function clearVinylObjects(options = {}) {
   maskPreviewCutouts.clear();
   canvas.getObjects().filter((object) => object.kloudySelectionOutlineHelper
     || object.kloudyMaskOutline || object.kloudyMaskCutout).forEach((helper) => canvas.remove(helper));
-  vinylObjects().slice().forEach(discardFabricObject);
+  vinylObjects().slice().forEach((object) => { if (!options.keep?.has(object)) discardFabricObject(object); });
   invalidateLayerStats();
   if (!options.preserveCollapsed) collapsedLayerGroups.clear();
   lastLayerListKey = null;
@@ -8179,7 +8242,7 @@ function scheduleRefreshLayers(options = {}) {
     else {
       invalidateLayerStats();
       renderVirtualLayerWindow(true);
-      refreshExportValidation();
+      scheduleExportValidation();
       updateHud();
     }
   });
@@ -8291,7 +8354,7 @@ function updateLayerSelectionStyles() {
   updateHud();
 }
 
-function exportValidation(objects = vinylObjects()) {
+function* exportValidationSteps(objects) {
   const issues = [];
   const masks = objects.filter((object) => Boolean(object.kloudy?.mask));
   const hidden = objects.filter((object) => !objectEditorVisible(object));
@@ -8312,20 +8375,25 @@ function exportValidation(objects = vinylObjects()) {
   let ineffectiveMasks = 0;
   let normalLayerBelow = false;
   const signatures = new Map();
-  objects.forEach((object) => {
+  for (const object of objects) {
+    yield;
     const hasNormalBelow = normalLayerBelow;
     if (!object.kloudy?.mask) normalLayerBelow = true;
     let shape;
     try {
+      if (["left", "top", "scaleX", "scaleY", "angle", "skewX", "skewY"].some(key => !Number.isFinite(Number(object[key] ?? 0)))) {
+        throw new Error("Invalid editor transform");
+      }
       shape = objectToShape(object, { includeEditorMeta: false });
     } catch (_err) {
       invalidTransforms += 1;
-      return;
+      continue;
     }
     const values = Array.isArray(shape.data) ? shape.data.slice(0, 6).map(Number) : [];
     if (values.length < 6 || values.some((value) => !Number.isFinite(value))) {
       invalidTransforms += 1;
-    } else if (Math.abs(values[2]) < 0.000001 || Math.abs(values[3]) < 0.000001) {
+    } else if (Math.abs(values[2]) < 0.000001 || Math.abs(values[3]) < 0.000001
+      || Math.abs(object.scaleX) < 0.000001 || Math.abs(object.scaleY) < 0.000001) {
       zeroScale += 1;
     }
     if (Number(shape.type) > 1000000 && !resolvedResourceForObject(object)) unresolved += 1;
@@ -8352,7 +8420,7 @@ function exportValidation(objects = vinylObjects()) {
       mask: shape.mask,
     });
     signatures.set(signature, (signatures.get(signature) || 0) + 1);
-  });
+  }
 
   const duplicateLayers = [...signatures.values()].reduce(
     (total, count) => total + Math.max(0, count - 1),
@@ -8392,8 +8460,42 @@ function exportValidation(objects = vinylObjects()) {
   };
 }
 
+function exportValidation(objects = vinylObjects()) {
+  const steps = exportValidationSteps(objects);
+  let step;
+  do { step = steps.next(); } while (!step.done);
+  return step.value;
+}
+
+let exportValidationTimer = null;
+let exportValidationEpoch = 0;
+function scheduleExportValidation(objects = vinylObjects()) {
+  const epoch = ++exportValidationEpoch;
+  clearTimeout(exportValidationTimer);
+  const steps = exportValidationSteps(objects);
+  const slice = () => {
+    if (epoch !== exportValidationEpoch) return;
+    const deadline = performance.now() + 3;
+    let step;
+    do { step = steps.next(); } while (!step.done && performance.now() < deadline);
+    if (step.done) {
+      exportValidationTimer = null;
+      renderExportValidationResult(step.value);
+    } else exportValidationTimer = setTimeout(slice, 0);
+  };
+  exportValidationTimer = setTimeout(slice, 0);
+}
+
 function refreshExportValidation(objects = vinylObjects()) {
+  exportValidationEpoch++;
+  clearTimeout(exportValidationTimer);
+  exportValidationTimer = null;
   const result = exportValidation(objects);
+  renderExportValidationResult(result);
+  return result;
+}
+
+function renderExportValidationResult(result) {
   const issueCount = result.errors.length + result.warnings.length;
   setText("exportMaskCount", String(result.masks));
   setText("exportHiddenCount", String(result.hidden));
@@ -8422,7 +8524,6 @@ function refreshExportValidation(objects = vinylObjects()) {
   }
   const exportButton = $("exportJson");
   if (exportButton) exportButton.disabled = exportSaveInProgress || Boolean(result.errors.length);
-  return result;
 }
 
 function refreshLayers() {
@@ -8523,7 +8624,7 @@ function refreshLayers() {
     viewport.addEventListener("scroll", scheduleVirtualLayerRender, { passive: true });
   }
   renderVirtualLayerWindow(true);
-  refreshExportValidation(objects);
+  scheduleExportValidation(objects);
   updateHud();
 }
 
@@ -8955,23 +9056,14 @@ async function saveEditorJsonToAppFolder(name, payload) {
 }
 
 async function saveProjectToAppFolder(name, payload, overwrite = false) {
-  const body = JSON.stringify({ name, payload, overwrite: Boolean(overwrite) });
-  if (new Blob([body]).size > EDITOR_PROJECT_MAX_BYTES) {
-    throw new Error(KfpsI18n.t("Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.", EDITOR_PROJECT_MAX_BYTES / (1024 * 1024)));
-  }
-  const response = await fetch(PROJECT_SAVE_API, {
-    method: "POST",
-    headers: { ...EDITOR_MUTATION_HEADERS, "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(30000),
-    body,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
-    error.code = data.code || "";
+  try {
+    return await editorPersistence.request("saveProject", { name, payload, overwrite: Boolean(overwrite) });
+  } catch (error) {
+    error.message = error.code === "project_too_large"
+      ? KfpsI18n.t("Project exceeds the {0} MiB save limit. Use a smaller reference image and save again.", EDITOR_PROJECT_MAX_BYTES / (1024 * 1024))
+      : KfpsI18n.error(error.message);
     throw error;
   }
-  return data;
 }
 
 async function exportJson() {
@@ -9045,8 +9137,8 @@ async function saveProject(options = {}) {
     setStatus(KfpsI18n.t("Project save is already running. Wait for it to finish."));
     return;
   }
-  if (!vinylObjects().length) {
-    setStatus(KfpsI18n.t("Nothing to save. Import a JSON or add at least one shape first."));
+  if (!hasEditableWorkspace()) {
+    setStatus(KfpsI18n.t("Nothing to save. Add a shape, reference image, or guide first."));
     return;
   }
   const defaultName = cleanProjectBaseName(loadedName, "vinyl");
@@ -9087,8 +9179,7 @@ async function saveProject(options = {}) {
       savedOverlayRevision = savedRevision.overlay;
       updateDocumentState();
       renderHistoryList();
-      if (!documentDirty) clearAutosave();
-      else writeAutosavePayload(autosavePayloadFromState(currentHistoryState() || snapshotEditorState()));
+      writeAutosavePayload(autosavePayloadFromState(currentHistoryState() || snapshotEditorState()));
       setStatus(KfpsI18n.t("Saved project internally: {0}{1}", currentProjectName, documentDirty ? KfpsI18n.t(". Newer changes are still unsaved. Recovery pending.") : ""));
     }
     showCornerNotice(KfpsI18n.t("Project saved inside KFPS"), KfpsI18n.t("Saved {0}.", result.title || projectName));
@@ -9109,31 +9200,42 @@ function saveProjectAs() {
   return saveProject({ saveAs: true });
 }
 
-async function loadProjectPayload(payload, displayName = "project") {
+async function loadProjectPayload(payload, displayName = "project", options = {}) {
+  const generation = options.generation ?? beginDocumentLoad();
+  if (generation !== documentGeneration) return false;
   setBusy(KfpsI18n.t("Loading project: {0}", displayName));
   await nextFrame();
+  if (generation !== documentGeneration) return false;
   if (!Array.isArray(payload.shapes)) throw new Error(KfpsI18n.t("Project JSON must contain a shapes list."));
-  const previousName = loadedName;
-  const previousProjectName = currentProjectName;
   const projectName = cleanProjectBaseName(payload.name || displayName, "project");
-  loadedName = projectName;
-  currentProjectName = projectName;
+  recoveryRestoreDepth++;
+  let restored = false;
   try {
-    await loadPayload({
+    if (!await loadPayload({
       shapes: payload.shapes,
       editor_collapsed_groups: payload.editor_collapsed_groups || [],
-    });
+    }, { generation, strict: true, name: projectName, projectName })) return false;
+    const loadedHistory = currentHistoryState();
     applySavedGuideState(payload.editor_guides || null);
     let referenceError = null;
     try {
       await restoreSourceOverlayFromProject(payload.editor_source_overlay || null);
     } catch (err) {
+      if (generation !== documentGeneration) return false;
       referenceError = err;
       clearSourceOverlayState();
+      unavailableSourceOverlayState = payload.editor_source_overlay || null;
+    }
+    if (generation !== documentGeneration) return false;
+    flushPendingNudgeHistory();
+    if (currentHistoryState() !== loadedHistory) {
+      restored = true;
+      return true;
     }
     establishLoadedHistoryBoundary("open project", { writeRecovery: false });
     markCurrentHistorySaved(projectName);
-    clearAutosave();
+    recoveryAutosavePayload = null;
+    restored = true;
     if (referenceError) {
       savedOverlayRevision = overlayRevision - 1;
       updateDocumentState();
@@ -9146,17 +9248,25 @@ async function loadProjectPayload(payload, displayName = "project") {
         KfpsI18n.error(referenceError.message || String(referenceError)),
       );
     }
-  } catch (err) {
-    loadedName = previousName;
-    currentProjectName = previousProjectName;
-    updateDocumentState();
-    throw err;
+    return true;
+  } finally {
+    if (generation === documentGeneration) recoveryRestoreDepth--;
+    if (restored && generation === documentGeneration) writeAutosavePayload(autosavePayloadFromState(currentHistoryState() || snapshotEditorState()));
   }
 }
 
 async function loadProjectFile(file) {
-  const payload = JSON.parse(await file.text());
-  await loadProjectPayload(payload, file.name);
+  const generation = beginDocumentLoad();
+  const payload = await editorPersistence.request("parseFile", { file });
+  return loadProjectPayload(payload, file.name, { generation });
+}
+
+async function readEditorDocument(url) {
+  try { return await editorPersistence.request("fetchJSON", { url }); }
+  catch (error) {
+    error.message = KfpsI18n.error(error.message);
+    throw error;
+  }
 }
 
 function viewportCenterPoint() {
@@ -9412,30 +9522,50 @@ function updateShapeResourceOnShape(shape, family, index) {
   };
 }
 
+async function buildDetachedFabricObjects(items, build = shape => makeFabricObject(shape)) {
+  const created = [];
+  let failure = null;
+  const results = await KfpsEditorCore.mapWithConcurrency(items, OBJECT_BUILD_CONCURRENCY, async (item, index) => {
+    try {
+      const object = await build(item, index);
+      created.push(object);
+      return object;
+    } catch (error) {
+      failure ||= error;
+      return null;
+    }
+  }, { yield: nextFrame });
+  // Wait for every in-flight builder before cleaning up a failed batch.
+  if (failure) {
+    created.forEach(discardFabricObject);
+    throw failure;
+  }
+  return results;
+}
+
 async function replaceObjectsWithResource(objects, family, index) {
+  flushPendingNudgeHistory();
+  const generation = documentGeneration;
+  const historyState = currentHistoryState();
   const sourceObjects = objects.slice();
   const sourceSet = new Set(sourceObjects);
   const originalOrder = vinylObjects().slice();
-  const replacements = await KfpsEditorCore.mapWithConcurrency(
-    sourceObjects,
-    OBJECT_BUILD_CONCURRENCY,
-    async (oldObject) => {
-      const shape = updateShapeResourceOnShape(objectToShape(oldObject, { includeEditorMeta: true }), family, index);
-      const replacement = await makeFabricObject(shape);
-      replacement.visible = oldObject.visible;
-      return { oldObject, replacement };
-    },
-  );
-  const replacementByObject = new Map(replacements.map((item) => [item.oldObject, item.replacement]));
+  const shapes = sourceObjects.map(object => updateShapeResourceOnShape(objectToShape(object, { includeEditorMeta: true }), family, index));
+  const replacements = await buildDetachedFabricObjects(shapes);
+  flushPendingNudgeHistory();
+  if (generation !== documentGeneration || historyState !== currentHistoryState()) {
+    replacements.forEach(discardFabricObject);
+    return [];
+  }
+  try { replacements.forEach(replacement => canvas.add(replacement)); }
+  catch (error) { replacements.forEach(discardFabricObject); throw error; }
+  const replacementByObject = new Map(sourceObjects.map((object, i) => [object, replacements[i]]));
   sourceObjects.forEach(discardFabricObject);
-  replacements.forEach(({ replacement }) => {
-    canvas.add(replacement);
-    if (isFontFamily(family)) rememberFontShapeTransform(replacement);
-  });
+  if (isFontFamily(family)) replacements.forEach(rememberFontShapeTransform);
   setVinylStackOrder(originalOrder.map((object) => (
     sourceSet.has(object) ? replacementByObject.get(object) : object
   )));
-  return replacements.map((item) => item.replacement);
+  return replacements;
 }
 
 async function replaceSelectedShapes(family, index) {
@@ -9450,6 +9580,7 @@ async function replaceSelectedShapes(family, index) {
     return;
   }
   const replacements = await replaceObjectsWithResource(editable, family, index);
+  if (!replacements.length) return;
   selectObjects(replacements, KfpsI18n.t("shape replacement"));
   canvas.requestRenderAll();
   refreshLayers();
@@ -9478,6 +9609,7 @@ async function replaceMatchingShapeWords(source, family, index) {
     return;
   }
   const replacements = await replaceObjectsWithResource(editable, family, index);
+  if (!replacements.length) return;
   pendingGlobalShapeReplacement = null;
   selectObjects(replacements, KfpsI18n.t("global shape replacement"));
   canvas.requestRenderAll();
@@ -9503,6 +9635,7 @@ async function addShape(family, index) {
     return;
   }
   if (!requireLayerCapacity(1, KfpsI18n.t("add this shape"))) return;
+  const generation = documentGeneration;
   const typeCode = resourceToTypeCode(family, index);
   const shapeWord = resourceToShapeWord(family, index);
   const shape = {
@@ -9517,9 +9650,15 @@ async function addShape(family, index) {
     score: 0,
   };
   const object = await makeFabricObject(shape);
-  placeNewObjectInViewport(object);
-  applyReusableFontTransform(object, family);
-  if (!insertNewVinylObject(object, mode)) return;
+  if (generation !== documentGeneration || !requireLayerCapacity(1, KfpsI18n.t("add this shape"))) {
+    discardFabricObject(object);
+    return;
+  }
+  try {
+    placeNewObjectInViewport(object);
+    applyReusableFontTransform(object, family);
+    if (!insertNewVinylObject(object, mode)) { discardFabricObject(object); return; }
+  } catch (error) { discardFabricObject(object); throw error; }
   canvas.setActiveObject(object);
   applyLiveOverlayColor(object);
   if (isFontFamily(family)) rememberFontShapeTransform(object);
@@ -9575,14 +9714,7 @@ function loadImageFromFile(file) {
   });
 }
 
-function colorDistance(a, b) {
-  return Math.max(
-    Math.abs(Number(a?.[0] || 0) - Number(b?.[0] || 0)),
-    Math.abs(Number(a?.[1] || 0) - Number(b?.[1] || 0)),
-    Math.abs(Number(a?.[2] || 0) - Number(b?.[2] || 0)),
-    Math.abs(Number(a?.[3] ?? 255) - Number(b?.[3] ?? 255)),
-  );
-}
+const { colorDistance, pixelArtColorAt, pixelArtVisible, pixelArtEdgeBetween, collectPixelArtEdges, dominantPixelArtStep, dominantPixelArtOffset, pixelArtIntervals, dominantPixelArtCell, pixelArtExactColorKey, buildPixelArtRuns } = KfpsPixelCore;
 
 function pixelArtImageData(image) {
   const width = Number(image?.naturalWidth || image?.width || 1);
@@ -9594,222 +9726,52 @@ function pixelArtImageData(image) {
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0);
-  return { width, height, data: ctx.getImageData(0, 0, width, height).data };
-}
-
-function pixelArtColorAt(pixelData, x, y) {
-  const offset = ((y * pixelData.width) + x) * 4;
-  return [
-    pixelData.data[offset],
-    pixelData.data[offset + 1],
-    pixelData.data[offset + 2],
-    pixelData.data[offset + 3],
-  ];
-}
-
-function pixelArtVisible(color, alphaCutoff) {
-  return Number(color?.[3] || 0) > alphaCutoff;
-}
-
-function pixelArtEdgeBetween(a, b, alphaCutoff, tolerance) {
-  const aVisible = pixelArtVisible(a, alphaCutoff);
-  const bVisible = pixelArtVisible(b, alphaCutoff);
-  if (aVisible !== bVisible) return true;
-  return aVisible && bVisible && colorDistance(a, b) > tolerance;
-}
-
-function collectPixelArtEdges(pixelData, axis, alphaCutoff, tolerance) {
-  const edges = [];
-  if (axis === "x") {
-    const rowStep = Math.max(1, Math.floor(pixelData.height / 160));
-    for (let y = 0; y < pixelData.height; y += rowStep) {
-      for (let x = 1; x < pixelData.width; x++) {
-        if (pixelArtEdgeBetween(
-          pixelArtColorAt(pixelData, x - 1, y),
-          pixelArtColorAt(pixelData, x, y),
-          alphaCutoff,
-          tolerance,
-        )) {
-          edges.push(x);
-        }
-      }
-    }
-  } else {
-    const colStep = Math.max(1, Math.floor(pixelData.width / 160));
-    for (let x = 0; x < pixelData.width; x += colStep) {
-      for (let y = 1; y < pixelData.height; y++) {
-        if (pixelArtEdgeBetween(
-          pixelArtColorAt(pixelData, x, y - 1),
-          pixelArtColorAt(pixelData, x, y),
-          alphaCutoff,
-          tolerance,
-        )) {
-          edges.push(y);
-        }
-      }
-    }
-  }
-  return [...new Set(edges)].sort((a, b) => a - b);
-}
-
-function dominantPixelArtStep(edges, dimension) {
-  if (!edges.length) return Math.max(1, Math.ceil(dimension / 256));
-  const counts = new Map();
-  for (let index = 1; index < edges.length; index++) {
-    const diff = edges[index] - edges[index - 1];
-    if (diff < 2 || diff > 96) continue;
-    counts.set(diff, (counts.get(diff) || 0) + 1);
-  }
-  let bestStep = 1;
-  let bestCount = 0;
-  counts.forEach((count, step) => {
-    if (count > bestCount || (count === bestCount && step > bestStep)) {
-      bestStep = step;
-      bestCount = count;
-    }
-  });
-  if (bestCount < 4) return Math.max(1, Math.ceil(dimension / 256));
-  return Math.max(1, bestStep);
-}
-
-function dominantPixelArtOffset(edges, step) {
-  if (step <= 1 || !edges.length) return 0;
-  const counts = new Map();
-  edges.forEach((edge) => {
-    const offset = ((edge % step) + step) % step;
-    counts.set(offset, (counts.get(offset) || 0) + 1);
-  });
-  let bestOffset = 0;
-  let bestCount = 0;
-  counts.forEach((count, offset) => {
-    if (count > bestCount || (count === bestCount && offset < bestOffset)) {
-      bestOffset = offset;
-      bestCount = count;
-    }
-  });
-  return bestOffset;
-}
-
-function pixelArtIntervals(dimension, step, offset) {
-  const effectiveStep = Math.max(1, step);
-  const boundaries = new Set([0, dimension]);
-  for (let position = offset; position < dimension; position += effectiveStep) {
-    if (position > 0) boundaries.add(position);
-  }
-  const sorted = [...boundaries].sort((a, b) => a - b);
-  const intervals = [];
-  for (let index = 1; index < sorted.length; index++) {
-    const start = sorted[index - 1];
-    const end = sorted[index];
-    if (end > start) intervals.push({ start, end, size: end - start });
-  }
-  return intervals;
-}
-
-function dominantPixelArtCell(pixelData, xInterval, yInterval, alphaCutoff, tolerance) {
-  let visible = 0;
-  const area = Math.max(1, xInterval.size * yInterval.size);
-  const exact = new Map();
-  for (let y = yInterval.start; y < yInterval.end; y++) {
-    for (let x = xInterval.start; x < xInterval.end; x++) {
-      const color = pixelArtColorAt(pixelData, x, y);
-      if (!pixelArtVisible(color, alphaCutoff)) continue;
-      visible++;
-      const exactKey = `${color[0]}:${color[1]}:${color[2]}`;
-      exact.set(exactKey, (exact.get(exactKey) || 0) + 1);
-    }
-  }
-  if (!visible || visible / area < 0.55) return null;
-  let bestColor = null;
-  let bestCount = 0;
-  exact.forEach((count, exactKey) => {
-    const color = exactKey.split(":").map((value) => Number(value));
-    if (count > bestCount) {
-      bestCount = count;
-      bestColor = color;
-    }
-  });
-  if (!bestColor) return null;
-  return [bestColor[0], bestColor[1], bestColor[2], 255];
+  const data = ctx.getImageData(0, 0, width, height).data;
+  sampler.width = sampler.height = 1;
+  return { width, height, data };
 }
 
 function sampleDetectedPixelArtGrid(image, alphaCutoff, tolerance) {
-  const pixelData = pixelArtImageData(image);
-  const xEdges = collectPixelArtEdges(pixelData, "x", alphaCutoff, tolerance);
-  const yEdges = collectPixelArtEdges(pixelData, "y", alphaCutoff, tolerance);
-  let stepX = dominantPixelArtStep(xEdges, pixelData.width);
-  let stepY = dominantPixelArtStep(yEdges, pixelData.height);
-  if (stepX > 1 && stepY > 1 && Math.max(stepX, stepY) / Math.min(stepX, stepY) <= 1.35) {
-    const sharedStep = Math.min(stepX, stepY);
-    stepX = sharedStep;
-    stepY = sharedStep;
-  }
-  const offsetX = dominantPixelArtOffset(xEdges, stepX);
-  const offsetY = dominantPixelArtOffset(yEdges, stepY);
-  const xIntervals = pixelArtIntervals(pixelData.width, stepX, offsetX);
-  const yIntervals = pixelArtIntervals(pixelData.height, stepY, offsetY);
-  const rows = yIntervals.map((yInterval) => (
-    xIntervals.map((xInterval) => dominantPixelArtCell(pixelData, xInterval, yInterval, alphaCutoff, tolerance))
-  ));
-  return {
-    rows,
-    gridW: xIntervals.length,
-    gridH: yIntervals.length,
-    stepX,
-    stepY,
-    offsetX,
-    offsetY,
-  };
+  return KfpsPixelCore.sampleDetectedPixelArtGrid(pixelArtImageData(image), alphaCutoff, tolerance);
 }
 
-function pixelArtExactColorKey(color) {
-  return `${Number(color?.[0] || 0)}:${Number(color?.[1] || 0)}:${Number(color?.[2] || 0)}:${Number(color?.[3] ?? 255)}`;
-}
-
-function buildPixelArtRuns(rows) {
-  const rowRuns = rows.map((row, y) => {
-    const runs = [];
-    let x = 0;
-    while (x < row.length) {
-      const startColor = row[x];
-      if (!startColor) {
-        x++;
-        continue;
-      }
-      const start = x;
-      const runKey = pixelArtExactColorKey(startColor);
-      x++;
-      while (x < row.length && row[x] && pixelArtExactColorKey(row[x]) === runKey) x++;
-      runs.push({
-        x: start,
-        y,
-        width: x - start,
-        height: 1,
-        key: runKey,
-        color: [...startColor],
-      });
-    }
-    return runs;
+function analyzePixelArtFile(file, options) {
+  if (!file) return Promise.reject(new Error(KfpsI18n.t("Choose a pixel-art source image first.")));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("/tools/fabric-editor/editor-pixel-worker.js?v=1");
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      worker.terminate();
+      if (pixelArtAnalysisCancel === cancel) pixelArtAnalysisCancel = null;
+      if (error) reject(error); else resolve(value);
+    };
+    const cancel = () => finish(Object.assign(new Error("Pixel-art analysis cancelled."), { code: "superseded" }));
+    pixelArtAnalysisCancel = cancel;
+    const timer = setTimeout(() => finish(new Error(KfpsI18n.t("Pixel-art analysis timed out. Try a smaller or simpler source image."))), 120000);
+    worker.onerror = event => {
+      event.preventDefault();
+      finish(new Error(KfpsI18n.t("The pixel-art worker stopped. Your existing layers were kept.")));
+    };
+    worker.onmessageerror = () => finish(new Error(KfpsI18n.t("The pixel-art worker returned an unreadable response.")));
+    worker.onmessage = async event => {
+      if (settled) return;
+      const message = event.data;
+      if (message.rasterizeSvg) {
+        try {
+          const image = await loadImageFromFile(file);
+          if (settled) return;
+          const pixels = pixelArtImageData(image);
+          worker.postMessage({ pixels, ...options }, [pixels.data.buffer]);
+        } catch (error) { finish(error); }
+      } else if (message.error) finish(new Error(KfpsI18n.error(message.error)));
+      else finish(null, message.value);
+    };
+    try { worker.postMessage({ file, ...options }); }
+    catch (error) { finish(error); }
   });
-  const merged = [];
-  let active = new Map();
-  rowRuns.forEach((runs) => {
-    const nextActive = new Map();
-    runs.forEach((run) => {
-      const mergeKey = `${run.x}:${run.width}:${run.key}`;
-      const previous = active.get(mergeKey);
-      if (previous && previous.y + previous.height === run.y) {
-        previous.height += 1;
-        nextActive.set(mergeKey, previous);
-      } else {
-        const copy = { ...run };
-        merged.push(copy);
-        nextActive.set(mergeKey, copy);
-      }
-    });
-    active = nextActive;
-  });
-  return merged;
 }
 
 function pixelArtCanvasLayout(gridW, gridH, fitMode) {
@@ -9838,26 +9800,41 @@ function clearPreviousPixelArtLayers() {
 }
 
 async function generatePixelArtRectangles() {
+  if (pixelArtGenerationRunning) return;
+  flushPendingNudgeHistory();
+  const generation = documentGeneration;
+  const historyBefore = currentHistoryState();
+  const created = [];
+  let committed = false;
+  pixelArtGenerationRunning = true;
+  if ($("generatePixelArt")) $("generatePixelArt").disabled = true;
   try {
     if (!canvas) return;
     const alphaCutoff = numberInputValue("pixelArtAlphaCutoff", 128, 0, 255);
     const tolerance = numberInputValue("pixelArtTolerance", 24, 0, 80);
+    const clearPrevious = Boolean($("pixelArtClearPrevious")?.checked);
+    const previous = clearPrevious ? vinylObjects().filter(obj => obj.kloudy?.pixel_art_generated) : [];
+    const maxRuns = MAX_VINYL_LAYERS - vinylObjects().length + previous.length;
     setBusy(KfpsI18n.t("Detecting source pixel grid..."));
-    const image = await loadImageFromFile(pixelArtSourceFile);
-    const detected = sampleDetectedPixelArtGrid(image, alphaCutoff, tolerance);
+    const detected = await analyzePixelArtFile(pixelArtSourceFile, { alphaCutoff, tolerance, maxRuns });
+    if (generation !== documentGeneration) return;
     const gridW = detected.gridW;
     const gridH = detected.gridH;
     setPixelArtGridInputs(detected);
+    if (detected.overflow) {
+      const message = KfpsI18n.t("Pixel-art generation exceeds the available {0}-layer budget. Use a smaller or simpler source image.", maxRuns);
+      setPixelArtStatus(message);
+      clearBusy(message);
+      return;
+    }
     setBusy(KfpsI18n.t("Detected {0}x{1} source pixel grid. Building rectangles...", gridW, gridH));
-    const rows = detected.rows;
-    const runs = buildPixelArtRuns(rows);
+    const runs = detected.runs;
     if (!runs.length) {
       setText("pixelArtStatus", KfpsI18n.t("No visible pixel-art cells found."));
       clearBusy(KfpsI18n.t("No visible pixel-art cells found."));
       return;
     }
-    const clearPrevious = Boolean($("pixelArtClearPrevious")?.checked);
-    const previousCount = clearPrevious ? vinylObjects().filter((obj) => obj.kloudy?.pixel_art_generated).length : 0;
+    const previousCount = previous.length;
     const projectedCount = vinylObjects().length - previousCount + runs.length;
     if (projectedCount > MAX_VINYL_LAYERS) {
       const message = KfpsI18n.t("Pixel-art generation needs {0} total layers, above the {1}-layer maximum. Increase Cell px or reduce the source size.", projectedCount, MAX_VINYL_LAYERS);
@@ -9865,16 +9842,13 @@ async function generatePixelArtRectangles() {
       clearBusy(message);
       return;
     }
-    const removed = clearPrevious ? clearPreviousPixelArtLayers() : 0;
+    const removed = previous.length;
     const layout = pixelArtCanvasLayout(gridW, gridH, "height");
     const groupId = `pixel-art-${Date.now().toString(36)}`;
     const groupName = `Pixel Art ${gridW}x${gridH}`;
     const typeCode = resourceToTypeCode("Primitives", 1);
     const shapeWord = resourceToShapeWord("Primitives", 1);
-    let created = [];
-    historyLocked = true;
-    try {
-      created = await KfpsEditorCore.mapWithConcurrency(runs, OBJECT_BUILD_CONCURRENCY, async (run) => {
+    const objects = await KfpsEditorCore.mapWithConcurrency(runs, OBJECT_BUILD_CONCURRENCY, async (run) => {
         const width = run.width * layout.cellW;
         const height = (run.height || 1) * layout.cellH;
         const centerX = layout.left + (run.x * layout.cellW) + width / 2;
@@ -9902,24 +9876,33 @@ async function generatePixelArtRectangles() {
         };
         const object = await makeFabricObject(shape);
         object.kloudy.pixel_art_generated = true;
+        created.push(object);
         return object;
-      });
-      created.forEach((object) => canvas.add(object));
-    } finally {
-      historyLocked = false;
+      }, { yield: nextFrame });
+    if (generation !== documentGeneration) return;
+    if (currentHistoryState() !== historyBefore || nudgeHistoryPending) {
+      clearBusy(KfpsI18n.t("The workspace changed during generation. Existing layers were kept. Generate again to apply it."));
+      return;
     }
+    objects.forEach(object => canvas.add(object));
+    previous.forEach(discardFabricObject);
+    committed = true;
     bringGuidesToBack();
     syncCanvasObjectCoords();
-    selectObjects(created.slice(0, 200), KfpsI18n.t("pixel-art generation"));
+    selectObjects(objects.slice(0, 200), KfpsI18n.t("pixel-art generation"));
     refreshLayers();
     pushHistory("generate pixel art");
     const message = KfpsI18n.t("Generated {0} pixel-art rectangle layer(s) from detected {1}x{2} grid, source step {3}x{4}px.{5}", created.length, gridW, gridH, detected.stepX, detected.stepY, removed ? KfpsI18n.t(" Removed {0} previous pixel-art layer(s).", removed) : "");
     setText("pixelArtStatus", message);
     clearBusy(message);
   } catch (err) {
-    historyLocked = false;
+    if (err.code === "superseded" || generation !== documentGeneration) return;
     setText("pixelArtStatus", KfpsI18n.t("Pixel-art generation failed: {0}", KfpsI18n.error(err.message || err)));
     showError(KfpsI18n.t("Pixel-art generation failed"), err);
+  } finally {
+    if (!committed) created.forEach(discardFabricObject);
+    pixelArtGenerationRunning = false;
+    if ($("generatePixelArt")) $("generatePixelArt").disabled = false;
   }
 }
 
@@ -11300,6 +11283,14 @@ function clearPreviousTextVinylLayers() {
 }
 
 async function generateTextVinylShapes() {
+  if (textVinylGenerationRunning) return;
+  flushPendingNudgeHistory();
+  const generation = documentGeneration;
+  const historyBefore = currentHistoryState();
+  const created = [];
+  let committed = false;
+  textVinylGenerationRunning = true;
+  if ($("generateTextVinyl")) $("generateTextVinyl").disabled = true;
   try {
     if (!canvas) return;
     const text = $("textVinylInput")?.value || "";
@@ -11321,7 +11312,8 @@ async function generateTextVinylShapes() {
     };
     setBusy(KfpsI18n.t("Rasterizing text..."));
     await nextFrame();
-    const mask = renderTextVinylMask(text, options);
+    if (generation !== documentGeneration) return;
+    const mask = options.mode === "forzaLetters" ? null : renderTextVinylMask(text, options);
     const color = normalizeColor(currentPanelColor());
     rememberColor(color);
     let shapeSpecs = [];
@@ -11375,7 +11367,8 @@ async function generateTextVinylShapes() {
       return;
     }
     const clearPrevious = Boolean($("textVinylClearPrevious")?.checked);
-    const previousCount = clearPrevious ? vinylObjects().filter((obj) => obj.kloudy?.source_format === TEXT_VINYL_SOURCE_FLAG).length : 0;
+    const previous = clearPrevious ? vinylObjects().filter(obj => obj.kloudy?.source_format === TEXT_VINYL_SOURCE_FLAG) : [];
+    const previousCount = previous.length;
     const projectedCount = vinylObjects().length - previousCount + shapeSpecs.length;
     if (projectedCount > MAX_VINYL_LAYERS) {
       const message = KfpsI18n.t("Text generation needs {0} total layers, above the {1}-layer maximum. Increase Cell/Band px or simplify the source.", projectedCount, MAX_VINYL_LAYERS);
@@ -11384,31 +11377,38 @@ async function generateTextVinylShapes() {
       return;
     }
     setBusy(KfpsI18n.t("Building {0} text vinyl layer(s)...", shapeSpecs.length));
-    const removed = clearPrevious ? clearPreviousTextVinylLayers() : 0;
-    let created = [];
-    historyLocked = true;
-    try {
-      created = await KfpsEditorCore.mapWithConcurrency(shapeSpecs, OBJECT_BUILD_CONCURRENCY, async (shape) => {
+    const removed = previous.length;
+    const objects = await KfpsEditorCore.mapWithConcurrency(shapeSpecs, OBJECT_BUILD_CONCURRENCY, async (shape) => {
+        if (generation !== documentGeneration) throw Object.assign(new Error("Text generation cancelled."), { code: "superseded" });
         const object = await makeFabricObject(shape);
         object.kloudy.source_format = TEXT_VINYL_SOURCE_FLAG;
+        created.push(object);
         return object;
-      });
-      created.forEach((object) => canvas.add(object));
-    } finally {
-      historyLocked = false;
+      }, { yield: nextFrame });
+    if (generation !== documentGeneration) return;
+    if (currentHistoryState() !== historyBefore || nudgeHistoryPending) {
+      clearBusy(KfpsI18n.t("The workspace changed during generation. Existing layers were kept. Generate again to apply it."));
+      return;
     }
+    objects.forEach(object => canvas.add(object));
+    previous.forEach(discardFabricObject);
+    committed = true;
     bringGuidesToBack();
     syncCanvasObjectCoords();
-    selectObjects(created.slice(0, 200), KfpsI18n.t("text vinyl generation"));
+    selectObjects(objects.slice(0, 200), KfpsI18n.t("text vinyl generation"));
     refreshLayers();
     pushHistory("generate text vinyl");
     const message = KfpsI18n.t("Generated {0} text layer(s) from {1}, source {2}x{3}.{4}", created.length, sourceLabel, sourceWidth, sourceHeight, removed ? KfpsI18n.t(" Removed {0} previous text layer(s).", removed) : "");
     setTextVinylStatus(message);
     clearBusy(message);
   } catch (err) {
-    historyLocked = false;
+    if (err.code === "superseded" || generation !== documentGeneration) return;
     setTextVinylStatus(KfpsI18n.t("Text vinyl generation failed: {0}", KfpsI18n.error(err.message || err)));
     showError(KfpsI18n.t("Text vinyl generation failed"), err);
+  } finally {
+    if (!committed) created.forEach(discardFabricObject);
+    textVinylGenerationRunning = false;
+    if ($("generateTextVinyl")) $("generateTextVinyl").disabled = false;
   }
 }
 
@@ -11448,6 +11448,7 @@ function renderShapeGrid() {
     tile.innerHTML = KfpsI18n.t("\n      <button class=\"favButton\" type=\"button\" title=\"{0}\">{1}</button>\n      <img alt=\"\" src=\"{2}\">\n      <span class=\"shapeName\">{3}</span>\n      <span class=\"shapeMeta\">{4} #{5}</span>\n      <span class=\"shapeWord\">word {6}</span>\n    ", isFavorite ? KfpsI18n.t("Remove favorite") : KfpsI18n.t("Add favorite"), isFavorite ? "x" : "+", vinylResourceUrl(family, index, ".png"), escapeHtml(name), KfpsI18n.familyLabel(family), index, shapeWord);
     tile.addEventListener("click", () => addShape(family, index).catch((err) => showError(KfpsI18n.t("Shape add failed"), err)));
     tile.addEventListener("keydown", (event) => {
+      if (event.target !== tile || event.isComposing) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         addShape(family, index).catch((err) => showError(KfpsI18n.t("Shape add failed"), err));
@@ -11489,6 +11490,7 @@ function toggleFavorite(family, index) {
 }
 
 async function duplicateSelectedNow() {
+  const generation = documentGeneration;
   const selected = selectedVinylObjects();
   const selectedSet = new Set(selected);
   const orderedSelection = orderedSelectedVinylObjects();
@@ -11518,8 +11520,10 @@ async function duplicateSelectedNow() {
       duplicateGroupNameMap.set(groupId, null);
     }
   });
+  let clones = [];
+  let inserted = false;
   try {
-    const clones = await KfpsEditorCore.mapWithConcurrency(objects, OBJECT_BUILD_CONCURRENCY, async (obj) => {
+    const shapes = objects.map(obj => {
       const shape = objectToShape(obj, { includeEditorMeta: true });
       delete shape.editor_id;
       shape.data = Array.isArray(shape.data) ? shape.data.slice() : [];
@@ -11531,7 +11535,13 @@ async function duplicateSelectedNow() {
         shape.editor_group_name = newGroupId ? duplicateGroupNameMap.get(obj.kloudy.group_id) : null;
       }
       shape.editor_locked = false;
-      const clone = await makeFabricObject(shape);
+      return shape;
+    });
+    clones = await buildDetachedFabricObjects(shapes);
+    if (generation !== documentGeneration || objects.some(object => object.canvas !== canvas)
+      || !requireLayerCapacity(clones.length, KfpsI18n.t("duplicate this selection"))) return;
+    clones.forEach((clone, index) => {
+      const obj = objects[index];
       if (obj.__kloudySelectionOutline) clone.set({ shadow: obj.__kloudySelectionOutline.shadow || null });
       delete clone.__kloudySelectionOutline;
       applyMaskVisual(clone);
@@ -11539,10 +11549,10 @@ async function duplicateSelectedNow() {
       clone.hoverCursor = "pointer";
       clone.moveCursor = "move";
       styleObjectTransformControls(clone);
-      return clone;
     });
     const mode = shapePlacementMode();
     const placement = insertDuplicateVinylObjects(clones, objects, mode);
+    inserted = true;
     if (clones.length === 1) {
       canvas.setActiveObject(clones[0]);
     } else {
@@ -11556,8 +11566,11 @@ async function duplicateSelectedNow() {
     const placementText = placement === "top" ? KfpsI18n.t("at top") : KfpsI18n.t("{0} selected layer(s)", KfpsI18n.message(placement));
     setStatus(KfpsI18n.t("Duplicated {0} layer(s) {1}.{2}", clones.length, placementText, objects.length !== selectedSet.size ? KfpsI18n.t(" Skipped {0} locked layer(s).", selectedSet.size - objects.length) : ""));
   } catch (err) {
+    if (generation !== documentGeneration) return;
     showError(KfpsI18n.t("Duplicate failed"), err);
     setStatus(KfpsI18n.t("Duplicate failed: {0}", KfpsI18n.error(err.message || err)));
+  } finally {
+    if (!inserted) clones.forEach(discardFabricObject);
   }
 }
 
@@ -11942,6 +11955,7 @@ async function pasteCopiedLayersNow() {
 }
 
 async function insertCopiedShapesNow(sourceShapes, { asset = false } = {}) {
+  const generation = documentGeneration;
   if (!requireLayerCapacity(sourceShapes.length, KfpsI18n.t("insert these layers"))) return;
   const groupMap = new Map();
   const normalized = sourceShapes.map((source) => {
@@ -11960,14 +11974,12 @@ async function insertCopiedShapesNow(sourceShapes, { asset = false } = {}) {
     return shape;
   });
   setBusy(KfpsI18n.t("Inserting {0} layer(s)...", normalized.length));
-  const builtObjects = [];
+  let builtObjects = [];
   let inserted = false;
   try {
-    const objects = await KfpsEditorCore.mapWithConcurrency(
-      normalized,
-      OBJECT_BUILD_CONCURRENCY,
-      async shape => { const object = await makeFabricObject(shape); builtObjects.push(object); return object; },
-    );
+    const objects = await buildDetachedFabricObjects(normalized);
+    builtObjects = objects;
+    if (generation !== documentGeneration || !requireLayerCapacity(objects.length, KfpsI18n.t("insert these layers"))) return;
     if (asset && objects.length) {
       const bounds = objects.map(object => object.getBoundingRect(true, true));
       const left = Math.min(...bounds.map(rect => rect.left));
@@ -11986,8 +11998,9 @@ async function insertCopiedShapesNow(sourceShapes, { asset = false } = {}) {
     pushHistory(asset ? "insert asset" : "paste");
     clearBusy(KfpsI18n.t("Inserted {0} layer(s).", objects.length));
   } catch (err) {
+    if (generation === documentGeneration) showError(KfpsI18n.t("Insert failed"), err);
+  } finally {
     if (!inserted) builtObjects.forEach(discardFabricObject);
-    showError(KfpsI18n.t("Insert failed"), err);
   }
 }
 
@@ -12173,24 +12186,44 @@ function setPixelSelection(enabled) {
 function rebuildOverlaySampler(img) {
   const width = img.naturalWidth || img.width || 1;
   const height = img.naturalHeight || img.height || 1;
-  const sampleCanvas = document.createElement("canvas");
-  sampleCanvas.width = width;
-  sampleCanvas.height = height;
-  const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-  try {
-    ctx.drawImage(img, 0, 0, width, height);
-    overlaySampler = {
-      width,
-      height,
-      data: ctx.getImageData(0, 0, width, height).data,
-    };
-  } finally {
-    sampleCanvas.width = sampleCanvas.height = 1;
+  releaseOverlaySampler();
+  overlaySampler = { width, height, source: img, tiles: new Map(), canvas: null };
+}
+
+function releaseOverlaySampler() {
+  if (overlaySampler?.canvas) overlaySampler.canvas.width = overlaySampler.canvas.height = 1;
+  overlaySampler?.tiles.clear();
+  overlaySampler = null;
+}
+
+function readOverlayPixel(x, y) {
+  const sampler = overlaySampler;
+  if (!sampler || x < 0 || y < 0 || x >= sampler.width || y >= sampler.height) return null;
+  const tileSize = 256;
+  const left = Math.floor(x / tileSize) * tileSize;
+  const top = Math.floor(y / tileSize) * tileSize;
+  const key = `${left}:${top}`;
+  let tile = sampler.tiles.get(key);
+  if (tile) sampler.tiles.delete(key);
+  else {
+    // Exact source pixels, allocated only when sampled. Keep at most 8 MiB of
+    // decoded tiles instead of a second full-resolution RGBA reference image.
+    const surface = sampler.canvas || (sampler.canvas = document.createElement("canvas"));
+    const width = Math.min(tileSize, sampler.width - left);
+    const height = Math.min(tileSize, sampler.height - top);
+    surface.width = width; surface.height = height;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(sampler.source, left, top, width, height, 0, 0, width, height);
+    tile = { width, data: context.getImageData(0, 0, width, height).data };
   }
+  sampler.tiles.set(key, tile);
+  if (sampler.tiles.size > 32) sampler.tiles.delete(sampler.tiles.keys().next().value);
+  const offset = ((y - top) * tile.width + x - left) * 4;
+  return tile.data.subarray(offset, offset + 4);
 }
 
 function sourceOverlayProjectState() {
-  if (!overlayImage || !overlaySourceState) return null;
+  if (!overlayImage || !overlaySourceState) return unavailableSourceOverlayState;
   const source = {
     version: 1,
     kind: overlaySourceState.kind || "image",
@@ -12236,10 +12269,13 @@ function sourceOverlayProjectState() {
 }
 
 function clearSourceOverlayState() {
+  overlayLoadGeneration++;
+  overlayRefreshGeneration++;
+  unavailableSourceOverlayState = null;
   releaseHybridOverlay();
   if (overlayImage) discardFabricObject(overlayImage);
   overlayImage = null;
-  overlaySampler = null;
+  releaseOverlaySampler();
   overlaySourceState = null;
   clearLayeredOverlayState();
   updateSourceInteractivity();
@@ -12252,30 +12288,29 @@ async function restoreSourceOverlayFromProject(state) {
   }
   const fileName = String(state.file_name || "source-overlay");
   if (state.kind === "layered_svg" && state.svg_text) {
-    layeredOverlayState = parseLayeredSvg(String(state.svg_text), fileName);
+    const layeredState = parseLayeredSvg(String(state.svg_text), fileName);
     const layered = state.layered_svg || {};
-    layeredOverlayState.selectedIndex = Math.max(0, Math.min(
+    layeredState.selectedIndex = Math.max(0, Math.min(
       Number(layered.selected_index) || 0,
-      Math.max(0, layeredOverlayState.layers.length - 1)
+      Math.max(0, layeredState.layers.length - 1)
     ));
-    layeredOverlayState.viewMode = String(layered.view_mode || "original");
-    const url = layeredSvgDataUrl();
+    layeredState.viewMode = String(layered.view_mode || "original");
+    const url = layeredSvgDataUrl(layeredState);
     if (!url) throw new Error(KfpsI18n.t("The saved layered SVG reference could not be rendered."));
-    await loadOverlayImageFromUrl(url, fileName, { mimeType: state.mime_type || "image/svg+xml", projectState: state });
+    await loadOverlayImageFromUrl(url, fileName, { mimeType: state.mime_type || "image/svg+xml", projectState: state, layeredState });
     return;
   }
   if (!state.data_url) {
     clearSourceOverlayState();
     return;
   }
-  clearLayeredOverlayState();
-  await loadOverlayImageFromUrl(String(state.data_url), fileName, { mimeType: state.mime_type || null, projectState: state });
+  await loadOverlayImageFromUrl(String(state.data_url), fileName, { mimeType: state.mime_type || null, projectState: state, layeredState: null });
 }
 
-function applyOverlayProjectTransform(state) {
-  if (!overlayImage || !state?.transform) return;
+function applyOverlayProjectTransform(state, image = overlayImage) {
+  if (!image || !state?.transform) return;
   const transform = state.transform;
-  overlayImage.set({
+  image.set({
     left: Number(transform.left) || 0,
     top: Number(transform.top) || 0,
     scaleX: Number(transform.scaleX) || 1,
@@ -12288,7 +12323,7 @@ function applyOverlayProjectTransform(state) {
     opacity: Number.isFinite(Number(transform.opacity)) ? Number(transform.opacity) : 1,
     visible: transform.visible !== false,
   });
-  overlayImage.setCoords();
+  image.setCoords();
 }
 
 function clearLayeredOverlayState() {
@@ -12364,9 +12399,9 @@ function parseLayeredSvg(text, fileName = "overlay.svg") {
   };
 }
 
-function selectedLayeredOverlayLayer() {
-  if (!layeredOverlayState?.layers?.length) return null;
-  return layeredOverlayState.layers[Math.max(0, Math.min(layeredOverlayState.selectedIndex, layeredOverlayState.layers.length - 1))];
+function selectedLayeredOverlayLayer(state = layeredOverlayState) {
+  if (!state?.layers?.length) return null;
+  return state.layers[Math.max(0, Math.min(state.selectedIndex, state.layers.length - 1))];
 }
 
 function shouldShowSvgLayer(layer, mode, selectedLayer) {
@@ -12378,17 +12413,17 @@ function shouldShowSvgLayer(layer, mode, selectedLayer) {
   return !layer.hidden;
 }
 
-function layeredSvgDataUrl() {
-  if (!layeredOverlayState) return null;
+function layeredSvgDataUrl(state = layeredOverlayState) {
+  if (!state) return null;
   const parser = new DOMParser();
-  const doc = parser.parseFromString(layeredOverlayState.sourceText, "image/svg+xml");
+  const doc = parser.parseFromString(state.sourceText, "image/svg+xml");
   if (doc.querySelector("parsererror")) return null;
-  const selectedLayer = selectedLayeredOverlayLayer();
+  const selectedLayer = selectedLayeredOverlayLayer(state);
   doc.querySelectorAll("g").forEach((group) => {
     const id = group.id || "";
-    const layer = layeredOverlayState.layers.find((item) => item.id === id || item.label === svgLayerLabel(group));
+    const layer = state.layers.find((item) => item.id === id || item.label === svgLayerLabel(group));
     if (!layer) return;
-    setSvgElementVisible(group, shouldShowSvgLayer(layer, layeredOverlayState.viewMode, selectedLayer));
+    setSvgElementVisible(group, shouldShowSvgLayer(layer, state.viewMode, selectedLayer));
   });
   const serializer = new XMLSerializer();
   const text = serializer.serializeToString(doc);
@@ -12440,6 +12475,10 @@ function setLayeredOverlayViewMode(mode) {
 
 function refreshLayeredOverlayImage() {
   if (!layeredOverlayState || !overlayImage) return;
+  const target = overlayImage;
+  const state = layeredOverlayState;
+  const generation = ++overlayRefreshGeneration;
+  const isCurrent = () => target === overlayImage && state === layeredOverlayState && generation === overlayRefreshGeneration;
   const url = layeredSvgDataUrl();
   if (!url) {
     setStatus(KfpsI18n.t("Layered SVG reference refresh failed."));
@@ -12447,23 +12486,25 @@ function refreshLayeredOverlayImage() {
   }
   const img = new Image();
   img.onload = () => {
+    if (!isCurrent()) return;
     rebuildOverlaySampler(img);
-    overlayImage.setElement(img);
-    overlayImage.set({
-      width: img.width || layeredOverlayState.width,
-      height: img.height || layeredOverlayState.height,
+    releaseHybridOverlay();
+    target.setElement(img);
+    target.set({
+      width: img.width || state.width,
+      height: img.height || state.height,
     });
     updateOverlay();
     updateLayeredOverlayInfo();
     canvas.requestRenderAll();
   };
-  img.onerror = () => setStatus(KfpsI18n.t("Layered SVG reference refresh failed."));
+  img.onerror = () => { if (isCurrent()) setStatus(KfpsI18n.t("Layered SVG reference refresh failed.")); };
   img.src = url;
 }
 
-function canvasPointToOverlayPixel(x, y) {
+function canvasPointToOverlayPixel(x, y, inverse = null) {
   if (!overlayImage || !overlaySampler) return null;
-  const inverse = fabric.util.invertTransform(overlayImage.calcTransformMatrix());
+  inverse ||= fabric.util.invertTransform(overlayImage.calcTransformMatrix());
   const local = fabric.util.transformPoint(new fabric.Point(x, y), inverse);
   const px = Math.round(local.x + (overlayImage.width || overlaySampler.width) / 2);
   const py = Math.round(local.y + (overlayImage.height || overlaySampler.height) / 2);
@@ -12474,13 +12515,13 @@ function canvasPointToOverlayPixel(x, y) {
 function overlayColorAtCanvasPoint(x, y) {
   const pixel = canvasPointToOverlayPixel(x, y);
   if (!pixel || !overlaySampler) return null;
-  const pos = (pixel.y * overlaySampler.width + pixel.x) * 4;
-  const alpha = overlaySampler.data[pos + 3];
+  const data = readOverlayPixel(pixel.x, pixel.y);
+  const alpha = data[3];
   if (alpha < 24) return null;
   return [
-    overlaySampler.data[pos],
-    overlaySampler.data[pos + 1],
-    overlaySampler.data[pos + 2],
+    data[0],
+    data[1],
+    data[2],
     255,
   ];
 }
@@ -12493,17 +12534,14 @@ function dominantOverlayColorForObject(obj) {
   const stepsY = Math.max(7, Math.min(44, Math.ceil(rect.height / 42)));
   const bins = new Map();
   const average = { count: 0, r: 0, g: 0, b: 0, a: 0 };
+  const inverse = fabric.util.invertTransform(overlayImage.calcTransformMatrix());
   for (let iy = 0; iy < stepsY; iy++) {
     const y = rect.top + rect.height * ((iy + 0.5) / stepsY);
     for (let ix = 0; ix < stepsX; ix++) {
       const x = rect.left + rect.width * ((ix + 0.5) / stepsX);
-      const pixel = canvasPointToOverlayPixel(x, y);
+      const pixel = canvasPointToOverlayPixel(x, y, inverse);
       if (!pixel) continue;
-      const pos = (pixel.y * overlaySampler.width + pixel.x) * 4;
-      const r = overlaySampler.data[pos];
-      const g = overlaySampler.data[pos + 1];
-      const b = overlaySampler.data[pos + 2];
-      const a = overlaySampler.data[pos + 3];
+      const [r, g, b, a] = readOverlayPixel(pixel.x, pixel.y);
       if (a < 24) continue;
       average.count++;
       average.r += r;
@@ -12613,35 +12651,53 @@ function sampleOverlayColorForSelected() {
   }
 }
 
-function loadOverlayImageFromUrl(url, fileName, options = {}) {
+async function loadOverlayImageFromUrl(url, fileName, options = {}) {
+  const generation = options.generation ?? ++overlayLoadGeneration;
+  const documentToken = options.documentGeneration ?? documentGeneration;
+  const layeredState = options.layeredState === undefined ? layeredOverlayState : options.layeredState;
+  const isCurrent = () => generation === overlayLoadGeneration && documentToken === documentGeneration;
+  if (!isCurrent()) return null;
+  let objectUrl = null;
+  if (String(url).startsWith("data:image/")) {
+    try {
+      const blob = await editorPersistence.request("referenceImage", {
+        payload: { editor_source_overlay: { data_url: layeredState ? null : url, svg_text: layeredState?.sourceText || null } },
+        imageUrl: layeredState ? url : null,
+        maxReferenceBytes: EDITOR_REFERENCE_MAX_BYTES,
+      });
+      if (!isCurrent()) return null;
+      objectUrl = URL.createObjectURL(blob);
+    } catch (error) {
+      if (!isCurrent()) return null;
+      if (error.code === "reference_too_large") error.message = KfpsI18n.t("Reference exceeds the {0} MiB storage budget. Use a smaller image.", EDITOR_REFERENCE_MAX_BYTES / (1024 * 1024));
+      setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
+      throw error;
+    }
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
     const fail = (error) => {
       clearTimeout(timer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       img.onload = img.onerror = null;
       img.src = "";
-      setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
-      reject(error);
+      if (isCurrent()) {
+        setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(error.message)));
+        reject(error);
+      } else resolve(null);
     };
     const timer = setTimeout(() => fail(new Error(KfpsI18n.t("{0} is not a usable image.", fileName))), 30000);
     img.onload = () => {
       clearTimeout(timer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       img.onload = img.onerror = null;
+      if (!isCurrent()) { resolve(null); return; }
+      let replacement = null;
       try {
-        if (new Blob([String(layeredOverlayState?.sourceText || url)]).size > EDITOR_REFERENCE_MAX_BYTES) {
+        if (!objectUrl && new Blob([String(layeredState?.sourceText || url)]).size > EDITOR_REFERENCE_MAX_BYTES) {
           throw new Error(KfpsI18n.t("Reference exceeds the {0} MiB storage budget. Use a smaller image.", EDITOR_REFERENCE_MAX_BYTES / (1024 * 1024)));
         }
-        rebuildOverlaySampler(img);
-        releaseHybridOverlay();
-        if (overlayImage) discardFabricObject(overlayImage);
-        overlaySourceState = {
-          kind: layeredOverlayState ? "layered_svg" : "image",
-          fileName,
-          mimeType: options.mimeType || null,
-          dataUrl: layeredOverlayState ? null : url,
-          svgText: layeredOverlayState?.sourceText || null,
-        };
-        overlayImage = new fabric.Image(img, {
+        replacement = new fabric.Image(img, {
           originX: "center",
           originY: "center",
           left: 0,
@@ -12651,19 +12707,37 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
           evented: false,
           excludeFromExport: true,
         });
-        overlayImage.kloudyOverlay = true;
+        replacement.kloudyOverlay = true;
         if (options.projectState) {
-          applyOverlayProjectTransform(options.projectState);
-          if (options.projectState.controls) {
-            syncOverlayScaleControls(options.projectState.controls.scale_percent || 100);
-            if ($("overlayOpacity")) $("overlayOpacity").value = Math.round((overlayImage.opacity ?? 1) * 100);
-          }
+          applyOverlayProjectTransform(options.projectState, replacement);
         } else {
           const fit = 1800 / Math.max(img.width, img.height);
           const factor = syncOverlayScaleControls($("overlayScalePercent")?.value || $("overlayScale")?.value || 100) / 100;
-          overlayImage.set({ scaleX: fit * factor, scaleY: fit * factor });
+          replacement.set({ scaleX: fit * factor, scaleY: fit * factor });
         }
-        canvas.add(overlayImage);
+        canvas.add(replacement);
+        releaseHybridOverlay();
+        if (overlayImage) discardFabricObject(overlayImage);
+        overlayImage = replacement;
+        rebuildOverlaySampler(img);
+        clearLayeredOverlayState();
+        layeredOverlayState = layeredState;
+        overlayRefreshGeneration++;
+        overlaySourceState = {
+          kind: layeredState ? "layered_svg" : "image",
+          fileName,
+          mimeType: options.mimeType || null,
+          dataUrl: layeredState ? null : url,
+          svgText: layeredState?.sourceText || null,
+        };
+        unavailableSourceOverlayState = null;
+        if (options.projectState?.controls) {
+          syncOverlayScaleControls(options.projectState.controls.scale_percent || 100);
+          if ($("overlayOpacity")) $("overlayOpacity").value = Math.round((overlayImage.opacity ?? 1) * 100);
+        }
+        // Prepare the reference texture during explicit image loading, so its
+        // first upload is not deferred to the user's next drag or keypress.
+        hybridRenderNow();
         if (layeredOverlayState) populateLayeredOverlayControls();
         if (activeToolMode === "source") updateSourceInteractivity();
         else layerEditorHelpers();
@@ -12673,42 +12747,51 @@ function loadOverlayImageFromUrl(url, fileName, options = {}) {
         markOverlayChanged("reference image loaded");
         resolve(overlayImage);
       } catch (error) {
+        if (replacement && replacement !== overlayImage) discardFabricObject(replacement);
         fail(error);
       }
     };
     img.onerror = () => {
       fail(new Error(KfpsI18n.t("{0} is not a usable image.", fileName)));
     };
-    img.src = url;
+    img.src = objectUrl || url;
   });
 }
 
 function addOverlayFile(file) {
+  if (file.size > EDITOR_REFERENCE_MAX_BYTES) {
+    setStatus(KfpsI18n.t("Reference exceeds the {0} MiB storage budget. Use a smaller image.", EDITOR_REFERENCE_MAX_BYTES / (1024 * 1024)));
+    return;
+  }
   const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name || "");
+  const generation = ++overlayLoadGeneration;
+  const documentToken = documentGeneration;
+  const isCurrent = () => generation === overlayLoadGeneration && documentToken === documentGeneration;
   const reader = new FileReader();
-  reader.onerror = () => setStatus(KfpsI18n.t("Reference load failed: could not read {0}.", file.name));
+  reader.onerror = () => { if (isCurrent()) setStatus(KfpsI18n.t("Reference load failed: could not read {0}.", file.name)); };
   if (isSvg) {
     reader.onload = () => {
+      if (!isCurrent()) return;
+      let layeredState;
       try {
-        layeredOverlayState = parseLayeredSvg(String(reader.result || ""), file.name);
+        layeredState = parseLayeredSvg(String(reader.result || ""), file.name);
       } catch (err) {
-        clearLayeredOverlayState();
         setStatus(KfpsI18n.t("Reference load failed: {0}", KfpsI18n.error(err.message || KfpsI18n.t("SVG could not be parsed."))));
         return;
       }
-      const url = layeredSvgDataUrl();
+      const url = layeredSvgDataUrl(layeredState);
       if (!url) {
-        clearLayeredOverlayState();
         setStatus(KfpsI18n.t("Reference load failed: {0} could not be rendered.", file.name));
         return;
       }
-      loadOverlayImageFromUrl(url, file.name, { mimeType: file.type || "image/svg+xml" }).catch(() => {});
+      loadOverlayImageFromUrl(url, file.name, { mimeType: file.type || "image/svg+xml", layeredState, generation, documentGeneration: documentToken }).catch(() => {});
     };
     reader.readAsText(file);
     return;
   }
-  clearLayeredOverlayState();
-  reader.onload = () => loadOverlayImageFromUrl(reader.result, file.name, { mimeType: file.type || null }).catch(() => {});
+  reader.onload = () => {
+    if (isCurrent()) loadOverlayImageFromUrl(reader.result, file.name, { mimeType: file.type || null, layeredState: null, generation, documentGeneration: documentToken }).catch(() => {});
+  };
   reader.readAsDataURL(file);
 }
 
@@ -12738,7 +12821,9 @@ function toggleOverlay() {
 }
 
 function removeOverlay() {
-  if (!overlayImage) {
+  overlayLoadGeneration++;
+  overlayRefreshGeneration++;
+  if (!overlayImage && !unavailableSourceOverlayState) {
     setStatus(KfpsI18n.t("No reference image is loaded to remove."));
     return;
   }
@@ -12940,7 +13025,17 @@ function maybeShowProjectSharingNotice() {
 async function continueEditorStartup() {
   if (maybeShowProjectSharingNotice()) return;
   if (maybeShowLanguageNotice()) return;
-  if (!startupProjectWasLoaded) await maybeShowAutosaveRecovery();
+  if (startupRecoveryHandled) return;
+  startupRecoveryHandled = true;
+  const mode = new URLSearchParams(location.search).get("mode");
+  if (mode === "new") {
+    await startBlankCanvas();
+    const url = new URL(location.href);
+    url.searchParams.delete("mode");
+    window.history.replaceState(null, "", url);
+  } else if (!startupProjectId() && !startupBrowseMode() && mode !== "tutorial") {
+    await maybeShowAutosaveRecovery();
+  }
   if (startupBrowseMode() === "json") openJsonBrowser();
 }
 
@@ -13052,24 +13147,24 @@ function autosaveSummary(payload) {
 }
 
 async function readAutosavePayload() {
+  recoveryReadWarning = "";
   const candidates = [];
   let clearedRevision = 0;
   try {
     clearedRevision = Number(localStorage.getItem(AUTOSAVE_CLEAR_KEY)) || 0;
-    const browserPayload = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null");
+    const browserPayload = await editorPersistence.request("parseText", { text: localStorage.getItem(AUTOSAVE_KEY) || "null" });
     if (browserPayload && Array.isArray(browserPayload.shapes)) candidates.push(browserPayload);
   } catch (_err) {
     // The app-folder copy remains available when browser storage fails.
   }
   try {
-    const response = await fetch(EDITOR_AUTOSAVE_API, { cache: "no-store", signal: AbortSignal.timeout(5000) });
-    if (response.ok) {
-      const data = await response.json();
-      if (data.exists && data.payload && Array.isArray(data.payload.shapes)) candidates.push(data.payload);
-      if (data.payload?.action === "clear") clearedRevision = Math.max(clearedRevision, recoveryRevision(data.payload));
-    }
+    const data = await editorPersistence.request("readRecovery");
+    if (data.fallback) recoveryReadWarning = KfpsI18n.t("The newest recovery copy was unreadable. An earlier complete checkpoint was restored.");
+    else if (data.error && !data.payload) recoveryReadWarning = KfpsI18n.t("Recovery could not be read. Saved projects have not been changed.");
+    if (data.payload && Array.isArray(data.payload.shapes)) candidates.push(data.payload);
+    clearedRevision = Math.max(clearedRevision, data.clearedRevision || 0);
   } catch (_err) {
-    // Direct-file/browser fallback.
+    recoveryReadWarning = KfpsI18n.t("Recovery could not be read. Saved projects have not been changed.");
   }
   autosaveRevision = Math.max(autosaveRevision, clearedRevision, ...candidates.map(recoveryRevision));
   return candidates
@@ -13080,38 +13175,60 @@ async function readAutosavePayload() {
 async function recoverAutosavePayload(payload) {
   if (!payload || !Array.isArray(payload.shapes)) {
     setStatus(KfpsI18n.t("Autosave recovery failed: temp save has no shapes list."));
-    return;
+    return false;
   }
-  loadedName = cleanProjectBaseName(payload.name, "autosave");
-  currentProjectName = null;
+  const generation = beginDocumentLoad();
+  recoveryRestoreDepth++;
+  let restored = false;
   try {
-    await loadPayload({
+    if (!await loadPayload({
       shapes: payload.shapes,
       editor_collapsed_groups: payload.editor_collapsed_groups || [],
-    });
+    }, { generation, strict: true, name: cleanProjectBaseName(payload.name, "autosave"), projectName: null })) return false;
+    const loadedHistory = currentHistoryState();
     applySavedGuideState(payload.editor_guides || null);
     let referenceError = null;
     try {
       await restoreSourceOverlayFromProject(payload.editor_source_overlay || null);
     } catch (err) {
+      if (generation !== documentGeneration) return false;
       referenceError = err;
       clearSourceOverlayState();
     }
-    establishLoadedHistoryBoundary("recovered work");
+    if (generation !== documentGeneration) return false;
+    if (referenceError) unavailableSourceOverlayState = payload.editor_source_overlay || null;
+    flushPendingNudgeHistory();
+    if (currentHistoryState() !== loadedHistory) {
+      restored = true;
+      return true;
+    }
+    establishLoadedHistoryBoundary("recovered work", { writeRecovery: false });
+    if (payload.editor_session?.project_name) currentProjectName = cleanProjectBaseName(payload.editor_session.project_name);
+    if (payload.editor_session?.saved === true && currentProjectName && !referenceError) markCurrentHistorySaved(currentProjectName);
+    recoveryAutosavePayload = null;
+    restored = true;
     if (referenceError) {
       setStatus(
         KfpsI18n.t("Recovered {0}, but its reference image could not be restored. ", autosaveSummary(payload))
-        + KfpsI18n.t("Use Save if you want to keep the recovered layers and guides."),
+        + KfpsI18n.t("Its original reference data is still preserved in projects and recovery. Replace or remove it explicitly to discard it."),
       );
       showCornerNotice(
         KfpsI18n.t("Recovered without reference image"),
         KfpsI18n.error(referenceError.message || String(referenceError)),
       );
     } else {
-      setStatus(KfpsI18n.t("Recovered temp save: {0}. Use Save if you want to keep it.", autosaveSummary(payload)));
+      setStatus(KfpsI18n.t("Previous session restored: {0}.", autosaveSummary(payload)));
     }
+    return true;
   } catch (err) {
+    if (generation !== documentGeneration) return false;
+    clearBusy();
+    updateDocumentState();
     setStatus(KfpsI18n.t("Autosave recovery failed: {0}", KfpsI18n.error(err.message)));
+    return false;
+  } finally {
+    if (generation === documentGeneration) recoveryRestoreDepth--;
+    if (restored && generation === documentGeneration) writeAutosavePayload(autosavePayloadFromState(currentHistoryState() || snapshotEditorState()));
   }
 }
 
@@ -13120,9 +13237,15 @@ async function maybeShowAutosaveRecovery() {
     $("autosaveRecoveryDialog")?.close();
     return false;
   }
+  const generation = documentGeneration;
   const payload = await readAutosavePayload();
-  if (!payload || !Array.isArray(payload.shapes) || payload.shapes.length <= 0) return false;
+  if (generation !== documentGeneration) return true;
+  if (recoveryReadWarning) showCornerNotice(KfpsI18n.t("Recovery notice"), recoveryReadWarning);
+  if (!payload || !Array.isArray(payload.shapes)) return false;
+  if (!payload.shapes.length && !payload.editor_source_overlay && !payload.editor_guides?.guides?.length
+    && !payload.editor_session?.project_name) return false;
   recoveryAutosavePayload = payload;
+  if (window.qt?.webChannelTransport && await recoverAutosavePayload(payload)) return true;
   const summary = $("autosaveRecoverySummary");
   if (summary) summary.textContent = KfpsI18n.t("Found: {0}", autosaveSummary(payload));
   const dialog = $("autosaveRecoveryDialog");
@@ -13510,7 +13633,7 @@ function bindUi() {
     $("confirmationDialog")?.close();
   });
   $("confirmationDialog")?.addEventListener("close", () => {
-    if (confirmationResolver) finishConfirmation(false);
+    if (!$("confirmationDialog").open && confirmationResolver) finishConfirmation(false);
   });
   $("textPromptDialog")?.querySelector("form")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -13584,14 +13707,14 @@ function bindUi() {
     const selected = selectedVinylObjects();
     const alpha = selected.length === 1
       ? Math.round((selected[0].opacity ?? 1) * 255)
-      : (Number($("opacitySlider")?.value) || rememberedColor[3] || 255);
+      : Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
     scheduleDialogColorPreview(hexToRgb(event.target.value, alpha));
   });
   $("dialogColorPicker").addEventListener("change", (event) => {
     const selected = selectedVinylObjects();
     const alpha = selected.length === 1
       ? Math.round((selected[0].opacity ?? 1) * 255)
-      : (Number($("opacitySlider")?.value) || rememberedColor[3] || 255);
+      : Number($("opacitySlider")?.value ?? rememberedColor[3] ?? 255);
     commitDialogColor(hexToRgb(event.target.value, alpha));
   });
   $("applyFields").addEventListener("click", applySelectionFields);
@@ -13923,9 +14046,11 @@ window.addEventListener("pagehide", flushPendingAutosaveToBrowser);
 async function executeDesktopOperation(operation, payload = {}) {
   if (operation === "state") {
     flushPendingNudgeHistory();
-    return { dirty: documentDirty, saving: projectSaveInProgress || exportSaveInProgress || Boolean(editorAssetLibrary?.busy) };
+    return { dirty: documentDirty, saving: recoveryRestoreDepth > 0 || pixelArtGenerationRunning || textVinylGenerationRunning || projectSaveInProgress || exportSaveInProgress || Boolean(editorAssetLibrary?.busy) };
   }
   if (operation === "close") {
+    if (pixelArtGenerationRunning || textVinylGenerationRunning) return { ok: false, error: KfpsI18n.t("Wait for generation to finish, or start a new canvas to cancel it, before closing.") };
+    if (recoveryRestoreDepth) return { ok: false, error: KfpsI18n.t("Wait for the project or recovery to finish loading before closing.") };
     if (editorAssetLibrary?.busy) return { ok: false, error: KfpsI18n.t("Wait for the asset library operation to finish before closing.") };
     flushPendingNudgeHistory();
     if (payload.action === "save") {
@@ -13940,7 +14065,7 @@ async function executeDesktopOperation(operation, payload = {}) {
       return { ok: false, error: KfpsI18n.t("The document changed while preparing to close. Save the new changes first.") };
     }
     if (!settingsSaved) return { ok: false, error: KfpsI18n.t("The latest editor settings have not reached the app folder.") };
-    if (documentDirty && autosaveStatus.serverOk !== true) return { ok: false, error: KfpsI18n.t("The latest recovery has not reached the app folder. Save the project before closing.") };
+    if (hasEditableWorkspace() && autosaveStatus.serverOk !== true) return { ok: false, error: KfpsI18n.t("The latest recovery has not reached the app folder. Save the project before closing.") };
     return { ok: true };
   }
   if (operation !== "open") throw new Error(KfpsI18n.t("Unsupported editor window operation."));
@@ -13952,10 +14077,9 @@ async function executeDesktopOperation(operation, payload = {}) {
   }
   if (payload.project) {
     if (!await confirmWorkspaceReplacement(payload.project)) return { cancelled: true };
-    const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent(payload.project)}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(KfpsI18n.error(data.error || KfpsI18n.t("HTTP {0}", response.status)));
-    await loadProjectPayload(data.payload, data.name || "project");
+    const generation = beginDocumentLoad();
+    const data = await readEditorDocument(`${PROJECT_FILE_API}?id=${encodeURIComponent(payload.project)}`);
+    if (!await loadProjectPayload(data.payload, data.name || "project", { generation })) return { cancelled: true };
     clearBusy(KfpsI18n.t("Loaded project: {0}", data.name || payload.project));
   } else if (payload.mode === "new") {
     await startBlankCanvas();

@@ -15,10 +15,15 @@ async (page, options) => {
   });
   const checkpoints = [];
   const started = Date.now();
-  for (let cycle = 0; cycle < 6; cycle++) {
-    const size = cycle % 2 ? 49 : 35;
-    await page.locator("#overlayInput").setInputFiles(`${options.fixtures}/reference-${size}.png`);
-    await page.waitForFunction(size => overlaySourceState?.fileName === `reference-${size}.png`, size);
+  const referenceFiles = options.referenceFiles || ['reference-35.png', 'reference-49.png'];
+  const cycles = options.soakCycles || 6;
+  const cycleMs = options.cycleMs || 60000;
+  for (let cycle = 0; cycle < cycles; cycle++) {
+    const referenceFile = referenceFiles[cycle % referenceFiles.length];
+    const { root } = await cdp.send('DOM.getDocument');
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#overlayInput' });
+    await cdp.send('DOM.setFileInputFiles', { nodeId, files: [`${options.fixtures}/${referenceFile}`] });
+    await page.waitForFunction(name => overlaySourceState?.fileName === name, referenceFile);
     let edits = 0;
     do {
       await page.evaluate(async cycle => {
@@ -28,17 +33,25 @@ async (page, options) => {
         if (!autosaveStatus.serverOk) throw new Error("Soak recovery failed: " + autosaveStatus.error);
       }, cycle);
       edits += 41;
-    } while (Date.now() - started < (cycle + 1) * 60000);
-    const state = await page.evaluate(async () => {
+    } while (Date.now() - started < (cycle + 1) * cycleMs);
+    const state = await page.evaluate(async expectedPixels => {
       const recovery = await readAutosavePayload();
       if (JSON.stringify(recovery.shapes) !== JSON.stringify(snapshotShapes()) || recovery.editor_source_overlay.data_url !== overlaySourceState.dataUrl) throw new Error("Soak recovery readback changed data");
       await saveProject();
       if (documentDirty) throw new Error("Soak project save failed");
-      return { ...storageSoak, layers: vinylObjects().length, history: history.length, pixels: overlaySampler.width * overlaySampler.height, browserFallback: autosaveStatus.browserOk };
-    });
+      // Save starts a clean-session checkpoint independently of its project ACK.
+      await flushPendingAutosave();
+      const response = await fetch(`${PROJECT_FILE_API}?id=Storage%20soak.fabric-project.json`);
+      if (!response.ok) throw new Error("Soak saved project read failed");
+      const { payload } = await response.json();
+      if (JSON.stringify(payload.shapes) !== JSON.stringify(snapshotShapes()) || payload.editor_source_overlay.data_url !== overlaySourceState.dataUrl) throw new Error("Soak saved project changed data");
+      const pixels = overlaySampler.width * overlaySampler.height;
+      if (vinylObjects().length !== 3000 || pixels !== expectedPixels || !autosaveStatus.browserOk || !autosaveStatus.serverOk) throw new Error("Soak layer, source pixel or checkpoint mismatch: " + JSON.stringify({ layers: vinylObjects().length, pixels, expectedPixels, status: autosaveStatus }));
+      return { ...storageSoak, layers: vinylObjects().length, history: history.length, pixels, browserFallback: autosaveStatus.browserOk, projectReadbackExact: true, recoveryReadbackExact: true };
+    }, options.expectedPixels || 24000000);
     // Freeze one retained-state sample after each replacement/edit/save cycle.
     await cdp.send("HeapProfiler.collectGarbage");
-    checkpoints.push({ cycle, size, edits, seconds: (Date.now() - started) / 1000, ...state, heap: await cdp.send("Runtime.getHeapUsage") });
+    checkpoints.push({ cycle, referenceFile, edits, seconds: (Date.now() - started) / 1000, ...state, heap: await cdp.send("Runtime.getHeapUsage") });
     console.log(JSON.stringify({ checkpoint: checkpoints.at(-1) }));
   }
   await page.screenshot({ path: "storage-soak.png" });

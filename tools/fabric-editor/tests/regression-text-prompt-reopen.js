@@ -4,6 +4,7 @@ async (page) => {
   await page.locator("#loadProject").click();
   await page.locator(".projectBrowserEntry").filter({ has: page.getByText("Enter Save As", { exact: true }) }).click();
   await page.locator("#selectProjectEntry").click();
+  if (await page.locator("#confirmationDialog").isVisible()) await page.locator("#confirmationDialogConfirm").click();
   await page.locator("#projectBrowserDialog").waitFor({ state: "hidden" });
   const reopened = await page.evaluate(() => ({
     name: currentProjectName,

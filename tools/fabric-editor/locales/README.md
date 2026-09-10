@@ -40,6 +40,9 @@ New English defaults to the source key; new Korean entries are empty and need
 translation. Use double-quoted literal keys in JavaScript. Computed keys,
 controlled enums, new whole-HTML help blocks and shape/family captions must be
 added manually to both catalogs. Do not translate arbitrary runtime strings.
+The persistence worker/facade's literal `failure("...")` and `new Error("...")`
+diagnostics are also collected; the main editor translates these with
+`KfpsI18n.error()` without localizing protocol fields or saved artwork.
 
 Edit the values in `en.json` and `ko.json`, then run:
 

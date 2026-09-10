@@ -1,5 +1,46 @@
 # Kloudy's FH6 Painter Changelog
 
+## 3.1.75
+
+### Larger Images and Language Updates
+- PNG/JPG reference images can now be up to about 79 MB per file (just under 75 MiB). Storing the image inside your project requires extra space, which is covered by the new 100 MiB reference allowance.
+- Projects can now hold up to 150 MiB of saved data, including layers, groups, guides, and your reference image.
+- Your original reference image is preserved without silently reducing its resolution.
+- Updated English and Korean messages to explain saving, recovery, errors, and keyboard shortcuts more clearly.
+
+### Smoother Editing
+- Reduced interruptions caused by background saving and checking your artwork.
+- Recovery saves no longer repeatedly copy an unchanged reference image.
+- Reduced reference-image memory use and fixed old image data unnecessarily remaining in memory after reopening projects.
+- Improved performance when working with large numbers of layers.
+- Improved pixel-art processing and reduced freezing during large text-generation operations.
+
+### Safer Saving and Recovery
+- Recovery saves are scheduled approximately half a second after you stop making changes, or within two seconds while you continue editing.
+- Improved automatic restoration of your last completed recovery save after closing the editor or experiencing a crash, including your layers, groups, guides, reference image, and project name.
+- Keeps a previous recovery copy in case the newest copy is damaged.
+- Improved handling of failed saves, retries, and closing the editor before saving finishes.
+- Changes made while a project is saving remain marked as unsaved.
+- Starting a new canvas or opening another project is no longer overridden by an older loading or recovery operation.
+- If a saved reference cannot be displayed, its original image data is preserved.
+
+### Editor Fixes
+- Improved reliability when opening projects, starting new canvases, undoing changes, replacing shapes, and generating artwork.
+- Failed text or pixel-art replacements now preserve the previous artwork.
+- Improved adding, copying, pasting, and inserting saved assets near the 3,000-layer limit.
+- Fixed removed or replaced reference images unexpectedly reappearing.
+- Fixed fully transparent layers losing their transparency when loading or changing colors.
+- Fixed using the keyboard to favorite a shape also adding it to the canvas.
+- Fixed temporary theme previews overwriting your saved theme.
+- Changes to guides, the grid, and snapping are now correctly saved, recovered, and included in undo history.
+- Improved keyboard shortcut setup for Korean input and the Space key. New shortcuts cannot accidentally reuse an existing shortcut.
+- Fixed cases where an old dialog or loading state could interfere with your next action.
+
+### Testing and Notes
+- Repeated saving, reopening, crash-recovery, and file-size-limit tests.
+- Completed a 21-minute stress test with 3,000 layers, 48 MP reference images, and 17,794 edits. Every checked project and recovery save preserved the artwork exactly, without reproducing the reported exponential memory increase.
+- Larger images need more memory and take longer to open. Very large images and complex operations can still cause pauses. Recovery is additional protection, not a replacement for saving your project: a crash before the latest recovery save finishes can still lose recent changes.
+
 ## 3.1.74
 - Hardened editor startup from KFPS and the standalone launcher. Startup now waits for the editor to become ready, reports failures, and avoids starting redundant processes when an existing window is busy.
 - Fixed Reopen Editor sometimes changing only the URL fragment instead of reloading the page. Retrying a failed editor now starts a fresh page without deleting saved projects, settings or recovery files.

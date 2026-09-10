@@ -30,7 +30,7 @@ async page => {
     const result = await page.evaluate(async ({ width, height }) => {
       const assert = (value, message) => { if (!value) throw new Error(message); };
       assert(overlayImage.width === width && overlayImage.height === height, "Reference dimensions changed");
-      assert(overlaySampler.data.length === width * height * 4, "Sampler lost original pixels");
+      assert(overlaySampler.width === width && overlaySampler.height === height && overlaySampler.tiles.size === 0, "Sampler changed dimensions or eagerly decoded reference pixels");
       const originalUrl = overlaySourceState.dataUrl;
       $("overlayOpacity").value = "100";
       updateOverlay();

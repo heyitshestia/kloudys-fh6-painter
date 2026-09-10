@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 from geometry_json import ELLIPSE, RECTANGLE, ROTATED_ELLIPSE, ROTATED_RECTANGLE, load_normalized_geometry
 from json_preview_renderer import render_json_preview as shared_render_json_preview, render_editor_asset_preview
 from kfps_shapes import resolve_full_type_resource, resolve_vinyl_resource, shape_word_resource_map
+from tools.fabric_editor_recovery import RecoveryStore
 
 EDITOR = ROOT / "tools" / "fabric-editor" / "index.html"
 STARTUP_HELP_MARKER = ROOT / "runtime" / "fabric-editor" / "startup-help-confirmed.json"
@@ -45,6 +46,7 @@ STARTUP_HELP_API = "/api/fabric-editor/startup-help-confirmed"
 EDITOR_PREFS_API = "/api/fabric-editor/preferences"
 EDITOR_THEMES_API = "/api/fabric-editor/themes"
 EDITOR_AUTOSAVE_API = "/api/fabric-editor/autosave"
+EDITOR_RECOVERY_REFERENCE_API = "/api/fabric-editor/recovery-reference"
 JSON_BROWSER_API = "/api/fabric-editor/json-browser"
 JSON_FILE_API = "/api/fabric-editor/json-file"
 JSON_PREVIEW_API = "/api/fabric-editor/json-preview"
@@ -57,13 +59,14 @@ EDITOR_ASSETS_API = "/api/fabric-editor/assets"
 EDITOR_ASSET_PREVIEW_API = "/api/fabric-editor/asset-preview"
 EDITOR_ASSET_FORMAT = "kfps_editor_asset_v1"
 EDITOR_ASSET_MAX_BYTES = 8 * 1024 * 1024
-EDITOR_PROJECT_MAX_BYTES = 100 * 1024 * 1024
+EDITOR_PROJECT_MAX_BYTES = 150 * 1024 * 1024
 EDITOR_MUTATION_HEADER = "X-KFPS-Editor-Session"
 EDITOR_MUTATION_APIS = {
     STARTUP_HELP_API,
     EDITOR_PREFS_API,
     EDITOR_THEMES_API,
     EDITOR_AUTOSAVE_API,
+    EDITOR_RECOVERY_REFERENCE_API,
     EDITOR_EXPORT_API,
     PROJECT_SAVE_API,
     PROJECT_OPEN_FOLDER_API,
@@ -108,14 +111,17 @@ def _validated_settings(value: object) -> dict:
     return value
 
 
-def _write_json_atomic(path: Path, payload: object) -> None:
+def _write_json_atomic(path: Path, payload: object, *, compact=False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(
         f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
     )
     try:
         with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-            json.dump(payload, stream, indent=2)
+            if compact:
+                json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
+            else:
+                json.dump(payload, stream, indent=2)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
@@ -974,20 +980,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             })
             return
         if parsed.path == EDITOR_AUTOSAVE_API:
-            if not EDITOR_AUTOSAVE_MARKER.exists():
-                self._send_json({"exists": False, "marker": str(EDITOR_AUTOSAVE_MARKER)})
-                return
-            try:
-                payload = json.loads(EDITOR_AUTOSAVE_MARKER.read_text(encoding="utf-8"))
-            except Exception as err:
-                self._send_json({"exists": False, "error": str(err), "marker": str(EDITOR_AUTOSAVE_MARKER)})
-                return
+            compact = (parse_qs(parsed.query).get("compact") or [""])[0] == "1"
+            with self.server.autosave_lock:
+                payload, fallback, error = self.server.recovery_store().read(materialize=not compact)
             shapes = payload.get("shapes") if isinstance(payload, dict) else None
             self._send_json({
                 "exists": isinstance(shapes, list) and payload.get("action") != "clear",
                 "payload": payload if isinstance(shapes, list) else None,
+                "fallback": fallback, "error": error,
                 "marker": str(EDITOR_AUTOSAVE_MARKER),
             })
+            return
+        if parsed.path == EDITOR_RECOVERY_REFERENCE_API:
+            try:
+                identity = (parse_qs(parsed.query).get("sha256") or [""])[0]
+                with self.server.autosave_lock:
+                    body = self.server.recovery_store().reference_bytes(identity)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            except (OSError, ValueError) as err:
+                self._send_json({"error": str(err)}, status=404)
             return
         if parsed.path == JSON_BROWSER_API:
             query = parse_qs(parsed.query)
@@ -1174,6 +1190,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "path": str(target),
             })
             return
+        if parsed.path == EDITOR_RECOVERY_REFERENCE_API:
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if not 0 < length <= EDITOR_PROJECT_MAX_BYTES:
+                    raise ValueError("Invalid recovery reference size.")
+                body = self.rfile.read(length)
+                if len(body) != length:
+                    raise ValueError("Incomplete recovery reference.")
+                identity = (parse_qs(parsed.query).get("sha256") or [""])[0]
+                with self.server.autosave_lock:
+                    self.server.recovery_store().put_reference(body, identity)
+            except (OSError, ValueError) as err:
+                self._send_json({"error": str(err)}, status=400)
+                return
+            self._send_json({"ok": True, "sha256": identity, "size": length})
+            return
         if parsed.path == EDITOR_AUTOSAVE_API:
             try:
                 length = int(self.headers.get("Content-Length") or "0")
@@ -1282,7 +1314,18 @@ class EditorServer(socketserver.ThreadingTCPServer):
         self.asset_preview_lock = threading.Lock()
         self.asset_previews = OrderedDict()
         self.autosave_revision = None
+        self._recovery = None
         super().__init__(*args, **kwargs)
+
+    def recovery_store(self):
+        if self._recovery is None or self._recovery.marker != EDITOR_AUTOSAVE_MARKER:
+            self._recovery = RecoveryStore(
+                EDITOR_AUTOSAVE_MARKER,
+                lambda path, payload: _write_json_atomic(path, payload, compact=True),
+                EDITOR_PROJECT_MAX_BYTES,
+            )
+        self._recovery.max_bytes = EDITOR_PROJECT_MAX_BYTES
+        return self._recovery
 
     def store_asset(self, data: object) -> dict:
         if not isinstance(data, dict):
@@ -1356,15 +1399,11 @@ class EditorServer(socketserver.ThreadingTCPServer):
         if isinstance(revision, bool) or not isinstance(revision, int) or not 0 <= revision <= 2**53 - 1:
             raise ValueError("invalid recovery revision")
         with self.autosave_lock:
+            store = self.recovery_store()
             if self.autosave_revision is None:
-                self.autosave_revision = 0
-                try:
-                    saved = json.loads(EDITOR_AUTOSAVE_MARKER.read_text(encoding="utf-8"))
-                    stored_revision = saved.get("recovery_revision", 0)
-                    if type(stored_revision) is int and 0 < stored_revision <= 2**53 - 1:
-                        self.autosave_revision = stored_revision
-                except (OSError, ValueError, AttributeError):
-                    pass
+                self.autosave_revision = store.revision()
+            if not revision and self.autosave_revision:
+                return {"applied": False, "recovery_revision": self.autosave_revision}
             # Reject delayed operations, including those received after a restart.
             if revision and revision <= self.autosave_revision:
                 if revision == self.autosave_revision:
@@ -1372,16 +1411,27 @@ class EditorServer(socketserver.ThreadingTCPServer):
                     try:
                         stored = json.loads(EDITOR_AUTOSAVE_MARKER.read_text(encoding="utf-8"))
                         if stored == expected:
+                            store._read(EDITOR_AUTOSAVE_MARKER, False)
+                            store.acknowledge(stored)
                             return {"applied": True, "cleared": clearing, "duplicate": True, "recovery_revision": revision}
                     except (OSError, ValueError):
                         pass
                 return {"applied": False, "recovery_revision": self.autosave_revision}
-            if clearing and not revision:
-                EDITOR_AUTOSAVE_MARKER.unlink(missing_ok=True)
-            elif clearing:
-                _write_json_atomic(EDITOR_AUTOSAVE_MARKER, {"action": "clear", "shapes": [], "recovery_revision": revision})
-            else:
-                _write_json_atomic(EDITOR_AUTOSAVE_MARKER, payload)
+            try:
+                if clearing and not revision:
+                    if self.autosave_revision:
+                        return {"applied": False, "recovery_revision": self.autosave_revision}
+                    EDITOR_AUTOSAVE_MARKER.unlink(missing_ok=True)
+                    store.previous.unlink(missing_ok=True)
+                elif clearing:
+                    store.write({"action": "clear", "shapes": [], "recovery_revision": revision})
+                else:
+                    store.write(payload)
+            except (OSError, ValueError):
+                # A committed head may precede a failed watermark/ACK. Its retry
+                # must not rotate that head over the still-useful older backup.
+                self.autosave_revision = max(self.autosave_revision, store.revision())
+                raise
             self.autosave_revision = max(self.autosave_revision, revision)
             return {"applied": True, "cleared": clearing, "recovery_revision": self.autosave_revision}
 

@@ -34,7 +34,8 @@ async (page, screenshotDirectory) => {
         && button.top >= bounds.top && button.bottom <= bounds.bottom;
     });
     check(fits, `Notice or Continue overflows ${size.width}x${size.height}`);
-    if (screenshotDirectory) await page.screenshot({ path: `${screenshotDirectory}/popup-${size.width}x${size.height}.png` });
+    const prefix = typeof screenshotDirectory === "string" ? `${screenshotDirectory}/` : "";
+    await page.screenshot({ path: `${prefix}popup-${size.width}x${size.height}.png` });
   }
   await page.setViewportSize(sizes[0]);
 

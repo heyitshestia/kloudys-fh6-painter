@@ -12,9 +12,9 @@ from test_fabric_editor_server import EDITOR_ROOT, RunningEditorServer, fabric_s
 class FabricEditorStorageLimitTests(unittest.TestCase):
     def test_client_and_server_share_project_budget(self):
         source = (EDITOR_ROOT / "editor.js").read_text(encoding="utf-8")
-        self.assertEqual(100 * 1024 * 1024, fabric_server.EDITOR_PROJECT_MAX_BYTES)
-        self.assertIn("const EDITOR_PROJECT_MAX_BYTES = 100 * 1024 * 1024;", source)
-        self.assertIn("const EDITOR_REFERENCE_MAX_BYTES = 50 * 1024 * 1024;", source)
+        self.assertEqual(150 * 1024 * 1024, fabric_server.EDITOR_PROJECT_MAX_BYTES)
+        self.assertIn("const EDITOR_PROJECT_MAX_BYTES = 150 * 1024 * 1024;", source)
+        self.assertIn("const EDITOR_REFERENCE_MAX_BYTES = 100 * 1024 * 1024;", source)
 
     def request(self, server, endpoint, body=None, length=None):
         connection = http.client.HTTPConnection("127.0.0.1", server.httpd.server_address[1], timeout=5)
@@ -53,7 +53,7 @@ class FabricEditorStorageLimitTests(unittest.TestCase):
                 target = root / "projects" / "Boundary.fabric-project.json" if endpoint == fabric_server.PROJECT_SAVE_API else root / "autosave.json"
                 self.assertEqual(payload["shapes"], json.loads(target.read_text())["shapes"])
             previous = target.read_bytes()
-            for length in (limit + 1, 100 * 1024 * 1024 + 1, 0, -1, "invalid"):
+            for length in (limit + 1, 150 * 1024 * 1024 + 1, 0, -1, "invalid"):
                 status, response = self.request(server, endpoint, length=length)
                 self.assertEqual(400, status, response)
                 self.assertEqual(previous, target.read_bytes(), "Rejected write altered the last good file")

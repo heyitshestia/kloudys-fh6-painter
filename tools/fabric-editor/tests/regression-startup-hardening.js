@@ -18,21 +18,28 @@ async (page) => {
   const cold = await page.evaluate(() => ({count: vinylObjects().length, name: currentProjectName, language: KfpsI18n.locale, busy: !$('busyBanner').hidden}));
   check(cold.name === 'Startup Regression' && !cold.busy, 'Cold Korean project startup failed');
   await page.screenshot({path: 'cold-project-korean.png'});
-  const failures = await page.evaluate(async () => {
-    const before = JSON.stringify(vinylObjects().map(o => objectToShape(o, {includeEditorMeta: true})));
-    const originalFetch = window.fetch;
-    let deadline = false;
-    window.fetch = async (url, options) => {
+  const worker = page.workers().find(item => item.url().includes('editor-persistence-worker'));
+  check(worker, 'Actual project persistence worker unavailable');
+  await worker.evaluate(() => {
+    self.originalFetch = fetch;
+    self.projectReadDeadline = false;
+    self.fetch = async (url, options) => {
       if (String(url).includes('/project-file?')) {
-        deadline = Boolean(options?.signal);
+        self.projectReadDeadline = Boolean(options?.signal);
         return new Response('{invalid', {status: 200});
       }
       return originalFetch(url, options);
     };
+  });
+  const failures = await page.evaluate(async () => {
+    const before = JSON.stringify(vinylObjects().map(o => objectToShape(o, {includeEditorMeta: true})));
     const loaded = await loadStartupProjectFromQuery();
-    window.fetch = originalFetch;
     const preserved = before === JSON.stringify(vinylObjects().map(o => objectToShape(o, {includeEditorMeta: true})));
     $('messageDialog').close();
+    return {loaded, preserved};
+  });
+  failures.deadline = await worker.evaluate(() => { self.fetch = originalFetch; return projectReadDeadline; });
+  Object.assign(failures, await page.evaluate(async () => {
     const bitmap = document.createElement('canvas'); bitmap.width = bitmap.height = 8;
     bitmap.getContext('2d').fillRect(0, 0, 8, 8);
     const originalAdd = canvas.add;
@@ -44,8 +51,8 @@ async (page) => {
     canvas.add = originalAdd;
     clearSourceOverlayState();
     await loadStartupProjectFromQuery();
-    return {deadline, loaded, preserved, rejected, retryCount: vinylObjects().length, busy: !$('busyBanner').hidden};
-  });
+    return {rejected, retryCount: vinylObjects().length, busy: !$('busyBanner').hidden};
+  }));
   check(failures.deadline && !failures.loaded && failures.preserved && failures.rejected && failures.retryCount === 3000 && !failures.busy, 'Load failure/retry contract failed: ' + JSON.stringify(failures));
   // Browser storage denial must not stop the script before controls are bound.
   await page.addInitScript(() => {

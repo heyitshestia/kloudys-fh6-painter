@@ -31,7 +31,7 @@ async page => page.evaluate(async () => {
       assert(documentDirty, "Pending nudge appeared saved");
       await sleep(100);
       if (firstRecoveryMs === null && autosaveStatus.state === "saved") {
-        const stored = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null");
+        const stored = await readAutosavePayload();
         if (stored?.shapes[0].data[0] !== beforeNudge) firstRecoveryMs = performance.now() - started;
       }
     }

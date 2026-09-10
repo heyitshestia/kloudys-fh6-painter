@@ -79,6 +79,11 @@ def source_messages():
     for name in ("editor.js", "editor-assets.js", "editor-preferences.js"):
         source = (EDITOR / name).read_text(encoding="utf-8")
         keys.update(json.loads(match[1]) for match in JS_REFERENCE.finditer(source))
+    # Worker diagnostics are translated at the UI boundary with KfpsI18n.error.
+    for name in ("editor-persistence.js", "editor-persistence-worker.js", "editor-pixel-worker.js"):
+        source = (EDITOR / name).read_text(encoding="utf-8")
+        keys.update(json.loads(match[1]) for match in re.finditer(
+            r'(?:failure|new Error)\(\s*("(?:\\.|[^"\\])*")', source))
     native = ROOT / "KFPS.UI/src/kfps_ui/editor_desktop.py"
     tree = ast.parse(native.read_text(encoding="utf-8"))
     for node in ast.walk(tree):

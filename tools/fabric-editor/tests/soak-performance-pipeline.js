@@ -1,7 +1,14 @@
-async page => {
+async (page, options = {}) => {
   page.setDefaultTimeout(180000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const cdp = await page.context().newCDPSession(page);
+  const loadReference = async size => {
+    if (options.mode !== "large") return page.evaluate(size => window.soakReference(size), size);
+    const { root } = await cdp.send("DOM.getDocument");
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "#overlayInput" });
+    await cdp.send("DOM.setFileInputFiles", { nodeId, files: [`${options.fixtures}/reference-${size}.png`] });
+    await page.waitForFunction(size => overlaySourceState?.fileName === `reference-${size}.png`, size);
+  };
   const samples = [], checkpoints = [];
   let operations = 0;
   await page.evaluate(async () => {
@@ -26,7 +33,9 @@ async page => {
       await loadOverlayImageFromUrl(source.toDataURL(), `soak-reference-${size}.png`);
       source.width = source.height = 1;
     };
-    await window.soakReference(2048);
+  });
+  await loadReference(options.mode === "large" ? 49 : 2048);
+  await page.evaluate(async () => {
     currentProjectName = "Performance Soak";
     await saveProject();
   });
@@ -59,8 +68,8 @@ async page => {
           const response = await fetch(`${PROJECT_FILE_API}?id=${encodeURIComponent("Performance Soak.fabric-project.json")}`, { cache: "no-store" });
           const data = await response.json();
           if (!response.ok || JSON.stringify(data.payload?.shapes) !== before) throw new Error("Sustained project save changed artwork");
-          await window.soakReference(minute % 8 === 0 ? 4096 : 2048);
         }, minute);
+        await loadReference(options.mode === "large" ? (minute % 8 === 0 ? 35 : 49) : (minute % 8 === 0 ? 4096 : 2048));
       }
       const state = await page.evaluate(async () => {
         nudgeSelected(1, 0); flushPendingNudgeHistory();

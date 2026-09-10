@@ -29,6 +29,9 @@ async (page) => {
     const undoState = JSON.stringify(snapshotEditorState());
     for (let index = 0; index < 4; index += 1) await redo();
     const redoState = JSON.stringify(snapshotEditorState());
+    if (undoState !== baseline || redoState !== finalState) throw new Error("Undo/redo did not restore the exact document");
+    if (finalCount !== 100 || vinylObjects().filter(object => object.kloudy.mask).length !== 1) throw new Error("Layer operation changed counts unexpectedly");
+    if (new Set(vinylObjects().map(object => object.kloudy.editor_id)).size !== finalCount) throw new Error("Duplicate editor IDs");
     return {
       finalCount,
       baselineRestored: undoState === baseline,

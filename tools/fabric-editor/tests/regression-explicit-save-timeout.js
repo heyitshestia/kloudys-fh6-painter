@@ -3,10 +3,14 @@ async (page) => {
   await page.evaluate(async () => {
     document.querySelectorAll("dialog[open]").forEach(dialog => dialog.close());
     await loadPayload({ shapes: [{ type: 1048677, color: [40, 150, 210, 255], data: [0, 0, 0.5, 0.5, 0, 0, 0] }] });
-    window.auditOriginalFetch = window.fetch;
-    window.fetch = (url, options) => url === PROJECT_SAVE_API
+    await flushPendingAutosave();
+  });
+  const worker = page.workers().find(item => item.url().includes("editor-persistence-worker"));
+  await worker.evaluate(() => {
+    self.auditOriginalFetch = fetch;
+    self.fetch = (url, options) => url === "/api/fabric-editor/save-project"
       ? new Promise((resolve, reject) => options.signal?.addEventListener("abort", () => reject(options.signal.reason), { once: true }))
-      : window.auditOriginalFetch(url, options);
+      : self.auditOriginalFetch(url, options);
   });
   try {
     await page.locator("#saveProjectAs").click();
@@ -17,7 +21,7 @@ async (page) => {
     const elapsed = Date.now() - started;
     if (elapsed < 29000 || elapsed > 40000) throw new Error(`Unexpected save timeout ${elapsed}`);
     if (!await page.evaluate(() => !projectSaveInProgress && documentDirty && !document.getElementById("saveProjectAs").disabled)) throw new Error("Failed save lost dirty state or left controls disabled");
-    await page.evaluate(() => { window.fetch = window.auditOriginalFetch; });
+    await worker.evaluate(() => { self.fetch = self.auditOriginalFetch; });
     await page.locator("#messageDialogClose").click();
     await page.locator("#saveProjectAs").click();
     await page.locator("#textPromptInput").fill("Timeout retry");
@@ -31,6 +35,6 @@ async (page) => {
     if (disk.shapes.length !== 1) throw new Error("Retry did not save the document to disk");
     return { timeoutMs: elapsed, retrySavedToDisk: true, dirtyStatePreserved: true };
   } finally {
-    await page.evaluate(() => { window.fetch = window.auditOriginalFetch; delete window.auditOriginalFetch; });
+    await worker.evaluate(() => { self.fetch = self.auditOriginalFetch; delete self.auditOriginalFetch; });
   }
 }

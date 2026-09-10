@@ -14,11 +14,11 @@ async page => {
       try { await loadOverlayImageFromUrl(makeUrl(bytes), `budget-${delta}.svg`); }
       catch (error) {
         rejected = true;
-        if (!String(error.message).includes('50 MiB')) throw error;
+        if (!String(error.message).includes(`${EDITOR_REFERENCE_MAX_BYTES / (1024 * 1024)} MiB`)) throw error;
       }
       if (delta <= 0 && (rejected || overlaySourceState.dataUrl.length !== bytes)) throw new Error('Valid reference boundary was rejected');
       if (delta > 0 && (!rejected || overlayImage !== previous)) throw new Error('Over-budget reference replaced existing image');
-      if (overlaySampler.data[0] !== 255 || overlaySampler.data[1] !== 0) throw new Error('Reference pixels changed at boundary');
+      if (readOverlayPixel(0, 0)[0] !== 255 || readOverlayPixel(0, 0)[1] !== 0) throw new Error('Reference pixels changed at boundary');
       outcomes.push({ bytes, accepted: !rejected });
     }
     removeOverlay();

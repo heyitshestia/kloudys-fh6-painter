@@ -158,7 +158,11 @@ async (page) => {
       const side = (corner === 'mr' || corner === 'mb' ? 1 : -1) * ((xAxis ? o.flipX : o.flipY) ? -1 : 1);
       const delta = fabric.util.transformPoint(new fabric.Point(xAxis ? side * o.width * 0.25 : 0, xAxis ? 0 : side * o.height * 0.25), m, true);
       const r = canvas.upperCanvasEl.getBoundingClientRect();
-      return { m, owner: owner.calcOwnMatrix().slice(), xAxis, x: r.left + o.oCoords[corner].x, y: r.top + o.oCoords[corner].y, dx: delta.x * zoom, dy: delta.y * zoom };
+      window.testDeliveredPointer = {};
+      canvas.upperCanvasEl.addEventListener('mousedown', event => { testDeliveredPointer.down = [event.clientX, event.clientY]; }, { once: true });
+      document.addEventListener('mouseup', event => { testDeliveredPointer.up = [event.clientX, event.clientY]; }, { once: true });
+      return { m, owner: owner.calcOwnMatrix().slice(), xAxis, side, dimension: xAxis ? o.width : o.height, zoom,
+        x: r.left + o.oCoords[corner].x, y: r.top + o.oCoords[corner].y, dx: delta.x * zoom, dy: delta.y * zoom };
     }, { corner, angle, flipX, mask, zoom });
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
@@ -167,11 +171,19 @@ async (page) => {
     pointerCases.push(await page.evaluate(({ start, corner }) => {
       const owner = selectedVinylObjects()[0];
       const m = owner.calcOwnMatrix();
+      const { down, up } = testDeliveredPointer;
+      testAssert(down && up, 'Native mouse events were not delivered');
+      const inverse = fabric.util.invertTransform(start.m);
+      const delta = fabric.util.transformPoint(new fabric.Point((up[0] - down[0]) / start.zoom, (up[1] - down[1]) / start.zoom), inverse, true);
+      const factor = 1 + (start.xAxis ? delta.x : delta.y) * start.side / start.dimension;
+      // Qt quantizes CDP coordinates. Bound that input error, then check the
+      // geometry against delivered DOM events, not the requested fractional ones.
+      const quantization = 2 * (start.xAxis ? Math.abs(inverse[0]) + Math.abs(inverse[2]) : Math.abs(inverse[1]) + Math.abs(inverse[3])) / start.zoom / start.dimension;
+      testAssert(Math.abs(factor - 1.25) <= quantization + 1e-6, `Mouse input exceeded pixel quantization bounds: ${JSON.stringify({ corner, down, up, factor, quantization, start })}`);
       for (let i = 0; i < 4; i++) {
         const changed = start.xAxis ? i < 2 : i >= 2;
-        const expected = start.owner[i] * (changed ? 1.25 : 1);
-        // Browser mouse coordinates are quantized; untouched edge vectors are exact.
-        testAssert(Math.abs(m[i] - expected) < (changed ? 0.005 : 0.00005), `pointer ${corner}: ${m[i]} != ${expected}`);
+        const expected = start.owner[i] * (changed ? factor : 1);
+        testAssert(Math.abs(m[i] - expected) < 0.00005, `pointer ${corner}: ${m[i]} != ${expected}`);
       }
       testHelpers();
       return { corner, matrix: m };
@@ -334,7 +346,7 @@ async (page) => {
   if (!entry) throw new Error(`Saved project absent: ${JSON.stringify(saved)}`);
   const url = await page.evaluate(id => { const u = new URL(window.location.href); u.searchParams.set('project', id); return u.toString(); }, entry.id);
   await page.goto(url);
-  await page.waitForFunction(() => Boolean(currentProjectName) && vinylObjects().length === 1);
+  await page.waitForFunction(() => typeof currentProjectName !== 'undefined' && Boolean(currentProjectName) && vinylObjects().length === 1);
   const reopened = await page.evaluate(() => ({
     layers: vinylObjects().length,
     outlines: canvas.getObjects().filter(o => o.kloudySelectionOutlineHelper).length,

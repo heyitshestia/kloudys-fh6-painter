@@ -16,8 +16,10 @@ async (page) => {
     target.setCoords();
     pushHistory("autosave regression");
     await flushPendingAutosave();
-    const raw = localStorage.getItem(AUTOSAVE_KEY) || "";
-    const saved = raw ? JSON.parse(raw) : null;
+    if (!autosaveStatus.browserOk || !autosaveStatus.serverOk) throw new Error("Both recovery copies were not acknowledged");
+    const saved = await readAutosavePayload();
+    const raw = JSON.stringify(saved);
+    if (localStorage.getItem(AUTOSAVE_KEY)) throw new Error("Synchronous recovery snapshot is still being written");
     const savedShape = saved?.shapes?.find((shape) => shape.editor_id === target.kloudy.editor_id);
     const expectedX = objectToShape(target, { includeEditorMeta: true }).data[0];
     await clearAutosave();

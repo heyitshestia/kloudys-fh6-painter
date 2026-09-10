@@ -10,6 +10,11 @@ const script = fs.readFileSync(path.join(editorRoot, "editor.js"), "utf8");
 const fabricAdapter = fs.readFileSync(path.join(editorRoot, "editor-fabric-adapter.js"), "utf8");
 const styles = fs.readFileSync(path.join(editorRoot, "style.css"), "utf8");
 
+// Existing profiles must not reuse the pre-3.1.75 core or language catalogs.
+assert.match(html, /src="editor-core\.js\?engine=editor-2\.2"/);
+assert.match(html, /src="locales\/en\.js\?locale=3"/);
+assert.match(html, /src="locales\/ko\.js\?locale=3"/);
+
 const idMatches = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 const idCounts = new Map();
 idMatches.forEach((id) => idCounts.set(id, (idCounts.get(id) || 0) + 1));
@@ -121,9 +126,9 @@ assert.doesNotMatch(script, /loadSVGFrom(?:String|URL)/);
 const postBlocks = [...script.matchAll(/fetch\([^;]+?method:\s*"POST"[^;]+?\);?/gs)]
   .map((match) => match[0]);
 assert.deepEqual([...new Set(postBlocks.map(block => block.match(/^fetch\((\w+)/)[1]))].sort(), [
-  "EDITOR_AUTOSAVE_API", "EDITOR_EXPORT_API", "EDITOR_PREFS_API", "EDITOR_THEMES_API",
-  "PROJECT_OPEN_FOLDER_API", "PROJECT_SAVE_API", "STARTUP_HELP_CONFIRMED_API",
-].sort(), "all editor mutation endpoints should be checked (recovery write/clear share one queue)");
+  "EDITOR_EXPORT_API", "EDITOR_PREFS_API", "EDITOR_THEMES_API",
+  "PROJECT_OPEN_FOLDER_API", "STARTUP_HELP_CONFIRMED_API",
+].sort(), "all main-thread mutation endpoints should be checked; worker requests have their own integration test");
 postBlocks.forEach((block) => {
   assert.match(
     block,

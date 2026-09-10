@@ -177,7 +177,9 @@ class EditorDesktop(QMainWindow):
         port = self.server.server_address[1]
         self.module._write_server_marker(port, self.server.editor_session_token)
         self._write_state("starting")
-        query = f"?project={quote(request['project'], safe='')}" if request["project"] else "?browse=json" if request["mode"] == "json" else ""
+        query = (f"?project={quote(request['project'], safe='')}" if request["project"]
+                 else "?browse=json" if request["mode"] == "json"
+                 else f"?mode={request['mode']}" if request["mode"] in {"new", "tutorial"} else "")
         self.url = QUrl(f"http://127.0.0.1:{port}/tools/fabric-editor/index.html#session={quote(self.server.editor_session_token, safe='')}")
         startup_url = QUrl(self.url)
         startup_url.setQuery(query.lstrip("?"))

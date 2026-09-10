@@ -58,6 +58,7 @@ async (page) => {
   await page.locator("#textPromptInput").fill("Save {0} 한국어 에셋");
   await page.locator("#textPromptInput").press("Enter");
   await idle();
+  await page.locator("#assetSearch").fill("Save {0} 한국어 에셋");
   const card = page.locator(".editorAsset").filter({has: page.locator("strong", {hasText: "Save {0} 한국어 에셋"})});
   check(await card.count() === 1, "Asset save/name preservation failed");
   const before = await page.evaluate(() => snapshotShapes());
@@ -70,6 +71,7 @@ async (page) => {
   await page.locator("#textPromptInput").fill("Renamed {1} 한국어");
   await page.locator("#textPromptInput").press("Enter");
   await idle();
+  await page.locator("#assetSearch").fill("Renamed {1} 한국어");
   check((await page.locator("#assetGrid").innerText()).includes("Renamed {1} 한국어"), "Asset rename failed");
 
   // New arithmetic input handling must retain the original validation/geometry.

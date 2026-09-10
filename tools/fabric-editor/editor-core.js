@@ -17,8 +17,17 @@
 
     read(source) {
       const nextSource = Array.isArray(source) ? source : [];
-      if (!this.dirty && this.source === nextSource && this.sourceLength === nextSource.length) {
-        return this.objects;
+      if (!this.dirty && this.sourceLength === nextSource.length) {
+        // Fabric's public getObjects() returns a fresh array. Compare its order
+        // before rebuilding the filtered list and index map on every lookup.
+        let unchanged = this.source === nextSource;
+        if (!unchanged && this.source) {
+          unchanged = true;
+          for (let index = 0; index < nextSource.length; index++) {
+            if (this.source[index] !== nextSource[index]) { unchanged = false; break; }
+          }
+        }
+        if (unchanged) return this.objects;
       }
       this.source = nextSource;
       this.sourceLength = nextSource.length;
@@ -34,19 +43,26 @@
     }
   }
 
-  async function mapWithConcurrency(items, concurrency, worker) {
+  async function mapWithConcurrency(items, concurrency, worker, options = {}) {
     const source = Array.from(items || []);
     if (!source.length) return [];
     const results = new Array(source.length);
     const workerCount = Math.max(1, Math.min(source.length, Math.floor(Number(concurrency)) || 1));
     let cursor = 0;
     let firstError = null;
+    const now = () => global.performance?.now?.() ?? Date.now();
+    let sliceStarted = now();
+    let yielding = null;
     const runners = Array.from({ length: workerCount }, async () => {
       while (cursor < source.length && !firstError) {
         const index = cursor;
         cursor += 1;
         try {
           results[index] = await worker(source[index], index, source);
+          if (options.yield && now() - sliceStarted >= (options.yieldAfterMs ?? 8)) {
+            yielding ||= Promise.resolve().then(options.yield).finally(() => { sliceStarted = now(); yielding = null; });
+            await yielding;
+          }
         } catch (error) {
           firstError ||= error;
         }

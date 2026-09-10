@@ -25,6 +25,20 @@ async function run() {
   registry.invalidate();
   assert.deepEqual(registry.read(source), [source[0], source[2]]);
 
+  let predicates = 0;
+  const copiedRegistry = new OrderedObjectRegistry(item => { predicates++; return item.vinyl; });
+  const first = copiedRegistry.read(source.slice());
+  for (let i = 0; i < 10; i++) assert.equal(copiedRegistry.read(source.slice()), first);
+  assert.equal(predicates, source.length, "Public copied snapshots should reuse the registry");
+  const reordered = source.slice().reverse();
+  assert.deepEqual(copiedRegistry.read(reordered), [source[2], source[0]]);
+  const replacement = { vinyl: true };
+  assert.deepEqual(copiedRegistry.read([replacement, source[1], source[0]]), [replacement, source[0]], "Same-size replacement must invalidate cached membership");
+  replacement.vinyl = false;
+  copiedRegistry.invalidate();
+  assert.deepEqual(copiedRegistry.read([replacement, source[1], source[0]]), [source[0]]);
+  assert.deepEqual(copiedRegistry.read([]), []);
+
   let active = 0;
   let maximumActive = 0;
   const ordered = await mapWithConcurrency([5, 4, 3, 2, 1], 2, async (value) => {
@@ -36,6 +50,16 @@ async function run() {
   });
   assert.deepEqual(ordered, [10, 8, 6, 4, 2]);
   assert.equal(maximumActive, 2);
+
+  let yields = 0;
+  assert.deepEqual(await mapWithConcurrency([1, 2, 3, 4], 2, value => value * 2, {
+    yieldAfterMs: 0,
+    yield: async () => { yields++; await new Promise(resolve => setTimeout(resolve, 0)); },
+  }), [2, 4, 6, 8]);
+  assert.ok(yields > 0 && yields <= 4, "Optional build slicing must yield without changing order");
+  await assert.rejects(mapWithConcurrency([1, 2], 2, value => value, {
+    yieldAfterMs: 0, yield: async () => { throw new Error("expected yield failure"); },
+  }), /expected yield failure/);
 
   active = 0;
   await assert.rejects(

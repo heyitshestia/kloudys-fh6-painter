@@ -233,14 +233,26 @@ The Text tool converts entered characters into editable native Forza letter
 layers. The Pixel tool is intended for deliberate low-resolution pixel art and
 merges adjacent same-color cells where possible.
 
+Pixel decoding/grid analysis runs in a short-lived worker separate from recovery
+storage. Rectangle merging streams rows and stops when the available layer budget
+is exceeded, without allocating the entire generated grid. SVG sources unsupported
+by worker decoding use the existing DOM rasterizer before transferring pixels for
+background analysis. New cancels pending analysis. Pixel/text replacement builds
+the new layers before removing previous output; resource failures or intervening
+document edits keep the existing work. Large object builds yield between batches.
+Native Forza font generation no longer rasterizes an unused text mask.
+
 Reference images are tracing helpers. They can be moved, scaled, faded, sampled,
 and saved with an editable project, but never become exported vinyl layers.
 References have no editor-imposed megapixel cap. Original pixels are retained
 for color sampling and project storage; only the GPU display texture is resized
 when it exceeds the device's texture dimension limit. Large images need more RAM
 and loading time, and remain subject to the browser's image/canvas capabilities.
-The stored-source budget is 50 MiB; project save and recovery requests are limited
-to 100 MiB. These measure serialized/embedded data, not the source file on disk.
+The stored-source budget is 100 MiB; project save and recovery requests are limited
+to 150 MiB. These measure serialized/embedded data, not the source file on disk.
+Base64 raster embedding adds roughly one third, so a source file near 75 MiB can
+fill the 100 MiB reference allowance. Other project metadata consumes additional
+space; a reference below its allowance does not bypass the total project limit.
 Large projects require more memory and can pause longer during save/recovery.
 Browser-only recovery remains subject to its own storage quota; check that recovery
 was saved in KFPS, especially with large embedded references.
@@ -250,6 +262,13 @@ higher budgets to save or recover normally. Indented project files on disk can
 be slightly larger than the serialized request limit.
 
 ## History And Recovery
+
+Asynchronous Open/New, shape insertion, replacement, duplication and paste use
+document ownership checks. Superseded work cannot reappear in a new document;
+failed strict project/history rebuilds keep the existing artwork. Capacity is
+checked again at insertion, including when more than one build finishes together.
+Guide/grid/snap setting changes participate in project dirty state, history and
+recovery. Fully transparent editable layers survive project and recovery reloads.
 
 History records meaningful editing states, shows the active state, and marks the
 last explicit save. Click a history entry to jump to it. The loaded source is a
@@ -334,6 +353,11 @@ Outputs.
 | `Shift+L` | Lock or unlock the current selection |
 
 Open `Keys` to review or change these bindings.
+New assignments that conflict with another action are rejected. Space can be
+captured, and IME composition/dead-key events do not overwrite bindings. Existing
+stored preferences are not silently reset; use Reset Defaults to repair older
+conflicting custom bindings. Temporary theme previews do not change the saved
+theme, and keyboard activation of a shape favorite does not insert a shape.
 
 ## Large Designs
 
@@ -380,8 +404,10 @@ this separate acknowledgment.
 - If a project is missing, choose `Folder` and confirm it ends in
   `.fabric-project.json`, then refresh the native Editor page.
 - If export is blocked, open `Export Check`; it lists the exact layers involved.
-- If the browser closed unexpectedly, reopen the editor and restore the offered
-  recovery copy.
+- Reopening the native editor automatically resumes the last complete recovery
+  checkpoint, including saved projects, references, groups and guides. Explicit
+  New/Open requests take precedence. Browser-only use still offers recovery for
+  confirmation. An unreadable newest copy falls back to an earlier complete copy.
 
 ## Interaction Performance Boundaries
 
@@ -396,7 +422,39 @@ transform, interaction state, or viewport changes. Geometry-only commits refresh
 visible layer rows without rebuilding the entire layer index; a queued structural
 refresh always takes precedence. Nudge history tracks all changed leaves and
 retains the conservative full-capture fallback for structural/unknown changes.
-Recovery cadence, full export validation, and project/export formats are unchanged.
+Recovery cadence and portable project/export formats are unchanged. During edits,
+export validation runs in small cooperative batches; explicit export still performs
+the authoritative full check before writing game JSON.
+
+## Background Recovery
+
+Recovery is queued after 500 ms of idle time, with a 2-second maximum wait during
+continued edits. One worker serializes and writes checkpoints to both the app folder
+and IndexedDB. This avoids synchronous full-document localStorage writes. Unchanged
+reference source bytes are stored once per content identity instead of being sent
+again for each edit. Portable project files still embed their original reference;
+internal recovery sidecars are not a replacement for sharing project files.
+
+The app folder retains current and previous atomic checkpoints, a revision/clear
+marker, and bounded SHA-256 reference sidecars under `recovery-references`. Browser
+storage retains two checkpoint generations and their references. Native close waits
+for the latest app-folder checkpoint and settings acknowledgement. Disk/quota/worker
+failures are reported and retried; an older or failed response cannot replace a
+newer revision. If the app-folder writer stalls, a separate coalescing path can
+still save the newest browser copy. Startup clears only this store's abandoned
+temporary files. Original project files are never deleted as recovery cleanup.
+
+Recovery is not protection against every failure: killing the process before a
+checkpoint is acknowledged can lose the newest uncommitted edits; unavailable disk
+and browser storage cannot be called saved. Large initial image decoding/GPU upload,
+project restoration and constrained-device rendering can still pause. The native
+close warning lets the user keep the editor open when the latest checkpoint fails.
+
+Project/JSON parsing and project encoding also run in the worker. Reference color
+sampling uses exact original pixels through a bounded 8 MiB tile cache, not a second
+full-image RGBA allocation. The 100 MiB embedded-reference and 150 MiB total
+project/recovery budgets remain. Reference-only and guide-only preparatory work can
+be saved and resumed before any vinyl layer is added.
 
 JSON-browser requests are latest-wins and time-bounded. Selecting an existing
 browser row retains thumbnail elements. Local preview responses use private HTTP
@@ -414,6 +472,10 @@ replacement, recovery readback and saved-project verification. Use an isolated
 profile and disposable artwork. Do not interpret throttling as measured hardware
 performance or a short benchmark as proof that all stalls/leaks are eliminated.
 
+The repository changelog records the 3.1.75 capacity, recovery and performance
+changes. Local audit profiles, synthetic images and detailed run logs are not
+distributed with the application.
+
 ## Developer Checks
 
 `python tools/fabric-editor/tests/editor-launch-native.py <fresh-output-directory>`
@@ -430,6 +492,9 @@ The dependency-free geometry and ordering tests live in
 
 ```powershell
 node tools/fabric-editor/tests/editor-core.node.js
+node tools/fabric-editor/tests/editor-pixel-core.node.js
+node tools/fabric-editor/tests/editor-persistence.node.js
+node tools/fabric-editor/tests/editor-persistence-worker.node.js
 node tools/fabric-editor/tests/editor-shell.node.js
 ```
 
